@@ -1489,19 +1489,35 @@ function initRadarModal() {
         loadingInterval = showRadarLoading();
         
         try {
-            // CRITICAL FIX: Always fetch fresh from API for radar modal
-            // Don't use embedded posts (they're stale) or window.publishedPosts (might be old)
-            // This ensures newly published articles appear immediately on ALL pages
-            // (homepage, hubs, date pages, archive, article pages)
-            console.log('[Radar] Always fetching fresh posts from API for radar modal...');
-            let posts = await fetchPublishedPosts();
+            // For radar modal: Try to fetch fresh from API, but fall back to embedded/available posts
+            // On static sites (Cloudflare Pages), there's no API, so use embedded posts instead
+            console.log('[Radar] Attempting to fetch fresh posts from API for radar modal...');
+            let posts = [];
             
-            // Store in window for other uses, but radar always uses fresh data
-            if (posts.length > 0) {
-                window.publishedPosts = posts;
-                console.log(`[Radar] Fetched ${posts.length} published posts from API`);
-            } else {
-                console.warn('[Radar] No posts returned from API');
+            try {
+                posts = await fetchPublishedPosts();
+                if (posts.length > 0) {
+                    window.publishedPosts = posts;
+                    console.log(`[Radar] Fetched ${posts.length} published posts from API`);
+                } else {
+                    console.warn('[Radar] No posts returned from API, trying embedded posts...');
+                    // Fall back to embedded posts or window.publishedPosts
+                    posts = getEmbeddedPosts();
+                    if (posts.length === 0 && window.publishedPosts) {
+                        posts = window.publishedPosts;
+                    }
+                }
+            } catch (apiError) {
+                console.log('[Radar] API fetch failed (expected on static sites), using embedded posts:', apiError.message);
+                // On static sites, use embedded posts or window.publishedPosts
+                posts = getEmbeddedPosts();
+                if (posts.length === 0 && window.publishedPosts) {
+                    posts = window.publishedPosts;
+                }
+            }
+            
+            if (posts.length === 0) {
+                console.warn('[Radar] No posts available (neither from API nor embedded)');
             }
             
             // Get today and tomorrow dates (in America/New_York timezone)
@@ -2046,7 +2062,22 @@ async function init() {
         // Fetch posts (only if we're on a page that needs them - homepage/preview/index.html)
         const postList = document.getElementById('recent-logs-list');
         if (postList) {
-            const posts = await fetchPublishedPosts();
+            // For static sites: Use embedded posts first (generated during build)
+            // These are embedded in a <script id="posts-data"> tag by the static site generator
+            let posts = getEmbeddedPosts();
+            
+            // Only try to fetch from API if no embedded posts found (for development/preview scenarios)
+            if (posts.length === 0) {
+                console.log('[Homepage] No embedded posts found, trying to fetch from API...');
+                try {
+                    posts = await fetchPublishedPosts();
+                } catch (error) {
+                    console.warn('[Homepage] Failed to fetch from API (expected on static sites):', error.message);
+                    posts = [];
+                }
+            } else {
+                console.log(`[Homepage] Using ${posts.length} embedded posts from static site generation`);
+            }
             
             // Store posts globally so static pages can access them
             window.publishedPosts = posts;
@@ -2054,7 +2085,7 @@ async function init() {
             // Render posts
             renderPosts(posts, currentPage);
             
-            // Initialize navigation with dates from fetched posts (homepage only)
+            // Initialize navigation with dates from posts (homepage only)
             initCrawlerNav(posts);
             
             // Initialize heat indicator hover effects for dynamically rendered posts (homepage)
