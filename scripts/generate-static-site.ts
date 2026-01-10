@@ -125,6 +125,39 @@ function copyAssets(): void {
 }
 
 /**
+ * Copy public assets (images, SVGs) to dist/ for production hosting
+ */
+function copyPublicAssets(): void {
+    // Copy images from public/images to dist/images
+    const publicImagesDir = path.join(publicDir, 'images');
+    const distImagesDir = path.join(distDir, 'images');
+    
+    if (fs.existsSync(publicImagesDir)) {
+        ensureDir(distImagesDir);
+        const imageFiles = fs.readdirSync(publicImagesDir);
+        for (const file of imageFiles) {
+            const src = path.join(publicImagesDir, file);
+            const dest = path.join(distImagesDir, file);
+            if (fs.statSync(src).isFile()) {
+                fs.copyFileSync(src, dest);
+            }
+        }
+        console.log(`✓ Copied ${imageFiles.length} image(s) from public/images to dist/images`);
+    }
+    
+    // Copy HeatScanButton.svg and other root-level assets from public/ to dist/
+    const rootAssets = ['HeatScanButton.svg'];
+    for (const asset of rootAssets) {
+        const src = path.join(publicDir, asset);
+        if (fs.existsSync(src)) {
+            const dest = path.join(distDir, asset);
+            fs.copyFileSync(src, dest);
+            console.log(`✓ Copied ${asset} to dist/`);
+        }
+    }
+}
+
+/**
  * Write HTML file to both dist and public (for dev server access)
  */
 function writeHtmlFile(relativePath: string, html: string): void {
@@ -331,6 +364,7 @@ async function generateAllPages(): Promise<void> {
         console.log('Copying assets...');
         copyImages();
         copyAssets();
+        copyPublicAssets();
         console.log('');
         
         // Generate article pages
