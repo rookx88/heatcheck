@@ -921,11 +921,18 @@ body {
     }
 
     .top-right {
-        grid-column: 1;
-        grid-row: 2;
-        padding: 0.5rem 1rem;
-        align-items: center;
-        background-size: 60%;
+        display: none !important; /* Hide HeatScan banner section on mobile */
+    }
+
+    /* Hide HeatScan logo and button on mobile */
+    .heat-radar-label,
+    .heat-radar-toggle {
+        display: none !important;
+    }
+
+    /* Hide radar modal on mobile */
+    .radar-modal {
+        display: none !important;
     }
 
     /* Logo Size Reduction */
@@ -1057,30 +1064,8 @@ body {
         padding: 0.5rem 0.75rem;
     }
 
-    /* Radar Modal - Centered, Responsive Size */
-    .radar-modal {
-        position: fixed;
-        top: auto;
-        bottom: 1rem;
-        left: 50%;
-        transform: translateX(-50%);
-        right: auto;
-        width: calc(100vw - 2rem);
-        max-width: calc(100vw - 2rem);
-        height: auto;
-        max-height: 250px; /* Match approximate height of top-left + top-right headers (~220px) */
-        min-width: unset;
-        min-height: 200px;
-        z-index: 2000; /* Higher than mobile menu (1600) */
-    }
-
-    /* Ensure radar modal content adapts */
-    .radar-modal-content {
-        min-height: 200px;
-        max-height: 230px; /* Match header size */
-        height: auto;
-        flex-direction: row;
-    }
+    /* Radar Modal - Hidden on mobile */
+    /* (All radar modal styles removed since it's hidden with display: none !important above) */
 
     /* Navigation Links - Larger Touch Targets */
     .nav-link, .crawler-nav a {
@@ -1138,8 +1123,23 @@ body {
 /* Small Mobile: max-width 480px */
 @media (max-width: 480px) {
     /* Further Reduce Padding */
-    .top-left, .top-right {
+    .top-left {
         padding: 0.75rem;
+    }
+
+    .top-right {
+        display: none !important; /* Hide HeatScan banner section on small mobile */
+    }
+
+    /* Hide HeatScan logo and button on small mobile */
+    .heat-radar-label,
+    .heat-radar-toggle {
+        display: none !important;
+    }
+
+    /* Hide radar modal on small mobile */
+    .radar-modal {
+        display: none !important;
     }
 
     .header-logo {
@@ -1150,27 +1150,8 @@ body {
         padding: 0.5rem;
     }
 
-    /* Radar Modal - Match header size (top-left + top-right) */
-    .radar-modal {
-        width: calc(100vw - 1rem);
-        max-width: calc(100vw - 1rem);
-        height: auto;
-        max-height: 220px; /* Match header height (~100px logo + padding ~120px) */
-        bottom: 0.5rem;
-    }
-
-    /* Stack Radar Modal Columns on Very Small Screens */
-    .radar-modal-content {
-        flex-direction: column;
-        max-height: 200px; /* Match header size */
-    }
-
-    .radar-column-left,
-    .radar-column-right {
-        flex: 1;
-        min-height: 150px;
-        max-height: 45%;
-    }
+    /* Radar Modal Content - Hidden on small mobile */
+    /* (All radar modal styles removed since modal is hidden with display: none !important above) */
 
     .radar-column-left {
         border-right: none;
