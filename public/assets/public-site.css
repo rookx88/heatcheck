@@ -1076,29 +1076,11 @@ body {
         align-items: center;
     }
 
-    /* Heat Radar Toggle Button */
-    .heat-radar-toggle {
-        padding: 0.6rem 1rem;
-        min-height: 44px;
-        min-width: 44px;
-        font-size: 0.8rem;
-        cursor: pointer;
-    }
-
-    .heat-radar-toggle:active {
-        background: rgba(0, 255, 65, 0.2);
-        transform: scale(0.95);
-    }
-
-    .heat-radar-label {
-        width: 56px !important;
-        margin-bottom: 0.25rem;
-    }
+    /* Heat Radar elements are hidden on mobile (see above) */
 
     /* Ensure interactive elements are touch-friendly on mobile */
     .nav-link,
     .crawler-nav a,
-    .heat-radar-toggle,
     .scan-games-button,
     .roundup-game-item,
     .radar-close-btn,
@@ -1110,7 +1092,6 @@ body {
     /* Improve touch feedback */
     .nav-link:active,
     .crawler-nav a:active,
-    .heat-radar-toggle:active,
     .scan-games-button:active,
     .roundup-game-item:active,
     .radar-close-btn:active,
