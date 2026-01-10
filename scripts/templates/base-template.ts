@@ -94,6 +94,21 @@ export function generateBaseHtml(
     <link rel="stylesheet" href="/assets/public-site.css">
 </head>
 <body>
+    <!-- Mobile Hamburger Menu Toggle -->
+    <button class="mobile-menu-toggle" id="mobile-menu-toggle" aria-label="Toggle navigation menu">
+        <span></span>
+        <span></span>
+        <span></span>
+    </button>
+    
+    <!-- Mobile Navigation Overlay -->
+    <div class="mobile-nav-overlay" id="mobile-nav-overlay"></div>
+    
+    <!-- Mobile Navigation Drawer -->
+    <nav class="mobile-nav-drawer" id="mobile-nav-drawer">
+        ${crawlerNav}
+    </nav>
+    
     <div class="public-container">
         <div class="top-left">
             <a href="/">

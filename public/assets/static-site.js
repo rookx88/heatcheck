@@ -2041,6 +2041,95 @@ function initHeatIndicatorHoverStatic() {
 }
 
 /**
+ * Initialize mobile hamburger menu
+ */
+function initMobileMenu() {
+    const menuToggle = document.getElementById('mobile-menu-toggle');
+    const navDrawer = document.getElementById('mobile-nav-drawer');
+    const navOverlay = document.getElementById('mobile-nav-overlay');
+    const body = document.body;
+    
+    if (!menuToggle || !navDrawer || !navOverlay) {
+        console.warn('[Mobile Menu] Required elements not found');
+        return;
+    }
+    
+    // Toggle menu function
+    const toggleMenu = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        const isOpen = navDrawer.classList.contains('active');
+        
+        if (isOpen) {
+            closeMenu();
+        } else {
+            openMenu();
+        }
+    };
+    
+    // Open menu function
+    const openMenu = () => {
+        navDrawer.classList.add('active');
+        navOverlay.classList.add('active');
+        menuToggle.classList.add('active');
+        body.classList.add('menu-open');
+        // Re-initialize nav interactivity for mobile drawer
+        initCrawlerNavInteractivity();
+    };
+    
+    // Close menu function
+    const closeMenu = () => {
+        navDrawer.classList.remove('active');
+        navOverlay.classList.remove('active');
+        menuToggle.classList.remove('active');
+        body.classList.remove('menu-open');
+    };
+    
+    // Event listeners
+    menuToggle.addEventListener('click', toggleMenu);
+    navOverlay.addEventListener('click', closeMenu);
+    
+    // Close menu when clicking navigation links in mobile drawer
+    // Use event delegation to handle dynamically added links (including date links added by initCrawlerNav)
+    navDrawer.addEventListener('click', (e) => {
+        const link = e.target.closest('a');
+        if (!link) return;
+        
+        // Don't close for league links (they toggle submenus)
+        if (link.classList.contains('league-link')) {
+            return;
+        }
+        
+        // Close menu for all other navigation links (including submenu items and regular links)
+        // Use a small delay to allow navigation to proceed
+        setTimeout(() => {
+            closeMenu();
+        }, 150);
+    });
+    
+    // Close menu on escape key
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && navDrawer.classList.contains('active')) {
+            closeMenu();
+        }
+    });
+    
+    // Ensure menu closes on window resize if it exceeds mobile breakpoint
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            if (window.innerWidth > 768 && navDrawer.classList.contains('active')) {
+                closeMenu();
+            }
+        }, 250);
+    });
+}
+
+/**
  * Initialize everything when DOM is ready
  */
 async function init() {
@@ -2050,6 +2139,9 @@ async function init() {
         
         // Initialize back button handling (works on all pages including articles)
         initBackButton();
+        
+        // Initialize mobile menu (before other nav handlers)
+        initMobileMenu();
         
         // Initialize crawler nav interactivity on ALL pages (makes existing nav interactive)
         // This comes after initLinkHandling but handles league link toggles specially
