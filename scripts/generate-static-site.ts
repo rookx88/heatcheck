@@ -12,8 +12,16 @@ import { getShortTeamName } from './utils/date-formatter';
 import { generateSitemap } from './sitemap';
 import dotenv from 'dotenv';
 
-// Load environment variables
-dotenv.config({ path: '.env.local' });
+// Load environment variables from .env.local only in local development
+// Cloudflare Pages sets environment variables directly, so dotenv is not needed there
+// Only try to load .env.local if DATABASE_URL is not already set (production environments)
+if (!process.env.DATABASE_URL && !process.env.CI) {
+    try {
+        dotenv.config({ path: '.env.local' });
+    } catch (err) {
+        // Silently ignore if .env.local doesn't exist (normal in production)
+    }
+}
 
 interface HeatcheckPost {
     id: string;
@@ -208,9 +216,26 @@ function groupPostsByDate(posts: HeatcheckPost[]): Record<string, HeatcheckPost[
 async function generateAllPages(): Promise<void> {
     console.log('Starting static site generation...\n');
     
+    // Validate DATABASE_URL exists
+    const databaseUrl = process.env.DATABASE_URL;
+    if (!databaseUrl) {
+        throw new Error('DATABASE_URL environment variable is not set. Please set it in Cloudflare Pages environment variables.');
+    }
+    
+    // Debug: Log connection string info (without exposing full credentials)
+    const urlMatch = databaseUrl.match(/postgresql:\/\/([^:]+):([^@]+)@([^\/\?]+)/);
+    if (urlMatch) {
+        console.log(`Connecting to database: ${urlMatch[3]} (user: ${urlMatch[1]})`);
+    } else {
+        console.error('DATABASE_URL format may be incorrect. Expected format: postgresql://user:pass@host:port/dbname');
+        console.error('DATABASE_URL length:', databaseUrl.length);
+        console.error('DATABASE_URL first 50 chars:', databaseUrl.substring(0, 50).replace(/./g, '*'));
+        throw new Error('Invalid DATABASE_URL format. Please check your environment variable in Cloudflare Pages.');
+    }
+    
     // Connect to database
     const pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
+        connectionString: databaseUrl,
     });
     
     try {
