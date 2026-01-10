@@ -423,6 +423,30 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
     const articleUrl = `/${leagueLower}/${date}/${matchupSlug}/${finalNarrativeSlug}/`;
     const isHeatHigh = heatScore >= 71; // ~71 on 100 scale = ~25 on 35 scale
     
+    // Extract quote from evidence bundle
+    const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
+    const quotes = evidenceBundle.quotes || [];
+    const selectedQuote = quotes.length > 0 ? quotes[0] : null; // Use first quote
+    const quoteText = selectedQuote?.quote || '';
+    const quoteSpeaker = selectedQuote?.speaker || '';
+    const quoteTeam = selectedQuote?.team || '';
+    
+    // Truncate quote if too long (max ~120 chars for card display)
+    const maxQuoteLength = 120;
+    const displayQuote = quoteText.length > maxQuoteLength 
+        ? quoteText.substring(0, maxQuoteLength).trim() + '...'
+        : quoteText;
+    
+    // Build quote HTML if available
+    const quoteHtml = displayQuote ? `
+        <div style="margin: 0 0 1rem 0; padding: 0.75rem; background: rgba(0, 0, 0, 0.4); border-left: 3px solid rgba(248, 66, 66, 0.6); border-radius: 2px; font-family: 'Courier New', monospace;">
+            <p style="font-size: 0.7rem; line-height: 1.4; color: rgba(255, 255, 255, 0.85); font-style: italic; margin: 0 0 0.4rem 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">
+                "${escapeHtml(displayQuote)}"
+            </p>
+            ${quoteSpeaker ? `<div style="font-size: 0.65rem; color: rgba(255, 255, 255, 0.6); margin: 0; text-align: right;">— ${escapeHtml(quoteSpeaker)}${quoteTeam ? ` (${escapeHtml(quoteTeam)})` : ''}</div>` : ''}
+        </div>
+    ` : '';
+    
     return `
         <div class="post-card" data-heat-high="${isHeatHigh}" data-post-id="${post.id}">
             <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; box-sizing: border-box; overflow: hidden;">
@@ -445,7 +469,8 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
                         ${imagePath ? `<img src="${imagePath}" alt="${escapeHtml(`${teamAShort} vs ${teamBShort} ${league} ${finalNarrativeSlug} narrative - ${headline} - HeatChecks Analysis`)}" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">` : '<div style="width: 100%; height: 100%; background: rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.5); font-size: 0.75rem;">No Image</div>'}
                     </div>
                 </div>
-                <h2 style="font-size: 0.75rem; line-height: 1.3; margin: 0 0 1.75rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2em; max-height: 3em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word;">${escapeHtml(headline)}</h2>
+                <h2 style="font-size: 0.75rem; line-height: 1.3; margin: 0 0 1rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2em; max-height: 3em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word;">${escapeHtml(headline)}</h2>
+                ${quoteHtml}
                 <a href="${articleUrl}" style="margin-top: 0; margin-bottom: 0; font-size: 0.7rem; padding: 0.4rem 0.8rem; background: #000; border: 2px solid #f84242; color: #fff; cursor: pointer; text-transform: uppercase; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; letter-spacing: 0.08em; transition: all 0.3s ease; width: 100%; box-sizing: border-box; text-decoration: none; display: block; text-align: center;">VIEW STORY</a>
             </div>
         </div>
