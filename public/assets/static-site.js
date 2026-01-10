@@ -2076,8 +2076,8 @@ function initMobileMenu() {
         navOverlay.classList.add('active');
         menuToggle.classList.add('active');
         body.classList.add('menu-open');
-        // Re-initialize nav interactivity for mobile drawer
-        initCrawlerNavInteractivity();
+        // Navigation interactivity is already initialized on page load via initCrawlerNavInteractivity()
+        // which finds all .league-link elements including those in the mobile drawer
     };
     
     // Close menu function
