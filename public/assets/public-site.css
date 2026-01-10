@@ -1284,10 +1284,14 @@ body {
     box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
     padding: 4rem 1rem 2rem 1rem;
     box-sizing: border-box;
+    visibility: hidden; /* Hide from screen readers and layout when not in use */
+    opacity: 0; /* Additional hiding for desktop */
 }
 
 .mobile-nav-drawer.active {
     transform: translateX(0);
+    visibility: visible;
+    opacity: 1;
 }
 
 .mobile-nav-drawer .crawler-nav {
@@ -1326,6 +1330,29 @@ body {
     align-items: center;
 }
 
+/* Desktop: Hide mobile menu elements */
+@media (min-width: 769px) {
+    .mobile-menu-toggle {
+        display: none !important;
+    }
+
+    .mobile-nav-overlay {
+        display: none !important;
+    }
+
+    .mobile-nav-drawer {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        pointer-events: none !important; /* Prevent any interaction */
+    }
+
+    /* Ensure desktop sidebar is visible */
+    .bottom-left {
+        display: flex;
+    }
+}
+
 /* Show Hamburger Menu on Mobile */
 @media (max-width: 768px) {
     .mobile-menu-toggle {
@@ -1333,7 +1360,23 @@ body {
     }
 
     .mobile-nav-drawer {
-        display: block;
+        display: block !important; /* Allow it to exist in DOM for animation */
+        visibility: visible; /* Make it accessible for interaction on mobile */
+        opacity: 1; /* Make it visible on mobile */
+    }
+
+    /* Ensure drawer starts off-screen when not active */
+    .mobile-nav-drawer:not(.active) {
+        transform: translateX(-100%);
+        visibility: visible; /* Keep visible for animation, just off-screen */
+        opacity: 1; /* Fully opaque even when off-screen */
+    }
+
+    /* Only show drawer when active */
+    .mobile-nav-drawer.active {
+        transform: translateX(0);
+        visibility: visible;
+        opacity: 1;
     }
 
     /* Prevent body scroll when menu is open */
