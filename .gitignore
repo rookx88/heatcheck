@@ -12,6 +12,19 @@ dist
 dist-ssr
 *.local
 
+# Generated static site files (built by Cloudflare Pages)
+# Note: Cloudflare Pages will build these during deployment
+public/nba/
+public/nfl/
+public/epl/
+public/archive/
+public/*/index.html
+!public/about/index.html
+!public/preview.html
+public/robots.txt
+public/sitemap.xml
+public/assets/images/
+
 # Environment variables - protect all .env files
 .env
 .env.local

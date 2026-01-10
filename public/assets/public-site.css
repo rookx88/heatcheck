@@ -83,7 +83,13 @@ body {
     grid-column: 1;
     grid-row: 2;
     box-sizing: border-box;
-    overflow: hidden;
+    /* Make sticky so navigation links stay visible when scrolling article content */
+    position: sticky;
+    align-self: start;
+    top: 0;
+    max-height: 100vh;
+    overflow-x: hidden;
+    overflow-y: auto;
 }
 
 .nav-link, .crawler-nav a {

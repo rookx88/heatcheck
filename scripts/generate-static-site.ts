@@ -7,7 +7,9 @@ import { generateLeagueHubPage } from './templates/league-hub-template';
 import { generateDatePage } from './templates/date-page-template';
 import { generateBaseHtml } from './templates/base-template';
 import { formatDateISO, normalizeLeague } from './utils/date-formatter';
-import { generateSlug, ensureUniqueSlug } from './utils/slug-generator';
+import { generateSlug, ensureUniqueSlug, generateNarrativeSlug, generateMatchupSlug } from './utils/slug-generator';
+import { getShortTeamName } from './utils/date-formatter';
+import { generateSitemap } from './sitemap';
 import dotenv from 'dotenv';
 
 // Load environment variables
@@ -247,16 +249,57 @@ async function generateAllPages(): Promise<void> {
             return;
         }
         
-        // Ensure unique slugs
-        const slugSet = new Set<string>();
+        // Generate unique slugs with new URL structure: {league}/{date}/{matchup}/{narrative-slug}/
+        // Track uniqueness per matchup to avoid conflicts
+        const matchupSlugMap = new Map<string, Set<string>>(); // Key: "{league}/{date}/{matchup}", Value: Set of narrative slugs
+        
         posts.forEach(post => {
-            const slug = post.websiteStory?.seo?.slug || generateSlug(post.websiteStory.headline);
-            const uniqueSlug = ensureUniqueSlug(slug, slugSet);
-            slugSet.add(uniqueSlug);
+            const league = normalizeLeague(post.league);
+            const date = post.matchupScheduledDate 
+                ? formatDateISO(post.matchupScheduledDate)
+                : formatDateISO(post.createdAt);
+            
+            // Generate matchup slug
+            const matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
+            const matchupKey = `${league}/${date}/${matchupSlug}`;
+            
+            // Get narrative keywords from heatCheckData
+            const heatCheckData = post.heatCheckData || {};
+            const narratives = heatCheckData.narratives || {};
+            const candidateCards = narratives.candidate_cards || [];
+            const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
+            const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
+            const emotionTags = activeCard?.emotion_tags || [];
+            
+            // Generate narrative-based slug
+            let narrativeSlug = generateNarrativeSlug(
+                post.websiteStory.headline,
+                post.teamA || '',
+                post.teamB || '',
+                emotionTags
+            );
+            
+            // Ensure uniqueness within the matchup
+            if (!matchupSlugMap.has(matchupKey)) {
+                matchupSlugMap.set(matchupKey, new Set<string>());
+            }
+            const narrativeSlugSet = matchupSlugMap.get(matchupKey)!;
+            
+            // Ensure unique narrative slug within this matchup
+            let uniqueNarrativeSlug = narrativeSlug;
+            let counter = 1;
+            while (narrativeSlugSet.has(uniqueNarrativeSlug)) {
+                uniqueNarrativeSlug = `${narrativeSlug}-${counter}`;
+                counter++;
+            }
+            narrativeSlugSet.add(uniqueNarrativeSlug);
+            
+            // Store the full path structure for reference (though we'll generate it dynamically)
             if (!post.websiteStory.seo) {
                 post.websiteStory.seo = { slug: '', metaTitle: '', metaDescription: '' };
             }
-            post.websiteStory.seo.slug = uniqueSlug;
+            // Store matchup slug and narrative slug separately for easy reference
+            post.websiteStory.seo.slug = `${matchupSlug}/${uniqueNarrativeSlug}`;
         });
         
         // Copy assets first (before generating pages that reference them)
@@ -275,13 +318,38 @@ async function generateAllPages(): Promise<void> {
             const date = post.matchupScheduledDate 
                 ? formatDateISO(post.matchupScheduledDate)
                 : formatDateISO(post.createdAt);
-            const slug = post.websiteStory.seo.slug;
+            
+            // Extract matchup and narrative slug from stored SEO slug (set in loop above)
+            const storedSlug = post.websiteStory.seo.slug || '';
+            let matchupSlug: string;
+            let narrativeSlug: string;
+            
+            if (storedSlug.includes('/') && storedSlug.split('/').length === 2) {
+                // Already in new format: matchup-slug/narrative-slug
+                [matchupSlug, narrativeSlug] = storedSlug.split('/');
+            } else {
+                // Fallback: Regenerate if not set correctly
+                matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
+                const heatCheckData = post.heatCheckData || {};
+                const narratives = heatCheckData.narratives || {};
+                const candidateCards = narratives.candidate_cards || [];
+                const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
+                const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
+                const emotionTags = activeCard?.emotion_tags || [];
+                narrativeSlug = generateNarrativeSlug(
+                    post.websiteStory.headline,
+                    post.teamA || '',
+                    post.teamB || '',
+                    emotionTags
+                );
+            }
             
             const relatedPosts = getRelatedPosts(post, posts, 3);
             const html = generateArticlePage(post, relatedPosts, baseUrl);
             
-            // Write using relative path from dist/public root
-            const articlePath = `${league}/${date}/${slug}.html`;
+            // New URL structure: {league}/{date}/{matchup}/{narrative-slug}/index.html
+            // This creates clean URLs without .html extension
+            const articlePath = `${league}/${date}/${matchupSlug}/${narrativeSlug}/index.html`;
             writeHtmlFile(articlePath, html);
         }
         console.log(`✓ Generated ${posts.length} article pages\n`);
@@ -407,30 +475,262 @@ async function generateAllPages(): Promise<void> {
         console.log(`✓ Generated: ${homepagePublicPath}`);
         console.log('✓ Generated homepage\n');
         
-        // Generate about page (simple version)
+        // Generate about page (comprehensive SEO-optimized version)
         console.log('Generating about page...');
         const aboutContent = `
-            <div class="content-area-title">▶ ABOUT US</div>
-            <div style="padding: 2rem; font-family: 'Courier New', monospace; color: rgba(255, 255, 255, 0.85); line-height: 1.8;">
-                <h1 style="color: #f84242; font-size: 1.5rem; margin-bottom: 1rem;">HeatChecks</h1>
-                <p style="margin-bottom: 1rem; font-size: 0.95rem;">
-                    Measure the emotion behind every matchup. HeatChecks tracks revenge, rivalry, narrative momentum, and psychological pressure in sports.
-                </p>
-                <p style="margin-bottom: 1rem; font-size: 0.95rem;">
-                    We analyze the hidden narratives that drive sports outcomes—the personal vendettas, historical curses, and psychological warfare that statistics can't capture.
-                </p>
-            </div>
+            <article>
+                <div class="content-area-title">▶ ABOUT US</div>
+                <section style="padding: 2rem; font-family: 'Courier New', monospace; color: rgba(255, 255, 255, 0.85); line-height: 1.8;">
+                    <h1 style="color: #ff0040; font-size: 1.8rem; margin-bottom: 1.5rem; font-weight: 900; text-shadow: 0 0 10px rgba(255, 0, 64, 0.5);">About Heatchecks</h1>
+                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">The Science of Sports Emotion</h2>
+                    
+                    <p style="margin-bottom: 1.5rem; font-size: 1rem; line-height: 1.8;">
+                        Heatchecks is a next-generation sports intelligence platform focused on the most powerful variable in competition: <strong>human emotion</strong>.
+                    </p>
+                    
+                    <p style="margin-bottom: 1.5rem; font-size: 1rem; line-height: 1.8;">
+                        While most sports sites obsess over numbers, spreadsheets, and projections, we go deeper — into the stories, grudges, rivalries, pressure moments, and psychological dynamics that quietly decide games.
+                    </p>
+                    
+                    <p style="margin-bottom: 2rem; font-size: 1rem; line-height: 1.8;">
+                        We believe every matchup contains a narrative undercurrent that the markets consistently undervalue. Heatchecks exists to uncover it.
+                    </p>
+                    
+                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x1F525; Our Mission</h2>
+                    
+                    <p style="margin-bottom: 1.5rem; font-size: 1rem; line-height: 1.8;">
+                        Our mission is to identify and explain high-tension moments in sports — revenge games, rivalry showdowns, personal vendettas, pressure collapses, redemption arcs — and present them in a way that is:
+                    </p>
+                    
+                    <ul style="margin-left: 2rem; margin-bottom: 1.5rem; list-style-type: none; padding-left: 0;">
+                        <li style="margin-bottom: 0.75rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            <strong>emotionally compelling</strong>
+                        </li>
+                        <li style="margin-bottom: 0.75rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            <strong>analytically grounded</strong>
+                        </li>
+                        <li style="margin-bottom: 0.75rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            and <strong>strategically useful</strong> for fans, analysts, and DFS players
+                        </li>
+                    </ul>
+                    
+                    <p style="margin-bottom: 2rem; font-size: 1rem; line-height: 1.8;">
+                        We blend sports data, media signals, historical context, and human psychology into long-form matchup intelligence you won&apos;t find anywhere else.
+                    </p>
+                    
+                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x1F3C0;&#x26BD;&#x1F3C8; What We Cover</h2>
+                    
+                    <p style="margin-bottom: 1rem; font-size: 1rem; line-height: 1.8;">
+                        We analyze and publish daily content for:
+                    </p>
+                    
+                    <ul style="margin-left: 2rem; margin-bottom: 1.5rem; list-style-type: none; padding-left: 0;">
+                        <li style="margin-bottom: 0.5rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            <strong>NBA</strong>
+                        </li>
+                        <li style="margin-bottom: 0.5rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            <strong>NFL</strong>
+                        </li>
+                        <li style="margin-bottom: 0.5rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            <strong>Premier League</strong>
+                        </li>
+                        <li style="margin-bottom: 0.5rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            <strong>La Liga</strong>
+                        </li>
+                        <li style="margin-bottom: 0.5rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            (and expanding leagues soon)
+                        </li>
+                    </ul>
+                    
+                    <p style="margin-bottom: 2rem; font-size: 1rem; line-height: 1.8;">
+                        Every article is designed to answer one question:
+                    </p>
+                    
+                    <p style="margin-bottom: 2rem; font-size: 1rem; line-height: 1.8; padding-left: 1rem; border-left: 3px solid #ff0040; font-style: italic; color: rgba(255, 255, 255, 0.95);">
+                        What emotional forces are truly shaping this game — and how does that create opportunity?
+                    </p>
+                    
+                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x1F9EC; Our Edge</h2>
+                    
+                    <p style="margin-bottom: 1rem; font-size: 1rem; line-height: 1.8;">
+                        Most outlets track:
+                    </p>
+                    
+                    <p style="margin-bottom: 1rem; font-size: 0.95rem; color: rgba(255, 255, 255, 0.7); padding-left: 1.5rem;">
+                        Scores • Injuries • Stats • Trends
+                    </p>
+                    
+                    <p style="margin-bottom: 1rem; font-size: 1rem; line-height: 1.8; margin-top: 1.5rem;">
+                        We track:
+                    </p>
+                    
+                    <p style="margin-bottom: 2rem; font-size: 0.95rem; color: #00ff41; padding-left: 1.5rem; font-weight: 600;">
+                        Motivation • Pressure • History • Grudges • Momentum • Psychology
+                    </p>
+                    
+                    <p style="margin-bottom: 2rem; font-size: 1rem; line-height: 1.8; font-weight: 600; color: rgba(255, 255, 255, 0.95);">
+                        This is the missing layer of sports intelligence.
+                    </p>
+                    
+                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x2699;&#xFE0F; How Heatchecks Works</h2>
+                    
+                    <p style="margin-bottom: 1rem; font-size: 1rem; line-height: 1.8;">
+                        Heatchecks uses proprietary scanning systems and editorial analysis to:
+                    </p>
+                    
+                    <ul style="margin-left: 2rem; margin-bottom: 1.5rem; list-style-type: none; padding-left: 0;">
+                        <li style="margin-bottom: 0.75rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            Detect upcoming matchups with emotional volatility
+                        </li>
+                        <li style="margin-bottom: 0.75rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            Cross-reference player history, transactions, interviews, media signals, and rivalry context
+                        </li>
+                        <li style="margin-bottom: 0.75rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            Construct narrative-driven game theses supported by real data
+                        </li>
+                        <li style="margin-bottom: 0.75rem; padding-left: 1.5rem; position: relative;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            Publish high-impact articles optimized for fans, DFS players, and search engines
+                        </li>
+                    </ul>
+                    
+                    <p style="margin-bottom: 2rem; font-size: 1rem; line-height: 1.8;">
+                        All content is reviewed and curated by human editors.
+                    </p>
+                    
+                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x2696;&#xFE0F; Legal &amp; Transparency Notice (California &amp; General)</h2>
+                    
+                    <p style="margin-bottom: 1rem; font-size: 0.95rem; line-height: 1.8; color: rgba(255, 255, 255, 0.9);">
+                        Heatchecks is a sports analysis &amp; entertainment publication.
+                    </p>
+                    
+                    <p style="margin-bottom: 1rem; font-size: 0.95rem; line-height: 1.8; color: rgba(255, 255, 255, 0.9);">
+                        We are <strong>not</strong> a gambling service, sportsbook, or betting operator.
+                    </p>
+                    
+                    <p style="margin-bottom: 1rem; font-size: 0.95rem; line-height: 1.8; color: rgba(255, 255, 255, 0.9);">
+                        All content on this site is for:
+                    </p>
+                    
+                    <ul style="margin-left: 2rem; margin-bottom: 1.5rem; list-style-type: none; padding-left: 0;">
+                        <li style="margin-bottom: 0.5rem; padding-left: 1.5rem; position: relative; font-size: 0.95rem;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            informational purposes
+                        </li>
+                        <li style="margin-bottom: 0.5rem; padding-left: 1.5rem; position: relative; font-size: 0.95rem;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            educational discussion
+                        </li>
+                        <li style="margin-bottom: 0.5rem; padding-left: 1.5rem; position: relative; font-size: 0.95rem;">
+                            <span style="position: absolute; left: 0; color: #ff0040;">▶</span>
+                            and entertainment use only
+                        </li>
+                    </ul>
+                    
+                    <p style="margin-bottom: 1rem; font-size: 0.95rem; line-height: 1.8; color: rgba(255, 255, 255, 0.9);">
+                        We do not provide betting advice, financial advice, or guarantees of any kind. Any references to wagering, DFS, or predictions are opinions and commentary only.
+                    </p>
+                    
+                    <p style="margin-bottom: 1rem; font-size: 0.95rem; line-height: 1.8; color: rgba(255, 255, 255, 0.9);">
+                        We may participate in affiliate partnerships with fantasy sports and sports-related services. If you choose to engage with any third-party platforms through links on this site, you do so at your own discretion.
+                    </p>
+                    
+                    <p style="margin-bottom: 2rem; font-size: 0.95rem; line-height: 1.8; color: rgba(255, 255, 255, 0.9);">
+                        Users must comply with all applicable local, state, and federal laws — including California regulations — regarding sports wagering and online gaming.
+                    </p>
+                    
+                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x1F4BE; No Affiliation Disclaimer</h2>
+                    
+                    <p style="margin-bottom: 1.5rem; font-size: 0.95rem; line-height: 1.8; color: rgba(255, 255, 255, 0.9);">
+                        Heatchecks is an independent publication and is <strong>not affiliated</strong> with the NBA, NFL, Premier League, La Liga, or any professional league or team.
+                    </p>
+                    
+                    <p style="margin-bottom: 2rem; font-size: 0.95rem; line-height: 1.8; color: rgba(255, 255, 255, 0.9);">
+                        All team names, logos, and trademarks belong to their respective owners and are used under nominative fair use for commentary and analysis.
+                    </p>
+                    
+                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x1F680; Why Heatchecks Exists</h2>
+                    
+                    <p style="margin-bottom: 1.5rem; font-size: 1rem; line-height: 1.8;">
+                        Because games are not won on spreadsheets alone.
+                    </p>
+                    
+                    <p style="margin-bottom: 1rem; font-size: 1rem; line-height: 1.8;">
+                        They are won on:
+                    </p>
+                    
+                    <p style="margin-bottom: 2rem; font-size: 1rem; line-height: 1.8; padding-left: 1.5rem; color: #ff0040; font-weight: 600;">
+                        emotion, identity, memory, and pressure.
+                    </p>
+                    
+                    <p style="margin-bottom: 0; font-size: 1rem; line-height: 1.8; font-weight: 600; color: rgba(255, 255, 255, 0.95); font-style: italic;">
+                        We read the game beneath the game.
+                    </p>
+                </section>
+            </article>
         `;
+        
+        // Schema.org Organization structured data for SEO
+        const schemaOrg = {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "Heatchecks",
+            "url": baseUrl,
+            "logo": `${baseUrl}/images/HeatChecksMainLogo.svg`,
+            "description": "Next-generation sports intelligence platform analyzing emotional forces behind sports matchups. We track motivation, pressure, history, grudges, and psychology to uncover narrative opportunities in NBA, NFL, Premier League, and La Liga.",
+            "foundingDate": "2026",
+            "contactPoint": {
+                "@type": "ContactPoint",
+                "contactType": "Customer Service",
+                "availableLanguage": ["English"]
+            },
+            "sameAs": []
+        };
+        
         const aboutHtml = generateBaseHtml(aboutContent, {
-            title: 'About Us | HeatChecks',
-            description: 'Measure the emotion behind every matchup. HeatChecks tracks revenge, rivalry, narrative momentum, and psychological pressure in sports.',
+            title: 'About Heatchecks | The Science of Sports Emotion',
+            description: 'Heatchecks is a next-generation sports intelligence platform analyzing the emotional forces behind matchups. We track motivation, pressure, history, and psychology to uncover narrative opportunities in NBA, NFL, Premier League, and La Liga.',
             url: `${baseUrl}/about/`,
             baseUrl,
-            posts
+            posts,
+            schemaOrg
         });
         const aboutPath = 'about/index.html';
         writeHtmlFile(aboutPath, aboutHtml);
         console.log('✓ Generated about page\n');
+        
+        // Generate sitemap.xml
+        console.log('Generating sitemap...');
+        generateSitemap(posts, baseUrl, 'public/sitemap.xml');
+        console.log('');
+        
+        // Generate robots.txt
+        console.log('Generating robots.txt...');
+        const robotsTxt = `User-agent: *
+Allow: /
+
+# Sitemap
+Sitemap: ${baseUrl}/sitemap.xml
+
+# Disallow admin/API paths if any
+Disallow: /admin/
+Disallow: /api/
+`;
+        const robotsPath = path.join('public', 'robots.txt');
+        fs.mkdirSync(path.dirname(robotsPath), { recursive: true });
+        fs.writeFileSync(robotsPath, robotsTxt, 'utf-8');
+        console.log('✓ Generated robots.txt\n');
         
         console.log('Static site generation complete!');
         

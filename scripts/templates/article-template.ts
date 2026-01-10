@@ -1,8 +1,8 @@
 import { generateBaseHtml, BaseTemplateOptions } from './base-template';
 import { markdownToHtml } from '../utils/markdown-converter';
 import { escapeHtml } from '../utils/html-escape';
-import { formatDateISO, normalizeLeague } from '../utils/date-formatter';
-import { generateSlug } from '../utils/slug-generator';
+import { formatDateISO, normalizeLeague, getShortTeamName } from '../utils/date-formatter';
+import { generateSlug, generateNarrativeSlug, generateMatchupSlug, extractNarrativeKeywords } from '../utils/slug-generator';
 
 export interface HeatcheckPost {
     id: string;
@@ -70,13 +70,36 @@ export function generateArticlePage(
     const date = post.matchupScheduledDate 
         ? formatDateISO(post.matchupScheduledDate)
         : formatDateISO(post.createdAt);
-    const slug = post.websiteStory.seo?.slug || generateSlug(post.websiteStory.headline);
-    const articleUrl = `${baseUrl}/${league}/${date}/${slug}.html`;
     
+    // Extract heatCheckData first
     const heatCheckData = post.heatCheckData || {};
     const narratives = heatCheckData.narratives || {};
     const candidateCards = narratives.candidate_cards || [];
     const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
+    
+    // Get narrative keywords from emotion tags
+    const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
+    const emotionTags = activeCard?.emotion_tags || [];
+    
+    // Extract narrative keyword for use in alt text and meta description
+    const narrativeKeyword = emotionTags.length > 0 
+        ? emotionTags[0].toLowerCase().replace(/\s+/g, '-')
+        : extractNarrativeKeywords(post.websiteStory.headline, emotionTags);
+    
+    // Generate matchup slug: teamA-vs-teamB
+    const matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
+    
+    // Generate narrative-based slug
+    const narrativeSlug = generateNarrativeSlug(
+        post.websiteStory.headline,
+        post.teamA || '',
+        post.teamB || '',
+        emotionTags
+    );
+    
+    // New URL structure: /{league}/{date}/{matchup}/{narrative-slug}/
+    // Note: Trailing slash for clean URLs, will be served as index.html in directory
+    const articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
     const evidenceBundle = heatCheckData.evidenceBundle || heatCheckData.evidence_bundle || {};
     const quotes = evidenceBundle.quotes || [];
     const timelineEvents = evidenceBundle.timeline_events || [];
@@ -156,20 +179,41 @@ export function generateArticlePage(
         </div>
     `).join('');
     
-    // Generate related articles HTML
+    // Generate related articles HTML with new URL structure
     const relatedArticlesHtml = relatedPosts.slice(0, 3).map(relatedPost => {
         const relatedLeague = normalizeLeague(relatedPost.league);
         const relatedDate = relatedPost.matchupScheduledDate 
             ? formatDateISO(relatedPost.matchupScheduledDate)
             : formatDateISO(relatedPost.createdAt);
-        const relatedSlug = relatedPost.websiteStory.seo?.slug || generateSlug(relatedPost.websiteStory.headline);
-        const relatedUrl = `/${relatedLeague}/${relatedDate}/${relatedSlug}.html`;
+        
+        // Generate new URL structure for related articles
+        const relatedHeatCheckData = relatedPost.heatCheckData || {};
+        const relatedNarratives = relatedHeatCheckData.narratives || {};
+        const relatedCandidateCards = relatedNarratives.candidate_cards || [];
+        const relatedPrimaryNarrativeId = relatedNarratives.selected?.primary_narrative_id || '';
+        const relatedActiveCard = relatedCandidateCards.find(card => card.narrative_id === relatedPrimaryNarrativeId);
+        const relatedEmotionTags = relatedActiveCard?.emotion_tags || [];
+        
+        const relatedMatchupSlug = generateMatchupSlug(relatedPost.teamA || '', relatedPost.teamB || '', getShortTeamName);
+        const relatedNarrativeSlug = generateNarrativeSlug(
+            relatedPost.websiteStory.headline,
+            relatedPost.teamA || '',
+            relatedPost.teamB || '',
+            relatedEmotionTags
+        );
+        const relatedUrl = `/${relatedLeague}/${relatedDate}/${relatedMatchupSlug}/${relatedNarrativeSlug}/`;
+        
+        // Generate descriptive anchor text with matchup info
+        const relatedTeamAShort = getShortTeamName(relatedPost.teamA || '');
+        const relatedTeamBShort = getShortTeamName(relatedPost.teamB || '');
+        const relatedMatchup = `${relatedTeamAShort} vs ${relatedTeamBShort}`;
         
         return `
             <div style="margin-bottom: 0.75rem; padding: 0.5rem; background: rgba(255, 255, 255, 0.03); border-left: 2px solid rgba(255, 255, 255, 0.2);">
                 <a href="${relatedUrl}" style="color: rgba(255, 255, 255, 0.85); text-decoration: none; font-family: 'Courier New', monospace; font-size: 0.8rem; line-height: 1.4; display: block; transition: all 0.2s ease;" onmouseover="this.style.color='#f84242'; this.parentElement.style.borderLeftColor='rgba(248, 66, 66, 0.6)'; this.parentElement.style.background='rgba(248, 66, 66, 0.05)';" onmouseout="this.style.color='rgba(255, 255, 255, 0.85)'; this.parentElement.style.borderLeftColor='rgba(255, 255, 255, 0.2)'; this.parentElement.style.background='rgba(255, 255, 255, 0.03)';">
                     &gt; ${escapeHtml(relatedPost.websiteStory.headline)}
                 </a>
+                <div style="color: rgba(255, 255, 255, 0.6); font-size: 0.7rem; margin-top: 0.25rem; margin-left: 1rem;">${escapeHtml(relatedMatchup)} • ${relatedPost.league}</div>
             </div>
         `;
     }).join('');
@@ -195,8 +239,40 @@ export function generateArticlePage(
         </div>
     ` : '';
     
+    // Get short team names for meta tags and breadcrumbs (define once, reuse)
+    const teamAShort = getShortTeamName(post.teamA || '');
+    const teamBShort = getShortTeamName(post.teamB || '');
+    const matchupMeta = `${teamAShort} vs ${teamBShort}`;
+    
+    // Generate breadcrumb navigation
+    // Only Home, League, and Date should be links; Matchup and Article Title are just text labels
+    const breadcrumbItems = [
+        { name: 'Home', url: `${baseUrl}/` },
+        { name: post.league.toUpperCase(), url: `${baseUrl}/${league}/` },
+        { name: date, url: `${baseUrl}/${league}/${date}/` },
+        { name: matchupMeta, url: null }, // Matchup is NOT a link - just a label
+        { name: post.websiteStory.headline.substring(0, 40) + (post.websiteStory.headline.length > 40 ? '...' : ''), url: null } // Article title is NOT a link
+    ];
+    
+    const breadcrumbHtml = `
+        <nav aria-label="Breadcrumb" style="margin-bottom: 1.5rem; padding: 0.75rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1); font-family: 'Courier New', monospace; font-size: 0.75rem;">
+            <ol style="list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;">
+                ${breadcrumbItems.map((item, index) => `
+                    <li style="display: inline-flex; align-items: center;">
+                        ${index > 0 ? '<span style="color: rgba(255, 255, 255, 0.4); margin: 0 0.5rem;">▶</span>' : ''}
+                        ${!item.url || index >= breadcrumbItems.length - 2
+                            ? `<span style="color: ${index === breadcrumbItems.length - 1 ? '#ff0040' : 'rgba(255, 255, 255, 0.7)'}; font-weight: ${index === breadcrumbItems.length - 1 ? '600' : 'normal'};">${escapeHtml(item.name)}</span>`
+                            : `<a href="${item.url}" style="color: rgba(255, 255, 255, 0.7); text-decoration: none; transition: color 0.2s ease;" onmouseover="this.style.color='#ff0040';" onmouseout="this.style.color='rgba(255, 255, 255, 0.7)';">${escapeHtml(item.name)}</a>`
+                        }
+                    </li>
+                `).join('')}
+            </ol>
+        </nav>
+    `;
+    
     // Main content area (two-column layout)
     const content = `
+        ${breadcrumbHtml}
         <div style="display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: auto 1fr; gap: 0.5rem; padding: 0.5rem;">
             <!-- Left Column: Main Article -->
             <div style="grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden;">
@@ -217,7 +293,7 @@ export function generateArticlePage(
                     ${imagePath ? `
                     <div style="margin-bottom: 2rem; border: 1px solid rgba(255, 255, 255, 0.2); padding: 0.5rem; background: rgba(255, 255, 255, 0.03);">
                         <div style="color: rgba(255, 255, 255, 0.7); font-size: 0.75rem; margin-bottom: 0.5rem; font-family: 'Courier New', monospace; font-weight: bold;">&gt; IMAGE_ASSET [LOADED]</div>
-                        <img src="${imagePath}" alt="${escapeHtml(post.websiteStory.headline)}" class="heatcheck-header-image" style="width: 100%; max-height: 400px; object-fit: contain; display: block; border: 1px dashed rgba(255, 255, 255, 0.2);">
+                        <img src="${imagePath}" alt="${escapeHtml(`${matchupMeta} ${post.league} ${narrativeKeyword} - ${post.websiteStory.headline} - HeatChecks Analysis`)}" class="heatcheck-header-image" style="width: 100%; max-height: 400px; object-fit: contain; display: block; border: 1px dashed rgba(255, 255, 255, 0.2);">
                     </div>
                     ` : ''}
                     <div style="color: rgba(255, 255, 255, 0.7); white-space: pre-wrap; word-wrap: break-word;">
@@ -328,12 +404,54 @@ export function generateArticlePage(
         "startDate": post.matchupScheduledDate || post.createdAt
     };
     
+    // Enhanced meta description: Include matchup, narrative keyword, and dek
+    // Note: narrativeKeyword is already defined above (after emotionTags extraction)
+    let metaDescription = post.websiteStory.dek || '';
+    if (metaDescription && metaDescription.length < 140) {
+        // Add matchup and narrative context if there's room
+        metaDescription = `${matchupMeta} ${post.league} analysis: ${metaDescription}`;
+        if (metaDescription.length > 160) {
+            metaDescription = post.websiteStory.dek || ''; // Fallback to original if too long
+        }
+    }
+    
+    // Ensure meta description is 150-160 characters (optimal length)
+    if (metaDescription.length > 160) {
+        metaDescription = metaDescription.substring(0, 157) + '...';
+    } else if (metaDescription.length < 120) {
+        metaDescription = `${metaDescription} ${matchupMeta} ${post.league} matchup analysis with narrative insights and emotional forces.`;
+        if (metaDescription.length > 160) {
+            metaDescription = metaDescription.substring(0, 157) + '...';
+        }
+    }
+    
+    // Enhanced title tag: Include matchup for better keyword targeting
+    // Format: {Headline} | {TeamA} vs {TeamB} {League} | HeatChecks
+    const title = post.websiteStory.headline.length > 50
+        ? `${post.websiteStory.headline.substring(0, 50)}... | ${matchupMeta} ${post.league} | HeatChecks`
+        : `${post.websiteStory.headline} | ${matchupMeta} ${post.league} | HeatChecks`;
+    
+    // Generate BreadcrumbList schema.org structured data
+    // Only include items with URLs (Home, League, Date) - exclude matchup and article title
+    const breadcrumbSchema = {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": breadcrumbItems
+            .filter(item => item.url !== null)
+            .map((item, index) => ({
+                "@type": "ListItem",
+                "position": index + 1,
+                "name": item.name,
+                "item": item.url
+            }))
+    };
+    
     const options: BaseTemplateOptions = {
-        title: `${post.websiteStory.headline} | ${post.league} ${date} | HeatChecks`,
-        description: post.websiteStory.dek,
+        title: title,
+        description: metaDescription,
         url: articleUrl,
         baseUrl,
-        ogImage: imagePath || `${baseUrl}/images/default-og-image.jpg`,
+        ogImage: imagePath ? (imagePath.startsWith('http') ? imagePath : `${baseUrl}${imagePath}`) : `${baseUrl}/images/default-og-image.jpg`,
         ogType: 'article',
         articleMeta: {
             publishedTime: post.createdAt,
@@ -341,7 +459,7 @@ export function generateArticlePage(
             author: 'HeatChecks',
             section: post.league
         },
-        schemaOrg: [schemaOrg, sportsEventSchema],
+        schemaOrg: [schemaOrg, sportsEventSchema, breadcrumbSchema],
         posts: [post, ...relatedPosts]
     };
     

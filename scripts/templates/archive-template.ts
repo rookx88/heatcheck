@@ -1,7 +1,7 @@
 import { generateBaseHtml, BaseTemplateOptions } from './base-template';
 import { escapeHtml } from '../utils/html-escape';
 import { formatDateForCard, formatDateISO, normalizeLeague, getShortTeamName } from '../utils/date-formatter';
-import { generateSlug } from '../utils/slug-generator';
+import { generateSlug, generateNarrativeSlug, generateMatchupSlug } from '../utils/slug-generator';
 
 export interface HeatcheckPost {
     id: string;
@@ -390,8 +390,37 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
     const date = post.matchupScheduledDate 
         ? formatDateISO(post.matchupScheduledDate)
         : formatDateISO(post.createdAt);
-    const slug = post.websiteStory?.seo?.slug || generateSlug(headline);
-    const articleUrl = `/${leagueLower}/${date}/${slug}.html`;
+    
+    // Generate new URL structure: /{league}/{date}/{matchup}/{narrative-slug}/
+    const matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
+    
+    // Get narrative keywords from heatCheckData
+    const heatCheckData = post.heatCheckData || {};
+    const narratives = heatCheckData.narratives || {};
+    const candidateCards = narratives.candidate_cards || [];
+    const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
+    const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
+    const emotionTags = activeCard?.emotion_tags || [];
+    
+    // Generate narrative-based slug
+    const narrativeSlug = generateNarrativeSlug(
+        headline,
+        post.teamA || '',
+        post.teamB || '',
+        emotionTags
+    );
+    
+    // Check if stored slug is in new format (matchup/narrative) and use it if available
+    const storedSlug = post.websiteStory?.seo?.slug || '';
+    let finalNarrativeSlug = narrativeSlug;
+    if (storedSlug.includes('/') && storedSlug.split('/').length === 2) {
+        const [storedMatchup, storedNarrative] = storedSlug.split('/');
+        if (storedMatchup === matchupSlug) {
+            finalNarrativeSlug = storedNarrative;
+        }
+    }
+    
+    const articleUrl = `/${leagueLower}/${date}/${matchupSlug}/${finalNarrativeSlug}/`;
     const isHeatHigh = heatScore >= 71; // ~71 on 100 scale = ~25 on 35 scale
     
     return `
@@ -410,10 +439,10 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
                     <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #00ff41; border-radius: 50%; opacity: 0.5;"></div>
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div style="color: #ff0040; font-size: 1.4rem; font-weight: 900; text-shadow: 0 0 12px #ff0040; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; z-index: 1; position: relative;">${heatScore}</div>
+                        <div style="color: #ff0040; font-size: 1.55rem; font-weight: 900; text-shadow: 0 0 20px #ff0040, 0 0 30px rgba(255, 0, 64, 0.7), 0 0 40px rgba(255, 0, 64, 0.5), 0 0 2px rgba(255, 255, 255, 0.9); font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative;">${heatScore}</div>
                     </div>
                     <div class="post-card-image-container" data-post-id="${post.id}" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        ${imagePath ? `<img src="${imagePath}" alt="${escapeHtml(headline)}" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">` : '<div style="width: 100%; height: 100%; background: rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.5); font-size: 0.75rem;">No Image</div>'}
+                        ${imagePath ? `<img src="${imagePath}" alt="${escapeHtml(`${teamAShort} vs ${teamBShort} ${league} ${finalNarrativeSlug} narrative - ${headline} - HeatChecks Analysis`)}" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">` : '<div style="width: 100%; height: 100%; background: rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.5); font-size: 0.75rem;">No Image</div>'}
                     </div>
                 </div>
                 <h2 style="font-size: 0.75rem; line-height: 1.3; margin: 0 0 1.75rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2em; max-height: 3em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word;">${escapeHtml(headline)}</h2>

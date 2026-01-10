@@ -671,17 +671,147 @@ function generateSlugFromHeadline(headline) {
 }
 
 /**
- * Generate article URL (matches article template generation)
+ * Extract narrative keywords from headline and tags
+ */
+function extractNarrativeKeywords(headline, emotionTags) {
+    if (!headline) return 'analysis';
+    
+    const headlineLower = headline.toLowerCase();
+    const allTags = (emotionTags || []).map(t => t.toLowerCase());
+    
+    const narrativeKeywords = [
+        'revenge', 'rivalry', 'redemption', 'revenge-game', 'homecoming', 'return',
+        'vengeance', 'vendetta', 'grudge', 'motivation', 'pressure', 'collapse',
+        'upset', 'breakout', 'explosion', 'redemption-arc', 'personal-vendetta',
+        'former-team', 'old-guard', 'new-era', 'clash', 'battle', 'showdown',
+        'comeback', 'rematch', 'curse', 'legacy', 'dynasty'
+    ];
+    
+    // Check headline for keywords
+    for (const keyword of narrativeKeywords) {
+        if (headlineLower.includes(keyword.replace('-', ' ')) || headlineLower.includes(keyword)) {
+            return keyword;
+        }
+    }
+    
+    // Check emotion tags
+    for (const tag of allTags) {
+        const normalizedTag = tag.toLowerCase().replace(/\s+/g, '-');
+        if (narrativeKeywords.includes(normalizedTag)) {
+            return normalizedTag;
+        }
+    }
+    
+    // Extract first significant word from headline as fallback
+    const stopWords = new Set(['the', 'a', 'an', 'in', 'on', 'at', 'vs', 'vs.', 'v', 'v.', 'for', 'to', 'of', 'and', 'or']);
+    const words = headlineLower
+        .replace(/[^a-z0-9\s-]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 2 && !stopWords.has(w));
+    
+    if (words.length > 0) {
+        return words[0].substring(0, 20); // Limit to 20 chars
+    }
+    
+    return 'analysis'; // Ultimate fallback
+}
+
+/**
+ * Generate narrative-based slug for matchup articles
+ */
+function generateNarrativeSlug(headline, teamA, teamB, emotionTags) {
+    const teamASlug = teamA
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/^-|-$/g, '')
+        .split('-')
+        .slice(-1)[0]; // Take last word (team name)
+    
+    const teamBSlug = teamB
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '')
+        .replace(/\s+/g, '-')
+        .replace(/^-|-$/g, '')
+        .split('-')
+        .slice(-1)[0]; // Take last word (team name)
+    
+    const narrativeKeyword = extractNarrativeKeywords(headline, emotionTags);
+    
+    // Construct slug: teamA-vs-teamB-narrative
+    let slug = `${teamASlug}-vs-${teamBSlug}-${narrativeKeyword}`;
+    
+    // Ensure slug doesn't exceed 60 characters
+    if (slug.length > 60) {
+        const maxTeamLength = Math.floor((60 - narrativeKeyword.length - 5) / 2); // 5 for "-vs-"
+        const truncatedTeamA = teamASlug.substring(0, maxTeamLength);
+        const truncatedTeamB = teamBSlug.substring(0, maxTeamLength);
+        slug = `${truncatedTeamA}-vs-${truncatedTeamB}-${narrativeKeyword}`;
+    }
+    
+    // Clean up slug
+    slug = slug
+        .replace(/-+/g, '-') // Replace multiple hyphens
+        .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+    
+    return slug;
+}
+
+/**
+ * Generate matchup slug for URL path: {teamA-short}-vs-{teamB-short}
+ */
+function generateMatchupSlug(teamA, teamB) {
+    const teamAShort = getShortTeamName(teamA).toLowerCase();
+    const teamBShort = getShortTeamName(teamB).toLowerCase();
+    
+    const matchupSlug = `${teamAShort}-vs-${teamBShort}`
+        .replace(/[^a-z0-9\s-]/g, '') // Remove special characters
+        .replace(/\s+/g, '-') // Replace spaces with hyphens
+        .replace(/-+/g, '-') // Replace multiple hyphens
+        .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+    
+    return matchupSlug;
+}
+
+/**
+ * Generate article URL with new structure: /{league}/{date}/{matchup}/{narrative-slug}/
  */
 function generateArticleUrl(post) {
     const league = normalizeLeague(post.league || '');
     const date = post.matchupScheduledDate 
         ? formatDateForUrl(post.matchupScheduledDate)
         : formatDateForUrl(post.createdAt);
-    // Use stored slug from static site generator, or generate fallback
-    const slug = post.websiteStory?.seo?.slug || generateSlugFromHeadline(post.websiteStory?.headline) || 'article';
     
-    return `/${league}/${date}/${slug}.html`;
+    // Check if stored slug is in new format (matchup/narrative)
+    const storedSlug = post.websiteStory?.seo?.slug || '';
+    let matchupSlug;
+    let narrativeSlug;
+    
+    if (storedSlug.includes('/') && storedSlug.split('/').length === 2) {
+        // Already in new format: matchup-slug/narrative-slug
+        [matchupSlug, narrativeSlug] = storedSlug.split('/');
+    } else {
+        // Fallback: Generate from post data
+        matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '');
+        
+        // Get narrative keywords from heatCheckData
+        const heatCheckData = post.heatCheckData || {};
+        const narratives = heatCheckData.narratives || {};
+        const candidateCards = narratives.candidate_cards || [];
+        const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
+        const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
+        const emotionTags = activeCard?.emotion_tags || [];
+        
+        narrativeSlug = generateNarrativeSlug(
+            post.websiteStory?.headline || '',
+            post.teamA || '',
+            post.teamB || '',
+            emotionTags
+        );
+    }
+    
+    // New URL structure without .html extension
+    return `/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
 }
 
 /**
@@ -755,10 +885,10 @@ function generatePostCard(post) {
                     <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #00ff41; border-radius: 50%; opacity: 0.5;"></div>
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div style="color: #ff0040; font-size: 1.4rem; font-weight: 900; text-shadow: 0 0 12px #ff0040; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; z-index: 1; position: relative;">${heatScore}</div>
+                        <div style="color: #ff0040; font-size: 1.55rem; font-weight: 900; text-shadow: 0 0 20px #ff0040, 0 0 30px rgba(255, 0, 64, 0.7), 0 0 40px rgba(255, 0, 64, 0.5), 0 0 2px rgba(255, 255, 255, 0.9); font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative;">${heatScore}</div>
                     </div>
                     <div class="post-card-image-container" data-post-id="${post.id}" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        ${imagePath ? `<img src="${imagePath}" alt="${headline}" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">` : '<div style="width: 100%; height: 100%; background: rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.5); font-size: 0.75rem;">No Image</div>'}
+                        ${imagePath ? `<img src="${imagePath}" alt="${teamAShort} vs ${teamBShort} ${league} matchup analysis - ${headline} - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">` : '<div style="width: 100%; height: 100%; background: rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.5); font-size: 0.75rem;">No Image</div>'}
                     </div>
                 </div>
                 <h2 style="font-size: 0.75rem; line-height: 1.3; margin: 0 0 1.75rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2em; max-height: 3em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word;">${headline}</h2>
