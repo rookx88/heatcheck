@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPL | HeatChecks</title>
+    <meta name="description" content="HeatChecks analysis for EPL matchups and games.">
+    <link rel="canonical" href="https://heatchecks.io/epl/">
+    
+    <!-- OpenGraph -->
+    <meta property="og:title" content="EPL | HeatChecks">
+    <meta property="og:description" content="HeatChecks analysis for EPL matchups and games.">
+    <meta property="og:image" content="https://heatchecks.io/images/default-og-image.jpg">
+    <meta property="og:url" content="https://heatchecks.io/epl/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="HeatChecks">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/images/LogoFlameHeatChecks.svg">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="EPL | HeatChecks">
+    <meta name="twitter:description" content="HeatChecks analysis for EPL matchups and games.">
+    <meta name="twitter:image" content="https://heatchecks.io/images/default-og-image.jpg">
+    
+    
+    
+    <link rel="stylesheet" href="/assets/public-site.css">
+</head>
+<body>
+    <div class="public-container">
+        <div class="top-left">
+            <a href="/">
+                <img src="/images/HeatChecksMainLogo.svg" alt="HeatChecks" class="header-logo">
+            </a>
+        </div>
+        
+        <div class="top-right">
+            <img src="/HeatScanButton.svg" alt="Heat Scan" class="heat-radar-label" style="width: 72px; height: auto; margin-bottom: 0.425rem;">
+            <button class="heat-radar-toggle">OPEN</button>
+            <div class="radar-modal">
+                <button class="radar-close-btn">×</button>
+                <div class="radar-modal-content" style="display: flex; flex-direction: row; flex: 1; gap: 0.5rem; height: 100%;">
+                    <div class="radar-column-left">
+                        <div class="radar-initial-state">
+                            <div class="radar-title">WHAT IS HEATSCAN?</div>
+                            <div class="radar-screen">
+                                <div class="radar-grid"></div>
+                                <div class="radar-sweep"></div>
+                                <button class="scan-games-button">
+                                    <span style="margin-right: 0.5rem;">▶</span> SCAN GAMES
+                                </button>
+                            </div>
+                        </div>
+                        <div class="radar-loading-state" style="display: none;">
+                            <div class="radar-loading-content">
+                                <div class="radar-loading-message" id="radar-loading-message">INITIALIZING SCAN...</div>
+                                <div class="radar-loading-dots">
+                                    <div class="dot"></div>
+                                    <div class="dot"></div>
+                                    <div class="dot"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="radar-results-state" style="display: none;">
+                            <div class="radar-date-title" id="radar-left-date"></div>
+                            <div class="daily-roundup-games" id="radar-left-games"></div>
+                        </div>
+                    </div>
+                    <div class="radar-column-right">
+                        <div class="radar-description-state">
+                            <div class="radar-title">HEAT INTELLIGENCE SCAN</div>
+                            <div class="radar-blurb">
+                                Find matchups today with Heat Intelligence. Scan published content to discover high-intensity games with narrative momentum, revenge factors, and psychological pressure indicators.
+                            </div>
+                        </div>
+                        <div class="radar-loading-description" style="display: none;">
+                            <div class="radar-title">SCANNING...</div>
+                            <div class="radar-blurb" id="radar-loading-description">
+                                Processing matchups and applying HeatScan intelligence algorithms...
+                            </div>
+                        </div>
+                        <div class="radar-results-description" style="display: none;">
+                            <div class="radar-date-title" id="radar-right-date"></div>
+                            <div class="daily-roundup-games" id="radar-right-games"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="bottom-left">
+            <nav class="crawler-nav" aria-label="Site navigation">
+  <a href="/about/" class="nav-link">ABOUT US</a>
+  <div class="league-nav-item">
+    <a href="javascript:void(0)" class="nav-link league-link" data-league="NBA">NBA <span class="league-arrow">▶</span></a>
+    <div class="nav-submenu hidden">
+      <a href="/nba/" class="nav-link nav-submenu-item">HUB</a>
+    </div>
+  </div>
+  <div class="league-nav-item">
+    <a href="javascript:void(0)" class="nav-link league-link" data-league="NFL">NFL <span class="league-arrow">▶</span></a>
+    <div class="nav-submenu hidden">
+      <a href="/nfl/" class="nav-link nav-submenu-item">HUB</a>
+    </div>
+  </div>
+  <div class="league-nav-item">
+    <a href="javascript:void(0)" class="nav-link league-link" data-league="EPL">EPL <span class="league-arrow">▶</span></a>
+    <div class="nav-submenu hidden">
+      <a href="/epl/" class="nav-link nav-submenu-item">HUB</a>
+    </div>
+  </div>
+  <a href="/archive/" class="nav-link" style="font-size: 0.95rem;">ARCHIVE</a>
+</nav>
+        </div>
+        
+        <div class="bottom-right">
+            <div class="content-area-title">▶ EPL HUB</div><div class="post-list" id="league-posts-list"><p style="color: rgba(255, 255, 255, 0.7); font-size: 1rem; font-weight: 900; text-align: center; padding: 2rem;">NO ENTRIES YET</p></div>
+        </div>
+    </div>
+    
+    <script src="/assets/static-site.js"></script>
+</body>
+</html>

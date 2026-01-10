@@ -1,0 +1,40 @@
+{
+  "name": "app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:static": "tsx scripts/generate-static-site.ts",
+    "build:full": "vite build && npm run build:static",
+    "preview": "vite preview",
+    "preview:static": "npm run build:full && vite preview",
+    "backend": "tsx backend.ts",
+    "dev:backend": "tsx watch backend.ts",
+    "dev:api": "tsx watch backend.ts",
+    "db:setup": "node -e \"const {execSync} = require('child_process'); const url = process.env.DATABASE_URL || 'postgresql://localhost/heatcheck'; execSync(`psql '${url}' -f schema.sql`, {stdio: 'inherit'})\""
+  },
+  "dependencies": {
+    "@google/genai": "^1.34.0",
+    "cors": "^2.8.5",
+    "crypto": "^1.0.1",
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "openai": "^6.15.0",
+    "pg": "^8.16.3",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.19.3",
+    "@types/pg": "^8.16.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

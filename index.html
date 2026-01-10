@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Heat Checks Narrative Engine</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+
+        :root {
+            --background-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #bb86fc;
+            --primary-variant-color: #3700b3;
+            --secondary-color: #03dac6;
+            --on-background-color: #e0e0e0;
+            --on-surface-color: #ffffff;
+            --card-border-color: rgba(255, 255, 255, 0.1);
+            --shadow-color: rgba(187, 134, 252, 0.2);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--background-color);
+            color: var(--on-background-color);
+            line-height: 1.6;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+        }
+
+        #root {
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .container {
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+
+        .header {
+            border-bottom: 1px solid var(--card-border-color);
+            padding-bottom: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--on-surface-color);
+            margin-bottom: 0.75rem;
+            letter-spacing: 1px;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            color: var(--on-background-color);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        .tab-nav {
+            display: flex;
+            justify-content: center;
+            border-bottom: 1px solid var(--card-border-color);
+            margin-bottom: 2rem;
+        }
+
+        .tab-button {
+            padding: 1rem 1.5rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+            color: var(--on-background-color);
+            opacity: 0.7;
+            font-size: 1.1rem;
+            font-weight: 500;
+            position: relative;
+            transition: opacity 0.3s ease;
+        }
+
+        .tab-button.active {
+            opacity: 1;
+            color: var(--secondary-color);
+        }
+
+        .tab-button.active::after {
+            content: '';
+            position: absolute;
+            bottom: -1px;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background-color: var(--secondary-color);
+        }
+
+        .scan-button {
+            background: linear-gradient(45deg, var(--primary-color), var(--secondary-color));
+            color: var(--background-color);
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.2rem;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            align-self: center;
+        }
+
+        .scan-button:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px var(--shadow-color);
+        }
+
+        .scan-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 1.5rem;
+            text-align: left;
+        }
+
+        .card {
+            background-color: var(--surface-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 1px solid var(--card-border-color);
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .card.expandable {
+             cursor: pointer;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary-color);
+            box-shadow: 0 8px 25px var(--shadow-color);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--card-border-color);
+            padding-bottom: 1rem;
+        }
+        
+        .card-header h2 {
+            font-size: 1.5rem;
+            color: var(--on-surface-color);
+        }
+        
+        .card-header .league {
+            background-color: var(--primary-variant-color);
+            color: var(--on-surface-color);
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+        
+        .card-body .story-type {
+            font-style: italic;
+            color: var(--secondary-color);
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+        
+        .card-body p {
+            color: var(--on-background-color);
+        }
+
+        .loader, .error, .initial-message {
+            margin-top: 2rem;
+            font-size: 1.2rem;
+        }
+        
+        .loader {
+            color: var(--primary-color);
+        }
+        
+        .error {
+            color: #cf6679;
+            background-color: rgba(207, 102, 121, 0.1);
+            padding: 1rem;
+            border-radius: 8px;
+        }
+        
+        .card-logs {
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--card-border-color);
+            font-size: 0.9rem;
+            color: var(--on-background-color);
+            opacity: 0.8;
+        }
+
+        .card-logs h4 {
+            color: var(--secondary-color);
+            margin-bottom: 0.75rem;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card-logs strong {
+            color: var(--on-surface-color);
+        }
+
+        .card-logs .log-item {
+            margin-bottom: 0.5rem;
+        }
+        
+        .card-logs ul {
+            list-style-type: none;
+            padding-left: 0;
+            margin-top: 0.5rem;
+        }
+
+        .card-logs li {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: rgba(0,0,0,0.2);
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.25rem;
+            font-size: 0.85rem;
+        }
+        
+        .card-actions {
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--card-border-color);
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .action-button, .tweet-button {
+            background: var(--primary-color);
+            color: #000;
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background-color 0.2s;
+        }
+        .action-button:hover:not(:disabled), .tweet-button:hover:not(:disabled) {
+            background: var(--secondary-color);
+        }
+        .action-button:disabled, .tweet-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .tweet-button {
+            background: transparent;
+            color: var(--primary-color);
+            border: 1px solid var(--primary-color);
+        }
+
+        .card .card-full-content {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.5s ease-in-out, margin-top 0.5s ease-in-out;
+            margin-top: 0;
+        }
+
+        .card.expanded .card-full-content {
+            max-height: 1500px; /* Large enough for content */
+            margin-top: 1.5rem;
+        }
+
+        .card-full-content h4 {
+            color: var(--secondary-color);
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            font-size: 1rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--card-border-color);
+        }
+
+        .card-full-content p {
+            color: var(--on-background-color);
+            margin-bottom: 1.5rem;
+        }
+
+        .card-full-content ul {
+            list-style-type: '📊';
+            padding-left: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-full-content li {
+            padding-left: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .modal-content {
+            background: var(--surface-color);
+            padding: 2rem;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 800px;
+            text-align: left;
+            max-height: 90vh;
+            overflow-y: auto;
+        }
+        
+        .modal-content h3 { color: var(--on-surface-color); margin-bottom: 1rem; }
+        .modal-content p { margin-bottom: 1.5rem; font-size: 0.9rem; }
+        .modal-content .editor-section { margin-bottom: 2rem; }
+        .modal-content .editor-section h4, .modal-content .editor-section-header h4 { color: var(--secondary-color); }
+        
+        .editor-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--card-border-color);
+            padding-bottom: 0.5rem;
+            margin-bottom: 1rem;
+        }
+        .editor-section-header button {
+            background: transparent;
+            color: var(--secondary-color);
+            border: 1px solid var(--secondary-color);
+            padding: 0.4rem 0.8rem;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.8rem;
+            font-weight: bold;
+            transition: all 0.2s ease;
+        }
+        .editor-section-header button:hover:not(:disabled) {
+            background: var(--secondary-color);
+            color: var(--background-color);
+        }
+        .editor-section-header button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .modal-content .form-group { margin-bottom: 1rem; }
+        .modal-content label { display: block; margin-bottom: 0.5rem; font-weight: bold; font-size: 0.9rem; }
+        .modal-content input, .modal-content textarea {
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--background-color);
+            border: 1px solid var(--card-border-color);
+            border-radius: 8px;
+            color: var(--on-surface-color);
+            font-size: 1rem;
+        }
+        .modal-content textarea { min-height: 120px; resize: vertical; }
+        
+        .modal-actions { display: flex; justify-content: flex-end; gap: 1rem; margin-top: 2rem; border-top: 1px solid var(--card-border-color); padding-top: 1.5rem; }
+        .modal-actions button {
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: 25px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .modal-actions .publish { background: var(--primary-color); color: #000; }
+        .modal-actions .save-draft { background: transparent; color: var(--primary-color); border: 1px solid var(--primary-color); }
+        .modal-actions .cancel { background: #333; color: var(--on-background-color); }
+        
+        .tweet-container {
+            margin-top: 1.5rem;
+            background: transparent;
+            padding: 0;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .tweet-box {
+            background: rgba(0,0,0,0.2);
+            padding: 1rem;
+            border-radius: 8px;
+            border-left: 3px solid var(--secondary-color);
+        }
+
+        .tweet-container-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+        }
+        
+        .tweet-container-header h4 {
+            color: var(--secondary-color);
+            font-size: 1rem;
+            text-transform: uppercase;
+            margin: 0;
+        }
+        
+        .copy-button {
+            background: transparent;
+            color: var(--secondary-color);
+            border: 1px solid var(--secondary-color);
+            font-size: 0.8rem;
+            padding: 0.25rem 0.5rem;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s;
+        }
+        
+        .copy-button:hover {
+            background-color: var(--secondary-color);
+            color: var(--background-color);
+        }
+        
+        .tweet-content {
+            color: var(--on-background-color);
+            white-space: pre-wrap;
+            font-size: 0.95rem;
+            line-height: 1.7;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 1rem;
+            }
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0",
+    "react/": "https://esm.sh/react@^19.2.3/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>

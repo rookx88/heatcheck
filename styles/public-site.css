@@ -1,0 +1,888 @@
+/*
+ * Public Site Styles for HeatChecks
+ * Extracted from base-template.ts
+ */
+
+html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100vh;
+}
+
+body { 
+    font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif;
+    font-weight: 900;
+    line-height: 1.6; 
+    background: #000000; 
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.public-container { 
+    position: relative;
+    width: 100%;
+    min-height: 100vh;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    grid-template-rows: auto 1fr;
+    gap: 0;
+    box-sizing: border-box;
+}
+
+.top-left {
+    background: #000000;
+    padding: 1.45rem 1.45rem 0.425rem 1.45rem;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    grid-column: 1;
+    grid-row: 1;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.top-right {
+    background: #000000 url('/images/Heatchecksbanner.svg') no-repeat center center;
+    background-size: 72.25%;
+    padding: 1.45rem 1.45rem 0.425rem 1.45rem;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: flex-start;
+    position: relative;
+    grid-column: 2;
+    grid-row: 1;
+    box-sizing: border-box;
+    overflow: hidden;
+    min-width: 0;
+}
+
+.header-logo {
+    height: 289px;
+    width: auto;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    transition: all 0.3s ease;
+    transform: translateY(-17px);
+    filter: drop-shadow(0 8.5px 17px rgba(0, 0, 0, 0.5));
+}
+
+.bottom-left {
+    background: #000000;
+    padding: 0.35rem 0.7rem 1.05rem 0.7rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.4rem;
+    justify-content: flex-start;
+    width: fit-content;
+    min-width: 84px;
+    max-width: 105px;
+    grid-column: 1;
+    grid-row: 2;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.nav-link, .crawler-nav a {
+    color: #fff;
+    font-size: 1.2rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+    line-height: 1.2;
+    -webkit-text-stroke: 1px #000;
+    letter-spacing: 0.05em;
+    display: block;
+}
+
+.nav-link:hover, .crawler-nav a:hover {
+    color: #f84242;
+    transform: translateY(-3px);
+    text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+}
+
+.crawler-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.bottom-right {
+    background: #000000;
+    background-image: 
+        radial-gradient(circle at 80% 20%, rgba(248, 66, 66, 0.05) 0%, transparent 50%),
+        radial-gradient(circle at 20% 80%, rgba(255, 140, 0, 0.05) 0%, transparent 50%),
+        linear-gradient(135deg, rgba(248, 66, 66, 0.02) 0%, transparent 50%, rgba(255, 140, 0, 0.02) 100%);
+    padding: 0.2rem 1rem 2rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+    border-left: 2px solid rgba(248, 66, 66, 0.3);
+    grid-column: 1 / -1;
+    grid-row: 2;
+    margin-left: 126px;
+    box-sizing: border-box;
+    min-width: 0;
+}
+
+.content-area-title {
+    color: rgba(0, 255, 65, 0.9);
+    font-size: 1rem;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-family: 'Courier New', monospace;
+    letter-spacing: 0.2em;
+    margin: 0;
+    padding: 0.75rem 1rem;
+    background: rgba(0, 255, 65, 0.05);
+    border-bottom: 2px solid rgba(0, 255, 65, 0.3);
+    text-align: left;
+}
+
+.post-list { 
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    align-items: start;
+}
+
+.post-card { 
+    background: rgba(20, 20, 20, 0.6);
+    backdrop-filter: blur(15px);
+    -webkit-backdrop-filter: blur(15px);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-left: 2px solid rgba(255, 255, 255, 0.4);
+    border-radius: 4px;
+    padding: 1.2rem 1.2rem 1.5rem 1.2rem;
+    text-decoration: none; 
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-sizing: border-box;
+    position: relative;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4),
+                inset 0 0 30px rgba(255, 255, 255, 0.08),
+                0 0 2px rgba(255, 255, 255, 0.25);
+    min-height: 360px;
+    height: auto;
+    max-width: 100%;
+    width: 100%;
+}
+
+.post-card:hover {
+    background: rgba(20, 20, 20, 0.7);
+    border-color: rgba(255, 255, 255, 0.5);
+    box-shadow: 0 8px 30px rgba(255, 255, 255, 0.3),
+                inset 0 0 60px rgba(255, 255, 255, 0.2),
+                0 0 20px rgba(255, 255, 255, 0.4),
+                0 0 40px rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+
+.post-card > * {
+    box-sizing: border-box;
+}
+
+/* Radar Modal Styles */
+.radar-modal {
+    position: absolute;
+    top: 3.4rem;
+    right: 8.5rem;
+    left: auto;
+    width: 595px;
+    height: 255px;
+    max-width: 595px;
+    max-height: 255px;
+    min-width: 595px;
+    min-height: 255px;
+    background: rgba(0, 20, 10, 0.95);
+    border: 2.55px solid #008833;
+    display: flex;
+    flex-direction: column;
+    z-index: 1000;
+    box-shadow: 0 0 25.5px rgba(0, 136, 51, 0.5);
+    box-sizing: border-box;
+    padding: 0.425rem;
+    overflow: hidden;
+}
+
+.radar-modal.hidden {
+    display: none;
+}
+
+.radar-close-btn {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    cursor: pointer;
+    color: #00ff41;
+    font-size: 1.2rem;
+    z-index: 1001;
+    background: transparent;
+    border: none;
+    padding: 0;
+    line-height: 1;
+}
+
+.radar-close-btn:hover {
+    color: #00ff80;
+}
+
+.radar-column-left, .radar-column-right {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0.5rem;
+    position: relative;
+    height: 100%;
+    max-height: 100%;
+    overflow: visible;
+}
+
+.radar-column-left::-webkit-scrollbar,
+.radar-column-right::-webkit-scrollbar {
+    display: none;
+}
+
+.radar-column-left {
+    border-right: 1px solid rgba(0, 255, 65, 0.3);
+}
+
+.radar-date-title {
+    color: #00ff41;
+    font-size: 0.65rem;
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    border-bottom: 1px solid rgba(0, 255, 65, 0.3);
+    padding-bottom: 0.5rem;
+    font-family: 'Courier New', monospace;
+}
+
+.radar-title {
+    color: #00ff41;
+    font-size: 0.85rem;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    text-align: center;
+    text-shadow: 0 0 8px rgba(0, 255, 65, 0.5);
+}
+
+.radar-screen {
+    flex: 1;
+    min-height: 120px;
+    background: radial-gradient(circle, rgba(0, 255, 65, 0.05) 0%, transparent 70%);
+    position: relative;
+    overflow: hidden;
+    min-width: 200px;
+    width: 100%;
+    border: 1px solid rgba(0, 255, 65, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.radar-grid {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background-image: 
+        radial-gradient(circle at center, rgba(0, 255, 65, 0.2) 1px, transparent 1px),
+        radial-gradient(circle at center, rgba(0, 255, 65, 0.1) 2px, transparent 2px);
+    background-size: 50px 50px, 100px 100px;
+    background-position: center;
+}
+
+.radar-sweep {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    background: conic-gradient(from 0deg, transparent 0deg, transparent 340deg, rgba(0, 255, 65, 0.15) 345deg, rgba(0, 255, 65, 0.3) 350deg, transparent 355deg);
+    animation: radarSweep 3s linear infinite;
+    transform-origin: center;
+}
+
+@keyframes radarSweep {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.scan-games-button {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: rgba(0, 20, 10, 0.95);
+    border: 2px solid #00ff41;
+    border-radius: 0;
+    color: #00ff41;
+    padding: 0.5rem 1rem;
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 15px rgba(0, 255, 65, 0.4), inset 0 0 20px rgba(0, 255, 65, 0.1);
+    text-shadow: 0 0 5px #00ff41;
+    z-index: 10;
+    white-space: nowrap;
+}
+
+.scan-games-button:hover {
+    background: rgba(0, 255, 65, 0.2);
+    box-shadow: 0 0 25px rgba(0, 255, 65, 0.6), inset 0 0 30px rgba(0, 255, 65, 0.2);
+    transform: translate(-50%, -50%) scale(1.05);
+}
+
+.roundup-game-item {
+    background: rgba(0, 20, 10, 0.6);
+    border: 1px solid rgba(0, 255, 65, 0.3);
+    padding: 0.5rem 0.75rem;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    display: block;
+    min-height: fit-content;
+}
+
+.roundup-game-item:hover {
+    border-color: #00ff41;
+    background: rgba(0, 255, 65, 0.1);
+    box-shadow: 0 0 10px rgba(0, 255, 65, 0.3);
+}
+
+.game-matchup {
+    color: #00ff41;
+    font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif;
+    font-weight: 900;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    line-height: 1.3;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.game-date {
+    font-size: 0.65rem;
+    color: rgba(0, 255, 65, 0.7);
+    margin-top: 0.3rem;
+    font-family: 'Courier New', monospace;
+    max-width: 100%;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.no-games-message {
+    color: rgba(0, 255, 65, 0.6);
+    font-family: 'Courier New', monospace;
+    font-size: 0.75rem;
+    text-align: center;
+    padding: 1rem;
+}
+
+.radar-blurb {
+    color: rgba(0, 255, 65, 0.8);
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    line-height: 1.4;
+    padding: 0.5rem;
+}
+
+.heat-radar-toggle {
+    background: transparent;
+    border: 2px solid #00ff41;
+    color: #00ff41;
+    padding: 0.4rem 0.8rem;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: 900;
+    text-transform: uppercase;
+    font-size: 0.7rem;
+    transition: all 0.3s ease;
+}
+
+.heat-radar-toggle:hover {
+    background: rgba(0, 255, 65, 0.1);
+    transform: translateY(-2px);
+}
+
+.heat-radar-label {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.heat-radar-label:hover {
+    transform: translateY(-5px) scale(1.05);
+    filter: drop-shadow(0 6px 12px rgba(0, 255, 65, 0.6)) drop-shadow(0 12px 24px rgba(0, 255, 65, 0.3));
+}
+
+.heat-breakdown-overlay::-webkit-scrollbar {
+    display: none;
+}
+
+/* Layout adjustments */
+.public-container.article-view {
+    grid-template-rows: min-content 1fr;
+}
+
+.public-container:not(.article-view) {
+    grid-template-rows: auto 1fr;
+}
+
+.top-left.compact, .top-right.compact {
+    padding: 0.68rem 0.85rem 0.255rem 0.85rem;
+}
+
+.top-left.compact .header-logo {
+    height: 127.5px;
+    transform: translateY(0);
+}
+
+.top-right.compact .heat-radar-label {
+    width: 42.5px !important;
+    height: auto;
+    margin-bottom: 0.34rem;
+}
+
+/* Crawler Navigation Submenu */
+.league-nav-item {
+    position: relative;
+}
+
+.nav-submenu {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-left: 1.5rem;
+    margin-top: 0.25rem;
+    margin-bottom: 0.5rem;
+}
+
+.nav-submenu.hidden {
+    display: none;
+}
+
+.nav-submenu-item {
+    font-size: 1rem !important;
+    color: rgba(255, 255, 255, 0.8) !important;
+    padding-left: 0.5rem;
+    border-left: 2px solid rgba(248, 66, 66, 0.5);
+}
+
+.nav-submenu-item:hover {
+    color: #f84242 !important;
+    border-left-color: #f84242;
+    transform: translateX(3px) !important;
+}
+
+.league-arrow {
+    display: inline-block;
+    transition: transform 0.3s ease;
+}
+
+/* About Modal Styles */
+.about-modal {
+    flex-direction: column !important;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.about-modal::-webkit-scrollbar {
+    width: 0px;
+    background: transparent;
+}
+
+.about-content {
+    padding: 1rem;
+    padding-left: calc(20% + 1.5rem);
+    color: rgba(255, 255, 255, 0.85);
+    font-family: 'Courier New', monospace;
+    font-size: 0.65rem;
+    line-height: 1.6;
+    position: relative;
+}
+
+.about-logo {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    width: 20%;
+    max-width: 20%;
+    height: auto;
+}
+
+.about-tagline {
+    font-size: 0.9rem;
+    color: #fff;
+    font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif;
+    font-weight: 900;
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+}
+
+.about-text {
+    margin-bottom: 0.6rem;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 0.65rem;
+    line-height: 1.4;
+}
+
+.about-heading {
+    font-size: 0.75rem;
+    color: #fff;
+    font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif;
+    font-weight: 900;
+    text-transform: uppercase;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 0.3rem;
+}
+
+.about-text strong {
+    color: #f84242;
+    font-weight: 900;
+}
+
+/* Radar Loading Animation Styles */
+.radar-loading-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    text-align: center;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.radar-loading-message {
+    color: #00ff41;
+    font-family: 'Courier New', monospace;
+    font-size: 0.75rem;
+    margin-bottom: 1rem;
+    text-transform: uppercase;
+    min-width: 250px;
+    text-align: center;
+    height: 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-shadow: 0 0 5px rgba(0, 255, 65, 0.5);
+}
+
+.radar-loading-dots {
+    display: flex;
+    gap: 0.5rem;
+    justify-content: center;
+}
+
+.radar-loading-dots .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #fff;
+    animation: pulse 1.4s ease-in-out infinite;
+}
+
+.radar-loading-dots .dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.radar-loading-dots .dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+}
+
+.radar-loading-blurb {
+    font-weight: bold;
+    margin-bottom: 0.5rem;
+    color: rgba(0, 255, 65, 0.8);
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    min-height: 3rem;
+    display: flex;
+    align-items: center;
+    line-height: 1.4;
+}
+
+.radar-initial-state {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 200px;
+    gap: 0.5rem;
+    position: relative;
+}
+
+.radar-modal-content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 220px;
+    max-height: 220px;
+    display: flex;
+    flex-direction: row;
+    box-sizing: border-box;
+    align-items: stretch;
+}
+
+.radar-loading-state {
+    min-height: 200px;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+    position: relative;
+}
+
+.radar-results-state {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    max-height: 100%;
+    overflow-y: scroll; /* Keep scroll enabled for functionality */
+    overflow-x: hidden;
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    min-height: 0;
+    scrollbar-width: none; /* Hide scrollbar in Firefox */
+    -ms-overflow-style: none; /* Hide scrollbar in IE/Edge */
+    padding: 0 0.5rem;
+    box-sizing: border-box;
+}
+
+.radar-results-state::-webkit-scrollbar {
+    display: none; /* Hide scrollbar in Chrome/Safari */
+}
+
+.radar-description-state,
+.radar-loading-description {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    position: relative;
+    min-height: 200px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.radar-description-state::-webkit-scrollbar,
+.radar-loading-description::-webkit-scrollbar {
+    display: none;
+}
+
+.radar-results-description {
+    display: none;
+    flex-direction: column;
+    height: 100%;
+    max-height: 100%;
+    overflow-y: scroll; /* Keep scroll enabled for functionality */
+    overflow-x: hidden;
+    position: absolute;
+    top: 0.5rem;
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    min-height: 200px;
+    scrollbar-width: none; /* Hide scrollbar in Firefox */
+    -ms-overflow-style: none; /* Hide scrollbar in IE/Edge */
+    padding: 0 0.5rem;
+    box-sizing: border-box;
+}
+
+.radar-results-description::-webkit-scrollbar {
+    display: none; /* Hide scrollbar in Chrome/Safari */
+}
+
+.roundup-game-item {
+    text-decoration: none;
+    color: inherit;
+}
+
+.roundup-game-item:hover .game-matchup {
+    color: #00ff80;
+}
+
+.roundup-game-item:hover .game-date {
+    color: rgba(0, 255, 65, 0.9);
+}
+
+/* Radar animation background for results columns */
+.radar-results-state::before,
+.radar-results-description::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(circle, rgba(0, 255, 65, 0.03) 0%, transparent 70%);
+    pointer-events: none;
+    z-index: 0;
+}
+
+.radar-results-state .radar-date-title,
+.radar-results-description .radar-date-title {
+    position: relative;
+    z-index: 1;
+    flex-shrink: 0;
+    margin-bottom: 0.5rem;
+    padding: 0 0.5rem;
+}
+
+.radar-results-state .daily-roundup-games,
+.radar-results-description .daily-roundup-games {
+    position: relative;
+    z-index: 1;
+    flex: 1;
+    min-height: 0;
+    padding: 0;
+    width: 100%;
+    box-sizing: border-box;
+    overflow: visible;
+}
+
+/* Add static radar grid pattern and animated sweep to results background */
+.radar-results-state,
+.radar-results-description {
+    background-image: 
+        radial-gradient(circle at center, rgba(0, 255, 65, 0.05) 1px, transparent 1px),
+        radial-gradient(circle at center, rgba(0, 255, 65, 0.03) 2px, transparent 2px);
+    background-size: 40px 40px, 80px 80px;
+    background-position: center;
+    /* Don't set overflow or position here - let the main rules above handle it */
+}
+
+/* Add rotating sweep overlay to results */
+.radar-results-state::after,
+.radar-results-description::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: conic-gradient(from 0deg, transparent 0deg, transparent 350deg, rgba(0, 255, 65, 0.15) 355deg, rgba(0, 255, 65, 0.25) 360deg);
+    pointer-events: none;
+    z-index: 0;
+    animation: radarSweepResults 3s linear infinite;
+    transform-origin: center;
+    opacity: 0.6;
+}
+
+@keyframes radarSweepResults {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Ensure daily-roundup-games fills space - parent handles scrolling */
+.daily-roundup-games {
+    width: 100%;
+    max-width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    padding-top: 0.5rem;
+    padding-bottom: 1.5rem;
+    margin-bottom: 1rem;
+    flex: 1;
+    min-height: 0;
+    box-sizing: border-box;
+    overflow: visible;
+}
+
+/* Loading description container fixed height */
+.radar-loading-description .radar-blurb {
+    min-height: 4rem;
+    max-height: 4rem;
+    overflow: hidden;
+}
+
+/* Loading state fixed height */
+.radar-loading-state {
+    min-height: 200px;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+    position: relative;
+}
+
+/* Initial state fixed height */
+.radar-initial-state {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 200px;
+    gap: 0.5rem;
+    position: relative;
+}
+
+/* Description states fixed height */
+.radar-description-state {
+    min-height: 200px;
+}
+
+.radar-loading-description {
+    min-height: 200px;
+}
+
+/* Removed duplicate - min-height already set in main rule above */
