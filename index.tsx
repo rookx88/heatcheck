@@ -2193,15 +2193,48 @@ async function validateKeyCharacters(
   
   try {
     const ai = new GoogleGenAI({ apiKey });
+    const currentDate = new Date().toLocaleDateString();
+    const currentYear = new Date().getFullYear();
+    
+    const leagueContext = league === 'NBA' 
+      ? 'Basketball - check NBA rosters, injury reports (IL, out, doubtful, questionable), and trade deadlines'
+      : league === 'NFL'
+      ? 'Football - check NFL rosters, injury reports (IR, PUP, questionable, doubtful), and trade deadlines'
+      : league === 'EPL' || league === 'Premier League'
+      ? 'Soccer - check Premier League squads, transfer status, and injury reports'
+      : 'Check current rosters and injury reports';
+    
     const validationPrompt = `
-You are a sports fact-checker. Validate that the following people are CURRENTLY associated with the correct teams.
+You are a sports fact-checker. Validate that the following people are CURRENTLY ACTIVE and associated with the correct teams.
 
 Matchup: ${teamA} vs ${teamB} (${league})
+Current Date: ${currentDate}
+${leagueContext}
 Key Characters Mentioned: ${Array.from(allKeyCharacters).join(', ')}
 
-For each person listed, determine:
-1. Are they currently a player or coach for ${teamA} or ${teamB}?
-2. If not, what is their current status (traded, fired, retired, on different team)?
+CRITICAL VALIDATION REQUIREMENTS:
+For each person listed, you MUST:
+1. Verify they are CURRENTLY on the roster of ${teamA} or ${teamB} (as of ${currentDate})
+2. Check their CURRENT injury status:
+   - If they are injured and will NOT play in upcoming games: Mark as INVALID
+   - If they are on IL (Injured List), IR (Injured Reserve), or have a season-ending injury: Mark as INVALID
+   - If they have a minor injury but are expected to play: Mark as VALID
+   - If they are healthy and active: Mark as VALID
+3. Check if they were recently traded, released, or fired:
+   - If traded to another team: Mark as INVALID
+   - If released/waived: Mark as INVALID  
+   - If coach was fired: Mark as INVALID
+4. Verify current employment/active status using Google Search:
+   - Query: "[Player Name] ${teamA}" current roster status ${currentYear}
+   - Query: "[Player Name] ${teamB}" current roster status ${currentYear}
+   - Query: "[Player Name] injury status ${currentDate}"
+   - Query: "[Player Name] trade ${currentYear}"
+
+IMPORTANT: Many players have similar names. If you find multiple players with the same name, verify which specific player is mentioned by:
+- Checking team context
+- Verifying position/role
+- Cross-referencing with other key characters mentioned
+- If ambiguous, mark as INVALID with low confidence
 
 Return a JSON array of validation results:
 [
@@ -2209,12 +2242,19 @@ Return a JSON array of validation results:
     "name": "Person Name",
     "team_mentioned": "${teamA}" or "${teamB}",
     "is_valid": true/false,
-    "current_status": "Current team/status description",
-    "warning": "Warning message if invalid (or empty string if valid)"
+    "current_status": "Detailed status (e.g., 'On ${teamA} roster, active', 'Traded to X team', 'Injured - out for season', 'Not on roster')",
+    "warning": "Warning message if invalid (or empty string if valid)",
+    "injury_status": "Active" | "Injured - Playing" | "Injured - Out" | "Season-Ending Injury" | "N/A",
+    "verification_confidence": "high" | "medium" | "low"
   }
 ]
 
-Be strict: Only mark as valid if they are CURRENTLY on the team mentioned in the narrative.
+VALIDATION RULES:
+- Mark as INVALID if: traded/released/fired, season-ending injury, on IL/IR, not on current roster, injured and won't play
+- Mark as VALID only if: currently on roster AND active/healthy (minor injuries that don't prevent playing are OK)
+- If uncertain, mark as INVALID with confidence: "low" and provide clear status description
+
+Be VERY strict - it's better to flag someone as invalid incorrectly than to allow an invalid reference in the article.
 `;
     
     const response = await ai.models.generateContent({
@@ -2232,9 +2272,17 @@ Be strict: Only mark as valid if they are CURRENTLY on the team mentioned in the
               team_mentioned: { type: Type.STRING },
               is_valid: { type: Type.BOOLEAN },
               current_status: { type: Type.STRING },
-              warning: { type: Type.STRING }
+              warning: { type: Type.STRING },
+              injury_status: { 
+                type: Type.STRING,
+                enum: ['Active', 'Injured - Playing', 'Injured - Out', 'Season-Ending Injury', 'N/A']
+              },
+              verification_confidence: {
+                type: Type.STRING,
+                enum: ['high', 'medium', 'low']
+              }
             },
-            required: ['name', 'is_valid', 'current_status', 'warning']
+            required: ['name', 'is_valid', 'current_status', 'warning', 'injury_status', 'verification_confidence']
           }
         }
       }
@@ -2242,8 +2290,25 @@ Be strict: Only mark as valid if they are CURRENTLY on the team mentioned in the
     
     const validationResults = JSON.parse(response.text);
     validationResults.forEach((result: any) => {
+      // Flag low-confidence validations for manual review
+      if (result.is_valid && result.verification_confidence === 'low') {
+        warnings.push(`⚠️ LOW CONFIDENCE: ${result.name} marked as valid but verification confidence is low. Status: ${result.current_status}${result.injury_status && result.injury_status !== 'N/A' ? `, Injury: ${result.injury_status}` : ''}`);
+      }
+      
+      // Mark invalid results with full details
       if (!result.is_valid && result.warning) {
-        warnings.push(`⚠️ ${result.name}: ${result.warning} (Current: ${result.current_status})`);
+        const injuryInfo = result.injury_status && result.injury_status !== 'N/A' 
+          ? `, Injury: ${result.injury_status}` 
+          : '';
+        const confidenceInfo = result.verification_confidence === 'low'
+          ? ` [Low Confidence]`
+          : '';
+        warnings.push(`⚠️ ${result.name}: ${result.warning} (Current: ${result.current_status}${injuryInfo})${confidenceInfo}`);
+      }
+      
+      // Also flag valid results with injuries that might prevent playing
+      if (result.is_valid && (result.injury_status === 'Injured - Out' || result.injury_status === 'Season-Ending Injury')) {
+        warnings.push(`⚠️ ${result.name}: Marked as valid but has injury status: ${result.injury_status}. Please verify they are actually playing.`);
       }
     });
     
@@ -2314,18 +2379,28 @@ You are a sports article editor. Correct the following article by replacing inva
 MATCHUP: ${teamA} vs ${teamB} (${league})
 CURRENT DATE: ${new Date().toLocaleDateString()}
 
-INVALID CHARACTERS FOUND (not currently on the teams):
+INVALID CHARACTERS FOUND (not currently on the teams, injured, or inactive):
 ${invalidList}
 
-TASK:
+CRITICAL REQUIREMENTS:
 1. Use Google Search to find the CURRENT roster (players and coaches) for both ${teamA} and ${teamB}
-2. For each invalid character mentioned in the article:
-   - If they are mentioned as a player: Replace them with a CURRENT player from the same team who plays a similar role/position
+2. Verify replacement candidates are:
+   - Currently on the team's active roster
+   - NOT injured or on IL/IR
+   - Available to play (not suspended or inactive)
+   - In a similar role/position as the invalid character
+3. For each invalid character mentioned in the article:
+   - If they are mentioned as a player: Replace them with a CURRENT, ACTIVE, HEALTHY player from the same team who plays a similar role/position
    - If they are mentioned as a coach: Replace them with the CURRENT head coach or assistant coach from the same team
+   - If they are injured/out: Replace with a healthy, active player in a similar role
+   - If they were traded/released: Replace with their replacement on the roster (check recent trades/transactions)
    - Maintain the narrative flow and context (e.g., if discussing a star player, replace with another star player)
-3. Rewrite the affected sections naturally, ensuring the replacement makes sense contextually
-4. Preserve all other content (stats, quotes, timeline events, narrative structure)
-5. Do NOT remove sections entirely - always replace with valid alternatives
+   - If discussing an injured player's impact, you may pivot to discuss the impact of their absence
+4. Rewrite the affected sections naturally, ensuring the replacement makes sense contextually
+5. Preserve all other content (stats, quotes, timeline events, narrative structure)
+6. Do NOT remove sections entirely - always replace with valid alternatives OR pivot the narrative
+7. Before making replacements, verify via Google Search: "[Replacement Name] ${teamA} roster ${new Date().getFullYear()}" or "[Replacement Name] ${teamB} roster ${new Date().getFullYear()}"
+8. Verify injury status: "[Replacement Name] injury status ${new Date().toLocaleDateString()}"
 
 ARTICLE TO CORRECT:
 ${articleMarkdown}
@@ -2337,6 +2412,7 @@ INSTRUCTIONS:
 - Keep all valid player/coach names unchanged
 - Make replacements natural and contextually appropriate
 - If a player/coach name appears multiple times, replace ALL occurrences consistently
+- If you cannot find a suitable replacement, pivot the narrative to discuss the absence/impact instead
 `;
 
     const response = await ai.models.generateContent({
@@ -2689,11 +2765,29 @@ async function generateHeatCheckNarrative(matchup: { league: string; teamA: stri
     
     PHASE 5: THE AUDITOR (FACTUAL INTEGRITY LAYER) - *** MOST IMPORTANT STEP ***
     - Before generating the final article, review your selected narrative key figures.
-    - **RULE:** If a Narrative Card relies on a person (e.g., "Nuno's Revenge") and Phase 2 revealed they are NO LONGER with the team (fired/traded), you MUST:
-      1. MODIFY the narrative to reflect the *aftermath* (e.g., "The Shadow of Nuno" or "The Post-Nuno Chaos").
-      2. OR discard the narrative entirely if it no longer makes sense.
-    - Do NOT write an article assuming a fired coach is still on the sidelines.
-    - Log any pivots you made in the "corrections_applied" field.
+    - **MANDATORY CHECKS FOR EACH KEY CHARACTER:**
+      1. Verify they are CURRENTLY on the roster (as of ${new Date().toLocaleDateString()})
+      2. Check injury status - do NOT include players who are out with season-ending injuries or on IL/IR
+      3. Verify they haven't been traded/released/fired since the narrative was created
+      4. If a coach was mentioned, verify they are still the head coach
+      5. Use Google Search to verify: "[Name] ${matchup.teamA} roster ${new Date().getFullYear()}" OR "[Name] ${matchup.teamB} roster ${new Date().getFullYear()}"
+      6. Use Google Search to check injuries: "[Name] injury status ${new Date().toLocaleDateString()}"
+    
+    - **RULE:** If a Narrative Card relies on a person (e.g., "Nuno's Revenge") and Phase 2 revealed they are:
+      * NO LONGER with the team (fired/traded): MODIFY the narrative or discard it
+      * INJURED and won't play: Either remove them from key_characters OR pivot the narrative to discuss their absence
+      * NOT on current roster: REMOVE them from key_characters immediately
+      * SEASON-ENDING INJURY: Remove them from key_characters or pivot narrative
+    
+    - Do NOT write an article assuming:
+      - A fired coach is still on the sidelines
+      - An injured player will be playing (unless minor injury with expected return)
+      - A traded player is still on the team
+      - A player on IL/IR will be available
+    
+    - Before listing someone in key_characters, you MUST verify their current status via Google Search
+    - If you cannot verify with high confidence, DO NOT include them in key_characters
+    - Log all verification checks and pivots in the "corrections_applied" field.
     
     PHASE 6: OUTPUT
     - Generate the Article in Markdown that tells the narrative story behind the matchup.
