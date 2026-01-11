@@ -49,6 +49,18 @@ export interface HeatcheckPost {
                 date_utc?: string;
             }>;
         };
+        evidence_bundle?: {
+            quotes?: Array<{
+                quote: string;
+                speaker?: string;
+                team?: string;
+            }>;
+            timeline_events?: Array<{
+                event_type?: string;
+                summary: string;
+                date_utc?: string;
+            }>;
+        };
         article?: {
             long_form_markdown?: string;
         };
@@ -104,6 +116,15 @@ export function generateArticlePage(
     const quotes = evidenceBundle.quotes || [];
     const timelineEvents = evidenceBundle.timeline_events || [];
     
+    // Generate filler quote if no quotes found
+    const todayDate = formatDateISO(new Date().toISOString());
+    const isToday = date === todayDate;
+    const displayQuotes = quotes.length > 0 ? quotes : [{
+        quote: `${post.teamA} and ${post.teamB} meet ${isToday ? 'tonight' : 'in a seasonal matchup'} in ${post.league.toUpperCase()}.`,
+        speaker: 'Matchup Preview',
+        team: undefined
+    }];
+    
     // Get article content (prefer long_form_markdown from heatCheckData, fallback to theBackstory)
     const articleContent = heatCheckData.article?.long_form_markdown || post.websiteStory.theBackstory || '';
     const htmlContent = markdownToHtml(articleContent);
@@ -155,7 +176,7 @@ export function generateArticlePage(
     }).join('');
     
     // Generate quotes HTML
-    const quotesHtml = quotes.map(quote => `
+    const quotesHtml = displayQuotes.map(quote => `
         <div style="padding: 0.6rem; margin-bottom: 0.5rem; background: rgba(0, 0, 0, 0.3); border-left: 2px solid rgba(255, 255, 255, 0.3); font-family: 'Courier New', monospace; font-size: 0.75rem;">
             <div style="color: #888; margin-bottom: 0.3rem; line-height: 1.4; font-style: italic;">
                 "${escapeHtml(quote.quote)}"
@@ -329,19 +350,19 @@ export function generateArticlePage(
                     </div>
                     <div style="flex: 1; overflow-y: auto; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; scrollbar-width: none; -ms-overflow-style: none;">
                         <style>div[style*="overflow-y"]::-webkit-scrollbar { display: none; }</style>
-                        ${quotes.length > 0 ? `
+                        ${displayQuotes.length > 0 ? `
                         <div>
-                            <div style="color: rgba(248, 66, 66, 0.9); font-size: 0.75rem; margin-bottom: 0.5rem; font-weight: bold; border-bottom: 1px dashed rgba(248, 66, 66, 0.3); padding-bottom: 0.25rem;">&gt; QUOTE_LOG [ENTRIES: ${quotes.length}]</div>
+                            <div style="color: rgba(248, 66, 66, 0.9); font-size: 0.75rem; margin-bottom: 0.5rem; font-weight: bold; border-bottom: 1px dashed rgba(248, 66, 66, 0.3); padding-bottom: 0.25rem;">&gt; QUOTE_LOG [ENTRIES: ${displayQuotes.length}]</div>
                             ${quotesHtml}
                         </div>
                         ` : ''}
                         ${timelineEvents.length > 0 ? `
-                        <div style="margin-top: ${quotes.length > 0 ? '0.5rem' : '0'};">
+                        <div style="margin-top: ${displayQuotes.length > 0 ? '0.5rem' : '0'};">
                             <div style="color: rgba(248, 66, 66, 0.9); font-size: 0.75rem; margin-bottom: 0.5rem; font-weight: bold; border-bottom: 1px dashed rgba(248, 66, 66, 0.3); padding-bottom: 0.25rem;">&gt; TIMELINE_LOG [ENTRIES: ${timelineEvents.length}]</div>
                             ${timelineHtml}
                         </div>
                         ` : ''}
-                        ${quotes.length === 0 && timelineEvents.length === 0 ? '<div style="color: #666; font-size: 0.75rem;">No evidence data available</div>' : ''}
+                        ${displayQuotes.length === 0 && timelineEvents.length === 0 ? '<div style="color: #666; font-size: 0.75rem;">No evidence data available</div>' : ''}
                     </div>
                 </div>
             </div>

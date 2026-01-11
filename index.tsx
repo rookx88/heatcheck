@@ -189,7 +189,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
       setLoadingMessage('Step 1/2: Finding upcoming matchups...');
       const matchupsPrompt = `Identify 3-4 key upcoming professional sports matchups in the NBA, NFL, and EPL scheduled within the next 48 hours. Focus on games with high viewership potential or existing rivalries. Return findings as a JSON array of objects with "league", "teamA", and "teamB". Your entire response must be only the raw JSON array, with no other text or explanation.`;
       const matchupResponse = await ai.models.generateContent({
-          model: 'gemini-3-flash-preview', contents: matchupsPrompt,
+          model: 'gemini-2.5-pro', contents: matchupsPrompt,
           config: { tools: [{googleSearch: {}}], responseSchema: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { league: {type: Type.STRING}, teamA: {type: Type.STRING}, teamB: {type: Type.STRING} }, required: ['league', 'teamA', 'teamB']}}}
       });
       const matchups: Matchup[] = extractJson(matchupResponse.text);
@@ -219,7 +219,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   const analyzeMatchup = async (matchup: Matchup): Promise<Narrative | null> => {
     const prompt = `You are a "Sports Revenge Finder" analyst. Find a compelling emotional narrative for the upcoming ${matchup.league} game between ${matchup.teamA} and ${matchup.teamB}. Research player histories and use Google Search to find context on rivalries or conflicts. If a compelling story is found, synthesize it. If not, return an empty narrative. Return a single JSON object with schema {league, teamA, teamB, narrative, storyType, searchedPlayers, searchedQueries}. CRITICAL: Your response must be only the raw JSON object itself.`;
     const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview', contents: prompt,
+        model: 'gemini-2.5-pro', contents: prompt,
         config: {
           tools: [{googleSearch: {}}],
           responseSchema: { type: Type.OBJECT, properties: { league: { type: Type.STRING }, teamA: { type: Type.STRING }, teamB: { type: Type.STRING }, narrative: { type: Type.STRING }, storyType: { type: Type.STRING }, searchedPlayers: { type: Type.ARRAY, items: { type: Type.STRING } }, searchedQueries: { type: Type.ARRAY, items: { type: Type.STRING } }}, required: ['league', 'teamA', 'teamB', 'narrative', 'storyType'] },
@@ -231,7 +231,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   const performDeepResearch = async (narrative: Narrative): Promise<{ websiteStory: HeatcheckStory, heatchecksEdge: HeatchecksEdge }> => {
     const prompt = getWebsiteReadyPrompt(narrative);
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview", contents: prompt,
+        model: "gemini-2.5-pro", contents: prompt,
         config: { tools: [{googleSearch: {}}], responseSchema: getWebsiteReadySchema() }
     });
     return extractJson(response.text);
@@ -262,7 +262,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         const { websiteStory, heatchecksEdge } = await performDeepResearch(narrative);
         const tweetPrompt = getViralTweetPrompt(websiteStory, heatchecksEdge);
         const tweetResponse = await ai.models.generateContent({
-            model: "gemini-3-flash-preview", contents: tweetPrompt,
+            model: "gemini-2.5-pro", contents: tweetPrompt,
             config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { tweet1: {type: Type.STRING}, tweet2: {type: Type.STRING}}, required: ["tweet1", "tweet2"]}}
         });
         // FIX: Provide an explicit type to `extractJson` to prevent `generatedTweet` from being `unknown`.
@@ -1695,16 +1695,151 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
         if (!editedPost || !aiFeedback.trim()) return;
         setIsApplyingFeedback(true);
         try {
-            const prompt = `You are an AI editor. Apply this feedback to improve the article: "${aiFeedback}"\n\nCurrent article:\n${editedPost.websiteStory.theBackstory}\n\nReturn the improved article markdown.`;
+            // Extract current data
+            const heatCheckData = (editedPost as any).heatCheckData || {};
+            const narrativeCards = heatCheckData.narratives?.candidate_cards || [];
+            const primaryNarrativeId = heatCheckData.narratives?.selected?.primary_narrative_id || '';
+            const primaryCard = narrativeCards.find((card: any) => card.narrative_id === primaryNarrativeId) || narrativeCards[0] || {};
+            const evidenceBundle = heatCheckData.evidenceBundle || heatCheckData.evidence_bundle || {};
+            const quotes = evidenceBundle.quotes || [];
+            const timelineEvents = evidenceBundle.timeline_events || [];
+            const heatchecksEdge = editedPost.heatchecksEdge || {};
+
+            const prompt = `You are an AI editor for a sports analysis article. Apply this feedback to improve ALL components of the article: "${aiFeedback}"
+
+CURRENT ARTICLE CONTENT:
+${editedPost.websiteStory.theBackstory || 'No article content'}
+
+PRIMARY NARRATIVE CARD:
+Title: ${primaryCard.title || 'N/A'}
+Claim: ${primaryCard.claim || 'N/A'}
+Emotion Tags: ${primaryCard.emotion_tags?.join(', ') || 'N/A'}
+
+EVIDENCE QUOTES:
+${quotes.map((q: any, i: number) => `${i + 1}. "${q.quote}" - ${q.speaker} (${q.team || 'N/A'})`).join('\n') || 'No quotes'}
+
+TIMELINE EVENTS:
+${timelineEvents.map((e: any, i: number) => `${i + 1}. ${e.summary} (${e.date_utc || 'N/A'})`).join('\n') || 'No timeline events'}
+
+HEATCHECKS EDGE:
+Final Call: ${heatchecksEdge.finalCall || 'N/A'}
+Rationale Bullets: ${heatchecksEdge.rationaleBullets?.join('\n- ') || 'N/A'}
+Risk Counterpoints: ${heatchecksEdge.riskCounterpoints?.join('\n- ') || 'N/A'}
+
+TASK: Apply the feedback to improve ALL of these components. Return a JSON object with the following structure:
+{
+  "article": "improved article markdown text",
+  "narrativeCard": {
+    "title": "improved title",
+    "claim": "improved claim",
+    "emotion_tags": ["tag1", "tag2"]
+  },
+  "quotes": [
+    {"quote": "improved quote text", "speaker": "speaker name", "team": "team name"}
+  ],
+  "timelineEvents": [
+    {"summary": "improved event summary", "date_utc": "date string"}
+  ],
+  "heatchecksEdge": {
+    "finalCall": "improved final call text",
+    "rationaleBullets": ["bullet 1", "bullet 2"],
+    "riskCounterpoints": ["risk 1", "risk 2"]
+  }
+}
+
+IMPORTANT:
+- Only include fields that need to be changed based on the feedback
+- If a component doesn't need changes, you can omit it or keep it the same
+- Preserve the structure and formatting of all components
+- Make improvements that align with the feedback provided`;
+
             const response = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
+                model: 'gemini-2.5-pro',
                 contents: prompt,
-                config: { tools: [{ googleSearch: {} }] }
+                config: { 
+                    tools: [{ googleSearch: {} }]
+                }
             });
-            handleFieldChange('websiteStory.theBackstory', response.text);
+
+            const result = extractJson<any>(response.text);
+            
+            // Update all components using functional state update to ensure we have latest state
+            setEditedPost(prev => {
+                if (!prev) return prev;
+                const newPost = JSON.parse(JSON.stringify(prev));
+                
+                // Update article if provided
+                if (result.article) {
+                    newPost.websiteStory = newPost.websiteStory || {};
+                    newPost.websiteStory.theBackstory = result.article;
+                }
+
+                // Update narrative card if provided
+                if (result.narrativeCard && primaryCard) {
+                    newPost.heatCheckData = newPost.heatCheckData || {};
+                    newPost.heatCheckData.narratives = newPost.heatCheckData.narratives || {};
+                    newPost.heatCheckData.narratives.candidate_cards = newPost.heatCheckData.narratives.candidate_cards || [];
+                    const updatedCards = [...newPost.heatCheckData.narratives.candidate_cards];
+                    const cardIndex = updatedCards.findIndex((card: any) => card.narrative_id === primaryNarrativeId);
+                    if (cardIndex >= 0) {
+                        updatedCards[cardIndex] = {
+                            ...updatedCards[cardIndex],
+                            title: result.narrativeCard.title || updatedCards[cardIndex].title,
+                            claim: result.narrativeCard.claim || updatedCards[cardIndex].claim,
+                            emotion_tags: result.narrativeCard.emotion_tags || updatedCards[cardIndex].emotion_tags
+                        };
+                        newPost.heatCheckData.narratives.candidate_cards = updatedCards;
+                    }
+                }
+
+                // Update quotes if provided
+                if (result.quotes && Array.isArray(result.quotes)) {
+                    newPost.heatCheckData = newPost.heatCheckData || {};
+                    newPost.heatCheckData.evidence_bundle = newPost.heatCheckData.evidence_bundle || {};
+                    newPost.heatCheckData.evidence_bundle.quotes = result.quotes.map((q: any) => ({
+                        quote: q.quote,
+                        speaker: q.speaker || '',
+                        team: q.team || '',
+                        context: q.context || '',
+                        source_id: q.source_id || '',
+                        quote_id: q.quote_id || `Q_${Date.now()}_${Math.random()}`
+                    }));
+                }
+
+                // Update timeline events if provided
+                if (result.timelineEvents && Array.isArray(result.timelineEvents)) {
+                    newPost.heatCheckData = newPost.heatCheckData || {};
+                    newPost.heatCheckData.evidence_bundle = newPost.heatCheckData.evidence_bundle || {};
+                    newPost.heatCheckData.evidence_bundle.timeline_events = result.timelineEvents.map((e: any) => ({
+                        summary: e.summary,
+                        date_utc: e.date_utc || new Date().toISOString(),
+                        event_type: e.event_type || 'other',
+                        event_id: e.event_id || `E_${Date.now()}_${Math.random()}`,
+                        source_id: e.source_id || ''
+                    }));
+                }
+
+                // Update HeatChecks Edge if provided
+                if (result.heatchecksEdge) {
+                    newPost.heatchecksEdge = newPost.heatchecksEdge || {};
+                    if (result.heatchecksEdge.finalCall) {
+                        newPost.heatchecksEdge.finalCall = result.heatchecksEdge.finalCall;
+                    }
+                    if (result.heatchecksEdge.rationaleBullets) {
+                        newPost.heatchecksEdge.rationaleBullets = result.heatchecksEdge.rationaleBullets;
+                    }
+                    if (result.heatchecksEdge.riskCounterpoints) {
+                        newPost.heatchecksEdge.riskCounterpoints = result.heatchecksEdge.riskCounterpoints;
+                    }
+                }
+
+                return newPost;
+            });
+
             setAiFeedback('');
         } catch (error) {
             console.error("Failed to apply feedback:", error);
+            alert(`Failed to apply feedback: ${error instanceof Error ? error.message : 'Unknown error'}`);
         } finally {
             setIsApplyingFeedback(false);
         }
@@ -2017,7 +2152,7 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
                         </div>
 
                         {/* HeatChecks Edge */}
-                        {editedPost.heatchecksEdge?.finalCall && editedPost.heatchecksEdge.finalCall.trim() !== '' && (
+                        {editedPost.heatchecksEdge && (
                             <div style={{ marginTop: '2rem' }}>
                                 <h3 style={{ marginBottom: '1rem', fontSize: '1.2rem' }}>HeatChecks Edge</h3>
                                 <div style={{
@@ -2033,30 +2168,60 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
                                     <div style={{ position: 'absolute', bottom: '0.75rem', right: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
                                     <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
                                     
-                                    {/* Header */}
+                                    {/* Header with Lean and Confidence Selectors */}
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '2px solid rgba(255, 255, 255, 0.3)' }}>
                                         <div style={{ width: '4px', height: '30px', background: 'rgba(255, 255, 255, 0.5)', boxShadow: '0 0 10px rgba(255, 255, 255, 0.3)' }}></div>
                                         <div style={{ color: 'rgba(255, 255, 255, 0.95)', fontSize: '0.9rem', fontFamily: "'Courier New', monospace", fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.2em', textShadow: '0 0 10px rgba(255, 255, 255, 0.3), 0 0 20px rgba(255, 255, 255, 0.1)' }}>
                                             &gt; HEATCHECKS EDGE
                                         </div>
                                         <div style={{ flex: 1, height: '1px', background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.3) 0%, transparent 100%)' }}></div>
-                                        {editedPost.heatchecksEdge.lean && editedPost.heatchecksEdge.lean !== 'NO_EDGE' && (
-                                            <div style={{
-                                                padding: '0.25rem 0.75rem',
-                                                background: editedPost.heatchecksEdge.lean === 'FAVOR' ? 'rgba(76, 175, 80, 0.2)' : 'rgba(248, 66, 66, 0.2)',
-                                                border: `1px solid ${editedPost.heatchecksEdge.lean === 'FAVOR' ? 'rgba(76, 175, 80, 0.5)' : 'rgba(248, 66, 66, 0.5)'}`,
-                                                borderRadius: '4px',
-                                                fontSize: '0.75rem',
-                                                fontWeight: 'bold',
-                                                color: editedPost.heatchecksEdge.lean === 'FAVOR' ? '#4caf50' : '#f84242',
-                                                textTransform: 'uppercase'
-                                            }}>
-                                                {editedPost.heatchecksEdge.lean}
-                                            </div>
-                                        )}
+                                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                            {/* Lean Dropdown */}
+                                            <select
+                                                value={editedPost.heatchecksEdge.lean || 'NO_EDGE'}
+                                                onChange={(e) => handleFieldChange('heatchecksEdge.lean', e.target.value as "FAVOR" | "FADE" | "NO_EDGE")}
+                                                style={{
+                                                    padding: '0.25rem 0.75rem',
+                                                    background: editedPost.heatchecksEdge.lean === 'FAVOR' ? 'rgba(76, 175, 80, 0.2)' : editedPost.heatchecksEdge.lean === 'FADE' ? 'rgba(248, 66, 66, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+                                                    border: `1px solid ${editedPost.heatchecksEdge.lean === 'FAVOR' ? 'rgba(76, 175, 80, 0.5)' : editedPost.heatchecksEdge.lean === 'FADE' ? 'rgba(248, 66, 66, 0.5)' : 'rgba(255, 255, 255, 0.3)'}`,
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: 'bold',
+                                                    color: editedPost.heatchecksEdge.lean === 'FAVOR' ? '#4caf50' : editedPost.heatchecksEdge.lean === 'FADE' ? '#f84242' : 'rgba(255, 255, 255, 0.7)',
+                                                    textTransform: 'uppercase',
+                                                    cursor: 'pointer',
+                                                    fontFamily: "'Courier New', monospace"
+                                                }}
+                                            >
+                                                <option value="NO_EDGE">NO EDGE</option>
+                                                <option value="FAVOR">FAVOR</option>
+                                                <option value="FADE">FADE</option>
+                                            </select>
+                                            {/* Confidence Dropdown */}
+                                            <select
+                                                value={editedPost.heatchecksEdge.confidence || 'medium'}
+                                                onChange={(e) => handleFieldChange('heatchecksEdge.confidence', e.target.value as "low" | "medium" | "high")}
+                                                style={{
+                                                    padding: '0.25rem 0.75rem',
+                                                    background: 'rgba(255, 255, 255, 0.1)',
+                                                    border: '1px solid rgba(255, 255, 255, 0.3)',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.75rem',
+                                                    fontWeight: 'bold',
+                                                    color: editedPost.heatchecksEdge.confidence === 'high' ? '#4caf50' : editedPost.heatchecksEdge.confidence === 'medium' ? '#ffc107' : '#ff9800',
+                                                    textTransform: 'uppercase',
+                                                    cursor: 'pointer',
+                                                    fontFamily: "'Courier New', monospace"
+                                                }}
+                                            >
+                                                <option value="low">LOW</option>
+                                                <option value="medium">MEDIUM</option>
+                                                <option value="high">HIGH</option>
+                                            </select>
+                                        </div>
                                     </div>
                                     
-                                    {/* Betting Lines */}
+                                    {/* Betting Lines (Read-only - from API) */}
                                     {editedPost.heatchecksEdge.lines && editedPost.heatchecksEdge.lines.length > 0 && (
                                         <div style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
                                             <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace" }}>BETTING LINES:</div>
@@ -2068,60 +2233,165 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
                                         </div>
                                     )}
                                     
-                                    {/* Rationale Bullets */}
-                                    {editedPost.heatchecksEdge.rationaleBullets && editedPost.heatchecksEdge.rationaleBullets.length > 0 && (
-                                        <div style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                                            <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace" }}>RATIONALE:</div>
-                                            {editedPost.heatchecksEdge.rationaleBullets.map((bullet: string, idx: number) => (
-                                                <div key={idx} style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.9)', marginBottom: '0.25rem', paddingLeft: '1rem', position: 'relative' }}>
-                                                    <span style={{ position: 'absolute', left: '0', color: '#f84242' }}>•</span>
-                                                    {bullet}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    
-                                    {/* Final Call */}
-                                    <div style={{
-                                        color: 'rgba(255, 255, 255, 0.95)',
-                                        fontSize: '1rem',
-                                        lineHeight: '1.8',
-                                        fontFamily: "'Courier New', monospace",
-                                        fontWeight: 'bold',
-                                        textShadow: '0 0 15px rgba(255, 255, 255, 0.3), 0 2px 10px rgba(0, 0, 0, 0.5)',
-                                        padding: '1rem',
-                                        background: 'rgba(0, 0, 0, 0.3)',
-                                        borderRadius: '2px',
-                                        border: '1px solid rgba(248, 66, 66, 0.4)',
-                                        whiteSpace: 'pre-wrap'
-                                    }}>
-                                        {editedPost.heatchecksEdge.finalCall}
+                                    {/* Rationale Bullets (Editable) */}
+                                    <div style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                                        <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace", display: 'block' }}>RATIONALE:</label>
+                                        {(editedPost.heatchecksEdge.rationaleBullets || []).map((bullet: string, idx: number) => (
+                                            <div key={idx} style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                                                <span style={{ color: '#f84242', fontSize: '1.2rem', lineHeight: '1.5' }}>•</span>
+                                                <textarea
+                                                    value={bullet}
+                                                    onChange={(e) => {
+                                                        const newBullets = [...(editedPost.heatchecksEdge.rationaleBullets || [])];
+                                                        newBullets[idx] = e.target.value;
+                                                        handleFieldChange('heatchecksEdge.rationaleBullets', newBullets);
+                                                    }}
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '0.5rem',
+                                                        background: 'rgba(0, 0, 0, 0.3)',
+                                                        border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                        borderRadius: '4px',
+                                                        color: 'rgba(255, 255, 255, 0.9)',
+                                                        fontSize: '0.85rem',
+                                                        fontFamily: "'Courier New', monospace",
+                                                        resize: 'vertical',
+                                                        minHeight: '2rem'
+                                                    }}
+                                                    rows={2}
+                                                />
+                                                <button
+                                                    onClick={() => {
+                                                        const newBullets = [...(editedPost.heatchecksEdge.rationaleBullets || [])];
+                                                        newBullets.splice(idx, 1);
+                                                        handleFieldChange('heatchecksEdge.rationaleBullets', newBullets);
+                                                    }}
+                                                    style={{
+                                                        padding: '0.25rem 0.5rem',
+                                                        background: 'rgba(248, 66, 66, 0.2)',
+                                                        border: '1px solid rgba(248, 66, 66, 0.5)',
+                                                        borderRadius: '4px',
+                                                        color: '#f84242',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem'
+                                                    }}
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <button
+                                            onClick={() => {
+                                                const newBullets = [...(editedPost.heatchecksEdge.rationaleBullets || []), ''];
+                                                handleFieldChange('heatchecksEdge.rationaleBullets', newBullets);
+                                            }}
+                                            style={{
+                                                marginTop: '0.5rem',
+                                                padding: '0.5rem 1rem',
+                                                background: 'rgba(76, 175, 80, 0.2)',
+                                                border: '1px solid rgba(76, 175, 80, 0.5)',
+                                                borderRadius: '4px',
+                                                color: '#4caf50',
+                                                cursor: 'pointer',
+                                                fontSize: '0.75rem',
+                                                fontFamily: "'Courier New', monospace"
+                                            }}
+                                        >
+                                            + Add Rationale Bullet
+                                        </button>
                                     </div>
                                     
-                                    {/* Risk Counterpoints */}
-                                    {editedPost.heatchecksEdge.riskCounterpoints && editedPost.heatchecksEdge.riskCounterpoints.length > 0 && (
-                                        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                                            <div style={{ fontSize: '0.75rem', color: 'rgba(255, 152, 0, 0.8)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace" }}>RISKS:</div>
-                                            {editedPost.heatchecksEdge.riskCounterpoints.map((risk: string, idx: number) => (
-                                                <div key={idx} style={{ fontSize: '0.85rem', color: 'rgba(255, 152, 0, 0.9)', marginBottom: '0.25rem', paddingLeft: '1rem', position: 'relative' }}>
-                                                    <span style={{ position: 'absolute', left: '0' }}>⚠</span>
-                                                    {risk}
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    
-                                    {/* Confidence Level */}
-                                    {editedPost.heatchecksEdge.confidence && (
-                                        <div style={{ marginTop: '1rem', fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.6)', fontFamily: "'Courier New', monospace" }}>
-                                            Confidence: <span style={{ 
-                                                color: editedPost.heatchecksEdge.confidence === 'high' ? '#4caf50' : 
-                                                       editedPost.heatchecksEdge.confidence === 'medium' ? '#ffc107' : '#ff9800',
+                                    {/* Final Call (Editable) */}
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace", display: 'block' }}>FINAL CALL:</label>
+                                        <textarea
+                                            value={editedPost.heatchecksEdge.finalCall || ''}
+                                            onChange={(e) => handleFieldChange('heatchecksEdge.finalCall', e.target.value)}
+                                            style={{
+                                                width: '100%',
+                                                minHeight: '200px',
+                                                padding: '1rem',
+                                                background: 'rgba(0, 0, 0, 0.3)',
+                                                border: '1px solid rgba(248, 66, 66, 0.4)',
+                                                borderRadius: '2px',
+                                                color: 'rgba(255, 255, 255, 0.95)',
+                                                fontSize: '1rem',
+                                                lineHeight: '1.8',
+                                                fontFamily: "'Courier New', monospace",
                                                 fontWeight: 'bold',
-                                                textTransform: 'uppercase'
-                                            }}>{editedPost.heatchecksEdge.confidence}</span>
-                                        </div>
-                                    )}
+                                                resize: 'vertical'
+                                            }}
+                                            placeholder="Enter the final call/recommendation..."
+                                        />
+                                    </div>
+                                    
+                                    {/* Risk Counterpoints (Editable) */}
+                                    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                                        <label style={{ fontSize: '0.75rem', color: 'rgba(255, 152, 0, 0.8)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace", display: 'block' }}>RISKS:</label>
+                                        {(editedPost.heatchecksEdge.riskCounterpoints || []).map((risk: string, idx: number) => (
+                                            <div key={idx} style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                                                <span style={{ color: 'rgba(255, 152, 0, 0.9)', fontSize: '1.2rem', lineHeight: '1.5' }}>⚠</span>
+                                                <textarea
+                                                    value={risk}
+                                                    onChange={(e) => {
+                                                        const newRisks = [...(editedPost.heatchecksEdge.riskCounterpoints || [])];
+                                                        newRisks[idx] = e.target.value;
+                                                        handleFieldChange('heatchecksEdge.riskCounterpoints', newRisks);
+                                                    }}
+                                                    style={{
+                                                        flex: 1,
+                                                        padding: '0.5rem',
+                                                        background: 'rgba(0, 0, 0, 0.3)',
+                                                        border: '1px solid rgba(255, 152, 0, 0.3)',
+                                                        borderRadius: '4px',
+                                                        color: 'rgba(255, 152, 0, 0.9)',
+                                                        fontSize: '0.85rem',
+                                                        fontFamily: "'Courier New', monospace",
+                                                        resize: 'vertical',
+                                                        minHeight: '2rem'
+                                                    }}
+                                                    rows={2}
+                                                />
+                                                <button
+                                                    onClick={() => {
+                                                        const newRisks = [...(editedPost.heatchecksEdge.riskCounterpoints || [])];
+                                                        newRisks.splice(idx, 1);
+                                                        handleFieldChange('heatchecksEdge.riskCounterpoints', newRisks);
+                                                    }}
+                                                    style={{
+                                                        padding: '0.25rem 0.5rem',
+                                                        background: 'rgba(248, 66, 66, 0.2)',
+                                                        border: '1px solid rgba(248, 66, 66, 0.5)',
+                                                        borderRadius: '4px',
+                                                        color: '#f84242',
+                                                        cursor: 'pointer',
+                                                        fontSize: '0.75rem'
+                                                    }}
+                                                >
+                                                    ×
+                                                </button>
+                                            </div>
+                                        ))}
+                                        <button
+                                            onClick={() => {
+                                                const newRisks = [...(editedPost.heatchecksEdge.riskCounterpoints || []), ''];
+                                                handleFieldChange('heatchecksEdge.riskCounterpoints', newRisks);
+                                            }}
+                                            style={{
+                                                marginTop: '0.5rem',
+                                                padding: '0.5rem 1rem',
+                                                background: 'rgba(255, 152, 0, 0.2)',
+                                                border: '1px solid rgba(255, 152, 0, 0.5)',
+                                                borderRadius: '4px',
+                                                color: 'rgba(255, 152, 0, 0.9)',
+                                                cursor: 'pointer',
+                                                fontSize: '0.75rem',
+                                                fontFamily: "'Courier New', monospace"
+                                            }}
+                                        >
+                                            + Add Risk Counterpoint
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         )}
@@ -2258,11 +2528,10 @@ Be VERY strict - it's better to flag someone as invalid incorrectly than to allo
 `;
     
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-pro',
       contents: validationPrompt,
       config: {
         tools: [{ googleSearch: {} }],
-        responseMimeType: 'application/json',
         responseSchema: {
           type: Type.ARRAY,
           items: {
@@ -2429,7 +2698,7 @@ INSTRUCTIONS:
 `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-pro',
       contents: correctionPrompt,
       config: {
         tools: [{ googleSearch: {} }],
@@ -2596,11 +2865,10 @@ Return ONLY a valid JSON object matching this schema:
     console.log(`[generateHeatChecksEdge] Generating Edge for ${teamA} vs ${teamB}...`);
     
     const response = await ai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-pro',
       contents: edgePrompt,
       config: {
         tools: [{ googleSearch: {} }],
-        responseMimeType: 'application/json',
       }
     });
 
@@ -2906,11 +3174,10 @@ async function generateHeatCheckNarrative(matchup: { league: string; teamA: stri
   try {
     console.log(`[generateHeatCheckNarrative] Making API call to Gemini...`);
     const response = await localAi.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: 'gemini-2.5-pro',
       contents: prompt,
       config: {
         tools: [{ googleSearch: {} }],
-        responseMimeType: 'application/json', // Enforce JSON output
       }
     });
 
