@@ -2334,14 +2334,27 @@ async function correctArticleWithAI(
   const correctionsSummary: string[] = [];
   
   // Extract invalid players/coaches from validation warnings
+  // Updated to handle new format: "⚠️ {Name}: {warning} (Current: {status}, Injury: {injury_status})"
   const invalidCharacters: Array<{ name: string; team: string; status: string }> = [];
   validationWarnings.forEach(warning => {
-    // Parse warning format: "⚠️ {Name}: {warning} (Current: {status})"
-    const match = warning.match(/⚠️\s+([^:]+):\s+(.+?)\s+\(Current:\s+(.+?)\)/);
+    // Skip low confidence warnings (they're informational, not actionable)
+    if (warning.includes('LOW CONFIDENCE')) {
+      return;
+    }
+    
+    // Parse warning format: "⚠️ {Name}: {warning} (Current: {status}[, Injury: {injury}])"
+    // Handle both old and new formats
+    const match = warning.match(/⚠️\s+([^:]+):\s+(.+?)\s+\(Current:\s+([^,)]+)(?:,\s+Injury:\s+([^)]+))?\)/);
     if (match) {
       const name = match[1].trim();
       const warningMsg = match[2].trim();
-      const status = match[3].trim();
+      let status = match[3].trim();
+      const injuryStatus = match[4] ? match[4].trim() : '';
+      
+      // Include injury status in the status field if present
+      if (injuryStatus) {
+        status = `${status} (${injuryStatus})`;
+      }
       
       // Determine which team was mentioned (if possible from warning or default to teamA)
       let team = teamA; // Default
