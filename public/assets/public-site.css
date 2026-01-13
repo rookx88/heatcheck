@@ -916,7 +916,7 @@ body {
     .top-left {
         grid-column: 1;
         grid-row: 1;
-        padding: 1rem;
+        padding: 1rem 1rem 0.4rem 1rem;
         justify-content: center;
     }
 
@@ -937,7 +937,7 @@ body {
 
     /* Logo Size Reduction */
     .header-logo {
-        height: 120px;
+        height: 192px;
         transform: translateY(0);
     }
 
@@ -1105,7 +1105,7 @@ body {
 @media (max-width: 480px) {
     /* Further Reduce Padding */
     .top-left {
-        padding: 0.75rem;
+        padding: 0.75rem 0.75rem 0.3rem 0.75rem;
     }
 
     .top-right {
@@ -1124,7 +1124,7 @@ body {
     }
 
     .header-logo {
-        height: 100px;
+        height: 160px;
     }
 
     .bottom-right {
