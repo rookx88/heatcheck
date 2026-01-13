@@ -563,6 +563,7 @@ async function generateAllPages(): Promise<void> {
             updatedAt: post.updatedAt || post.createdAt,
             createdAt: post.createdAt,
             storyType: post.storyType,
+            status: post.status, // Include status for radar modal filtering
             websiteStory: {
                 slug: post.websiteStory?.seo?.slug || '',
                 headline: post.websiteStory?.headline || '',
