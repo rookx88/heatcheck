@@ -21,8 +21,29 @@ const staticHtmlPlugin = () => {
           return next();
         }
         
-        // Root route - let React app handle it
+        // React app routes - rewrite /app to / so Vite can process it
+        // This allows Vite's React plugin to work correctly
+        if (urlPath === '/app' || urlPath === '/app/') {
+          // Rewrite the request internally so Vite processes it as root
+          // The browser URL stays as /app but Vite sees it as /
+          req.url = '/';
+          return next();
+        }
+        
+        // For /app/* routes, rewrite to /* so Vite can handle assets correctly
+        if (urlPath.startsWith('/app/')) {
+          req.url = urlPath.replace('/app', '');
+          return next();
+        }
+        
+        // Root route - check if static HTML exists first, otherwise let React app handle it
         if (!urlPath || urlPath === '/' || urlPath === '/index.html') {
+          const staticIndexPath = path.join(process.cwd(), 'public', 'index.html');
+          if (fs.existsSync(staticIndexPath)) {
+            res.setHeader('Content-Type', 'text/html');
+            res.end(fs.readFileSync(staticIndexPath));
+            return;
+          }
           return next();
         }
         

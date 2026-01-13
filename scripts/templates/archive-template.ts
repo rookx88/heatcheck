@@ -20,6 +20,7 @@ export interface HeatcheckPost {
         imageUrl?: string;
     };
     heatCheckData?: any;
+    storyType?: string;
 }
 
 /**
@@ -27,6 +28,89 @@ export interface HeatcheckPost {
  * Returns score breakdown with 5 categories, each 0-20 points = total 0-100
  */
 function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number; breakdown: { stakes: number; recency: number; payback: number; history: number; emotion: number } } {
+    // Special handling for DFS articles
+    if (post.storyType === 'dfs_article') {
+        const heatCheckData = post.heatCheckData as any;
+        const dfsPlayers = heatCheckData?.dfsPlayers || [];
+        const articleDate = post.matchupScheduledDate || post.createdAt;
+        
+        // Calculate days since article date (same day = 0, next day = 1, etc.)
+        let daysAgo = 365;
+        if (articleDate) {
+            try {
+                const articleDateTime = new Date(articleDate);
+                const now = new Date();
+                const diffTime = Math.abs(now.getTime() - articleDateTime.getTime());
+                daysAgo = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            } catch {
+                daysAgo = 365;
+            }
+        }
+        
+        // RECENCY (0-20 points) - DFS articles are most valuable same day
+        let recencyScore = 0;
+        if (daysAgo === 0) recencyScore = 20; // Same day = max score
+        else if (daysAgo === 1) recencyScore = 15; // Yesterday
+        else if (daysAgo === 2) recencyScore = 10; // 2 days ago
+        else if (daysAgo <= 7) recencyScore = 8; // Within a week
+        else if (daysAgo <= 30) recencyScore = 5; // Within a month
+        else recencyScore = 2; // Older
+        
+        // STAKES (0-20 points) - Based on number of players analyzed
+        let stakesScore = 0;
+        const playerCount = dfsPlayers.length;
+        if (playerCount >= 10) stakesScore = 18; // Full slate analysis
+        else if (playerCount >= 8) stakesScore = 15;
+        else if (playerCount >= 5) stakesScore = 12;
+        else if (playerCount >= 3) stakesScore = 8;
+        else stakesScore = 5;
+        
+        // EMOTION (0-20 points) - Based on average confidence scores
+        let emotionScore = 0;
+        if (playerCount > 0) {
+            const avgConfidence = dfsPlayers.reduce((sum: number, p: any) => sum + (p.confidenceScore || 0), 0) / playerCount;
+            if (avgConfidence >= 80) emotionScore = 18;
+            else if (avgConfidence >= 70) emotionScore = 15;
+            else if (avgConfidence >= 60) emotionScore = 12;
+            else if (avgConfidence >= 50) emotionScore = 8;
+            else emotionScore = 5;
+        }
+        
+        // HISTORY (0-20 points) - Variety of narrative types
+        const narrativeTypes = new Set(dfsPlayers.map((p: any) => p.narrativeType || '').filter(Boolean));
+        let historyScore = 0;
+        if (narrativeTypes.size >= 5) historyScore = 18;
+        else if (narrativeTypes.size >= 4) historyScore = 15;
+        else if (narrativeTypes.size >= 3) historyScore = 12;
+        else if (narrativeTypes.size >= 2) historyScore = 8;
+        else historyScore = 5;
+        
+        // PAYBACK (0-20 points) - Count of revenge/motivation narratives
+        let paybackScore = 0;
+        const paybackNarratives = dfsPlayers.filter((p: any) => {
+            const type = (p.narrativeType || '').toLowerCase();
+            return type.includes('revenge') || type.includes('motivation') || type.includes('homecoming');
+        }).length;
+        if (paybackNarratives >= 5) paybackScore = 18;
+        else if (paybackNarratives >= 3) paybackScore = 15;
+        else if (paybackNarratives >= 2) paybackScore = 12;
+        else if (paybackNarratives >= 1) paybackScore = 8;
+        else paybackScore = 5;
+        
+        const total = stakesScore + recencyScore + paybackScore + historyScore + emotionScore;
+        
+        return {
+            total: Math.min(100, Math.max(0, total)),
+            breakdown: {
+                stakes: stakesScore,
+                recency: recencyScore,
+                payback: paybackScore,
+                history: historyScore,
+                emotion: emotionScore
+            }
+        };
+    }
+    
     if (!post.heatCheckData) {
         return {
             total: 0,
@@ -363,7 +447,22 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
     const teamBShort = getShortTeamName(post.teamB || '');
     const matchup = `${teamAShort} VS ${teamBShort}`.toUpperCase();
     const league = (post.league || '').toUpperCase();
-    const headline = post.websiteStory?.headline || 'Untitled';
+    
+    // Check if this is a DFS article
+    const isDFSArticle = post.storyType === 'dfs_article';
+    
+    // For DFS articles, recalculate headline based on matchupScheduledDate
+    let headline = post.websiteStory?.headline || 'Untitled';
+    if (isDFSArticle) {
+        const articleDate = post.matchupScheduledDate || post.createdAt;
+        try {
+            const dateForDayOfWeek = new Date(articleDate + (articleDate.includes('T') ? '' : 'T12:00:00'));
+            const dayOfWeek = dateForDayOfWeek.toLocaleDateString('en-US', { weekday: 'long' });
+            headline = `${dayOfWeek} DFS Slate Value Picks`;
+        } catch {
+            // Keep original headline if date parsing fails
+        }
+    }
     const imageName = post.websiteStory?.image || post.websiteStory?.imageUrl || '';
     const imagePath = imageName 
         ? (imageName.startsWith('http') 
@@ -420,30 +519,56 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
         }
     }
     
-    const articleUrl = `/${leagueLower}/${date}/${matchupSlug}/${finalNarrativeSlug}/`;
+    // For DFS articles, generate matchup text with day of week + "DFS Football"
+    let displayMatchup = matchup;
+    if (isDFSArticle) {
+        const articleDate = post.matchupScheduledDate || post.createdAt;
+        try {
+            const dateForDayOfWeek = new Date(articleDate + (articleDate.includes('T') ? '' : 'T12:00:00'));
+            const dayOfWeek = dateForDayOfWeek.toLocaleDateString('en-US', { weekday: 'long' });
+            const sportLabel = league === 'NBA' ? 'Basketball' : league === 'NFL' ? 'Football' : league;
+            displayMatchup = `${dayOfWeek} DFS ${sportLabel}`.toUpperCase();
+        } catch {
+            displayMatchup = 'DFS VALUE';
+        }
+    }
+    
+    // URL structure differs for DFS articles
+    const articleUrl = isDFSArticle 
+        ? `/dfs/${leagueLower}/${date}/dfs-value-narratives-${date}/`
+        : `/${leagueLower}/${date}/${matchupSlug}/${finalNarrativeSlug}/`;
     const isHeatHigh = heatScore >= 71; // ~71 on 100 scale = ~25 on 35 scale
     
-    // Extract quote from evidence bundle
-    const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
-    const quotes = evidenceBundle.quotes || [];
-    const selectedQuote = quotes.length > 0 ? quotes[0] : null; // Use first quote
-    const quoteText = selectedQuote?.quote || '';
-    const quoteSpeaker = selectedQuote?.speaker || '';
-    const quoteTeam = selectedQuote?.team || '';
+    // For DFS articles, use special quote text
+    let displayQuote = '';
+    let quoteSpeaker = '';
+    let quoteTeam = '';
     
-    // Truncate quote if too long (max ~120 chars for card display)
-    const maxQuoteLength = 120;
-    const displayQuote = quoteText.length > maxQuoteLength 
-        ? quoteText.substring(0, maxQuoteLength).trim() + '...'
-        : quoteText;
+    if (isDFSArticle) {
+        displayQuote = "Take a deeper look at narratives on key value players for today's slate";
+    } else {
+        // Extract quote from evidence bundle for regular articles
+        const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
+        const quotes = evidenceBundle.quotes || [];
+        const selectedQuote = quotes.length > 0 ? quotes[0] : null; // Use first quote
+        const quoteText = selectedQuote?.quote || '';
+        quoteSpeaker = selectedQuote?.speaker || '';
+        quoteTeam = selectedQuote?.team || '';
+        
+        // Truncate quote if too long (max ~120 chars for card display)
+        const maxQuoteLength = 120;
+        displayQuote = quoteText.length > maxQuoteLength 
+            ? quoteText.substring(0, maxQuoteLength).trim() + '...'
+            : quoteText;
+    }
     
     // Build quote HTML if available
     const quoteHtml = displayQuote ? `
         <div style="margin: 0 0 1rem 0; padding: 0.75rem; background: rgba(0, 0, 0, 0.4); border-left: 3px solid rgba(248, 66, 66, 0.6); border-radius: 2px; font-family: 'Courier New', monospace;">
-            <p style="font-size: 0.7rem; line-height: 1.4; color: rgba(255, 255, 255, 0.85); font-style: italic; margin: 0 0 0.4rem 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">
+            <p style="font-size: 0.7rem; line-height: 1.4; color: rgba(255, 255, 255, 0.85); font-style: italic; margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">
                 "${escapeHtml(displayQuote)}"
             </p>
-            ${quoteSpeaker ? `<div style="font-size: 0.65rem; color: rgba(255, 255, 255, 0.6); margin: 0; text-align: right;">— ${escapeHtml(quoteSpeaker)}${quoteTeam ? ` (${escapeHtml(quoteTeam)})` : ''}</div>` : ''}
+            ${!isDFSArticle && quoteSpeaker ? `<div style="font-size: 0.65rem; color: rgba(255, 255, 255, 0.6); margin: 0.4rem 0 0 0; text-align: right;">— ${escapeHtml(quoteSpeaker)}${quoteTeam ? ` (${escapeHtml(quoteTeam)})` : ''}</div>` : ''}
         </div>
     ` : '';
     
@@ -454,17 +579,25 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
                     <div style="width: 35px; height: 35px; min-width: 35px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
                         <div style="color: #fff; font-size: 0.65rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 2px 4px rgba(255, 255, 255, 0.4);">${dateStr}</div>
                     </div>
-                    <div style="color: #fff; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 2px 4px rgba(255, 255, 255, 0.4);">${matchup}</div>
+                    <div style="color: #fff; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 2px 4px rgba(255, 255, 255, 0.4);">${displayMatchup}</div>
                     <div style="width: 35px; height: 35px; min-width: 35px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
                         <div style="color: #fff; font-size: 0.6rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 2px 4px rgba(255, 255, 255, 0.4);">${league}</div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
+                    ${isDFSArticle ? `
+                    <!-- DFS Heat Indicator -->
+                    <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #00ff41; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #00ff4140, 0 0 15px #00ff4160; overflow: hidden;">
+                        <div style="color: #00ff41; font-size: 1.2rem; font-weight: 900; text-shadow: 0 0 20px #00ff41, 0 0 30px rgba(0, 255, 65, 0.7), 0 0 40px rgba(0, 255, 65, 0.5), 0 0 2px rgba(255, 255, 255, 0.9); font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative;">DFS</div>
+                    </div>
+                    ` : `
+                    <!-- Regular Heat Indicator -->
                     <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #00ff41; border-radius: 50%; opacity: 0.5;"></div>
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
                         <div style="color: #ff0040; font-size: 1.55rem; font-weight: 900; text-shadow: 0 0 20px #ff0040, 0 0 30px rgba(255, 0, 64, 0.7), 0 0 40px rgba(255, 0, 64, 0.5), 0 0 2px rgba(255, 255, 255, 0.9); font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative;">${heatScore}</div>
                     </div>
+                    `}
                     <div class="post-card-image-container" data-post-id="${post.id}" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
                         ${imagePath ? `<img src="${imagePath}" alt="${escapeHtml(`${teamAShort} vs ${teamBShort} ${league} ${finalNarrativeSlug} narrative - ${headline} - HeatChecks Analysis`)}" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">` : '<div style="width: 100%; height: 100%; background: rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.5); font-size: 0.75rem;">No Image</div>'}
                     </div>
@@ -524,11 +657,45 @@ export function generateArchivePage(
     
     const archiveUrl = page === 1 ? `${baseUrl}/archive/` : `${baseUrl}/archive/page/${page}/`;
     
+    // Generate CollectionPage schema
+    const collectionPageSchema = {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "name": page === 1 ? "HeatChecks Archive" : `HeatChecks Archive - Page ${page}`,
+        "description": "Browse all HeatChecks articles and analysis.",
+        "url": archiveUrl,
+        "numberOfItems": posts.length
+    };
+    
+    // Generate breadcrumb schema
+    const breadcrumbSchema = {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {
+                "@type": "ListItem",
+                "position": 1,
+                "name": "Home",
+                "item": `${baseUrl}/`
+            },
+            {
+                "@type": "ListItem",
+                "position": 2,
+                "name": "Archive",
+                "item": archiveUrl
+            }
+        ]
+    };
+    
+    const keywords = 'sports betting archive, DFS archive, NBA archive, NFL archive, sports analysis archive, betting picks archive';
+    
     const options: BaseTemplateOptions = {
-        title: page === 1 ? 'Archive | HeatChecks' : `Archive - Page ${page} | HeatChecks`,
-        description: 'Browse all HeatChecks articles.',
+        title: page === 1 ? 'Archive | HeatChecks Sports Analysis Archive' : `Archive - Page ${page} | HeatChecks`,
+        description: 'Browse all HeatChecks articles and analysis. NBA, NFL, and DFS betting picks, predictions, and narrative-driven insights.',
         url: archiveUrl,
         baseUrl,
+        keywords: keywords,
+        schemaOrg: [collectionPageSchema, breadcrumbSchema],
         posts
     };
     

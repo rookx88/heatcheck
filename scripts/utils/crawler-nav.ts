@@ -26,7 +26,7 @@ export function generateCrawlerNav(recentDates: RecentDate[], baseUrl: string = 
         datesByLeague[league].sort((a, b) => b.date.localeCompare(a.date));
     });
 
-    const leagues = ['NBA', 'NFL', 'EPL'];
+    const leagues = ['NBA', 'NFL', 'EPL', 'DFS'];
     
     // Use relative URLs for local navigation (baseUrl only for canonical/OG tags)
     // For static HTML files, use relative paths so navigation works correctly
@@ -42,12 +42,18 @@ export function generateCrawlerNav(recentDates: RecentDate[], baseUrl: string = 
         navHtml += `  <div class="league-nav-item">\n`;
         navHtml += `    <a href="javascript:void(0)" class="nav-link league-link" data-league="${league}">${league} <span class="league-arrow">▶</span></a>\n`;
         navHtml += `    <div class="nav-submenu hidden">\n`;
-        navHtml += `      <a href="${urlPrefix}/${leagueLower}/" class="nav-link nav-submenu-item">HUB</a>\n`;
         
-        // Add date links (limit to 10 most recent)
-        dates.slice(0, 10).forEach(date => {
-            navHtml += `      <a href="${urlPrefix}/${leagueLower}/${date.date}/" class="nav-link nav-submenu-item">${date.display}</a>\n`;
-        });
+        // Special handling for DFS - just link to hub
+        if (league === 'DFS') {
+            navHtml += `      <a href="${urlPrefix}/dfs/" class="nav-link nav-submenu-item">HUB</a>\n`;
+        } else {
+            navHtml += `      <a href="${urlPrefix}/${leagueLower}/" class="nav-link nav-submenu-item">HUB</a>\n`;
+            
+            // Add date links (limit to 10 most recent)
+            dates.slice(0, 10).forEach(date => {
+                navHtml += `      <a href="${urlPrefix}/${leagueLower}/${date.date}/" class="nav-link nav-submenu-item">${date.display}</a>\n`;
+            });
+        }
         
         navHtml += `    </div>\n`;
         navHtml += `  </div>\n`;

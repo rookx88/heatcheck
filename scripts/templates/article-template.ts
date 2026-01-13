@@ -12,6 +12,7 @@ export interface HeatcheckPost {
     matchupScheduledDate?: string;
     createdAt: string;
     updatedAt: string;
+    storyType?: string;
     websiteStory: {
         headline: string;
         dek: string;
@@ -64,6 +65,18 @@ export interface HeatcheckPost {
         article?: {
             long_form_markdown?: string;
         };
+        dfsPlayers?: Array<{
+            rank: number;
+            playerName: string;
+            position: string;
+            team: string;
+            opponent: string;
+            salary: string | number;
+            narrativeType: string;
+            confidenceScore: number;
+            analysis: string;
+            keyStat?: string;
+        }>;
     };
     heatchecksEdge?: {
         finalCall?: string;
@@ -291,12 +304,12 @@ export function generateArticlePage(
         </nav>
     `;
     
-    // Main content area (two-column layout)
+    // Main content area (two-column layout) with semantic HTML
     const content = `
         ${breadcrumbHtml}
-        <div class="article-content-grid" style="display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: auto 1fr; gap: 0.5rem; padding: 0.5rem;">
+        <article class="article-content-grid" style="display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: auto 1fr; gap: 0.5rem; padding: 0.5rem;">
             <!-- Left Column: Main Article -->
-            <div class="article-main-column" style="grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden;">
+            <section class="article-main-column" style="grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden;">
                 <div style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
                     <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.5); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);"></div>
                     <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.5); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);"></div>
@@ -305,12 +318,14 @@ export function generateArticlePage(
                 </div>
                 <div style="flex: 1; overflow-y: auto; padding: 1.5rem; font-family: 'Courier New', monospace; color: rgba(255, 255, 255, 0.85); font-size: 0.95rem; line-height: 1.8; scrollbar-width: none; -ms-overflow-style: none;">
                     <style>.main-article-content::-webkit-scrollbar { display: none; }</style>
-                    <a href="/" class="article-back-btn" style="display: inline-block; margin-bottom: 1rem; padding: 0.4rem 0.8rem; background: #000; border: 1px solid #f84242; color: #f84242; text-decoration: none; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.9rem; transition: all 0.3s ease;">← BACK</a>
-                    <div style="margin-bottom: 2rem; border-bottom: 1px dashed rgba(255, 255, 255, 0.3); padding-bottom: 1rem;">
+                    <nav aria-label="Breadcrumb navigation">
+                        <a href="/" class="article-back-btn" style="display: inline-block; margin-bottom: 1rem; padding: 0.4rem 0.8rem; background: #000; border: 1px solid #f84242; color: #f84242; text-decoration: none; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.9rem; transition: all 0.3s ease;">← BACK</a>
+                    </nav>
+                    <header style="margin-bottom: 2rem; border-bottom: 1px dashed rgba(255, 255, 255, 0.3); padding-bottom: 1rem;">
                         <h1 style="color: rgba(255, 255, 255, 0.95); font-size: 1.3rem; margin-bottom: 0.5rem; font-weight: bold; line-height: 1.3;">${escapeHtml(post.websiteStory.headline)}</h1>
-                        <div style="color: rgba(255, 255, 255, 0.6); font-size: 0.85rem; margin-bottom: 0.5rem;">// ${escapeHtml(post.websiteStory.dek)}</div>
-                        <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.8rem; font-family: 'Courier New', monospace;">&gt; MATCHUP: ${escapeHtml(post.league.toUpperCase())} | ${escapeHtml(post.teamA)} vs ${escapeHtml(post.teamB)}</div>
-                    </div>
+                        <p style="color: rgba(255, 255, 255, 0.6); font-size: 0.85rem; margin-bottom: 0.5rem;">// ${escapeHtml(post.websiteStory.dek)}</p>
+                        <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.8rem; font-family: 'Courier New', monospace;">&gt; MATCHUP: ${escapeHtml(post.league.toUpperCase())} | ${escapeHtml(post.teamA)} vs ${escapeHtml(post.teamB)} | DATE: <time datetime="${post.matchupScheduledDate || post.createdAt}">${escapeHtml(date)}</time></div>
+                    </header>
                     ${imagePath ? `
                     <div style="margin-bottom: 2rem; border: 1px solid rgba(255, 255, 255, 0.2); padding: 0.5rem; background: rgba(255, 255, 255, 0.03);">
                         <div style="color: rgba(255, 255, 255, 0.7); font-size: 0.75rem; margin-bottom: 0.5rem; font-family: 'Courier New', monospace; font-weight: bold;">&gt; IMAGE_ASSET [LOADED]</div>
@@ -326,12 +341,12 @@ export function generateArticlePage(
                     </div>
                     ${edgeHtml}
                 </div>
-            </div>
+            </section>
             
             <!-- Right Column: Narrative Rack & Evidence Board -->
-            <div class="article-sidebar-column" style="grid-column: 2; grid-row: 1 / -1; display: flex; flex-direction: column; gap: 0.5rem; overflow: hidden;">
+            <aside class="article-sidebar-column" style="grid-column: 2; grid-row: 1 / -1; display: flex; flex-direction: column; gap: 0.5rem; overflow: hidden;">
                 <!-- Narrative Rack -->
-                <div style="flex: 1 1 50%; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden; min-height: 0;">
+                <section aria-label="Narrative Analysis" style="flex: 1 1 50%; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden; min-height: 0;">
                     <div style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(248, 66, 66, 0.3); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
                         <div style="width: 6px; height: 6px; background: rgba(248, 66, 66, 0.8); border-radius: 50%; box-shadow: 0 0 6px rgba(248, 66, 66, 0.5);"></div>
                         <div style="color: rgba(255, 255, 255, 0.9); font-size: 0.75rem; font-family: 'Courier New', monospace; letter-spacing: 0.1em; font-weight: bold;">NARRATIVE_RACK [SLOT_ACTIVE]</div>
@@ -340,10 +355,10 @@ export function generateArticlePage(
                         <style>div[style*="overflow-y"]::-webkit-scrollbar { display: none; }</style>
                         ${narrativeCardsHtml || '<div style="color: #666; font-size: 0.75rem;">No narrative cards available</div>'}
                     </div>
-                </div>
+                </section>
                 
                 <!-- Evidence Board -->
-                <div style="flex: 1 1 50%; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden; min-height: 0;">
+                <section aria-label="Evidence and Quotes" style="flex: 1 1 50%; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden; min-height: 0;">
                     <div style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(248, 66, 66, 0.3); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
                         <div style="width: 6px; height: 6px; background: rgba(248, 66, 66, 0.8); border-radius: 50%; box-shadow: 0 0 6px rgba(248, 66, 66, 0.5);"></div>
                         <div style="color: rgba(255, 255, 255, 0.9); font-size: 0.75rem; font-family: 'Courier New', monospace; letter-spacing: 0.1em; font-weight: bold;">EVIDENCE_RACK [DATA_STREAM]</div>
@@ -364,22 +379,22 @@ export function generateArticlePage(
                         ` : ''}
                         ${displayQuotes.length === 0 && timelineEvents.length === 0 ? '<div style="color: #666; font-size: 0.75rem;">No evidence data available</div>' : ''}
                     </div>
-                </div>
-            </div>
-        </div>
+                </section>
+            </aside>
+        </article>
         
         <!-- Internal Navigation & Related Articles -->
-        <div style="margin-top: 2rem; padding: 1rem; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.2);">
+        <nav aria-label="Internal navigation" style="margin-top: 2rem; padding: 1rem; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.2);">
             <div style="color: rgba(255, 255, 255, 0.7); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.5rem;">&gt; INTERNAL_NAVIGATION</div>
             <a href="/${league}/" style="color: rgba(255, 255, 255, 0.85); text-decoration: none; margin-right: 1rem; padding: 0.3rem 0.6rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.2); font-family: 'Courier New', monospace; font-size: 0.8rem; transition: all 0.2s ease; display: inline-block; margin-bottom: 0.5rem;" onmouseover="this.style.background='rgba(248, 66, 66, 0.2)'; this.style.borderColor='rgba(248, 66, 66, 0.5)'; this.style.color='#f84242';" onmouseout="this.style.background='rgba(0, 0, 0, 0.3)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.color='rgba(255, 255, 255, 0.85)';">${post.league.toUpperCase()} Hub</a>
             <a href="/${league}/${date}/" style="color: rgba(255, 255, 255, 0.85); text-decoration: none; margin-right: 1rem; padding: 0.3rem 0.6rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.2); font-family: 'Courier New', monospace; font-size: 0.8rem; transition: all 0.2s ease; display: inline-block; margin-bottom: 0.5rem;" onmouseover="this.style.background='rgba(248, 66, 66, 0.2)'; this.style.borderColor='rgba(248, 66, 66, 0.5)'; this.style.color='#f84242';" onmouseout="this.style.background='rgba(0, 0, 0, 0.3)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.color='rgba(255, 255, 255, 0.85)';">${date}</a>
             <a href="/archive/" style="color: rgba(255, 255, 255, 0.85); text-decoration: none; padding: 0.3rem 0.6rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.2); font-family: 'Courier New', monospace; font-size: 0.8rem; transition: all 0.2s ease; display: inline-block; margin-bottom: 0.5rem;" onmouseover="this.style.background='rgba(248, 66, 66, 0.2)'; this.style.borderColor='rgba(248, 66, 66, 0.5)'; this.style.color='#f84242';" onmouseout="this.style.background='rgba(0, 0, 0, 0.3)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.color='rgba(255, 255, 255, 0.85)';">Archive</a>
-        </div>
+        </nav>
         ${relatedPosts.length > 0 ? `
-        <div style="margin-top: 2rem; padding: 1rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1);">
-            <div style="color: rgba(255, 255, 255, 0.7); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.75rem;">&gt; RELATED_ARTICLES</div>
+        <aside aria-label="Related articles" style="margin-top: 2rem; padding: 1rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1);">
+            <h2 style="color: rgba(255, 255, 255, 0.7); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.75rem; margin-top: 0;">&gt; RELATED_ARTICLES</h2>
             ${relatedArticlesHtml}
-        </div>
+        </aside>
         ` : ''}
     `;
     
@@ -422,15 +437,39 @@ export function generateArticlePage(
             "@type": "SportsTeam",
             "name": post.teamB
         },
-        "startDate": post.matchupScheduledDate || post.createdAt
+        "startDate": post.matchupScheduledDate || post.createdAt,
+        "eventStatus": {
+            "@type": "EventStatusType",
+            "eventStatusType": "https://schema.org/EventScheduled"
+        }
     };
     
-    // Enhanced meta description: Include matchup, narrative keyword, and dek
+    // Generate Review schema for matchup analysis
+    const reviewSchema = {
+        "@context": "https://schema.org",
+        "@type": "Review",
+        "itemReviewed": {
+            "@type": "SportsEvent",
+            "name": `${post.teamA} vs ${post.teamB}`,
+            "sport": post.league
+        },
+        "author": {
+            "@type": "Organization",
+            "name": "HeatChecks"
+        },
+        "reviewBody": post.websiteStory.dek || post.websiteStory.headline,
+        "datePublished": post.createdAt
+    };
+    
+    // Enhanced meta description: Include matchup, narrative keyword, betting keywords, and dek
     // Note: narrativeKeyword is already defined above (after emotionTags extraction)
     let metaDescription = post.websiteStory.dek || '';
+    const leagueUpper = post.league.toUpperCase();
+    const bettingKeywords = `betting picks, sports betting analysis, matchup preview, game prediction`;
+    
     if (metaDescription && metaDescription.length < 140) {
-        // Add matchup and narrative context if there's room
-        metaDescription = `${matchupMeta} ${post.league} analysis: ${metaDescription}`;
+        // Add matchup, betting keywords, and narrative context if there's room
+        metaDescription = `${matchupMeta} ${leagueUpper} betting analysis: ${metaDescription}`;
         if (metaDescription.length > 160) {
             metaDescription = post.websiteStory.dek || ''; // Fallback to original if too long
         }
@@ -440,17 +479,35 @@ export function generateArticlePage(
     if (metaDescription.length > 160) {
         metaDescription = metaDescription.substring(0, 157) + '...';
     } else if (metaDescription.length < 120) {
-        metaDescription = `${metaDescription} ${matchupMeta} ${post.league} matchup analysis with narrative insights and emotional forces.`;
+        metaDescription = `${metaDescription} ${matchupMeta} ${leagueUpper} matchup analysis with narrative insights, betting picks, and emotional forces.`;
         if (metaDescription.length > 160) {
             metaDescription = metaDescription.substring(0, 157) + '...';
         }
     }
     
-    // Enhanced title tag: Include matchup for better keyword targeting
-    // Format: {Headline} | {TeamA} vs {TeamB} {League} | HeatChecks
-    const title = post.websiteStory.headline.length > 50
-        ? `${post.websiteStory.headline.substring(0, 50)}... | ${matchupMeta} ${post.league} | HeatChecks`
-        : `${post.websiteStory.headline} | ${matchupMeta} ${post.league} | HeatChecks`;
+    // Enhanced title tag: Include matchup and betting keywords for better keyword targeting
+    // Format: {Headline} | {TeamA} vs {TeamB} {League} Betting | HeatChecks
+    let title = post.websiteStory.headline;
+    if (title.length > 50) {
+        title = `${title.substring(0, 50)}... | ${matchupMeta} ${leagueUpper} Betting | HeatChecks`;
+    } else {
+        title = `${title} | ${matchupMeta} ${leagueUpper} Betting | HeatChecks`;
+    }
+    
+    // Generate keywords for meta tag
+    const narrativeKeywords = emotionTags.map(tag => tag.toLowerCase().replace(/\s+/g, '-')).join(', ');
+    const keywords = [
+        'sports betting picks',
+        'betting predictions',
+        'betting analysis',
+        'betting tips',
+        `${leagueUpper} betting`,
+        `${leagueUpper} picks`,
+        `${matchupMeta} betting`,
+        'matchup preview',
+        'game prediction',
+        narrativeKeywords
+    ].filter(k => k).join(', ');
     
     // Generate BreadcrumbList schema.org structured data
     // Only include items with URLs (Home, League, Date) - exclude matchup and article title
@@ -474,13 +531,15 @@ export function generateArticlePage(
         baseUrl,
         ogImage: imagePath ? (imagePath.startsWith('http') ? imagePath : `${baseUrl}${imagePath}`) : `${baseUrl}/images/default-og-image.jpg`,
         ogType: 'article',
+        keywords: keywords,
         articleMeta: {
             publishedTime: post.createdAt,
             modifiedTime: post.updatedAt,
             author: 'HeatChecks',
-            section: post.league
+            section: post.league,
+            tags: emotionTags.length > 0 ? emotionTags : [post.league, 'Betting Analysis', 'Matchup Preview']
         },
-        schemaOrg: [schemaOrg, sportsEventSchema, breadcrumbSchema],
+        schemaOrg: [schemaOrg, sportsEventSchema, breadcrumbSchema, reviewSchema],
         posts: [post, ...relatedPosts]
     };
     

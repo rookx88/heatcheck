@@ -775,12 +775,18 @@ function generateMatchupSlug(teamA, teamB) {
 
 /**
  * Generate article URL with new structure: /{league}/{date}/{matchup}/{narrative-slug}/
+ * For DFS articles: /dfs/{league}/{date}/dfs-value-narratives-{date}/
  */
 function generateArticleUrl(post) {
     const league = normalizeLeague(post.league || '');
     const date = post.matchupScheduledDate 
         ? formatDateForUrl(post.matchupScheduledDate)
         : formatDateForUrl(post.createdAt);
+    
+    // Handle DFS articles with special URL structure
+    if (post.storyType === 'dfs_article') {
+        return `/dfs/${league}/${date}/dfs-value-narratives-${date}/`;
+    }
     
     // Check if stored slug is in new format (matchup/narrative)
     const storedSlug = post.websiteStory?.seo?.slug || '';
@@ -864,19 +870,56 @@ function generatePostCard(post) {
     const teamBShort = getShortTeamName(post.teamB || '');
     const matchup = `${teamAShort} VS ${teamBShort}`.toUpperCase();
     const league = (post.league || '').toUpperCase();
-    const headline = post.websiteStory?.headline || 'Untitled';
+    
+    // Check if this is a DFS article
+    const isDFSArticle = post.storyType === 'dfs_article';
+    
+    // For DFS articles, recalculate headline based on matchupScheduledDate
+    let headline = post.websiteStory?.headline || 'Untitled';
+    if (isDFSArticle) {
+        const articleDate = post.matchupScheduledDate || post.createdAt;
+        try {
+            const dateForDayOfWeek = new Date(articleDate + (articleDate.indexOf('T') !== -1 ? '' : 'T12:00:00'));
+            const dayOfWeek = dateForDayOfWeek.toLocaleDateString('en-US', { weekday: 'long' });
+            headline = dayOfWeek + ' DFS Slate Value Picks';
+        } catch (e) {
+            // Keep original headline if date parsing fails
+        }
+    }
+    
     const imagePath = getImagePath(post);
     const articleUrl = generateArticleUrl(post);
     const isHeatHigh = heatScore >= 71; // ~71 on 100 scale = ~25 on 35 scale
+    
+    // For DFS articles, generate matchup text with day of week + "DFS Football"
+    let displayMatchup = matchup;
+    if (isDFSArticle) {
+        const articleDate = post.matchupScheduledDate || post.createdAt;
+        try {
+            const dateForDayOfWeek = new Date(articleDate + (articleDate.includes('T') ? '' : 'T12:00:00'));
+            const dayOfWeek = dateForDayOfWeek.toLocaleDateString('en-US', { weekday: 'long' });
+            const sportLabel = league === 'NBA' ? 'Basketball' : league === 'NFL' ? 'Football' : league;
+            displayMatchup = (dayOfWeek + ' DFS ' + sportLabel).toUpperCase();
+        } catch (e) {
+            displayMatchup = 'DFS VALUE';
+        }
+    }
     
     // Extract quote from evidence bundle
     const heatCheckData = post.heatCheckData || {};
     const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
     const quotes = evidenceBundle.quotes || [];
     const selectedQuote = quotes.length > 0 ? quotes[0] : null; // Use first quote
-    const quoteText = selectedQuote?.quote || '';
-    const quoteSpeaker = selectedQuote?.speaker || '';
-    const quoteTeam = selectedQuote?.team || '';
+    let quoteText = selectedQuote?.quote || '';
+    let quoteSpeaker = selectedQuote?.speaker || '';
+    let quoteTeam = selectedQuote?.team || '';
+    
+    // For DFS articles, use special quote text
+    if (isDFSArticle) {
+        quoteText = "Take a deeper look at narratives on key value players for today's slate";
+        quoteSpeaker = '';
+        quoteTeam = '';
+    }
     
     // Truncate quote if too long (max ~120 chars for card display)
     const maxQuoteLength = 120;
@@ -890,7 +933,7 @@ function generatePostCard(post) {
             <p style="font-size: 0.7rem; line-height: 1.4; color: rgba(255, 255, 255, 0.85); font-style: italic; margin: 0 0 0.4rem 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">
                 "${displayQuote.replace(/"/g, '&quot;')}"
             </p>
-            ${quoteSpeaker ? `<div style="font-size: 0.65rem; color: rgba(255, 255, 255, 0.6); margin: 0; text-align: right;">— ${quoteSpeaker.replace(/</g, '&lt;').replace(/>/g, '&gt;')}${quoteTeam ? ` (${quoteTeam.replace(/</g, '&lt;').replace(/>/g, '&gt;')})` : ''}</div>` : ''}
+            ${!isDFSArticle && quoteSpeaker ? `<div style="font-size: 0.65rem; color: rgba(255, 255, 255, 0.6); margin: 0; text-align: right;">— ${quoteSpeaker.replace(/</g, '&lt;').replace(/>/g, '&gt;')}${quoteTeam ? ` (${quoteTeam.replace(/</g, '&lt;').replace(/>/g, '&gt;')})` : ''}</div>` : ''}
         </div>
     ` : '';
     
@@ -901,17 +944,25 @@ function generatePostCard(post) {
                     <div style="width: 35px; height: 35px; min-width: 35px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
                         <div style="color: #fff; font-size: 0.65rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 2px 4px rgba(255, 255, 255, 0.4);">${dateStr}</div>
                     </div>
-                    <div style="color: #fff; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 2px 4px rgba(255, 255, 255, 0.4);">${matchup}</div>
+                    <div style="color: #fff; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 2px 4px rgba(255, 255, 255, 0.4);">${displayMatchup}</div>
                     <div style="width: 35px; height: 35px; min-width: 35px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
                         <div style="color: #fff; font-size: 0.6rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 2px 4px rgba(255, 255, 255, 0.4);">${league}</div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
+                    ${isDFSArticle ? `
+                    <!-- DFS Heat Indicator -->
+                    <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #00ff41; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #00ff4140, 0 0 15px #00ff4160; overflow: hidden;">
+                        <div style="color: #00ff41; font-size: 1.2rem; font-weight: 900; text-shadow: 0 0 20px #00ff41, 0 0 30px rgba(0, 255, 65, 0.7), 0 0 40px rgba(0, 255, 65, 0.5), 0 0 2px rgba(255, 255, 255, 0.9); font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative;">DFS</div>
+                    </div>
+                    ` : `
+                    <!-- Regular Heat Indicator -->
                     <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #00ff41; border-radius: 50%; opacity: 0.5;"></div>
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
                         <div style="color: #ff0040; font-size: 1.55rem; font-weight: 900; text-shadow: 0 0 20px #ff0040, 0 0 30px rgba(255, 0, 64, 0.7), 0 0 40px rgba(255, 0, 64, 0.5), 0 0 2px rgba(255, 255, 255, 0.9); font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative;">${heatScore}</div>
                     </div>
+                    `}
                     <div class="post-card-image-container" data-post-id="${post.id}" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
                         ${imagePath ? `<img src="${imagePath}" alt="${teamAShort} vs ${teamBShort} ${league} matchup analysis - ${headline} - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">` : '<div style="width: 100%; height: 100%; background: rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.5); font-size: 0.75rem;">No Image</div>'}
                     </div>
@@ -1562,7 +1613,13 @@ function initRadarModal() {
             console.log('=============================');
             
             // Filter posts by today and tomorrow - also check status is 'published'
+            // Exclude DFS articles (they're not matchups)
             const todayPosts = posts.filter(post => {
+                // Exclude DFS articles - they're not matchups
+                if (post.storyType === 'dfs_article') {
+                    return false;
+                }
+                
                 // Only include published posts
                 if (post.status !== 'published') {
                     console.log('[Radar] Filtered out non-published post:', {
@@ -1596,6 +1653,11 @@ function initRadarModal() {
             });
             
             const tomorrowPosts = posts.filter(post => {
+                // Exclude DFS articles - they're not matchups
+                if (post.storyType === 'dfs_article') {
+                    return false;
+                }
+                
                 // Only include published posts
                 if (post.status !== 'published') {
                     return false;
@@ -1691,6 +1753,238 @@ function initRadarModal() {
     
     // Update button text to reflect initial state (modal is open by default)
     updateToggleButtonText();
+}
+
+/**
+ * Initialize Mobile HeatScan Radar Modal
+ */
+function initMobileRadarModal() {
+    const mobileButton = document.getElementById('mobile-heatscan-button');
+    const mobileModal = document.getElementById('mobile-radar-modal');
+    const mobileCloseBtn = document.getElementById('mobile-radar-close-btn');
+    const mobileOverlay = document.getElementById('mobile-radar-overlay');
+    const mobileScanButton = document.getElementById('mobile-scan-games-button');
+    
+    if (!mobileButton || !mobileModal) return;
+    
+    let loadingInterval = null;
+    
+    const openMobileModal = (e) => {
+        if (e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        // Check if modal is already open
+        if (mobileModal.classList.contains('active')) {
+            closeMobileModal();
+            return;
+        }
+        
+        // Check for stored results
+        const storedResults = getStoredRadarResults();
+        
+        if (storedResults && storedResults.todayPosts.length > 0) {
+            showMobileRadarResults(storedResults.todayPosts, false);
+        } else {
+            resetMobileRadarModal();
+        }
+        
+        mobileModal.classList.add('active');
+        document.body.style.overflow = 'hidden'; // Prevent body scroll
+    };
+    
+    const closeMobileModal = () => {
+        mobileModal.classList.remove('active');
+        document.body.style.overflow = ''; // Restore body scroll
+        if (loadingInterval) {
+            clearInterval(loadingInterval);
+            loadingInterval = null;
+        }
+        resetMobileRadarModal();
+    };
+    
+    const handleMobileScanGames = async () => {
+        // Show loading state
+        loadingInterval = showMobileRadarLoading();
+        
+        try {
+            let posts = [];
+            
+            try {
+                posts = await fetchPublishedPosts();
+                if (posts.length > 0) {
+                    window.publishedPosts = posts;
+                    console.log(`[Mobile Radar] Fetched ${posts.length} published posts from API`);
+                } else {
+                    posts = getEmbeddedPosts();
+                    if (posts.length === 0 && window.publishedPosts) {
+                        posts = window.publishedPosts;
+                    }
+                }
+            } catch (apiError) {
+                console.log('[Mobile Radar] API fetch failed, using embedded posts:', apiError.message);
+                posts = getEmbeddedPosts();
+                if (posts.length === 0 && window.publishedPosts) {
+                    posts = window.publishedPosts;
+                }
+            }
+            
+            if (posts.length === 0) {
+                console.warn('[Mobile Radar] No posts available');
+            }
+            
+            // Get today's date (in America/New_York timezone)
+            const today = getTodayDate();
+            
+            // Filter posts by today only - exclude DFS articles and only published posts
+            const todayPosts = posts.filter(post => {
+                if (post.storyType === 'dfs_article') {
+                    return false;
+                }
+                
+                if (post.status !== 'published') {
+                    return false;
+                }
+                
+                const postDate = getPostDate(post);
+                return postDate === today;
+            });
+            
+            console.log('[Mobile Radar] Filtered posts:', { 
+                todayCount: todayPosts.length,
+                todayDate: today
+            });
+            
+            // Wait a bit to show loading messages (3 seconds minimum for UX)
+            setTimeout(() => {
+                if (loadingInterval) {
+                    clearInterval(loadingInterval);
+                    loadingInterval = null;
+                }
+                
+                // Show results and store them (reuse desktop storage)
+                showMobileRadarResults(todayPosts, true);
+            }, 3000);
+            
+        } catch (error) {
+            console.error('[Mobile Radar] Failed to scan games:', error);
+            if (loadingInterval) {
+                clearInterval(loadingInterval);
+                loadingInterval = null;
+            }
+            
+            const loadingMessage = document.getElementById('mobile-radar-loading-message');
+            if (loadingMessage) {
+                loadingMessage.textContent = 'SCAN FAILED';
+                loadingMessage.style.color = '#ff0040';
+            }
+        }
+    };
+    
+    if (mobileButton) {
+        mobileButton.addEventListener('click', openMobileModal);
+    }
+    
+    if (mobileCloseBtn) {
+        mobileCloseBtn.addEventListener('click', closeMobileModal);
+    }
+    
+    if (mobileOverlay) {
+        mobileOverlay.addEventListener('click', closeMobileModal);
+    }
+    
+    if (mobileScanButton) {
+        mobileScanButton.addEventListener('click', handleMobileScanGames);
+    }
+}
+
+/**
+ * Show mobile radar results with today's matchups
+ */
+function showMobileRadarResults(todayPosts, shouldStore = true) {
+    const initialState = document.getElementById('mobile-radar-initial-state');
+    const loadingState = document.getElementById('mobile-radar-loading-state');
+    const resultsState = document.getElementById('mobile-radar-results-state');
+    const dateTitle = document.getElementById('mobile-radar-date-title');
+    const gamesContainer = document.getElementById('mobile-radar-games');
+    
+    // Hide initial and loading states
+    if (initialState) initialState.style.display = 'none';
+    if (loadingState) loadingState.style.display = 'none';
+    
+    // Show results state
+    if (resultsState) resultsState.style.display = 'block';
+    
+    const today = getTodayDate();
+    
+    if (dateTitle) {
+        dateTitle.textContent = formatDateDisplay(today).toUpperCase();
+    }
+    
+    if (gamesContainer) {
+        if (todayPosts.length > 0) {
+            gamesContainer.innerHTML = todayPosts.map(post => generateMatchupButton(post)).join('');
+        } else {
+            gamesContainer.innerHTML = '<div class="no-games-message">NO GAMES TODAY</div>';
+        }
+    }
+    
+    // Store results (reuse desktop storage function)
+    if (shouldStore) {
+        const storedResults = getStoredRadarResults();
+        const tomorrowPosts = storedResults ? storedResults.tomorrowPosts : [];
+        storeRadarResults(todayPosts, tomorrowPosts);
+    }
+}
+
+/**
+ * Show mobile radar loading state
+ */
+function showMobileRadarLoading() {
+    const initialState = document.getElementById('mobile-radar-initial-state');
+    const loadingState = document.getElementById('mobile-radar-loading-state');
+    const loadingMessage = document.getElementById('mobile-radar-loading-message');
+    
+    if (initialState) initialState.style.display = 'none';
+    if (loadingState) loadingState.style.display = 'flex';
+    
+    const messages = [
+        'SCANNING MATCHUPS...',
+        'APPLYING HEATSCAN INTELLIGENCE...',
+        'ANALYZING NARRATIVES...',
+        'PROCESSING HEAT INDICATORS...',
+        'FINALIZING RESULTS...'
+    ];
+    
+    let messageIndex = 0;
+    const interval = setInterval(() => {
+        if (loadingMessage && messageIndex < messages.length) {
+            loadingMessage.textContent = messages[messageIndex];
+            messageIndex++;
+        }
+    }, 600);
+    
+    return interval;
+}
+
+/**
+ * Reset mobile radar modal to initial state
+ */
+function resetMobileRadarModal() {
+    const initialState = document.getElementById('mobile-radar-initial-state');
+    const loadingState = document.getElementById('mobile-radar-loading-state');
+    const resultsState = document.getElementById('mobile-radar-results-state');
+    
+    if (initialState) initialState.style.display = 'block';
+    if (loadingState) loadingState.style.display = 'none';
+    if (resultsState) resultsState.style.display = 'none';
+    
+    const loadingMessage = document.getElementById('mobile-radar-loading-message');
+    if (loadingMessage) {
+        loadingMessage.textContent = 'INITIALIZING SCAN...';
+        loadingMessage.style.color = '#00ff41';
+    }
 }
 
 /**
@@ -1938,16 +2232,54 @@ function initBackButton() {
  * Posts are embedded as JSON in a script tag with id="posts-data"
  */
 function getEmbeddedPosts() {
-    const postsDataScript = document.getElementById('posts-data');
-    if (postsDataScript) {
-        try {
-            return JSON.parse(postsDataScript.textContent);
-        } catch (e) {
-            console.error('Failed to parse embedded posts data:', e);
+    let postsDataScript = document.getElementById('posts-data');
+    
+    // If not found, wait a bit and retry (handles timing issues with large JSON)
+    if (!postsDataScript) {
+        // Check if we're in a synchronous context - if so, the script might not be parsed yet
+        // This can happen if the JSON script tag is very large
+        console.warn('[Embedded Posts] Script tag not found on first attempt, checking DOM...');
+        
+        // Use querySelector as an alternative
+        postsDataScript = document.querySelector('script#posts-data');
+        
+        if (!postsDataScript) {
+            console.warn('[Embedded Posts] Script tag with id="posts-data" not found in DOM');
+            // Log all script tags for debugging
+            const allScripts = document.querySelectorAll('script');
+            console.warn('[Embedded Posts] Total script tags found:', allScripts.length);
+            allScripts.forEach((script, index) => {
+                if (script.id) {
+                    console.warn(`[Embedded Posts] Script tag ${index}: id="${script.id}"`);
+                } else if (script.type === 'application/json') {
+                    console.warn(`[Embedded Posts] Script tag ${index}: type="application/json" (no id)`);
+                }
+            });
             return [];
         }
     }
-    return [];
+    
+    try {
+        // Get text content and trim whitespace
+        const jsonText = postsDataScript.textContent.trim();
+        
+        // Debug logging
+        if (jsonText.length === 0) {
+            console.warn('[Embedded Posts] Script tag found but content is empty');
+            return [];
+        }
+        
+        const posts = JSON.parse(jsonText);
+        console.log(`[Embedded Posts] Successfully parsed ${posts.length} posts from embedded data`);
+        return posts;
+    } catch (e) {
+        console.error('[Embedded Posts] Failed to parse embedded posts data:', e);
+        console.error('[Embedded Posts] Script tag content length:', postsDataScript.textContent?.length || 0);
+        // Log first 200 chars of content for debugging
+        const preview = postsDataScript.textContent?.substring(0, 200) || 'N/A';
+        console.error('[Embedded Posts] Content preview:', preview);
+        return [];
+    }
 }
 
 /**
@@ -2008,10 +2340,31 @@ function updateStaticPageHeatScores() {
  */
 function initHeatIndicatorHoverStatic() {
     // Get posts data embedded in the page
-    const posts = getEmbeddedPosts();
+    let posts = getEmbeddedPosts();
+    
+    // If not found, wait a bit and retry (handles timing issues with large JSON script tags)
     if (posts.length === 0) {
-        // No posts on this page, skip initialization
-        return;
+        const postsDataScript = document.querySelector('script#posts-data');
+        if (postsDataScript) {
+            // Script tag exists but might not be parsed yet, wait a bit and retry
+            setTimeout(() => {
+                const retryPosts = getEmbeddedPosts();
+                if (retryPosts.length > 0) {
+                    // Store posts globally for easy access
+                    window.publishedPosts = retryPosts;
+                    // Update all heat scores on the page to match dynamic calculation
+                    updateStaticPageHeatScores();
+                    // Continue with the rest of the initialization
+                    initHeatIndicatorHoverStaticContinue(retryPosts);
+                } else {
+                    console.warn('[Heat Indicator] Retry failed - posts still not found after delay');
+                }
+            }, 100);
+            return; // Exit early, will retry in setTimeout
+        } else {
+            // No posts on this page, skip initialization
+            return;
+        }
     }
     
     // Store posts globally for easy access
@@ -2020,6 +2373,14 @@ function initHeatIndicatorHoverStatic() {
     // Update all heat scores on the page to match dynamic calculation
     updateStaticPageHeatScores();
     
+    // Continue with initialization
+    initHeatIndicatorHoverStaticContinue(posts);
+}
+
+/**
+ * Continue initialization of heat indicator hover (extracted to avoid duplication)
+ */
+function initHeatIndicatorHoverStaticContinue(posts) {
     // Store original image HTML for each post card
     const imageContainers = document.querySelectorAll('.post-card-image-container');
     const originalContent = new Map();
@@ -2076,9 +2437,28 @@ function initMobileMenu() {
     const body = document.body;
     
     if (!menuToggle || !navDrawer || !navOverlay) {
-        console.warn('[Mobile Menu] Required elements not found');
+        // Retry after a short delay in case DOM isn't fully ready
+        if (document.readyState === 'loading') {
+            setTimeout(() => {
+                const retryToggle = document.getElementById('mobile-menu-toggle');
+                const retryDrawer = document.getElementById('mobile-nav-drawer');
+                const retryOverlay = document.getElementById('mobile-nav-overlay');
+                if (retryToggle && retryDrawer && retryOverlay) {
+                    initMobileMenuElements(retryToggle, retryDrawer, retryOverlay, body);
+                } else {
+                    console.warn('[Mobile Menu] Required elements not found after retry');
+                }
+            }, 100);
+        } else {
+            console.warn('[Mobile Menu] Required elements not found');
+        }
         return;
     }
+    
+    initMobileMenuElements(menuToggle, navDrawer, navOverlay, body);
+}
+
+function initMobileMenuElements(menuToggle, navDrawer, navOverlay, body) {
     
     // Toggle menu function
     const toggleMenu = (e) => {
@@ -2212,6 +2592,9 @@ async function init() {
         
         // Initialize radar modal (this will also check for stored results)
         initRadarModal();
+        
+        // Initialize mobile radar modal
+        initMobileRadarModal();
         
     } catch (error) {
         console.error('Initialization error:', error);

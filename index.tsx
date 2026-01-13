@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from '@google/genai';
 import { apiClient } from './apiClient';
 import { PublicHomePage } from './pages/index';
+import { parseExcelFile } from './scripts/utils/excelParser';
+import { analyzeDFSSlate, validateDFSPlayers } from './scripts/services/dfsAnalysisService';
 
 // ===================================================================================
 // TYPE DEFINITIONS (Unchanged, but now shared with backend)
@@ -181,6 +183,9 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   const [matchupFilterDate, setMatchupFilterDate] = useState<string>('all'); // 'all', 'today', 'tomorrow', 'thisWeek', 'custom'
   const [matchupFilterCustomStart, setMatchupFilterCustomStart] = useState<string>('');
   const [matchupFilterCustomEnd, setMatchupFilterCustomEnd] = useState<string>('');
+  const [showDFSModal, setShowDFSModal] = useState<boolean>(false);
+  const [isGeneratingDFSArticle, setIsGeneratingDFSArticle] = useState<boolean>(false);
+  const [dfsSport, setDfsSport] = useState<'NBA' | 'NFL'>('NBA');
 
   const fetchNarratives = useCallback(async () => {
     setIsLoading(true); setError(null); setNarratives([]); setCardState({});
@@ -476,205 +481,554 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
     setError(null);
 
     const selectedMatchups = filteredMatchups.filter(m => selectedMatchupIds.includes(m.id));
+    const completedArticles: string[] = [];
+    const failedArticles: Array<{ matchup: string; error: string }> = [];
     
     try {
       // Process each matchup sequentially
       for (let i = 0; i < selectedMatchups.length; i++) {
         const matchup = selectedMatchups[i];
+        const matchupLabel = `${matchup.teamA} vs ${matchup.teamB}`;
+        
         setGenerationProgress({
           current: i + 1,
           total: selectedMatchups.length,
-          step: 'Starting...',
-          matchup: `${matchup.teamA} vs ${matchup.teamB}`
+          step: `Processing ${matchupLabel}...`,
+          matchup: matchupLabel
         });
 
-        // Generate comprehensive heat check (all phases in one call)
-        setGenerationProgress(prev => prev ? { ...prev, step: 'Generating comprehensive heat check...' } : null);
-        console.log(`[${matchup.teamA} vs ${matchup.teamB}] Starting comprehensive generation`);
-        
-        const heatCheckData = await generateHeatCheckNarrative(matchup);
-        console.log(`[${matchup.teamA} vs ${matchup.teamB}] Generation complete`);
-        
-        // Extract data from response
-        const factPack = heatCheckData.fact_pack;
-        const evidenceBundle = heatCheckData.evidence_bundle;
-        const candidateCards = heatCheckData.narratives.candidate_cards;
-        const selectedNarrative = heatCheckData.narratives.selected;
-        const qualityReport = heatCheckData.quality_report;
-        const article = heatCheckData.article;
-
-        // Validate key characters (players/coaches) are on correct teams
-        setGenerationProgress(prev => prev ? { ...prev, step: 'Validating key characters...' } : null);
-        console.log(`[${matchup.teamA} vs ${matchup.teamB}] Validating key characters`);
-        let validationWarnings = await validateKeyCharacters(candidateCards, matchup.teamA, matchup.teamB, matchup.league);
-        
-        // Add quality report corrections to validation warnings
-        if (qualityReport?.corrections_applied && Array.isArray(qualityReport.corrections_applied)) {
-          qualityReport.corrections_applied.forEach((correction: string) => {
-            if (correction && correction.trim()) {
-              validationWarnings.push(`ℹ️ ${correction}`);
-            }
-          });
-        }
-        
-        // AI Editor: Correct article if validation warnings exist
-        let correctedArticleMarkdown = article.long_form_markdown;
-        const aiCorrections: any = {
-          original_warnings: [...validationWarnings],
-          corrections_applied: [],
-          invalid_players_replaced: []
-        };
-        
-        // Filter to only roster-related warnings (not info messages)
-        const rosterWarnings = validationWarnings.filter(w => w.startsWith('⚠️'));
-        
-        if (rosterWarnings.length > 0) {
-          console.log(`[${matchup.teamA} vs ${matchup.teamB}] ${rosterWarnings.length} roster validation warning(s) found - Applying AI Editor corrections...`);
-          setGenerationProgress(prev => prev ? { ...prev, step: `AI Editor: Correcting article (replacing ${rosterWarnings.length} invalid player/coach reference(s)...` } : null);
+        try {
+          // Generate comprehensive heat check (all phases in one call)
+          setGenerationProgress(prev => prev ? { ...prev, step: `Generating comprehensive heat check for ${matchupLabel}...` } : null);
+          console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Starting comprehensive generation`);
           
-          try {
-            const correctionResult = await correctArticleWithAI(
-              article.long_form_markdown,
-              rosterWarnings,
-              matchup.teamA,
-              matchup.teamB,
-              matchup.league
-            );
-            
-            correctedArticleMarkdown = correctionResult.correctedMarkdown;
-            aiCorrections.corrections_applied = correctionResult.correctionsSummary;
-            
-            // Update validation warnings to mark roster issues as fixed
-            validationWarnings = validationWarnings.map(w => {
-              if (w.startsWith('⚠️') && rosterWarnings.includes(w)) {
-                return `${w} [Fixed by AI Editor]`;
+          const heatCheckData = await generateHeatCheckNarrative(matchup);
+          console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Generation complete`);
+          
+          // Extract data from response
+          const factPack = heatCheckData.fact_pack;
+          const evidenceBundle = heatCheckData.evidence_bundle;
+          const candidateCards = heatCheckData.narratives.candidate_cards;
+          const selectedNarrative = heatCheckData.narratives.selected;
+          const qualityReport = heatCheckData.quality_report;
+          const article = heatCheckData.article;
+
+          // Validate key characters (players/coaches) are on correct teams
+          setGenerationProgress(prev => prev ? { ...prev, step: `Validating key characters for ${matchupLabel}...` } : null);
+          console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Validating key characters`);
+          let validationWarnings = await validateKeyCharacters(candidateCards, matchup.teamA, matchup.teamB, matchup.league);
+          
+          // Add quality report corrections to validation warnings
+          if (qualityReport?.corrections_applied && Array.isArray(qualityReport.corrections_applied)) {
+            qualityReport.corrections_applied.forEach((correction: string) => {
+              if (correction && correction.trim()) {
+                validationWarnings.push(`ℹ️ ${correction}`);
               }
-              return w;
             });
-            
-            // Add corrections summary to validation warnings
-            correctionResult.correctionsSummary.forEach((summary: string) => {
-              validationWarnings.push(summary);
-            });
-            
-            console.log(`[${matchup.teamA} vs ${matchup.teamB}] AI Editor corrections applied:`, correctionResult.correctionsSummary);
-            
-          } catch (error: any) {
-            console.error(`[${matchup.teamA} vs ${matchup.teamB}] AI Editor correction failed:`, error);
-            validationWarnings.push(`⚠️ AI Editor correction failed: ${error.message || 'Unknown error'} - Using original article`);
           }
-        }
-        
-        if (validationWarnings.length > 0) {
-          console.log(`[${matchup.teamA} vs ${matchup.teamB}] Final validation warnings:`, validationWarnings);
-        }
+          
+          // AI Editor: Correct article if validation warnings exist
+          let correctedArticleMarkdown = article.long_form_markdown;
+          const aiCorrections: any = {
+            original_warnings: [...validationWarnings],
+            corrections_applied: [],
+            invalid_players_replaced: []
+          };
+          
+          // Filter to only roster-related warnings (not info messages)
+          const rosterWarnings = validationWarnings.filter(w => w.startsWith('⚠️'));
+          
+          if (rosterWarnings.length > 0) {
+            console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] ${rosterWarnings.length} roster validation warning(s) found - Applying AI Editor corrections...`);
+            setGenerationProgress(prev => prev ? { ...prev, step: `AI Editor: Correcting ${matchupLabel} (replacing ${rosterWarnings.length} invalid reference(s)...` } : null);
+            
+            try {
+              const correctionResult = await correctArticleWithAI(
+                article.long_form_markdown,
+                rosterWarnings,
+                matchup.teamA,
+                matchup.teamB,
+                matchup.league
+              );
+              
+              correctedArticleMarkdown = correctionResult.correctedMarkdown;
+              aiCorrections.corrections_applied = correctionResult.correctionsSummary;
+              
+              // Update validation warnings to mark roster issues as fixed
+              validationWarnings = validationWarnings.map(w => {
+                if (w.startsWith('⚠️') && rosterWarnings.includes(w)) {
+                  return `${w} [Fixed by AI Editor]`;
+                }
+                return w;
+              });
+              
+              // Add corrections summary to validation warnings
+              correctionResult.correctionsSummary.forEach((summary: string) => {
+                validationWarnings.push(summary);
+              });
+              
+              console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] AI Editor corrections applied:`, correctionResult.correctionsSummary);
+              
+            } catch (error: any) {
+              console.error(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] AI Editor correction failed:`, error);
+              validationWarnings.push(`⚠️ AI Editor correction failed: ${error.message || 'Unknown error'} - Using original article`);
+            }
+          }
+          
+          if (validationWarnings.length > 0) {
+            console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Final validation warnings:`, validationWarnings);
+          }
 
-        // Create draft post with all the data (using corrected article markdown)
-        const primaryCard = candidateCards.find(c => c.narrative_id === selectedNarrative.primary_narrative_id);
-        if (!primaryCard) throw new Error("Primary narrative card not found");
+          // Create draft post with all the data (using corrected article markdown)
+          const primaryCard = candidateCards.find(c => c.narrative_id === selectedNarrative.primary_narrative_id);
+          if (!primaryCard) throw new Error("Primary narrative card not found");
 
-        // Generate HeatChecks Edge betting recommendation
-        setGenerationProgress(prev => prev ? { ...prev, step: 'Generating HeatChecks Edge betting recommendation...' } : null);
-        console.log(`[${matchup.teamA} vs ${matchup.teamB}] Generating HeatChecks Edge...`);
-        
-        const heatChecksEdge = await generateHeatChecksEdge(
-          {
-            candidate_cards: candidateCards,
-            selected: selectedNarrative
-          },
-          factPack,
-          primaryCard,
-          matchup.teamA,
-          matchup.teamB,
-          matchup.league
-        );
-        
-        console.log(`[${matchup.teamA} vs ${matchup.teamB}] HeatChecks Edge generated:`, {
-          lean: heatChecksEdge.lean,
-          confidence: heatChecksEdge.confidence,
-          finalCallPreview: heatChecksEdge.finalCall.substring(0, 100) + '...'
-        });
-
-        const newDraftPost = await apiClient.createDraft({
-          league: matchup.league,
-          teamA: matchup.teamA,
-          teamB: matchup.teamB,
-          matchupScheduledDate: matchup.scheduledDate, // Use the EST-converted date from the matchup
-          storyType: 'heat_article',
-          scanNarrative: primaryCard.claim,
-          websiteStory: {
-            formatStyle: "QUOTE_LEDE",
-            headline: primaryCard.title,
-            dek: primaryCard.claim,
-            whyItMatters: [],
-            theBackstory: correctedArticleMarkdown, // Use AI-corrected article
-            theData: factPack.key_stats?.map(s => `${s.label}: ${s.value}`) || [],
-            keyMomentsTimeline: evidenceBundle.timeline_events?.map(e => ({
-              date: new Date(e.date_utc).toLocaleDateString(),
-              event: e.summary
-            })) || [],
-            theReceipts: evidenceBundle.quotes?.map(q => ({
-              quote: q.quote,
-              speaker: q.speaker,
-              context: q.context,
-              sourceUrl: evidenceBundle.sources?.find(s => s.source_id === q.source_id)?.url || ''
-            })) || [],
-            pressurePoints: [],
-            whatToWatch: [],
-            edgeAngle: primaryCard.claim,
-            tags: primaryCard.emotion_tags || [],
-            sources: evidenceBundle.sources?.map(s => ({
-              title: s.title,
-              url: s.url,
-              publisher: s.publisher,
-              publishedAt: s.published_utc
-            })) || [],
-            seo: {
-              slug: article.seo?.primary_keyword?.toLowerCase().replace(/\s+/g, '-') || '',
-              metaTitle: article.seo?.title_options?.[0] || primaryCard.title,
-              metaDescription: article.seo?.meta_description || primaryCard.claim
-            },
-            // CRITICAL FIX: Initialize image field as empty string (not undefined)
-            // This ensures the field exists and can be updated later
-            image: '',
-            imageUrl: undefined // Explicitly set to undefined to match old articles structure
-          },
-          heatchecksEdge: heatChecksEdge, // Use the AI-generated Edge
-          // Include heatCheckData in the initial draft creation so it's persisted to database
-          heatCheckData: {
-            factPack,
-            evidenceBundle,
-            narratives: {
+          // Generate HeatChecks Edge betting recommendation
+          setGenerationProgress(prev => prev ? { ...prev, step: `Generating HeatChecks Edge for ${matchupLabel}...` } : null);
+          console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Generating HeatChecks Edge...`);
+          
+          const heatChecksEdge = await generateHeatChecksEdge(
+            {
               candidate_cards: candidateCards,
               selected: selectedNarrative
             },
-            qualityReport,
-            article: {
-              ...article,
-              long_form_markdown: correctedArticleMarkdown // Store corrected version
-            },
-            validation_warnings: validationWarnings, // Store validation warnings (with fixed status)
-            ai_corrections: aiCorrections // Store AI correction metadata
-          }
-        });
+            factPack,
+            primaryCard,
+            matchup.teamA,
+            matchup.teamB,
+            matchup.league
+          );
+          
+          console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] HeatChecks Edge generated:`, {
+            lean: heatChecksEdge.lean,
+            confidence: heatChecksEdge.confidence,
+            finalCallPreview: heatChecksEdge.finalCall.substring(0, 100) + '...'
+          });
 
-        // Open editor with the first generated article
-        if (i === 0) {
-          setEditingPost(newDraftPost);
+          setGenerationProgress(prev => prev ? { ...prev, step: `Creating draft post for ${matchupLabel}...` } : null);
+          
+          const newDraftPost = await apiClient.createDraft({
+            league: matchup.league,
+            teamA: matchup.teamA,
+            teamB: matchup.teamB,
+            matchupScheduledDate: matchup.scheduledDate,
+            storyType: 'heat_article',
+            scanNarrative: primaryCard.claim,
+            websiteStory: {
+              formatStyle: "QUOTE_LEDE",
+              headline: primaryCard.title,
+              dek: primaryCard.claim,
+              whyItMatters: [],
+              theBackstory: correctedArticleMarkdown,
+              theData: factPack.key_stats?.map(s => `${s.label}: ${s.value}`) || [],
+              keyMomentsTimeline: evidenceBundle.timeline_events?.map(e => ({
+                date: new Date(e.date_utc).toLocaleDateString(),
+                event: e.summary
+              })) || [],
+              theReceipts: evidenceBundle.quotes?.map(q => ({
+                quote: q.quote,
+                speaker: q.speaker,
+                context: q.context,
+                sourceUrl: evidenceBundle.sources?.find(s => s.source_id === q.source_id)?.url || ''
+              })) || [],
+              pressurePoints: [],
+              whatToWatch: [],
+              edgeAngle: primaryCard.claim,
+              tags: primaryCard.emotion_tags || [],
+              sources: evidenceBundle.sources?.map(s => ({
+                title: s.title,
+                url: s.url,
+                publisher: s.publisher,
+                publishedAt: s.published_utc
+              })) || [],
+              seo: {
+                slug: article.seo?.primary_keyword?.toLowerCase().replace(/\s+/g, '-') || '',
+                metaTitle: article.seo?.title_options?.[0] || primaryCard.title,
+                metaDescription: article.seo?.meta_description || primaryCard.claim
+              },
+              image: '',
+              imageUrl: undefined
+            },
+            heatchecksEdge: heatChecksEdge,
+            heatCheckData: {
+              factPack,
+              evidenceBundle,
+              narratives: {
+                candidate_cards: candidateCards,
+                selected: selectedNarrative
+              },
+              qualityReport,
+              article: {
+                ...article,
+                long_form_markdown: correctedArticleMarkdown
+              },
+              validation_warnings: validationWarnings,
+              ai_corrections: aiCorrections
+            }
+          });
+
+          // Log completion for this article
+          completedArticles.push(matchupLabel);
+          console.log(`✅ [${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Article completed successfully! Draft ID: ${newDraftPost.id}`);
+          setGenerationProgress(prev => prev ? { 
+            ...prev, 
+            step: `✅ Completed ${i + 1}/${selectedMatchups.length}: ${matchupLabel}` 
+          } : null);
+          
+        } catch (articleError: any) {
+          // Log error for this specific article but continue with next
+          const errorMessage = articleError.message || 'Unknown error';
+          failedArticles.push({ matchup: matchupLabel, error: errorMessage });
+          console.error(`❌ [${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Failed to generate article:`, articleError);
+          setGenerationProgress(prev => prev ? { 
+            ...prev, 
+            step: `❌ Failed ${i + 1}/${selectedMatchups.length}: ${matchupLabel} - ${errorMessage}` 
+          } : null);
+          
+          // Continue to next matchup instead of stopping
+          continue;
         }
       }
 
-      setGenerationProgress(null);
-      // Close modal after successful generation
-      setShowMatchupModal(false);
-      setSelectedMatchupIds([]);
+      // All matchups processed - show completion message
+      setGenerationProgress({
+        current: selectedMatchups.length,
+        total: selectedMatchups.length,
+        step: completedArticles.length === selectedMatchups.length 
+          ? `✅ All ${completedArticles.length} article(s) completed successfully!` 
+          : `Completed ${completedArticles.length}/${selectedMatchups.length} article(s). ${failedArticles.length} failed.`,
+        matchup: ''
+      });
+
+      // Log final summary
+      console.log('=== HEAT ARTICLE GENERATION SUMMARY ===');
+      console.log(`Total matchups: ${selectedMatchups.length}`);
+      console.log(`✅ Completed: ${completedArticles.length}`);
+      completedArticles.forEach((matchup, idx) => {
+        console.log(`  ${idx + 1}. ${matchup}`);
+      });
+      if (failedArticles.length > 0) {
+        console.log(`❌ Failed: ${failedArticles.length}`);
+        failedArticles.forEach((failure, idx) => {
+          console.log(`  ${idx + 1}. ${failure.matchup}: ${failure.error}`);
+        });
+      }
+      console.log('========================================');
+
+      // Wait a moment to show completion message, then close modal
+      setTimeout(() => {
+        setGenerationProgress(null);
+        setShowMatchupModal(false);
+        setSelectedMatchupIds([]);
+        
+        // Show success/error message
+        if (completedArticles.length === selectedMatchups.length) {
+          setError(null); // Clear any previous errors
+          // You could also show a success toast here if you have one
+          console.log('All articles generated successfully. Access them in the Content Feed tab.');
+        } else {
+          setError(`Generated ${completedArticles.length} of ${selectedMatchups.length} articles. ${failedArticles.length} failed. Check console for details.`);
+        }
+      }, 2000); // 2 second delay to show completion message
+      
     } catch (e: any) {
-      console.error("Failed to generate heat article:", e);
+      console.error("Fatal error in heat article generation:", e);
       setError(e.message || "Article generation failed. Check console for details.");
       setGenerationProgress(null);
       // Keep modal open on error so user can see the error
     } finally {
       setIsGeneratingHeatArticle(false);
+    }
+  };
+
+  const handleGenerateDFSArticle = async (file: File) => {
+    setIsGeneratingDFSArticle(true);
+    setError(null);
+
+    try {
+      // Parse Excel/CSV file
+      const rawData = await parseExcelFile(file);
+      const slicedData = rawData.slice(0, 150); // Limit to 150 players
+      
+      // Transform CSV data to normalized format for AI
+      const normalizedData = slicedData.map((row: any) => {
+        // Extract opponent from Game Info (format: "SF@PHI 01/11/2026 04:30PM ET")
+        let opponent = '';
+        const gameInfo = row['Game Info'] || row['GameInfo'] || '';
+        const teamAbbrev = row['TeamAbbrev'] || row['Team'] || '';
+        
+        if (gameInfo && teamAbbrev) {
+          // Game Info format: "SF@PHI 01/11/2026 04:30PM ET" or "BUF@JAX 01/11/2026 01:00PM ET"
+          const matchupMatch = gameInfo.match(/^([A-Z]+)@([A-Z]+)/);
+          if (matchupMatch) {
+            const [, awayTeam, homeTeam] = matchupMatch;
+            // If player's team is the away team, opponent is home team, and vice versa
+            opponent = teamAbbrev === awayTeam ? homeTeam : awayTeam;
+          }
+        }
+        
+        return {
+          playerName: row['Name'] || row['Player Name'] || row['name'] || '',
+          position: row['Position'] || row['position'] || '',
+          team: teamAbbrev || row['Team'] || '',
+          opponent: opponent || row['Opponent'] || row['opponent'] || '',
+          salary: row['Salary'] || row['salary'] || row['Salary'] || 0,
+          avgPoints: row['AvgPointsPerGame'] || row['Avg Points Per Game'] || row['avgPoints'] || 0
+        };
+      }).filter((player: any) => player.playerName && player.position); // Filter out invalid rows
+      
+      const jsonString = JSON.stringify(normalizedData);
+
+      // Analyze slate with AI
+      let playerAnalyses = await analyzeDFSSlate(jsonString, dfsSport);
+
+      if (playerAnalyses.length === 0) {
+        throw new Error("No players found in analysis. Please check your Excel file format.");
+      }
+
+      // Validate players are actually playing today - IMPROVED VALIDATION
+      // Continue validating and regenerating until we have 10 valid players
+      const REQUIRED_PLAYER_COUNT = 10;
+      const MAX_REGENERATION_ATTEMPTS = 3;
+      let regenerationAttempt = 0;
+      let bestValidPlayers: any[] = [];
+      let bestValidCount = 0;
+      
+      while (regenerationAttempt < MAX_REGENERATION_ATTEMPTS) {
+        setLoadingMessage(`Validating player status (attempt ${regenerationAttempt + 1}/${MAX_REGENERATION_ATTEMPTS})...`);
+        
+        let validationResult;
+        try {
+          validationResult = await validateDFSPlayers(playerAnalyses, dfsSport, normalizedData);
+        } catch (validationError) {
+          console.error('Validation failed:', validationError);
+          // If this is not the first attempt and we have some valid players, use them
+          if (regenerationAttempt > 0 && bestValidPlayers.length >= REQUIRED_PLAYER_COUNT) {
+            console.warn('Validation error occurred, but we have enough valid players from previous attempt. Proceeding...');
+            playerAnalyses = bestValidPlayers.slice(0, REQUIRED_PLAYER_COUNT);
+            break;
+          }
+          throw new Error(`Failed to validate players: ${validationError instanceof Error ? validationError.message : 'Unknown error'}`);
+        }
+        
+        const invalidCount = validationResult.invalidPlayers.length;
+        const validCount = validationResult.validPlayers.length;
+        
+        console.log(`Validation attempt ${regenerationAttempt + 1}: ${validCount} valid, ${invalidCount} invalid`);
+        
+        // Track the best result we've seen
+        if (validCount > bestValidCount) {
+          bestValidCount = validCount;
+          bestValidPlayers = validationResult.validPlayers;
+        }
+        
+        // If we have enough valid players with no invalid ones, we're done
+        if (invalidCount === 0 && validCount >= REQUIRED_PLAYER_COUNT) {
+          playerAnalyses = validationResult.validPlayers.slice(0, REQUIRED_PLAYER_COUNT);
+          console.log('✅ All players validated successfully with no invalid players');
+          break;
+        }
+        
+        // If we have enough valid players (even with some invalid), check if we should proceed
+        if (validCount >= REQUIRED_PLAYER_COUNT) {
+          // If we have significantly more valid than invalid, or this is our last attempt, use them
+          if (validCount >= invalidCount * 2 || regenerationAttempt === MAX_REGENERATION_ATTEMPTS - 1) {
+            playerAnalyses = validationResult.validPlayers.slice(0, REQUIRED_PLAYER_COUNT);
+            console.log(`✅ Found ${validCount} valid players (${invalidCount} invalid). Proceeding with top ${REQUIRED_PLAYER_COUNT}.`);
+            break;
+          }
+        }
+        
+        if (invalidCount > 0) {
+          // We have invalid players - need to replace them
+          console.warn(`Found ${invalidCount} invalid players:`, validationResult.invalidPlayers);
+          
+          // Extract invalid player names for filtering
+          const invalidPlayerNames = validationResult.invalidPlayers.map(inv => {
+            const match = inv.match(/^([^(]+)/);
+            return match ? match[1].trim() : '';
+          });
+          
+          // Filter out invalid players from original data
+          const filteredData = normalizedData.filter((player: any) => {
+            const playerKey = `${player.playerName || ''}-${player.team || ''}`.toLowerCase();
+            return !invalidPlayerNames.some(invName => {
+              const invKey = `${invName}-${player.team || ''}`.toLowerCase();
+              return playerKey === invKey || 
+                     player.playerName?.toLowerCase().trim() === invName.toLowerCase().trim();
+            });
+          });
+          
+          if (filteredData.length < REQUIRED_PLAYER_COUNT) {
+            // If we don't have enough data but we have valid players from this attempt, use them
+            if (validCount >= REQUIRED_PLAYER_COUNT) {
+              console.warn('Not enough data to regenerate, but we have enough valid players. Using them.');
+              playerAnalyses = validationResult.validPlayers.slice(0, REQUIRED_PLAYER_COUNT);
+              break;
+            }
+            throw new Error(`Not enough valid players available. Found ${filteredData.length} players after removing ${invalidCount} invalid players. Need at least ${REQUIRED_PLAYER_COUNT}.`);
+          }
+          
+          // Regenerate analysis with filtered data
+          regenerationAttempt++;
+          setLoadingMessage(`Regenerating article (removed ${invalidCount} invalid players, attempt ${regenerationAttempt}/${MAX_REGENERATION_ATTEMPTS})...`);
+          
+          const filteredJsonString = JSON.stringify(filteredData);
+          playerAnalyses = await analyzeDFSSlate(filteredJsonString, dfsSport);
+          
+          // Re-validate the newly generated players
+          continue; // Loop will validate again
+        } else if (validCount < REQUIRED_PLAYER_COUNT) {
+          // Not enough valid players, but none are invalid - might need more data
+          if (normalizedData.length < REQUIRED_PLAYER_COUNT * 2) {
+            // If we have some valid players, use them even if not 10
+            if (validCount >= 5) {
+              console.warn(`Only found ${validCount} valid players, but proceeding with available players.`);
+              playerAnalyses = validationResult.validPlayers;
+              break;
+            }
+            throw new Error(`Not enough players in Excel file. Need at least ${REQUIRED_PLAYER_COUNT * 2} players to ensure ${REQUIRED_PLAYER_COUNT} valid players.`);
+          }
+          
+          // Try regenerating with more data
+          regenerationAttempt++;
+          setLoadingMessage(`Not enough valid players. Regenerating with more data (attempt ${regenerationAttempt}/${MAX_REGENERATION_ATTEMPTS})...`);
+          
+          // Use more of the original data
+          const expandedData = normalizedData.slice(0, Math.min(200, normalizedData.length));
+          const expandedJsonString = JSON.stringify(expandedData);
+          playerAnalyses = await analyzeDFSSlate(expandedJsonString, dfsSport);
+          
+          continue; // Loop will validate again
+        }
+      }
+      
+      // After loop, check if we have enough players
+      // Use best result if current result is insufficient
+      if (playerAnalyses.length < REQUIRED_PLAYER_COUNT && bestValidPlayers.length >= REQUIRED_PLAYER_COUNT) {
+        console.log(`Using best validation result: ${bestValidPlayers.length} valid players`);
+        playerAnalyses = bestValidPlayers.slice(0, REQUIRED_PLAYER_COUNT);
+      }
+      
+      // Final check - be more lenient if we have close to enough players
+      if (playerAnalyses.length < REQUIRED_PLAYER_COUNT) {
+        if (playerAnalyses.length >= 7) {
+          // If we have at least 7 players, proceed with a warning
+          console.warn(`⚠️ Only found ${playerAnalyses.length} valid players (target: ${REQUIRED_PLAYER_COUNT}). Proceeding with available players.`);
+        } else {
+          throw new Error(`Failed to generate article with ${REQUIRED_PLAYER_COUNT} valid players after ${MAX_REGENERATION_ATTEMPTS} attempts. Found ${playerAnalyses.length} valid players.`);
+        }
+      }
+      
+      // Skip the overly strict final validation if we already have enough valid players
+      // The validation can be inconsistent, so if we have 10+ valid players, trust them
+      if (playerAnalyses.length >= REQUIRED_PLAYER_COUNT) {
+        console.log(`✅ Validation complete: ${playerAnalyses.length} valid players ready for article generation`);
+        // Use the players we have - no need for another validation pass that might fail
+      } else {
+        // Only do final validation if we have fewer than required players
+        setLoadingMessage('Final validation check...');
+        const finalValidation = await validateDFSPlayers(playerAnalyses, dfsSport, normalizedData);
+        
+        // Be lenient - if we still have enough valid players after final check, use them
+        if (finalValidation.validPlayers.length >= REQUIRED_PLAYER_COUNT) {
+          playerAnalyses = finalValidation.validPlayers.slice(0, REQUIRED_PLAYER_COUNT);
+          console.log(`✅ Final validation: ${playerAnalyses.length} valid players ready`);
+        } else if (finalValidation.validPlayers.length >= 7) {
+          // If we have at least 7, proceed with warning
+          playerAnalyses = finalValidation.validPlayers;
+          console.warn(`⚠️ Final validation: ${playerAnalyses.length} valid players (target: ${REQUIRED_PLAYER_COUNT}). Proceeding.`);
+        } else if (finalValidation.invalidPlayers.length > 0) {
+          // If final validation marked some as invalid but we still have players, use them
+          if (playerAnalyses.length >= 7) {
+            console.warn(`⚠️ Final validation found ${finalValidation.invalidPlayers.length} invalid players, but keeping ${playerAnalyses.length} players we have.`);
+          } else {
+            throw new Error(`Final validation failed: ${finalValidation.invalidPlayers.length} players are invalid. Only ${finalValidation.validPlayers.length} valid players remain.`);
+          }
+        }
+      }
+
+      console.log(`✅ Validation complete: ${playerAnalyses.length} valid players ready for article generation`);
+
+      // Generate article content from top 10 players
+      const today = new Date();
+      const dateStr = today.toISOString().split('T')[0]; // YYYY-MM-DD format
+      // Use the dateStr to calculate day of week to ensure consistency
+      const dateForDayOfWeek = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone issues
+      const dayOfWeek = dateForDayOfWeek.toLocaleDateString('en-US', { weekday: 'long' }); // e.g., "Monday"
+      
+      const headline = `${dayOfWeek} DFS Slate Value Picks`;
+      const dek = `Top 10 value plays with narrative angles for today's ${dfsSport} slate`;
+
+      // Generate markdown article content
+      let articleMarkdown = `# ${headline}\n\n${dek}\n\n`;
+      articleMarkdown += `## Top Value Plays\n\n`;
+
+      playerAnalyses.forEach((player, index) => {
+        articleMarkdown += `### ${index + 1}. ${player.playerName} (${player.position}) - ${player.team} vs ${player.opponent}\n\n`;
+        articleMarkdown += `**Salary:** $${player.salary} | **Confidence:** ${player.confidenceScore}% | **Narrative:** ${player.narrativeType}\n\n`;
+        if (player.keyStat) {
+          articleMarkdown += `**Key Stat:** ${player.keyStat}\n\n`;
+        }
+        articleMarkdown += `${player.analysis}\n\n`;
+        articleMarkdown += `---\n\n`;
+      });
+
+      // Generate SEO slug
+      const slug = `dfs-value-narratives-${dateStr}`;
+
+      // Create draft post (DFS articles don't use HeatChecks Edge)
+      const newDraftPost = await apiClient.createDraft({
+        league: dfsSport,
+        teamA: '', // DFS articles don't have specific matchups
+        teamB: '',
+        matchupScheduledDate: dateStr,
+        storyType: 'dfs_article',
+        websiteStory: {
+          formatStyle: "QUOTE_LEDE",
+          headline: headline,
+          dek: dek,
+          whyItMatters: [],
+          theBackstory: articleMarkdown,
+          theData: [],
+          keyMomentsTimeline: [],
+          theReceipts: [],
+          pressurePoints: [],
+          whatToWatch: [],
+          edgeAngle: dek,
+          tags: ['DFS', dfsSport, 'Value Plays', 'Narratives'],
+          sources: [],
+          seo: {
+            slug: slug,
+            metaTitle: `${headline} | HeatChecks`,
+            metaDescription: dek
+          },
+          image: '',
+          imageUrl: undefined
+        },
+        heatchecksEdge: undefined, // DFS articles don't use HeatChecks Edge
+        heatCheckData: {
+          dfsPlayers: playerAnalyses,
+          article: {
+            long_form_markdown: articleMarkdown
+          }
+        }
+      });
+
+      console.log('[DFS Article Generation] Backend returned post:', {
+        id: newDraftPost.id,
+        league: newDraftPost.league,
+        storyType: newDraftPost.storyType
+      });
+
+      // Open in editor
+      setEditingPost(newDraftPost);
+      setShowDFSModal(false);
+    } catch (e: any) {
+      console.error("Failed to generate DFS article:", e);
+      setError(e.message || "DFS article generation failed. Please check the console for details.");
+    } finally {
+      setIsGeneratingDFSArticle(false);
     }
   };
     
@@ -726,6 +1080,9 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
             <button className="scan-button" onClick={handleImportMatchups} disabled={isLoading}>Import Matchups</button>
             <button className="scan-button" onClick={handleGenerateArticle} disabled={isLoading || isGeneratingHeatArticle}>
                 {isGeneratingHeatArticle ? 'Generating...' : 'Heat Article Generator'}
+            </button>
+            <button className="scan-button" onClick={() => setShowDFSModal(true)} disabled={isLoading || isGeneratingDFSArticle}>
+                DFS Article Generator
             </button>
         </div>
         <div className="content-area">{renderContent()}</div>
@@ -1179,6 +1536,97 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                 </div>
             </div>
         )}
+        
+        {showDFSModal && (
+            <div className="modal-overlay" onClick={() => { if (!isGeneratingDFSArticle) setShowDFSModal(false); }}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h2>DFS Article Generator</h2>
+                        <button
+                            className="cancel"
+                            onClick={() => {
+                                if (!isGeneratingDFSArticle) {
+                                    setShowDFSModal(false);
+                                    setError(null);
+                                }
+                            }}
+                            disabled={isGeneratingDFSArticle}
+                            style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}
+                        >
+                            ×
+                        </button>
+                    </div>
+
+                    {error && (
+                        <div style={{ padding: '1rem', background: 'rgba(248, 66, 66, 0.1)', border: '1px solid rgba(248, 66, 66, 0.5)', borderRadius: '4px', marginBottom: '1rem', color: '#f84242' }}>
+                            {error}
+                        </div>
+                    )}
+
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Select League:</label>
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <button
+                                className={dfsSport === 'NBA' ? 'action-button' : 'cancel'}
+                                onClick={() => setDfsSport('NBA')}
+                                disabled={isGeneratingDFSArticle}
+                                style={{ flex: 1 }}
+                            >
+                                NBA
+                            </button>
+                            <button
+                                className={dfsSport === 'NFL' ? 'action-button' : 'cancel'}
+                                onClick={() => setDfsSport('NFL')}
+                                disabled={isGeneratingDFSArticle}
+                                style={{ flex: 1 }}
+                            >
+                                NFL
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Upload Excel File:</label>
+                        <input
+                            type="file"
+                            accept=".xlsx,.xls,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv"
+                            onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                if (file) {
+                                    handleGenerateDFSArticle(file);
+                                }
+                            }}
+                            disabled={isGeneratingDFSArticle}
+                            style={{ width: '100%', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+                        />
+                        <div style={{ marginTop: '0.5rem', fontSize: '0.85rem', color: '#666' }}>
+                            Upload an Excel file with player data (Player Name, Position, Team, Opponent, Salary, etc.)
+                        </div>
+                    </div>
+
+                    {isGeneratingDFSArticle && (
+                        <div style={{ textAlign: 'center', padding: '2rem' }}>
+                            <div className="loader">Analyzing slate and generating article...</div>
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                        <button
+                            className="cancel"
+                            onClick={() => {
+                                if (!isGeneratingDFSArticle) {
+                                    setShowDFSModal(false);
+                                    setError(null);
+                                }
+                            }}
+                            disabled={isGeneratingDFSArticle}
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
     </div>
   );
 };
@@ -1599,6 +2047,12 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
 
     useEffect(() => {
         if (post) {
+            console.log('[EditorModal] Received post to edit:', {
+                id: post.id,
+                league: post.league,
+                storyType: post.storyType
+            });
+            
             setEditedPost(JSON.parse(JSON.stringify(post)));
             // Initialize articleImage from post's image
             const existingImage = post.websiteStory?.image || post.websiteStory?.imageUrl || '';
@@ -2151,8 +2605,8 @@ IMPORTANT:
                             )}
                         </div>
 
-                        {/* HeatChecks Edge */}
-                        {editedPost.heatchecksEdge && (
+                        {/* HeatChecks Edge - Hidden for DFS articles */}
+                        {editedPost.heatchecksEdge && editedPost.storyType !== 'dfs_article' && (
                             <div style={{ marginTop: '2rem' }}>
                                 <h3 style={{ marginBottom: '1rem', fontSize: '1.2rem' }}>HeatChecks Edge</h3>
                                 <div style={{

@@ -5,6 +5,8 @@ import { generateArticlePage } from './templates/article-template';
 import { generateArchivePage } from './templates/archive-template';
 import { generateLeagueHubPage } from './templates/league-hub-template';
 import { generateDatePage } from './templates/date-page-template';
+import { generateDFSArticlePage } from './templates/dfs-article-template';
+import { generateDFSHubPage } from './templates/dfs-hub-template';
 import { generateBaseHtml } from './templates/base-template';
 import { formatDateISO, normalizeLeague } from './utils/date-formatter';
 import { generateSlug, ensureUniqueSlug, generateNarrativeSlug, generateMatchupSlug } from './utils/slug-generator';
@@ -45,6 +47,8 @@ interface HeatcheckPost {
     };
     heatCheckData?: any;
     heatchecksEdge?: any;
+    storyType?: string;
+    status?: string;
 }
 
 const baseUrl = process.env.BASE_URL || 'https://heatchecks.io';
@@ -367,12 +371,13 @@ async function generateAllPages(): Promise<void> {
         copyPublicAssets();
         console.log('');
         
-        // Generate article pages
+        // Generate article pages (excluding DFS articles which are handled separately)
         console.log('Generating article pages...');
         const postsByLeague = groupPostsByLeague(posts);
         const postsByDate = groupPostsByDate(posts);
+        const regularPosts = posts.filter(p => p.storyType !== 'dfs_article');
         
-        for (const post of posts) {
+        for (const post of regularPosts) {
             const league = normalizeLeague(post.league);
             const date = post.matchupScheduledDate 
                 ? formatDateISO(post.matchupScheduledDate)
@@ -411,7 +416,35 @@ async function generateAllPages(): Promise<void> {
             const articlePath = `${league}/${date}/${matchupSlug}/${narrativeSlug}/index.html`;
             writeHtmlFile(articlePath, html);
         }
-        console.log(`✓ Generated ${posts.length} article pages\n`);
+        console.log(`✓ Generated ${regularPosts.length} article pages\n`);
+        
+        // Generate DFS article pages
+        console.log('Generating DFS article pages...');
+        const dfsPosts = posts.filter(p => p.storyType === 'dfs_article');
+        console.log(`  Found ${dfsPosts.length} DFS article(s)`);
+        
+        for (const post of dfsPosts) {
+            const league = normalizeLeague(post.league);
+            const date = post.matchupScheduledDate 
+                ? formatDateISO(post.matchupScheduledDate)
+                : formatDateISO(post.createdAt);
+            
+            const relatedPosts = dfsPosts.filter(p => p.id !== post.id).slice(0, 3);
+            const html = generateDFSArticlePage(post, relatedPosts, baseUrl);
+            
+            // DFS URL structure: dfs/{league}/{date}/dfs-value-narratives-{date}/index.html
+            const articlePath = `dfs/${league}/${date}/dfs-value-narratives-${date}/index.html`;
+            writeHtmlFile(articlePath, html);
+        }
+        console.log(`✓ Generated ${dfsPosts.length} DFS article pages\n`);
+        
+        // Generate DFS hub page
+        if (dfsPosts.length > 0) {
+            console.log('Generating DFS hub page...');
+            const html = generateDFSHubPage(dfsPosts, baseUrl);
+            writeHtmlFile('dfs/index.html', html);
+            console.log('✓ Generated DFS hub page\n');
+        }
         
         // Generate league hub pages (dynamically for all leagues that have posts)
         console.log('Generating league hub pages...');
@@ -514,12 +547,131 @@ async function generateAllPages(): Promise<void> {
                 <a href="#" id="next-page-link" style="color: #fff; text-decoration: none; border: 1px solid #fff; padding: 0.5rem 1rem; transition: all 0.3s ease; display: none;" onmouseover="this.style.background='rgba(255, 255, 255, 0.1)';" onmouseout="this.style.background='transparent';">NEXT &gt;</a>
             </div>
         `;
+        
+        // Filter posts to only include fields needed by homepage JavaScript
+        // This significantly reduces JSON size by excluding:
+        // - Full markdown content (theBackstory, long_form_markdown, etc.)
+        // - Detailed evidence bundle content (full quote objects, source objects, timeline events)
+        // - heatchecksEdge objects
+        // - Other unused websiteStory fields
+        const filteredPosts = posts.map(post => ({
+            id: post.id,
+            league: post.league,
+            teamA: post.teamA,
+            teamB: post.teamB,
+            matchupScheduledDate: post.matchupScheduledDate,
+            updatedAt: post.updatedAt || post.createdAt,
+            createdAt: post.createdAt,
+            storyType: post.storyType,
+            websiteStory: {
+                slug: post.websiteStory?.seo?.slug || '',
+                headline: post.websiteStory?.headline || '',
+                imageUrl: post.websiteStory?.imageUrl,
+                image: post.websiteStory?.image
+            },
+            // Only include heatCheckData fields needed for heat score calculation
+            heatCheckData: post.heatCheckData ? {
+                fact_pack: post.heatCheckData.fact_pack || post.heatCheckData.factPack,
+                factPack: post.heatCheckData.factPack,
+                evidence_bundle: post.heatCheckData.evidence_bundle || post.heatCheckData.evidenceBundle,
+                evidenceBundle: post.heatCheckData.evidenceBundle,
+                narratives: post.heatCheckData.narratives,
+                // For DFS articles, include dfsPlayers
+                dfsPlayers: post.heatCheckData.dfsPlayers
+            } : undefined
+        }));
+        
+        // Generate Organization schema
+        const organizationSchema = {
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            "name": "HeatChecks",
+            "url": baseUrl,
+            "logo": {
+                "@type": "ImageObject",
+                "url": `${baseUrl}/images/HeatChecksMainLogo.svg`
+            },
+            "description": "Measure the emotion behind every matchup. HeatChecks tracks revenge, rivalry, narrative momentum, and psychological pressure in sports.",
+            "sameAs": [
+                // Add social media profiles if available
+            ]
+        };
+        
+        // Generate WebSite schema
+        const websiteSchema = {
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            "name": "HeatChecks",
+            "url": baseUrl,
+            "description": "Measure the emotion behind every matchup. HeatChecks tracks revenge, rivalry, narrative momentum, and psychological pressure in sports.",
+            "publisher": {
+                "@type": "Organization",
+                "name": "HeatChecks"
+            },
+            "potentialAction": {
+                "@type": "SearchAction",
+                "target": {
+                    "@type": "EntryPoint",
+                    "urlTemplate": `${baseUrl}/?q={search_term_string}`
+                },
+                "query-input": "required name=search_term_string"
+            }
+        };
+        
+        // Generate ItemList schema for recent posts
+        const itemListSchema = {
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            "name": "Recent Sports Analysis Articles",
+            "description": "Latest HeatChecks articles covering NBA, NFL, and DFS analysis",
+            "numberOfItems": Math.min(filteredPosts.length, 20),
+            "itemListElement": filteredPosts.slice(0, 20).map((post, index) => {
+                const league = normalizeLeague(post.league);
+                const date = post.matchupScheduledDate 
+                    ? formatDateISO(post.matchupScheduledDate)
+                    : formatDateISO(post.createdAt);
+                
+                let articleUrl = '';
+                if (post.storyType === 'dfs_article') {
+                    articleUrl = `${baseUrl}/dfs/${league}/${date}/dfs-value-narratives-${date}/`;
+                } else {
+                    const matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
+                    const narratives = post.heatCheckData?.narratives || {};
+                    const candidateCards = narratives.candidate_cards || [];
+                    const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
+                    const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
+                    const emotionTags = activeCard?.emotion_tags || [];
+                    const narrativeSlug = generateNarrativeSlug(
+                        post.websiteStory?.headline || '',
+                        post.teamA || '',
+                        post.teamB || '',
+                        emotionTags
+                    );
+                    articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
+                }
+                
+                return {
+                    "@type": "ListItem",
+                    "position": index + 1,
+                    "item": {
+                        "@type": "Article",
+                        "headline": post.websiteStory?.headline || 'Untitled',
+                        "url": articleUrl
+                    }
+                };
+            })
+        };
+        
+        const homepageKeywords = 'sports betting, DFS picks, daily fantasy sports, NBA betting, NFL betting, sports analysis, matchup preview, betting picks, DFS strategy, sports predictions';
+        
         const homepageHtml = generateBaseHtml(homepageContent, {
             title: 'HeatChecks | Sports Analysis & Heat Intelligence',
-            description: 'Measure the emotion behind every matchup. HeatChecks tracks revenge, rivalry, narrative momentum, and psychological pressure in sports.',
+            description: 'Measure the emotion behind every matchup. HeatChecks tracks revenge, rivalry, narrative momentum, and psychological pressure in sports. Expert betting picks and DFS analysis.',
             url: baseUrl,
             baseUrl,
-            posts
+            keywords: homepageKeywords,
+            schemaOrg: [organizationSchema, websiteSchema, itemListSchema],
+            posts: filteredPosts
         });
         // Generate index.html (homepage) - allow it to be written to public
         const homepageDistPath = path.join(distDir, 'index.html');
@@ -539,9 +691,32 @@ async function generateAllPages(): Promise<void> {
         const aboutContent = `
             <article>
                 <div class="content-area-title">▶ ABOUT US</div>
-                <section style="padding: 2rem; font-family: 'Courier New', monospace; color: rgba(255, 255, 255, 0.85); line-height: 1.8;">
-                    <h1 style="color: #ff0040; font-size: 1.8rem; margin-bottom: 1.5rem; font-weight: 900; text-shadow: 0 0 10px rgba(255, 0, 64, 0.5);">About Heatchecks</h1>
-                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">The Science of Sports Emotion</h2>
+                <div class="article-content-grid" style="display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: auto 1fr; gap: 0.5rem; padding: 0.5rem;">
+                    <!-- Left Column: Main Content -->
+                    <div class="article-main-column" style="grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden;">
+                        <div style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                            <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.5); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);"></div>
+                            <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.5); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);"></div>
+                            <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);"></div>
+                            <div style="color: rgba(255, 255, 255, 0.9); font-size: 0.75rem; font-family: 'Courier New', monospace; margin-left: 0.5rem; letter-spacing: 0.1em;">ABOUT_HEATCHECKS.log</div>
+                        </div>
+                        <div class="main-article-content" style="flex: 1; overflow-y: auto; padding: 1.5rem; font-family: 'Courier New', monospace; color: rgba(255, 255, 255, 0.85); line-height: 1.8;">
+                            <style>.main-article-content::-webkit-scrollbar { display: none; }</style>
+                            
+                            <!-- Logo Section -->
+                            <div style="margin-bottom: 2rem; text-align: center; padding: 2rem 0; border-bottom: 1px dashed rgba(255, 255, 255, 0.3);">
+                                <a href="/" style="display: inline-block;">
+                                    <img src="/images/HeatChecksMainLogo.svg" alt="HeatChecks" style="height: 120px; width: auto; opacity: 0.95; filter: drop-shadow(0 0 20px rgba(0, 255, 65, 0.3));" onmouseover="this.style.opacity='1'; this.style.filter='drop-shadow(0 0 25px rgba(0, 255, 65, 0.5))';" onmouseout="this.style.opacity='0.95'; this.style.filter='drop-shadow(0 0 20px rgba(0, 255, 65, 0.3))';">
+                                </a>
+                            </div>
+                            
+                            <div style="margin-bottom: 2rem; border-bottom: 1px dashed rgba(255, 255, 255, 0.3); padding-bottom: 1rem;">
+                                <h1 style="color: rgba(255, 255, 255, 0.95); font-size: 1.3rem; margin-bottom: 0.5rem; font-weight: bold; line-height: 1.3;">About Heatchecks</h1>
+                                <div style="color: rgba(255, 255, 255, 0.6); font-size: 0.85rem; margin-bottom: 0.5rem;">// The Science of Sports Emotion</div>
+                            </div>
+                            
+                            <section style="font-family: 'Courier New', monospace; color: rgba(255, 255, 255, 0.85); line-height: 1.8;">
+                    <h2 style="color: rgba(0, 255, 65, 0.9); font-size: 1.1rem; margin-top: 2rem; margin-bottom: 1rem; font-weight: bold; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid rgba(0, 255, 65, 0.3); padding-bottom: 0.5rem;">&gt; THE SCIENCE OF SPORTS EMOTION</h2>
                     
                     <p style="margin-bottom: 1.5rem; font-size: 1rem; line-height: 1.8;">
                         Heatchecks is a next-generation sports intelligence platform focused on the most powerful variable in competition: <strong>human emotion</strong>.
@@ -555,7 +730,7 @@ async function generateAllPages(): Promise<void> {
                         We believe every matchup contains a narrative undercurrent that the markets consistently undervalue. Heatchecks exists to uncover it.
                     </p>
                     
-                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x1F525; Our Mission</h2>
+                    <h2 style="color: rgba(0, 255, 65, 0.9); font-size: 1.1rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: bold; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid rgba(0, 255, 65, 0.3); padding-bottom: 0.5rem;">&gt; OUR MISSION</h2>
                     
                     <p style="margin-bottom: 1.5rem; font-size: 1rem; line-height: 1.8;">
                         Our mission is to identify and explain high-tension moments in sports — revenge games, rivalry showdowns, personal vendettas, pressure collapses, redemption arcs — and present them in a way that is:
@@ -580,7 +755,7 @@ async function generateAllPages(): Promise<void> {
                         We blend sports data, media signals, historical context, and human psychology into long-form matchup intelligence you won&apos;t find anywhere else.
                     </p>
                     
-                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x1F3C0;&#x26BD;&#x1F3C8; What We Cover</h2>
+                    <h2 style="color: rgba(0, 255, 65, 0.9); font-size: 1.1rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: bold; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid rgba(0, 255, 65, 0.3); padding-bottom: 0.5rem;">&gt; WHAT WE COVER</h2>
                     
                     <p style="margin-bottom: 1rem; font-size: 1rem; line-height: 1.8;">
                         We analyze and publish daily content for:
@@ -617,7 +792,7 @@ async function generateAllPages(): Promise<void> {
                         What emotional forces are truly shaping this game — and how does that create opportunity?
                     </p>
                     
-                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x1F9EC; Our Edge</h2>
+                    <h2 style="color: rgba(0, 255, 65, 0.9); font-size: 1.1rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: bold; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid rgba(0, 255, 65, 0.3); padding-bottom: 0.5rem;">&gt; OUR EDGE</h2>
                     
                     <p style="margin-bottom: 1rem; font-size: 1rem; line-height: 1.8;">
                         Most outlets track:
@@ -639,7 +814,7 @@ async function generateAllPages(): Promise<void> {
                         This is the missing layer of sports intelligence.
                     </p>
                     
-                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x2699;&#xFE0F; How Heatchecks Works</h2>
+                    <h2 style="color: rgba(0, 255, 65, 0.9); font-size: 1.1rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: bold; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid rgba(0, 255, 65, 0.3); padding-bottom: 0.5rem;">&gt; HOW HEATCHECKS WORKS</h2>
                     
                     <p style="margin-bottom: 1rem; font-size: 1rem; line-height: 1.8;">
                         Heatchecks uses proprietary scanning systems and editorial analysis to:
@@ -668,7 +843,7 @@ async function generateAllPages(): Promise<void> {
                         All content is reviewed and curated by human editors.
                     </p>
                     
-                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x2696;&#xFE0F; Legal &amp; Transparency Notice (California &amp; General)</h2>
+                    <h2 style="color: rgba(0, 255, 65, 0.9); font-size: 1.1rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: bold; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid rgba(0, 255, 65, 0.3); padding-bottom: 0.5rem;">&gt; LEGAL &amp; TRANSPARENCY NOTICE</h2>
                     
                     <p style="margin-bottom: 1rem; font-size: 0.95rem; line-height: 1.8; color: rgba(255, 255, 255, 0.9);">
                         Heatchecks is a sports analysis &amp; entertainment publication.
@@ -709,7 +884,7 @@ async function generateAllPages(): Promise<void> {
                         Users must comply with all applicable local, state, and federal laws — including California regulations — regarding sports wagering and online gaming.
                     </p>
                     
-                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x1F4BE; No Affiliation Disclaimer</h2>
+                    <h2 style="color: rgba(0, 255, 65, 0.9); font-size: 1.1rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: bold; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid rgba(0, 255, 65, 0.3); padding-bottom: 0.5rem;">&gt; NO AFFILIATION DISCLAIMER</h2>
                     
                     <p style="margin-bottom: 1.5rem; font-size: 0.95rem; line-height: 1.8; color: rgba(255, 255, 255, 0.9);">
                         Heatchecks is an independent publication and is <strong>not affiliated</strong> with the NBA, NFL, Premier League, La Liga, or any professional league or team.
@@ -719,7 +894,7 @@ async function generateAllPages(): Promise<void> {
                         All team names, logos, and trademarks belong to their respective owners and are used under nominative fair use for commentary and analysis.
                     </p>
                     
-                    <h2 style="color: #00ff41; font-size: 1.3rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: 700; text-shadow: 0 0 8px rgba(0, 255, 65, 0.4);">&#x1F680; Why Heatchecks Exists</h2>
+                    <h2 style="color: rgba(0, 255, 65, 0.9); font-size: 1.1rem; margin-top: 2.5rem; margin-bottom: 1rem; font-weight: bold; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.1em; border-bottom: 1px solid rgba(0, 255, 65, 0.3); padding-bottom: 0.5rem;">&gt; WHY HEATCHECKS EXISTS</h2>
                     
                     <p style="margin-bottom: 1.5rem; font-size: 1rem; line-height: 1.8;">
                         Because games are not won on spreadsheets alone.
@@ -736,7 +911,54 @@ async function generateAllPages(): Promise<void> {
                     <p style="margin-bottom: 0; font-size: 1rem; line-height: 1.8; font-weight: 600; color: rgba(255, 255, 255, 0.95); font-style: italic;">
                         We read the game beneath the game.
                     </p>
-                </section>
+                            </section>
+                        </div>
+                    </div>
+                    
+                    <!-- Right Column: Sidebar -->
+                    <div class="article-sidebar-column" style="grid-column: 2; grid-row: 1 / -1; display: flex; flex-direction: column; gap: 0.5rem; overflow: hidden;">
+                        <!-- Info Panel -->
+                        <div style="flex: 1 1 auto; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden; min-height: 0;">
+                            <div style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(0, 255, 65, 0.3); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                                <div style="width: 6px; height: 6px; background: rgba(0, 255, 65, 0.8); border-radius: 50%; box-shadow: 0 0 6px rgba(0, 255, 65, 0.5);"></div>
+                                <div style="color: rgba(255, 255, 255, 0.9); font-size: 0.75rem; font-family: 'Courier New', monospace; letter-spacing: 0.1em; font-weight: bold;">INFO_PANEL</div>
+                            </div>
+                            <div style="flex: 1; overflow-y: auto; padding: 1rem; font-family: 'Courier New', monospace; font-size: 0.8rem; color: rgba(255, 255, 255, 0.85);">
+                                <style>.article-sidebar-column div::-webkit-scrollbar { display: none; }</style>
+                                
+                                <div style="margin-bottom: 1.5rem; padding: 0.75rem; background: rgba(0, 255, 65, 0.1); border: 1px solid rgba(0, 255, 65, 0.3); border-left: 3px solid rgba(0, 255, 65, 0.6);">
+                                    <div style="color: rgba(0, 255, 65, 0.9); font-size: 0.75rem; font-weight: bold; margin-bottom: 0.5rem; text-transform: uppercase;">&gt; PLATFORM</div>
+                                    <div style="color: rgba(255, 255, 255, 0.85); font-size: 0.8rem; line-height: 1.6;">
+                                        Next-generation sports intelligence focused on emotional dynamics in competition.
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-bottom: 1.5rem; padding: 0.75rem; background: rgba(248, 66, 66, 0.1); border: 1px solid rgba(248, 66, 66, 0.3); border-left: 3px solid rgba(248, 66, 66, 0.6);">
+                                    <div style="color: rgba(248, 66, 66, 0.9); font-size: 0.75rem; font-weight: bold; margin-bottom: 0.5rem; text-transform: uppercase;">&gt; COVERAGE</div>
+                                    <div style="color: rgba(255, 255, 255, 0.85); font-size: 0.8rem; line-height: 1.6;">
+                                        NBA • NFL • Premier League • La Liga
+                                    </div>
+                                </div>
+                                
+                                <div style="margin-bottom: 1.5rem; padding: 0.75rem; background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.2); border-left: 3px solid rgba(255, 255, 255, 0.4);">
+                                    <div style="color: rgba(255, 255, 255, 0.9); font-size: 0.75rem; font-weight: bold; margin-bottom: 0.5rem; text-transform: uppercase;">&gt; METHODOLOGY</div>
+                                    <div style="color: rgba(255, 255, 255, 0.75); font-size: 0.75rem; line-height: 1.6;">
+                                        Proprietary scanning systems + editorial analysis + narrative intelligence
+                                    </div>
+                                </div>
+                                
+                                <div style="padding: 0.75rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1);">
+                                    <div style="color: rgba(255, 255, 255, 0.7); font-size: 0.7rem; line-height: 1.6; margin-bottom: 0.5rem;">
+                                        Independent publication. Not affiliated with any professional league or team.
+                                    </div>
+                                    <div style="color: rgba(255, 255, 255, 0.5); font-size: 0.65rem; line-height: 1.5; border-top: 1px dashed rgba(255, 255, 255, 0.2); padding-top: 0.5rem; margin-top: 0.5rem;">
+                                        All content for informational, educational, and entertainment purposes only.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </article>
         `;
         
@@ -778,6 +1000,8 @@ async function generateAllPages(): Promise<void> {
         console.log('Generating robots.txt...');
         const robotsTxt = `User-agent: *
 Allow: /
+Disallow: /app/
+Disallow: /api/
 
 # Sitemap
 Sitemap: ${baseUrl}/sitemap.xml

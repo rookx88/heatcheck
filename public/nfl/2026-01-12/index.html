@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NFL 2026-01-12 | HeatChecks</title>
-    <meta name="description" content="HeatChecks articles for NFL games on 2026-01-12.">
+    <title>NFL 2026-01-12 | NFL Matchup Analysis | HeatChecks</title>
+    <meta name="description" content="HeatChecks analysis for NFL matchups on 2026-01-12. Expert NFL betting picks, predictions, and narrative-driven insights.">
+        <meta name="keywords" content="NFL betting, NFL picks, NFL predictions, 2026-01-12 NFL matchups, NFL analysis">
     <link rel="canonical" href="https://heatchecks.io/nfl/2026-01-12/">
     
     <!-- OpenGraph -->
-    <meta property="og:title" content="NFL 2026-01-12 | HeatChecks">
-    <meta property="og:description" content="HeatChecks articles for NFL games on 2026-01-12.">
+    <meta property="og:title" content="NFL 2026-01-12 | NFL Matchup Analysis | HeatChecks">
+    <meta property="og:description" content="HeatChecks analysis for NFL matchups on 2026-01-12. Expert NFL betting picks, predictions, and narrative-driven insights.">
     <meta property="og:image" content="https://heatchecks.io/images/default-og-image.jpg">
     <meta property="og:url" content="https://heatchecks.io/nfl/2026-01-12/">
     <meta property="og:type" content="website">
@@ -20,11 +21,47 @@
     
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="NFL 2026-01-12 | HeatChecks">
-    <meta name="twitter:description" content="HeatChecks articles for NFL games on 2026-01-12.">
+    <meta name="twitter:title" content="NFL 2026-01-12 | NFL Matchup Analysis | HeatChecks">
+    <meta name="twitter:description" content="HeatChecks analysis for NFL matchups on 2026-01-12. Expert NFL betting picks, predictions, and narrative-driven insights.">
     <meta name="twitter:image" content="https://heatchecks.io/images/default-og-image.jpg">
     
     
+    <script type="application/ld+json">
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "name": "NFL 2026-01-12 Matchups",
+    "description": "HeatChecks analysis for NFL matchups on 2026-01-12.",
+    "url": "https://heatchecks.io/nfl/2026-01-12/",
+    "numberOfItems": 1
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      {
+        "@type": "ListItem",
+        "position": 1,
+        "name": "Home",
+        "item": "https://heatchecks.io/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 2,
+        "name": "NFL",
+        "item": "https://heatchecks.io/nfl/"
+      },
+      {
+        "@type": "ListItem",
+        "position": 3,
+        "name": "2026-01-12",
+        "item": "https://heatchecks.io/nfl/2026-01-12/"
+      }
+    ]
+  }
+]
+</script>
     
     <link rel="stylesheet" href="/assets/public-site.css">
 </head>
@@ -41,6 +78,14 @@
     
     <!-- Mobile Navigation Drawer -->
     <nav class="mobile-nav-drawer" id="mobile-nav-drawer">
+        <!-- Mobile HeatScan Button - Main Attraction at Top -->
+        <div style="padding: 1.5rem 0.75rem; border-bottom: 2px solid rgba(0, 255, 65, 0.4); margin-bottom: 1rem; background: rgba(0, 255, 65, 0.05);">
+            <button class="mobile-heatscan-button" id="mobile-heatscan-button" style="background: transparent; border: none; padding: 0; cursor: pointer; display: flex; align-items: center; gap: 1rem; width: 100%;">
+                <img src="/HeatScanButton.svg" alt="Heat Scan" style="width: 70px; height: auto; filter: drop-shadow(0 0 10px rgba(0, 255, 65, 0.5));">
+                <span style="color: #00ff41; font-family: 'Courier New', monospace; font-size: 1.1rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);">SCAN GAMES</span>
+            </button>
+        </div>
+        
         <nav class="crawler-nav" aria-label="Site navigation">
   <a href="/about/" class="nav-link">ABOUT US</a>
   <div class="league-nav-item">
@@ -62,9 +107,59 @@
       <a href="/epl/" class="nav-link nav-submenu-item">HUB</a>
     </div>
   </div>
+  <div class="league-nav-item">
+    <a href="javascript:void(0)" class="nav-link league-link" data-league="DFS">DFS <span class="league-arrow">▶</span></a>
+    <div class="nav-submenu hidden">
+      <a href="/dfs/" class="nav-link nav-submenu-item">HUB</a>
+    </div>
+  </div>
   <a href="/archive/" class="nav-link" style="font-size: 0.95rem;">ARCHIVE</a>
 </nav>
+        
+        <div style="margin-top: auto; padding: 2rem 1rem 1rem 1rem; border-top: 1px solid rgba(0, 255, 65, 0.2); display: flex; justify-content: center; align-items: center;">
+            <a href="/" style="display: block;">
+                <img src="/images/HeatChecksMainLogo.svg" alt="HeatChecks" style="height: 60px; width: auto; opacity: 0.9;" onmouseover="this.style.opacity='1';" onmouseout="this.style.opacity='0.9';">
+            </a>
+        </div>
     </nav>
+    
+    <!-- Mobile Radar Modal -->
+    <div class="mobile-radar-modal" id="mobile-radar-modal">
+        <div class="mobile-radar-overlay" id="mobile-radar-overlay"></div>
+        <div class="mobile-radar-content">
+            <button class="mobile-radar-close-btn" id="mobile-radar-close-btn">×</button>
+            <div class="mobile-radar-header">
+                <div class="mobile-radar-title" style="display: flex; align-items: center; justify-content: center;">
+                    <img src="/HeatScanButton.svg" alt="HeatScan" style="height: 60px; width: auto; filter: drop-shadow(0 0 10px rgba(0, 255, 65, 0.5));">
+                </div>
+            </div>
+            <div class="mobile-radar-body">
+                <div class="mobile-radar-initial-state" id="mobile-radar-initial-state">
+                    <div class="mobile-radar-screen">
+                        <div class="mobile-radar-grid"></div>
+                        <div class="mobile-radar-sweep"></div>
+                        <button class="mobile-scan-games-button" id="mobile-scan-games-button">
+                            <span style="margin-right: 0.5rem;">▶</span> SCAN GAMES
+                        </button>
+                    </div>
+                </div>
+                <div class="mobile-radar-loading-state" id="mobile-radar-loading-state" style="display: none;">
+                    <div class="mobile-radar-loading-content">
+                        <div class="mobile-radar-loading-message" id="mobile-radar-loading-message">INITIALIZING SCAN...</div>
+                        <div class="mobile-radar-loading-dots">
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mobile-radar-results-state" id="mobile-radar-results-state" style="display: none;">
+                    <div class="mobile-radar-date-title" id="mobile-radar-date-title"></div>
+                    <div class="mobile-radar-games" id="mobile-radar-games"></div>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <div class="public-container">
         <div class="top-left">
@@ -149,6 +244,12 @@
       <a href="/epl/" class="nav-link nav-submenu-item">HUB</a>
     </div>
   </div>
+  <div class="league-nav-item">
+    <a href="javascript:void(0)" class="nav-link league-link" data-league="DFS">DFS <span class="league-arrow">▶</span></a>
+    <div class="nav-submenu hidden">
+      <a href="/dfs/" class="nav-link nav-submenu-item">HUB</a>
+    </div>
+  </div>
   <a href="/archive/" class="nav-link" style="font-size: 0.95rem;">ARCHIVE</a>
 </nav>
         </div>
@@ -167,11 +268,14 @@
                     </div>
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
+                    
+                    <!-- Regular Heat Indicator -->
                     <div class="heat-indicator-container" data-post-id="ddbb7119-6d4b-4335-96a5-7313293fbec2" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #00ff41; border-radius: 50%; opacity: 0.5;"></div>
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
                         <div style="color: #ff0040; font-size: 1.55rem; font-weight: 900; text-shadow: 0 0 20px #ff0040, 0 0 30px rgba(255, 0, 64, 0.7), 0 0 40px rgba(255, 0, 64, 0.5), 0 0 2px rgba(255, 255, 255, 0.9); font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative;">60</div>
                     </div>
+                    
                     <div class="post-card-image-container" data-post-id="ddbb7119-6d4b-4335-96a5-7313293fbec2" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
                         <img src="/assets/images/Steelers-vs-Texans-2026-01-12.png" alt="Steelers vs Texans NFL steelers-vs-texans-clash narrative - The Last Dance in Pittsburgh: Tomlin, Rodgers, and the Wild Card Clash - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
                     </div>
@@ -179,10 +283,10 @@
                 <h2 style="font-size: 0.75rem; line-height: 1.3; margin: 0 0 1rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2em; max-height: 3em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word;">The Last Dance in Pittsburgh: Tomlin, Rodgers, and the Wild Card Clash</h2>
                 
         <div style="margin: 0 0 1rem 0; padding: 0.75rem; background: rgba(0, 0, 0, 0.4); border-left: 3px solid rgba(248, 66, 66, 0.6); border-radius: 2px; font-family: 'Courier New', monospace;">
-            <p style="font-size: 0.7rem; line-height: 1.4; color: rgba(255, 255, 255, 0.85); font-style: italic; margin: 0 0 0.4rem 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">
+            <p style="font-size: 0.7rem; line-height: 1.4; color: rgba(255, 255, 255, 0.85); font-style: italic; margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis;">
                 "I&#039;m institutionalized, man. I gotta have it."
             </p>
-            <div style="font-size: 0.65rem; color: rgba(255, 255, 255, 0.6); margin: 0; text-align: right;">— Mike Tomlin (Pittsburgh Steelers)</div>
+            <div style="font-size: 0.65rem; color: rgba(255, 255, 255, 0.6); margin: 0.4rem 0 0 0; text-align: right;">— Mike Tomlin (Pittsburgh Steelers)</div>
         </div>
     
                 <a href="/nfl/2026-01-12/steelers-vs-texans/steelers-vs-texans-clash/" style="margin-top: 0; margin-bottom: 0; font-size: 0.7rem; padding: 0.4rem 0.8rem; background: #000; border: 2px solid #f84242; color: #fff; cursor: pointer; text-transform: uppercase; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; letter-spacing: 0.08em; transition: all 0.3s ease; width: 100%; box-sizing: border-box; text-decoration: none; display: block; text-align: center;">VIEW STORY</a>
@@ -191,9 +295,7 @@
     </div>
         </div>
     </div>
-    
     <script type="application/json" id="posts-data">[{"id":"ddbb7119-6d4b-4335-96a5-7313293fbec2","teamA":"Pittsburgh Steelers","teamB":"Houston Texans","league":"NFL","status":"published","createdAt":"2026-01-09T15:21:04.945Z","storyType":"heatcheck-v2","updatedAt":"2026-01-09T15:35:02.815Z","websiteStory":{"dek":"Mike Tomlin faces C.J. Stroud in a legacy-defining Super Wild Card matchup. Will Rodgers and the Steelers' defense stop the red-hot Texans?","seo":{"slug":"steelers-vs-texans/steelers-vs-texans-clash","metaTitle":"The Last Dance in Pittsburgh: Tomlin, Rodgers, and the Wild Card Clash","metaDescription":"Mike Tomlin faces C.J. Stroud in a legacy-defining Super Wild Card matchup. Will Rodgers and the Steelers' defense stop the red-hot Texans?"},"tags":[],"image":"Steelers-vs-Texans-2026-01-12.png","sources":[],"theData":[],"headline":"The Last Dance in Pittsburgh: Tomlin, Rodgers, and the Wild Card Clash","edgeAngle":"","formatStyle":"QUOTE_LEDE","theReceipts":[],"whatToWatch":[],"theBackstory":"","whyItMatters":[],"pressurePoints":[],"keyMomentsTimeline":[]},"heatCheckData":{"teams":{"away":"Houston Texans","home":"Pittsburgh Steelers"},"league":"NFL","article":{"seo":{"title_options":["The Last Dance in Pittsburgh: Tomlin, Rodgers, and the Wild Card Clash","Steelers vs Texans: Why the 'Standard' is a Home Dog for a Reason","Monday Night Miracle: Can Aaron Rodgers End Tomlin's Playoff Drought?"],"primary_keyword":"Steelers vs Texans Wild Card 2026","meta_description":"Mike Tomlin faces C.J. Stroud in a legacy-defining Super Wild Card matchup. Will Rodgers and the Steelers' defense stop the red-hot Texans?"},"long_form_markdown":"# The Iron Architect’s Final Blueprint?\n\nAs the cold winds of the Monongahela River whip through Acrisure Stadium this Monday night, the air carries more than just the scent of winter—it carries the weight of an era. The **Pittsburgh Steelers (10-7)** host the **Houston Texans (11-6)** in a Super Wild Card finale that feels less like a game and more like a referendum on the 'Steelers Way'.\n\n### The Tomlin-TV Paradox\nFor the first time in nineteen seasons, the questions in the South Side facility aren't about *how* Mike Tomlin will win, but *if* he wants to keep doing it. Reports from **Sports Illustrated** and **ESPN** suggest the charismatic leader is 'institutionalized' by the game, yet 'keeping his options open' for a high-profile broadcasting career in 2026. This game represents a crossroads: one final push with a veteran roster, or a transition to the booth. \n\n### The Mercenary and the Prodigy\nIn the pocket, we see the ultimate contrast. **Aaron Rodgers**, the 42-year-old mercenary brought in to salvage the 'Standard', has stabilized a passing attack that had been dormant for years. Standing across from him is **C.J. Stroud**, a surgical phenom who leads a Texans offense that has won nine straight games. While Rodgers has the experience, Stroud has the momentum of a locomotive.\n\n### The Chubb Redemption\nAdding a layer of 'beef' to this contest is the presence of **Nick Chubb** in Houston blue. The former Browns legend, who has seen more than his fair share of battles in Pittsburgh, returns to his old stomping grounds as a playoff-hardened veteran for the Texans. Watching Chubb run behind that Houston line against **T.J. Watt** and **Jalen Ramsey** is a script the NFL writers couldn't have improved upon.\n\n### The Vegas Trap\nThe oddsmakers have the Texans as 3.5-point road favorites. On paper, it makes sense: Houston is younger, faster, and owns the league's #1 scoring defense. But Pittsburgh is 23-1 in their last 24 Monday night home games. The 'under' (39.5) is the lowest of the weekend—this will not be a track meet. It will be a street fight."},"match_id":"NFL_2026_WC_HOU_PIT","fact_pack":{"odds":{"source":"DraftKings / FanDuel / BetMGM","markets":[{"book":"DraftKings","point":3.5,"price":-110,"market":"Spread","outcomes":["Houston Texans -3.5","Pittsburgh Steelers +3.5"]},{"book":"FanDuel","point":0,"price":-175,"market":"Moneyline","outcomes":["Houston Texans -175","Pittsburgh Steelers +145"]},{"book":"BetMGM","point":39.5,"price":-110,"market":"Total","outcomes":["Over 39.5","Under 39.5"]}],"last_updated_utc":"2026-01-09T12:00:00Z","movement_summary":["Total has dropped from an opening 42.5 to 39.5 due to projected freezing temperatures in Pittsburgh.","Houston opened as -3 and was steamed to -3.5 despite being the road team."]},"context":{"injuries":[{"name":"C.J. Stroud","team":"Houston Texans","status":"Active (Rested Week 18)"},{"name":"Nico Collins","team":"Houston Texans","status":"Active (Rested Week 18)"},{"name":"Nick Chubb","team":"Houston Texans","status":"Active (Rested Week 18)"},{"name":"Darnell Washington","team":"Pittsburgh Steelers","status":"OUT (Injury)"},{"name":"DK Metcalf","team":"Pittsburgh Steelers","status":"Active (Return from Suspension)"}],"recent_form":{"away":"11-6, on a 9-game winning streak heading into the postseason.","home":"10-7, won AFC North in Week 18 vs Baltimore. 3-2 in last 5."}},"key_stats":[{"label":"Steelers Monday Night Home Record","value":"23-1 in last 24","why_it_matters":"The 'Black and Gold' primetime aura at Acrisure Stadium is a statistical anomaly that scares bookmakers."},{"label":"Texans Defense Rank","value":"1st in Opp PPG (16.6)","why_it_matters":"DeMeco Ryans has built the most efficient scoring defense in the NFL."},{"label":"Tomlin vs. Playoff ATS","value":"6-game losing streak","why_it_matters":"While Tomlin wins in the regular season, he has struggled to cover or win in January recently."}]},"narratives":{"selected":{"primary_narrative_id":"N_1","secondary_narrative_ids":["N_2"]},"candidate_cards":[{"claim":"Mike Tomlin is coaching his final home game at Acrisure Stadium before a move to TV, creating a 'win it for Mike' fervor in the locker room.","title":"The Last Ride of the Iron Architect","risk_notes":["Tomlin has denied TV rumors, but insiders insist he is 'keeping options open'."],"total_score":31,"emotion_tags":["legacy","sentimental","finality"],"narrative_id":"N_1","key_characters":["Mike Tomlin","Aaron Rodgers"],"score_breakdown":{"stakes":5,"recency":5,"uniqueness":4,"factual_support":5,"audience_resonance":5,"volatility_optional":3,"performance_alignment":4},"must_cite_source_ids":["SRC_1"],"evidence_requirements_met":true},{"claim":"Nick Chubb, the former Cleveland icon, returns to the AFC North as a Texan to finally conquer the stadium that haunted his career.","title":"The Ghost of AFC North Past","risk_notes":["Chubb is in a 'timeshare' backfield with rookie Woody Marks."],"total_score":29,"emotion_tags":["revenge","redemption","irony"],"narrative_id":"N_2","key_characters":["Nick Chubb","T.J. Watt"],"score_breakdown":{"stakes":4,"recency":4,"uniqueness":5,"factual_support":5,"audience_resonance":4,"volatility_optional":4,"performance_alignment":3},"must_cite_source_ids":["SRC_3"],"evidence_requirements_met":true}],"fallback_lane_used":"none"},"quality_report":{"corrections_applied":["Confirmed Aaron Rodgers as Steelers QB based on simulated 2025 leader data.","Confirmed Nick Chubb on Texans roster for the 2025-26 season.","Confirmed Jalen Ramsey and DK Metcalf on Steelers roster for the 2025-26 season.","Identified Jan 12, 2026, as a Monday Night Wild Card game."],"missing_data_warnings":[],"hallucination_checks_passed":true},"evidence_bundle":{"quotes":[{"team":"Pittsburgh Steelers","quote":"I'm institutionalized, man. I gotta have it.","context":"Responding to rumors that he may retire to a TV broadcasting role after this season.","speaker":"Mike Tomlin","date_utc":"2026-01-07T00:00:00Z","quote_id":"Q_1","source_id":"SRC_1"},{"team":"Houston Texans","quote":"Everybody starts 0-0. The margin for error is razor-thin.","context":"Press conference regarding the 9-game win streak vs. the playoff atmosphere.","speaker":"DeMeco Ryans","date_utc":"2026-01-06T00:00:00Z","quote_id":"Q_2","source_id":"SRC_3"}],"sources":[{"url":"https://si.com/nfl/steelers/tomlin-future-2026","title":"Tomlin Options Open for 2026","publisher":"Sports Illustrated","source_id":"SRC_1","published_utc":"2026-01-07T10:00:00Z","reliability_tier":"A"},{"url":"https://statmuse.com/nfl/steelers-2025-stats","title":"Rodgers Leads Steelers to AFC North Crown","publisher":"StatMuse","source_id":"SRC_2","published_utc":"2026-01-05T09:00:00Z","reliability_tier":"A"},{"url":"https://heavy.com/sports/texans-nick-chubb-inactive","title":"Texans Resting Starters for Wild Card","publisher":"Heavy Sports","source_id":"SRC_3","published_utc":"2026-01-04T15:00:00Z","reliability_tier":"B"}],"timeline_events":[{"summary":"Texans beat Steelers with only 47 yards of offense, a historical outlier still cited by Pittsburgh fans.","date_utc":"2002-12-08T00:00:00Z","event_id":"E_1","source_id":"SRC_1","event_type":"rivalry"},{"summary":"Aaron Rodgers signs with Pittsburgh to chase one final ring under Tomlin.","date_utc":"2025-03-15T00:00:00Z","event_id":"E_2","source_id":"SRC_2","event_type":"trade"}]},"heatchecks_edge":{"finalCall":"The world is in love with C.J. Stroud and the Texans' 9-game heater, but they are walking into a frozen buzzsaw. Mike Tomlin is at his most dangerous when the national media starts writing his retirement obituary. In a sub-40-point slugfest, I’m taking the Steelers (+3.5) and the Moneyline. Aaron Rodgers has one more January miracle in his arm, and the Acrisure crowd on a Monday night is worth 4 points alone. The Standard doesn't break—it just gets colder. Take the Steelers in a 'last dance' upset."}},"scanNarrative":"Mike Tomlin faces C.J. Stroud in a legacy-defining Super Wild Card matchup. Will Rodgers and the Steelers' defense stop the red-hot Texans?","heatchecksEdge":{"game":"Pittsburgh Steelers vs Houston Texans","lean":"NO_EDGE","lines":[],"finalCall":"The world is in love with C.J. Stroud and the Texans' 9-game heater, but they are walking into a frozen buzzsaw. Mike Tomlin is at his most dangerous when the national media starts writing his retirement obituary. In a sub-40-point slugfest, I’m taking the Steelers (+3.5) and the Moneyline. Aaron Rodgers has one more January miracle in his arm, and the Acrisure crowd on a Monday night is worth 4 points alone. The Standard doesn't break—it just gets colder. Take the Steelers in a 'last dance' upset.","confidence":"low","subjectName":"Pittsburgh Steelers","subjectType":"team","marketSnapshot":{"books":[],"retrievedAt":"2026-01-09T15:21:04.938Z"},"historicalAnalog":{"claim":"","sourceUrl":null},"rationaleBullets":[],"riskCounterpoints":[]},"matchupScheduledDate":"2026-01-12T08:00:00.000Z"}]</script>
-    
-    <script src="/assets/static-site.js"></script>
+    <script src="/assets/static-site.js" defer></script>
 </body>
 </html>

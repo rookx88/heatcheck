@@ -13,6 +13,7 @@ export interface HeatcheckPost {
     matchupScheduledDate?: string;
     createdAt: string;
     updatedAt: string;
+    storyType?: string;
     websiteStory: {
         headline: string;
         seo?: {
@@ -59,12 +60,20 @@ export function generateSitemap(posts: HeatcheckPost[], baseUrl: string = 'https
         priority: '0.8'
     });
     
+    // Add DFS hub
+    urls.push({
+        loc: `${baseUrl}/dfs/`,
+        lastmod: new Date().toISOString().split('T')[0],
+        changefreq: 'daily',
+        priority: '0.9'
+    });
+    
     // Add archive page
     urls.push({
         loc: `${baseUrl}/archive/`,
         lastmod: new Date().toISOString().split('T')[0],
         changefreq: 'daily',
-        priority: '0.9'
+        priority: '0.6'
     });
     
     // Add league hub pages
@@ -75,11 +84,19 @@ export function generateSitemap(posts: HeatcheckPost[], baseUrl: string = 'https
     
     uniqueLeagues.forEach(league => {
         const leagueLower = normalizeLeague(league);
+        // Regular league hub
         urls.push({
             loc: `${baseUrl}/${leagueLower}/`,
             lastmod: new Date().toISOString().split('T')[0],
             changefreq: 'daily',
-            priority: '0.9'
+            priority: '0.7'
+        });
+        // DFS league hub
+        urls.push({
+            loc: `${baseUrl}/dfs/${leagueLower}/`,
+            lastmod: new Date().toISOString().split('T')[0],
+            changefreq: 'daily',
+            priority: '0.8'
         });
     });
     
@@ -110,50 +127,59 @@ export function generateSitemap(posts: HeatcheckPost[], baseUrl: string = 'https
             ? formatDateISO(post.matchupScheduledDate)
             : formatDateISO(post.createdAt);
         
-        // Get URL structure from stored slug
-        const storedSlug = post.websiteStory?.seo?.slug || '';
         let articleUrl: string;
-        
-        if (storedSlug.includes('/') && storedSlug.split('/').length === 2) {
-            // New format: matchup-slug/narrative-slug
-            const [matchupSlug, narrativeSlug] = storedSlug.split('/');
-            articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
-        } else {
-            // Fallback: Generate from post data
-            const matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
-            
-            const heatCheckData = post.heatCheckData || {};
-            const narratives = heatCheckData.narratives || {};
-            const candidateCards = narratives.candidate_cards || [];
-            const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
-            const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
-            const emotionTags = activeCard?.emotion_tags || [];
-            
-            const narrativeSlug = generateNarrativeSlug(
-                post.websiteStory.headline,
-                post.teamA || '',
-                post.teamB || '',
-                emotionTags
-            );
-            
-            articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
-        }
-        
-        // Determine priority based on recency (recent posts get higher priority)
-        const postDate = new Date(post.createdAt);
-        const daysSincePost = (Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24);
-        let priority = '0.7';
+        let priority = '0.8';
         let changefreq = 'monthly';
         
-        if (daysSincePost < 7) {
-            priority = '1.0';
-            changefreq = 'daily';
-        } else if (daysSincePost < 30) {
+        // Handle DFS articles
+        if (post.storyType === 'dfs_article') {
+            articleUrl = `${baseUrl}/dfs/${league}/${date}/dfs-value-narratives-${date}/`;
+            // DFS articles get higher priority
             priority = '0.9';
-            changefreq = 'weekly';
-        } else if (daysSincePost < 90) {
-            priority = '0.8';
-            changefreq = 'monthly';
+            changefreq = 'daily';
+        } else {
+            // Regular articles
+            const storedSlug = post.websiteStory?.seo?.slug || '';
+            
+            if (storedSlug.includes('/') && storedSlug.split('/').length === 2) {
+                // New format: matchup-slug/narrative-slug
+                const [matchupSlug, narrativeSlug] = storedSlug.split('/');
+                articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
+            } else {
+                // Fallback: Generate from post data
+                const matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
+                
+                const heatCheckData = post.heatCheckData || {};
+                const narratives = heatCheckData.narratives || {};
+                const candidateCards = narratives.candidate_cards || [];
+                const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
+                const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
+                const emotionTags = activeCard?.emotion_tags || [];
+                
+                const narrativeSlug = generateNarrativeSlug(
+                    post.websiteStory.headline,
+                    post.teamA || '',
+                    post.teamB || '',
+                    emotionTags
+                );
+                
+                articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
+            }
+            
+            // Determine priority based on recency (recent posts get higher priority)
+            const postDate = new Date(post.createdAt);
+            const daysSincePost = (Date.now() - postDate.getTime()) / (1000 * 60 * 60 * 24);
+            
+            if (daysSincePost < 7) {
+                priority = '0.9';
+                changefreq = 'daily';
+            } else if (daysSincePost < 30) {
+                priority = '0.8';
+                changefreq = 'weekly';
+            } else if (daysSincePost < 90) {
+                priority = '0.7';
+                changefreq = 'monthly';
+            }
         }
         
         urls.push({

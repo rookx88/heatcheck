@@ -13,10 +13,13 @@ export interface BaseTemplateOptions {
         modifiedTime?: string;
         author?: string;
         section?: string;
+        tags?: string[];
     };
     schemaOrg?: any;
     posts?: any[];
     recentDates?: RecentDate[];
+    keywords?: string;
+    robots?: string;
 }
 
 /**
@@ -61,6 +64,24 @@ export function generateBaseHtml(
         if (meta.section) {
             articleMetaTags += `    <meta property="article:section" content="${meta.section}">\n`;
         }
+        // Add article tags for OpenGraph
+        if (meta.tags && meta.tags.length > 0) {
+            meta.tags.forEach(tag => {
+                articleMetaTags += `    <meta property="article:tag" content="${escapeHtml(tag)}">\n`;
+            });
+        }
+    }
+    
+    // Generate meta keywords (for legacy support)
+    let keywordsTag = '';
+    if (options.keywords) {
+        keywordsTag = `    <meta name="keywords" content="${escapeHtml(options.keywords)}">\n`;
+    }
+    
+    // Generate robots meta tag
+    let robotsTag = '';
+    if (options.robots) {
+        robotsTag = `    <meta name="robots" content="${escapeHtml(options.robots)}">\n`;
     }
     
     return `<!DOCTYPE html>
@@ -70,7 +91,7 @@ export function generateBaseHtml(
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeHtml(options.title)}</title>
     <meta name="description" content="${escapeHtml(options.description)}">
-    <link rel="canonical" href="${escapeHtml(options.url)}">
+    ${keywordsTag}${robotsTag}    <link rel="canonical" href="${escapeHtml(options.url)}">
     
     <!-- OpenGraph -->
     <meta property="og:title" content="${escapeHtml(options.title)}">
@@ -106,8 +127,60 @@ export function generateBaseHtml(
     
     <!-- Mobile Navigation Drawer -->
     <nav class="mobile-nav-drawer" id="mobile-nav-drawer">
+        <!-- Mobile HeatScan Button - Main Attraction at Top -->
+        <div style="padding: 1.5rem 0.75rem; border-bottom: 2px solid rgba(0, 255, 65, 0.4); margin-bottom: 1rem; background: rgba(0, 255, 65, 0.05);">
+            <button class="mobile-heatscan-button" id="mobile-heatscan-button" style="background: transparent; border: none; padding: 0; cursor: pointer; display: flex; align-items: center; gap: 1rem; width: 100%;">
+                <img src="/HeatScanButton.svg" alt="Heat Scan" style="width: 70px; height: auto; filter: drop-shadow(0 0 10px rgba(0, 255, 65, 0.5));">
+                <span style="color: #00ff41; font-family: 'Courier New', monospace; font-size: 1.1rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; text-shadow: 0 0 10px rgba(0, 255, 65, 0.5);">SCAN GAMES</span>
+            </button>
+        </div>
+        
         ${crawlerNav}
+        
+        <div style="margin-top: auto; padding: 2rem 1rem 1rem 1rem; border-top: 1px solid rgba(0, 255, 65, 0.2); display: flex; justify-content: center; align-items: center;">
+            <a href="/" style="display: block;">
+                <img src="/images/HeatChecksMainLogo.svg" alt="HeatChecks" style="height: 60px; width: auto; opacity: 0.9;" onmouseover="this.style.opacity='1';" onmouseout="this.style.opacity='0.9';">
+            </a>
+        </div>
     </nav>
+    
+    <!-- Mobile Radar Modal -->
+    <div class="mobile-radar-modal" id="mobile-radar-modal">
+        <div class="mobile-radar-overlay" id="mobile-radar-overlay"></div>
+        <div class="mobile-radar-content">
+            <button class="mobile-radar-close-btn" id="mobile-radar-close-btn">×</button>
+            <div class="mobile-radar-header">
+                <div class="mobile-radar-title" style="display: flex; align-items: center; justify-content: center;">
+                    <img src="/HeatScanButton.svg" alt="HeatScan" style="height: 60px; width: auto; filter: drop-shadow(0 0 10px rgba(0, 255, 65, 0.5));">
+                </div>
+            </div>
+            <div class="mobile-radar-body">
+                <div class="mobile-radar-initial-state" id="mobile-radar-initial-state">
+                    <div class="mobile-radar-screen">
+                        <div class="mobile-radar-grid"></div>
+                        <div class="mobile-radar-sweep"></div>
+                        <button class="mobile-scan-games-button" id="mobile-scan-games-button">
+                            <span style="margin-right: 0.5rem;">▶</span> SCAN GAMES
+                        </button>
+                    </div>
+                </div>
+                <div class="mobile-radar-loading-state" id="mobile-radar-loading-state" style="display: none;">
+                    <div class="mobile-radar-loading-content">
+                        <div class="mobile-radar-loading-message" id="mobile-radar-loading-message">INITIALIZING SCAN...</div>
+                        <div class="mobile-radar-loading-dots">
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                            <div class="dot"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mobile-radar-results-state" id="mobile-radar-results-state" style="display: none;">
+                    <div class="mobile-radar-date-title" id="mobile-radar-date-title"></div>
+                    <div class="mobile-radar-games" id="mobile-radar-games"></div>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <div class="public-container">
         <div class="top-left">
@@ -178,10 +251,19 @@ export function generateBaseHtml(
             ${content}
         </div>
     </div>
-    ${options.posts && options.posts.length > 0 ? `
-    <script type="application/json" id="posts-data">${JSON.stringify(options.posts)}</script>
-    ` : ''}
-    <script src="/assets/static-site.js"></script>
+    ${(() => {
+        try {
+            if (options.posts && options.posts.length > 0) {
+                return `<script type="application/json" id="posts-data">${JSON.stringify(options.posts)}</script>`;
+            } else {
+                return '<script type="application/json" id="posts-data">[]</script>';
+            }
+        } catch (error) {
+            console.error('Error serializing posts for homepage:', error);
+            return '<script type="application/json" id="posts-data">[]</script>';
+        }
+    })()}
+    <script src="/assets/static-site.js" defer></script>
 </body>
 </html>`;
 }

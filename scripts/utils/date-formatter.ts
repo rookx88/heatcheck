@@ -62,6 +62,7 @@ export function normalizeLeague(league: string): string {
         'NHL': 'nhl',
         'UFC': 'ufc',
         'Soccer': 'soccer',
+        'DFS': 'dfs',
     };
     
     return leagueMap[league] || league.toLowerCase().replace(/\s+/g, '-');

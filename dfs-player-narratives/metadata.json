@@ -1,0 +1,5 @@
+{
+  "name": "DFS Player Narratives",
+  "description": "A multi-layer deduction system for Daily Fantasy Sports that analyzes player slates against narrative and schematic angles like revenge games, pace, and motivation.",
+  "requestFramePermissions": []
+}
