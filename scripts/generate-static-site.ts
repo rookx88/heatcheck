@@ -162,6 +162,27 @@ function copyPublicAssets(): void {
 }
 
 /**
+ * Copy Cloudflare Pages configuration files (_headers, _redirects) to dist/
+ */
+function copyConfigFiles(): void {
+    // Copy _headers
+    const headersSource = path.join(publicDir, '_headers');
+    if (fs.existsSync(headersSource)) {
+        const headersDest = path.join(distDir, '_headers');
+        fs.copyFileSync(headersSource, headersDest);
+        console.log('✓ Copied _headers to dist/');
+    }
+    
+    // Copy _redirects
+    const redirectsSource = path.join(publicDir, '_redirects');
+    if (fs.existsSync(redirectsSource)) {
+        const redirectsDest = path.join(distDir, '_redirects');
+        fs.copyFileSync(redirectsSource, redirectsDest);
+        console.log('✓ Copied _redirects to dist/');
+    }
+}
+
+/**
  * Write HTML file to both dist and public (for dev server access)
  */
 function writeHtmlFile(relativePath: string, html: string): void {
@@ -369,6 +390,7 @@ async function generateAllPages(): Promise<void> {
         copyImages();
         copyAssets();
         copyPublicAssets();
+        copyConfigFiles();
         console.log('');
         
         // Generate article pages (excluding DFS articles which are handled separately)
@@ -992,12 +1014,14 @@ async function generateAllPages(): Promise<void> {
         writeHtmlFile(aboutPath, aboutHtml);
         console.log('✓ Generated about page\n');
         
-        // Generate sitemap.xml
+        // Generate sitemap.xml (write to dist/ for Cloudflare Pages)
         console.log('Generating sitemap...');
+        generateSitemap(posts, baseUrl, 'dist/sitemap.xml');
+        // Also write to public/ for local development
         generateSitemap(posts, baseUrl, 'public/sitemap.xml');
         console.log('');
         
-        // Generate robots.txt
+        // Generate robots.txt (write to dist/ for Cloudflare Pages)
         console.log('Generating robots.txt...');
         const robotsTxt = `User-agent: *
 Allow: /
@@ -1011,9 +1035,13 @@ Sitemap: ${baseUrl}/sitemap.xml
 Disallow: /admin/
 Disallow: /api/
 `;
-        const robotsPath = path.join('public', 'robots.txt');
-        fs.mkdirSync(path.dirname(robotsPath), { recursive: true });
-        fs.writeFileSync(robotsPath, robotsTxt, 'utf-8');
+        const distRobotsPath = path.join('dist', 'robots.txt');
+        fs.mkdirSync(path.dirname(distRobotsPath), { recursive: true });
+        fs.writeFileSync(distRobotsPath, robotsTxt, 'utf-8');
+        // Also write to public/ for local development
+        const publicRobotsPath = path.join('public', 'robots.txt');
+        fs.mkdirSync(path.dirname(publicRobotsPath), { recursive: true });
+        fs.writeFileSync(publicRobotsPath, robotsTxt, 'utf-8');
         console.log('✓ Generated robots.txt\n');
         
         console.log('Static site generation complete!');
