@@ -9,6 +9,7 @@ export interface DFSHeatcheckPost {
     teamB: string;
     matchupScheduledDate?: string;
     createdAt: string;
+    updatedAt?: string;
     websiteStory: {
         headline: string;
         dek: string;
@@ -28,7 +29,19 @@ export interface DFSHeatcheckPost {
 function generateDFSPostCard(post: DFSHeatcheckPost, baseUrl: string): string {
     const dateStr = formatDateForCard(post.matchupScheduledDate || post.createdAt);
     const league = (post.league || '').toUpperCase();
-    const headline = post.websiteStory?.headline || 'Untitled';
+    
+    // For DFS articles, recalculate headline based on matchupScheduledDate to match homepage format
+    let headline = post.websiteStory?.headline || 'Untitled';
+    const articleDate = post.matchupScheduledDate || post.createdAt;
+    try {
+        const dateForDayOfWeek = new Date(articleDate + (articleDate.includes('T') ? '' : 'T12:00:00'));
+        const dayOfWeek = dateForDayOfWeek.toLocaleDateString('en-US', { weekday: 'long' });
+        // Ensure league is in correct format (NBA, NFL, etc.)
+        const normalizedLeague = league.toUpperCase();
+        headline = `${dayOfWeek} ${normalizedLeague} DFS`;
+    } catch {
+        // Keep original headline if date parsing fails
+    }
     const imageName = post.websiteStory?.image || post.websiteStory?.imageUrl || '';
     const imagePath = imageName 
         ? (imageName.startsWith('http') 
@@ -139,8 +152,7 @@ export function generateDFSHubPage(
             image: post.websiteStory.image
         },
         heatCheckData: post.heatCheckData,
-        storyType: post.storyType,
-        websiteStory: post.websiteStory
+        storyType: post.storyType
     })));
     
     bodyContent += `<script>window.PUBLISHED_POSTS = ${postsJson};</script>`;
