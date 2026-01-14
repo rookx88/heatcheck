@@ -14,9 +14,23 @@ const staticHtmlPlugin = () => {
           return next();
         }
         
-        // Skip if it's already a file request with extension (but not .html)
         const urlPath = req.url || '/';
         const ext = path.extname(urlPath);
+        
+        // Explicitly handle XML files (sitemap.xml, robots.txt, etc.)
+        if (ext === '.xml' || ext === '.txt') {
+          const normalizedPath = urlPath.startsWith('/') ? urlPath.slice(1) : urlPath;
+          const publicPath = path.join(process.cwd(), 'public', normalizedPath);
+          
+          if (fs.existsSync(publicPath) && fs.statSync(publicPath).isFile()) {
+            const contentType = ext === '.xml' ? 'application/xml' : 'text/plain';
+            res.setHeader('Content-Type', contentType);
+            res.end(fs.readFileSync(publicPath));
+            return;
+          }
+        }
+        
+        // Skip if it's already a file request with extension (but not .html)
         if (ext && ext !== '.html' && ext !== '') {
           return next();
         }

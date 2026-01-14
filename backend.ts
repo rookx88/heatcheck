@@ -762,6 +762,29 @@ app.post('/api/matchups/import', apiKeyAuth, async (req: express.Request, res: e
     }
 });
 
+// --- STATIC FILE ROUTES (XML/TXT) ---
+// Serve sitemap.xml with correct content-type
+app.get('/sitemap.xml', (req: express.Request, res: express.Response) => {
+    const sitemapPath = path.join(process.cwd(), 'public', 'sitemap.xml');
+    if (fs.existsSync(sitemapPath)) {
+        res.setHeader('Content-Type', 'application/xml');
+        res.sendFile(sitemapPath);
+    } else {
+        res.status(404).json({ error: 'Sitemap not found' });
+    }
+});
+
+// Serve robots.txt with correct content-type
+app.get('/robots.txt', (req: express.Request, res: express.Response) => {
+    const robotsPath = path.join(process.cwd(), 'public', 'robots.txt');
+    if (fs.existsSync(robotsPath)) {
+        res.setHeader('Content-Type', 'text/plain');
+        res.sendFile(robotsPath);
+    } else {
+        res.status(404).json({ error: 'Robots.txt not found' });
+    }
+});
+
 // --- SERVER START ---
 app.listen(port, () => {
     console.log(`Heatchecks Backend API listening at http://localhost:${port}`);
@@ -776,5 +799,7 @@ app.listen(port, () => {
     console.log('  GET    /api/matchups');
     console.log('  PUT    /api/matchups/:id (auth required)');
     console.log('  POST   /api/matchups/import (auth required)');
+    console.log('  GET    /sitemap.xml');
+    console.log('  GET    /robots.txt');
     console.log(`API Key configured: ${SECRET_API_KEY ? 'YES (***' + SECRET_API_KEY.slice(-4) + ')' : 'NO (using default)'}`);
 });
