@@ -21,8 +21,8 @@ public/archive/
 public/*/index.html
 !public/about/index.html
 !public/preview.html
-public/robots.txt
-public/sitemap.xml
+# public/robots.txt - Generated during build, but we commit it for Cloudflare Pages
+# public/sitemap.xml - Generated during build, but we commit it for Cloudflare Pages
 public/assets/images/
 
 # Environment variables - protect all .env files
