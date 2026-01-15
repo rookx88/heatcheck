@@ -598,7 +598,17 @@ export function generateArticlePage(
         "itemReviewed": {
             "@type": "SportsEvent",
             "name": `${post.teamA} vs ${post.teamB}`,
-            "sport": post.league
+            "sport": post.league,
+            "startDate": formattedStartDate,
+            "location": location,
+            "homeTeam": {
+                "@type": "SportsTeam",
+                "name": post.teamA
+            },
+            "awayTeam": {
+                "@type": "SportsTeam",
+                "name": post.teamB
+            }
         },
         "author": {
             "@type": "Organization",
