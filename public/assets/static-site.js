@@ -881,7 +881,9 @@ function generatePostCard(post) {
         try {
             const dateForDayOfWeek = new Date(articleDate + (articleDate.indexOf('T') !== -1 ? '' : 'T12:00:00'));
             const dayOfWeek = dateForDayOfWeek.toLocaleDateString('en-US', { weekday: 'long' });
-            headline = dayOfWeek + ' DFS Slate Value Picks';
+            // Ensure league is in correct format (NBA, NFL, etc. not "Basketball")
+            const normalizedLeague = league.toUpperCase();
+            headline = dayOfWeek + ' ' + normalizedLeague + ' DFS';
         } catch (e) {
             // Keep original headline if date parsing fails
         }
@@ -891,15 +893,16 @@ function generatePostCard(post) {
     const articleUrl = generateArticleUrl(post);
     const isHeatHigh = heatScore >= 71; // ~71 on 100 scale = ~25 on 35 scale
     
-    // For DFS articles, generate matchup text with day of week + "DFS Football"
+    // For DFS articles, generate matchup text with day of week + "[League] DFS"
     let displayMatchup = matchup;
     if (isDFSArticle) {
         const articleDate = post.matchupScheduledDate || post.createdAt;
         try {
             const dateForDayOfWeek = new Date(articleDate + (articleDate.includes('T') ? '' : 'T12:00:00'));
             const dayOfWeek = dateForDayOfWeek.toLocaleDateString('en-US', { weekday: 'long' });
-            const sportLabel = league === 'NBA' ? 'Basketball' : league === 'NFL' ? 'Football' : league;
-            displayMatchup = (dayOfWeek + ' DFS ' + sportLabel).toUpperCase();
+            // Ensure league is in correct format (NBA, NFL, etc. not "Basketball")
+            const normalizedLeague = league.toUpperCase();
+            displayMatchup = (dayOfWeek + ' ' + normalizedLeague + ' DFS').toUpperCase();
         } catch (e) {
             displayMatchup = 'DFS VALUE';
         }
@@ -941,8 +944,8 @@ function generatePostCard(post) {
         <div class="post-card" data-heat-high="${isHeatHigh}" data-post-id="${post.id}">
             <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; box-sizing: border-box; overflow: hidden;">
                 <div style="padding: 0.5rem 0.6rem; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.35); margin-bottom: 0.75rem; text-align: center; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; width: 100%; box-sizing: border-box; overflow: hidden; border-radius: 4px;">
-                    <div style="width: 35px; height: 35px; min-width: 35px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
-                        <div style="color: #fff; font-size: 0.65rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 2px 4px rgba(255, 255, 255, 0.4);">${dateStr}</div>
+                    <div style="width: 50px; height: 50px; min-width: 50px; border-radius: 50%; border: 2px solid #fff; background: #fff; box-shadow: 0 2px 8px rgba(255, 255, 255, 0.5), 0 0 12px rgba(255, 255, 255, 0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
+                        <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${dateStr}</div>
                     </div>
                     <div style="color: #fff; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; text-shadow: 0 0 8px rgba(255, 255, 255, 0.6), 0 2px 4px rgba(255, 255, 255, 0.4);">${displayMatchup}</div>
                     <div style="width: 35px; height: 35px; min-width: 35px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -2017,6 +2020,11 @@ function initHeatIndicatorHover() {
         const post = posts.find(p => p.id === postId);
         if (!post) return;
         
+        // Skip hover effects for DFS articles
+        if (post.storyType === 'dfs_article') {
+            return;
+        }
+        
         // Store original content if not already stored
         if (!originalContent.has(postId)) {
             originalContent.set(postId, imageContainer.innerHTML);
@@ -2406,6 +2414,11 @@ function initHeatIndicatorHoverStaticContinue(posts) {
         const post = posts.find(p => p.id === postId);
         if (!post) {
             console.warn('Post data not found for post ID:', postId);
+            return;
+        }
+        
+        // Skip hover effects for DFS articles
+        if (post.storyType === 'dfs_article') {
             return;
         }
         
