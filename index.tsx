@@ -4,7 +4,9 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { apiClient } from './apiClient';
 import { PublicHomePage } from './pages/index';
 import { parseExcelFile } from './scripts/utils/excelParser';
-import { analyzeDFSSlate, validateDFSPlayers } from './scripts/services/dfsAnalysisService';
+import { analyzeDFSSlate } from './scripts/services/dfsAnalysisService';
+import { generateDFSContent } from './scripts/services/dfsTweetService';
+import { generateHeatArticleContent } from './scripts/services/heatArticleContentService';
 
 // ===================================================================================
 // TYPE DEFINITIONS (Unchanged, but now shared with backend)
@@ -46,6 +48,8 @@ interface HeatcheckStory {
     tags: string[];
     sources: {title: string, url: string, publisher?: string, publishedAt?: string}[];
     seo: {slug: string, metaTitle: string, metaDescription: string};
+    image?: string;
+    imageUrl?: string;
 }
 
 interface HeatchecksEdge {
@@ -74,6 +78,7 @@ export interface HeatcheckPost {
     status: "draft" | "published";
     websiteStory: HeatcheckStory;
     heatchecksEdge: HeatchecksEdge;
+    matchupScheduledDate?: string;
     heatCheckData?: {
         factPack?: any;
         evidenceBundle?: any;
@@ -88,6 +93,8 @@ export interface HeatcheckPost {
         };
         validation_warnings?: string[];
         ai_corrections?: any;
+        dfsPlayers?: any[];
+        emotional_map?: any;
     };
 }
 
@@ -174,6 +181,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   const [availableMatchups, setAvailableMatchups] = useState<Array<{ id: string; league: string; teamA: string; teamB: string; scheduledDate: string; scheduledTime: string | null }>>([]);
   const [selectedMatchupIds, setSelectedMatchupIds] = useState<string[]>([]);
   const [isGeneratingHeatArticle, setIsGeneratingHeatArticle] = useState<boolean>(false);
+  const [isGeneratingHeatArticleV2, setIsGeneratingHeatArticleV2] = useState<boolean>(false);
   const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number; step: string; matchup: string } | null>(null);
   const [editingMatchupId, setEditingMatchupId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState<string>('');
@@ -336,6 +344,29 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
 
   const handleGenerateArticle = async () => {
     // Load available matchups and show selection modal
+    try {
+      setError(null);
+      const matchups = await apiClient.getMatchups();
+      setAvailableMatchups(matchups);
+      setSelectedMatchupIds([]);
+      setEditingMatchupId(null);
+      setEditDate('');
+      setEditTime('');
+      // Reset filters
+      setMatchupFilterLeague([]);
+      setMatchupFilterSearch('');
+      setMatchupFilterDate('all');
+      setMatchupFilterCustomStart('');
+      setMatchupFilterCustomEnd('');
+      setShowMatchupModal(true);
+    } catch (e: any) {
+      console.error("Failed to load matchups:", e);
+      setError(e.message || "Failed to load matchups from database.");
+    }
+  };
+
+  const handleGenerateArticleV2 = async () => {
+    // Load available matchups and show selection modal (same as V1)
     try {
       setError(null);
       const matchups = await apiClient.getMatchups();
@@ -741,6 +772,290 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
     }
   };
 
+  const handleProcessHeatArticleV2 = async () => {
+    if (selectedMatchupIds.length === 0) {
+      setError("Please select at least one matchup.");
+      return;
+    }
+
+    // Keep modal open to show progress
+    setIsGeneratingHeatArticleV2(true);
+    setError(null);
+
+    const selectedMatchups = filteredMatchups.filter(m => selectedMatchupIds.includes(m.id));
+    const completedArticles: string[] = [];
+    const failedArticles: Array<{ matchup: string; error: string }> = [];
+    
+    try {
+      // Process each matchup sequentially
+      for (let i = 0; i < selectedMatchups.length; i++) {
+        const matchup = selectedMatchups[i];
+        const matchupLabel = `${matchup.teamA} vs ${matchup.teamB}`;
+        
+        // Add delay between requests (except before first) to avoid rate limiting
+        if (i > 0) {
+          const delaySeconds = 3; // 3 second delay between requests
+          setGenerationProgress({
+            current: i,
+            total: selectedMatchups.length,
+            step: `Waiting ${delaySeconds} seconds before next article (rate limit protection)...`,
+            matchup: ''
+          });
+          await new Promise(resolve => setTimeout(resolve, delaySeconds * 1000));
+        }
+        
+        setGenerationProgress({
+          current: i + 1,
+          total: selectedMatchups.length,
+          step: `Processing ${matchupLabel}...`,
+          matchup: matchupLabel
+        });
+
+        try {
+          // Generate comprehensive heat check using V2 enhanced logic
+          setGenerationProgress(prev => prev ? { ...prev, step: `Generating enhanced heat check for ${matchupLabel}...` } : null);
+          console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Starting V2 enhanced generation`);
+          
+          const heatCheckData = await generateHeatCheckNarrativeV2(matchup);
+          console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] V2 generation complete`);
+          
+          // Extract data from response
+          const factPack = heatCheckData.fact_pack;
+          const evidenceBundle = heatCheckData.evidence_bundle;
+          const candidateCards = heatCheckData.narratives.candidate_cards;
+          const selectedNarrative = heatCheckData.narratives.selected;
+          const qualityReport = heatCheckData.quality_report;
+          const article = heatCheckData.article;
+          const emotionalMap = heatCheckData.emotional_map; // NEW: Extract emotional map
+
+          // Validate key characters (players/coaches) are on correct teams
+          setGenerationProgress(prev => prev ? { ...prev, step: `Validating key characters for ${matchupLabel}...` } : null);
+          console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Validating key characters`);
+          let validationWarnings = await validateKeyCharacters(candidateCards, matchup.teamA, matchup.teamB, matchup.league);
+          
+          // Add quality report corrections to validation warnings
+          if (qualityReport?.corrections_applied && Array.isArray(qualityReport.corrections_applied)) {
+            qualityReport.corrections_applied.forEach((correction: string) => {
+              if (correction && correction.trim()) {
+                validationWarnings.push(`ℹ️ ${correction}`);
+              }
+            });
+          }
+          
+          // AI Editor: Correct article if validation warnings exist
+          let correctedArticleMarkdown = article.long_form_markdown;
+          const aiCorrections: any = {
+            original_warnings: [...validationWarnings],
+            corrections_applied: [],
+            invalid_players_replaced: []
+          };
+          
+          // Filter to only roster-related warnings (not info messages)
+          const rosterWarnings = validationWarnings.filter(w => w.startsWith('⚠️'));
+          
+          if (rosterWarnings.length > 0) {
+            console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] ${rosterWarnings.length} roster validation warning(s) found - Applying AI Editor corrections...`);
+            setGenerationProgress(prev => prev ? { ...prev, step: `AI Editor: Correcting ${matchupLabel} (replacing ${rosterWarnings.length} invalid reference(s)...` } : null);
+            
+            try {
+              const correctionResult = await correctArticleWithAI(
+                article.long_form_markdown,
+                rosterWarnings,
+                matchup.teamA,
+                matchup.teamB,
+                matchup.league
+              );
+              
+              correctedArticleMarkdown = correctionResult.correctedMarkdown;
+              aiCorrections.corrections_applied = correctionResult.correctionsSummary;
+              
+              // Update validation warnings to mark roster issues as fixed
+              validationWarnings = validationWarnings.map(w => {
+                if (w.startsWith('⚠️') && rosterWarnings.includes(w)) {
+                  return `${w} [Fixed by AI Editor]`;
+                }
+                return w;
+              });
+              
+              // Add corrections summary to validation warnings
+              correctionResult.correctionsSummary.forEach((summary: string) => {
+                validationWarnings.push(summary);
+              });
+              
+              console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] AI Editor corrections applied:`, correctionResult.correctionsSummary);
+              
+            } catch (error: any) {
+              console.error(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] AI Editor correction failed:`, error);
+              validationWarnings.push(`⚠️ AI Editor correction failed: ${error.message || 'Unknown error'} - Using original article`);
+            }
+          }
+          
+          if (validationWarnings.length > 0) {
+            console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Final validation warnings:`, validationWarnings);
+          }
+
+          // Create draft post with all the data (using corrected article markdown)
+          const primaryCard = candidateCards.find(c => c.narrative_id === selectedNarrative.primary_narrative_id);
+          if (!primaryCard) throw new Error("Primary narrative card not found");
+
+          // Generate HeatChecks Edge betting recommendation
+          setGenerationProgress(prev => prev ? { ...prev, step: `Generating HeatChecks Edge for ${matchupLabel}...` } : null);
+          console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Generating HeatChecks Edge...`);
+          
+          const heatChecksEdge = await generateHeatChecksEdge(
+            {
+              candidate_cards: candidateCards,
+              selected: selectedNarrative
+            },
+            factPack,
+            primaryCard,
+            matchup.teamA,
+            matchup.teamB,
+            matchup.league
+          );
+          
+          console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] HeatChecks Edge generated:`, {
+            lean: heatChecksEdge.lean,
+            confidence: heatChecksEdge.confidence,
+            finalCallPreview: heatChecksEdge.finalCall.substring(0, 100) + '...'
+          });
+
+          setGenerationProgress(prev => prev ? { ...prev, step: `Creating draft post for ${matchupLabel}...` } : null);
+          
+          const newDraftPost = await apiClient.createDraft({
+            league: matchup.league,
+            teamA: matchup.teamA,
+            teamB: matchup.teamB,
+            matchupScheduledDate: matchup.scheduledDate,
+            storyType: 'heat_article',
+            scanNarrative: primaryCard.claim,
+            websiteStory: {
+              formatStyle: "QUOTE_LEDE",
+              headline: primaryCard.title,
+              dek: primaryCard.claim,
+              whyItMatters: [],
+              theBackstory: correctedArticleMarkdown,
+              theData: factPack.key_stats?.map(s => `${s.label}: ${s.value}`) || [],
+              keyMomentsTimeline: evidenceBundle.timeline_events?.map(e => ({
+                date: new Date(e.date_utc).toLocaleDateString(),
+                event: e.summary
+              })) || [],
+              theReceipts: evidenceBundle.quotes?.map(q => ({
+                quote: q.quote,
+                speaker: q.speaker,
+                context: q.context,
+                sourceUrl: evidenceBundle.sources?.find(s => s.source_id === q.source_id)?.url || ''
+              })) || [],
+              pressurePoints: [],
+              whatToWatch: [],
+              edgeAngle: primaryCard.claim,
+              tags: primaryCard.emotion_tags || [],
+              sources: evidenceBundle.sources?.map(s => ({
+                title: s.title,
+                url: s.url,
+                publisher: s.publisher,
+                publishedAt: s.published_utc
+              })) || [],
+              seo: {
+                slug: article.seo?.primary_keyword?.toLowerCase().replace(/\s+/g, '-') || '',
+                metaTitle: article.seo?.title_options?.[0] || primaryCard.title,
+                metaDescription: article.seo?.meta_description || primaryCard.claim
+              },
+              image: '',
+              imageUrl: undefined
+            },
+            heatchecksEdge: heatChecksEdge,
+            heatCheckData: {
+              factPack,
+              evidenceBundle,
+              narratives: {
+                candidate_cards: candidateCards,
+                selected: selectedNarrative
+              },
+              emotional_map: emotionalMap, // NEW: Include emotional map
+              qualityReport,
+              article: {
+                ...article,
+                long_form_markdown: correctedArticleMarkdown
+              },
+              validation_warnings: validationWarnings,
+              ai_corrections: aiCorrections
+            }
+          });
+
+          // Log completion for this article
+          completedArticles.push(matchupLabel);
+          console.log(`✅ [${matchupLabel}] [${i + 1}/${selectedMatchups.length}] V2 Article completed successfully! Draft ID: ${newDraftPost.id}`);
+          setGenerationProgress(prev => prev ? { 
+            ...prev, 
+            step: `✅ Completed ${i + 1}/${selectedMatchups.length}: ${matchupLabel}` 
+          } : null);
+          
+        } catch (articleError: any) {
+          // Log error for this specific article but continue with next
+          const errorMessage = articleError.message || 'Unknown error';
+          failedArticles.push({ matchup: matchupLabel, error: errorMessage });
+          console.error(`❌ [${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Failed to generate V2 article:`, articleError);
+          setGenerationProgress(prev => prev ? { 
+            ...prev, 
+            step: `❌ Failed ${i + 1}/${selectedMatchups.length}: ${matchupLabel} - ${errorMessage}` 
+          } : null);
+          
+          // Continue to next matchup instead of stopping
+          continue;
+        }
+      }
+
+      // All matchups processed - show completion message
+      setGenerationProgress({
+        current: selectedMatchups.length,
+        total: selectedMatchups.length,
+        step: completedArticles.length === selectedMatchups.length 
+          ? `✅ All ${completedArticles.length} V2 article(s) completed successfully!` 
+          : `Completed ${completedArticles.length}/${selectedMatchups.length} V2 article(s). ${failedArticles.length} failed.`,
+        matchup: ''
+      });
+
+      // Log final summary
+      console.log('=== HEAT ARTICLE V2 GENERATION SUMMARY ===');
+      console.log(`Total matchups: ${selectedMatchups.length}`);
+      console.log(`✅ Completed: ${completedArticles.length}`);
+      completedArticles.forEach((matchup, idx) => {
+        console.log(`  ${idx + 1}. ${matchup}`);
+      });
+      if (failedArticles.length > 0) {
+        console.log(`❌ Failed: ${failedArticles.length}`);
+        failedArticles.forEach((failure, idx) => {
+          console.log(`  ${idx + 1}. ${failure.matchup}: ${failure.error}`);
+        });
+      }
+      console.log('========================================');
+
+      // Wait a moment to show completion message, then close modal
+      setTimeout(() => {
+        setGenerationProgress(null);
+        setShowMatchupModal(false);
+        setSelectedMatchupIds([]);
+        
+        // Show success/error message
+        if (completedArticles.length === selectedMatchups.length) {
+          setError(null); // Clear any previous errors
+          console.log('All V2 articles generated successfully. Access them in the Content Feed tab.');
+        } else {
+          setError(`Generated ${completedArticles.length} of ${selectedMatchups.length} V2 articles. ${failedArticles.length} failed. Check console for details.`);
+        }
+      }, 2000); // 2 second delay to show completion message
+      
+    } catch (e: any) {
+      console.error("Fatal error in V2 heat article generation:", e);
+      setError(e.message || "V2 Article generation failed. Check console for details.");
+      setGenerationProgress(null);
+      // Keep modal open on error so user can see the error
+    } finally {
+      setIsGeneratingHeatArticleV2(false);
+    }
+  };
+
   const handleGenerateDFSArticle = async (file: File) => {
     setIsGeneratingDFSArticle(true);
     setError(null);
@@ -786,169 +1101,13 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         throw new Error("No players found in analysis. Please check your Excel file format.");
       }
 
-      // Validate players are actually playing today - IMPROVED VALIDATION
-      // Continue validating and regenerating until we have 10 valid players
+      // Use top 10 players from analysis (no validation)
       const REQUIRED_PLAYER_COUNT = 10;
-      const MAX_REGENERATION_ATTEMPTS = 3;
-      let regenerationAttempt = 0;
-      let bestValidPlayers: any[] = [];
-      let bestValidCount = 0;
-      
-      while (regenerationAttempt < MAX_REGENERATION_ATTEMPTS) {
-        setLoadingMessage(`Validating player status (attempt ${regenerationAttempt + 1}/${MAX_REGENERATION_ATTEMPTS})...`);
-        
-        let validationResult;
-        try {
-          validationResult = await validateDFSPlayers(playerAnalyses, dfsSport, normalizedData);
-        } catch (validationError) {
-          console.error('Validation failed:', validationError);
-          // If this is not the first attempt and we have some valid players, use them
-          if (regenerationAttempt > 0 && bestValidPlayers.length >= REQUIRED_PLAYER_COUNT) {
-            console.warn('Validation error occurred, but we have enough valid players from previous attempt. Proceeding...');
-            playerAnalyses = bestValidPlayers.slice(0, REQUIRED_PLAYER_COUNT);
-            break;
-          }
-          throw new Error(`Failed to validate players: ${validationError instanceof Error ? validationError.message : 'Unknown error'}`);
-        }
-        
-        const invalidCount = validationResult.invalidPlayers.length;
-        const validCount = validationResult.validPlayers.length;
-        
-        console.log(`Validation attempt ${regenerationAttempt + 1}: ${validCount} valid, ${invalidCount} invalid`);
-        
-        // Track the best result we've seen
-        if (validCount > bestValidCount) {
-          bestValidCount = validCount;
-          bestValidPlayers = validationResult.validPlayers;
-        }
-        
-        // If we have enough valid players with no invalid ones, we're done
-        if (invalidCount === 0 && validCount >= REQUIRED_PLAYER_COUNT) {
-          playerAnalyses = validationResult.validPlayers.slice(0, REQUIRED_PLAYER_COUNT);
-          console.log('✅ All players validated successfully with no invalid players');
-          break;
-        }
-        
-        // If we have enough valid players (even with some invalid), check if we should proceed
-        if (validCount >= REQUIRED_PLAYER_COUNT) {
-          // If we have significantly more valid than invalid, or this is our last attempt, use them
-          if (validCount >= invalidCount * 2 || regenerationAttempt === MAX_REGENERATION_ATTEMPTS - 1) {
-            playerAnalyses = validationResult.validPlayers.slice(0, REQUIRED_PLAYER_COUNT);
-            console.log(`✅ Found ${validCount} valid players (${invalidCount} invalid). Proceeding with top ${REQUIRED_PLAYER_COUNT}.`);
-            break;
-          }
-        }
-        
-        if (invalidCount > 0) {
-          // We have invalid players - need to replace them
-          console.warn(`Found ${invalidCount} invalid players:`, validationResult.invalidPlayers);
-          
-          // Extract invalid player names for filtering
-          const invalidPlayerNames = validationResult.invalidPlayers.map(inv => {
-            const match = inv.match(/^([^(]+)/);
-            return match ? match[1].trim() : '';
-          });
-          
-          // Filter out invalid players from original data
-          const filteredData = normalizedData.filter((player: any) => {
-            const playerKey = `${player.playerName || ''}-${player.team || ''}`.toLowerCase();
-            return !invalidPlayerNames.some(invName => {
-              const invKey = `${invName}-${player.team || ''}`.toLowerCase();
-              return playerKey === invKey || 
-                     player.playerName?.toLowerCase().trim() === invName.toLowerCase().trim();
-            });
-          });
-          
-          if (filteredData.length < REQUIRED_PLAYER_COUNT) {
-            // If we don't have enough data but we have valid players from this attempt, use them
-            if (validCount >= REQUIRED_PLAYER_COUNT) {
-              console.warn('Not enough data to regenerate, but we have enough valid players. Using them.');
-              playerAnalyses = validationResult.validPlayers.slice(0, REQUIRED_PLAYER_COUNT);
-              break;
-            }
-            throw new Error(`Not enough valid players available. Found ${filteredData.length} players after removing ${invalidCount} invalid players. Need at least ${REQUIRED_PLAYER_COUNT}.`);
-          }
-          
-          // Regenerate analysis with filtered data
-          regenerationAttempt++;
-          setLoadingMessage(`Regenerating article (removed ${invalidCount} invalid players, attempt ${regenerationAttempt}/${MAX_REGENERATION_ATTEMPTS})...`);
-          
-          const filteredJsonString = JSON.stringify(filteredData);
-          playerAnalyses = await analyzeDFSSlate(filteredJsonString, dfsSport);
-          
-          // Re-validate the newly generated players
-          continue; // Loop will validate again
-        } else if (validCount < REQUIRED_PLAYER_COUNT) {
-          // Not enough valid players, but none are invalid - might need more data
-          if (normalizedData.length < REQUIRED_PLAYER_COUNT * 2) {
-            // If we have some valid players, use them even if not 10
-            if (validCount >= 5) {
-              console.warn(`Only found ${validCount} valid players, but proceeding with available players.`);
-              playerAnalyses = validationResult.validPlayers;
-              break;
-            }
-            throw new Error(`Not enough players in Excel file. Need at least ${REQUIRED_PLAYER_COUNT * 2} players to ensure ${REQUIRED_PLAYER_COUNT} valid players.`);
-          }
-          
-          // Try regenerating with more data
-          regenerationAttempt++;
-          setLoadingMessage(`Not enough valid players. Regenerating with more data (attempt ${regenerationAttempt}/${MAX_REGENERATION_ATTEMPTS})...`);
-          
-          // Use more of the original data
-          const expandedData = normalizedData.slice(0, Math.min(200, normalizedData.length));
-          const expandedJsonString = JSON.stringify(expandedData);
-          playerAnalyses = await analyzeDFSSlate(expandedJsonString, dfsSport);
-          
-          continue; // Loop will validate again
-        }
+      if (playerAnalyses.length > REQUIRED_PLAYER_COUNT) {
+        playerAnalyses = playerAnalyses.slice(0, REQUIRED_PLAYER_COUNT);
       }
       
-      // After loop, check if we have enough players
-      // Use best result if current result is insufficient
-      if (playerAnalyses.length < REQUIRED_PLAYER_COUNT && bestValidPlayers.length >= REQUIRED_PLAYER_COUNT) {
-        console.log(`Using best validation result: ${bestValidPlayers.length} valid players`);
-        playerAnalyses = bestValidPlayers.slice(0, REQUIRED_PLAYER_COUNT);
-      }
-      
-      // Final check - be more lenient if we have close to enough players
-      if (playerAnalyses.length < REQUIRED_PLAYER_COUNT) {
-        if (playerAnalyses.length >= 7) {
-          // If we have at least 7 players, proceed with a warning
-          console.warn(`⚠️ Only found ${playerAnalyses.length} valid players (target: ${REQUIRED_PLAYER_COUNT}). Proceeding with available players.`);
-        } else {
-          throw new Error(`Failed to generate article with ${REQUIRED_PLAYER_COUNT} valid players after ${MAX_REGENERATION_ATTEMPTS} attempts. Found ${playerAnalyses.length} valid players.`);
-        }
-      }
-      
-      // Skip the overly strict final validation if we already have enough valid players
-      // The validation can be inconsistent, so if we have 10+ valid players, trust them
-      if (playerAnalyses.length >= REQUIRED_PLAYER_COUNT) {
-        console.log(`✅ Validation complete: ${playerAnalyses.length} valid players ready for article generation`);
-        // Use the players we have - no need for another validation pass that might fail
-      } else {
-        // Only do final validation if we have fewer than required players
-        setLoadingMessage('Final validation check...');
-        const finalValidation = await validateDFSPlayers(playerAnalyses, dfsSport, normalizedData);
-        
-        // Be lenient - if we still have enough valid players after final check, use them
-        if (finalValidation.validPlayers.length >= REQUIRED_PLAYER_COUNT) {
-          playerAnalyses = finalValidation.validPlayers.slice(0, REQUIRED_PLAYER_COUNT);
-          console.log(`✅ Final validation: ${playerAnalyses.length} valid players ready`);
-        } else if (finalValidation.validPlayers.length >= 7) {
-          // If we have at least 7, proceed with warning
-          playerAnalyses = finalValidation.validPlayers;
-          console.warn(`⚠️ Final validation: ${playerAnalyses.length} valid players (target: ${REQUIRED_PLAYER_COUNT}). Proceeding.`);
-        } else if (finalValidation.invalidPlayers.length > 0) {
-          // If final validation marked some as invalid but we still have players, use them
-          if (playerAnalyses.length >= 7) {
-            console.warn(`⚠️ Final validation found ${finalValidation.invalidPlayers.length} invalid players, but keeping ${playerAnalyses.length} players we have.`);
-          } else {
-            throw new Error(`Final validation failed: ${finalValidation.invalidPlayers.length} players are invalid. Only ${finalValidation.validPlayers.length} valid players remain.`);
-          }
-        }
-      }
-
-      console.log(`✅ Validation complete: ${playerAnalyses.length} valid players ready for article generation`);
+      console.log(`✅ Generated ${playerAnalyses.length} players for article`);
 
       // Generate article content from top 10 players
       const today = new Date();
@@ -957,7 +1116,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
       const dateForDayOfWeek = new Date(dateStr + 'T12:00:00'); // Use noon to avoid timezone issues
       const dayOfWeek = dateForDayOfWeek.toLocaleDateString('en-US', { weekday: 'long' }); // e.g., "Monday"
       
-      const headline = `${dayOfWeek} DFS Slate Value Picks`;
+      const headline = `${dayOfWeek} ${dfsSport} DFS`;
       const dek = `Top 10 value plays with narrative angles for today's ${dfsSport} slate`;
 
       // Generate markdown article content
@@ -984,6 +1143,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         teamB: '',
         matchupScheduledDate: dateStr,
         storyType: 'dfs_article',
+        scanNarrative: dek, // Use dek as scanNarrative for DFS articles
         websiteStory: {
           formatStyle: "QUOTE_LEDE",
           headline: headline,
@@ -1021,8 +1181,9 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         storyType: newDraftPost.storyType
       });
 
-      // Open in editor
+      // Open post in editor (no validation)
       setEditingPost(newDraftPost);
+
       setShowDFSModal(false);
     } catch (e: any) {
       console.error("Failed to generate DFS article:", e);
@@ -1078,8 +1239,11 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
             <button className="scan-button" onClick={fetchNarratives} disabled={isLoading}>{isLoading ? 'Scanning...' : 'Find Revenge Narratives'}</button>
             <button className="scan-button" onClick={handleImportMatchups} disabled={isLoading}>Import Matchups</button>
-            <button className="scan-button" onClick={handleGenerateArticle} disabled={isLoading || isGeneratingHeatArticle}>
+            <button className="scan-button" onClick={handleGenerateArticle} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2}>
                 {isGeneratingHeatArticle ? 'Generating...' : 'Heat Article Generator'}
+            </button>
+            <button className="scan-button" onClick={handleGenerateArticleV2} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2}>
+                {isGeneratingHeatArticleV2 ? 'Generating...' : 'Heat Article v2'}
             </button>
             <button className="scan-button" onClick={() => setShowDFSModal(true)} disabled={isLoading || isGeneratingDFSArticle}>
                 DFS Article Generator
@@ -1528,9 +1692,17 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                         <button
                             className="action-button"
                             onClick={handleProcessHeatArticle}
-                            disabled={isGeneratingHeatArticle || selectedMatchupIds.length === 0}
+                            disabled={isGeneratingHeatArticle || isGeneratingHeatArticleV2 || selectedMatchupIds.length === 0}
                         >
                             {isGeneratingHeatArticle ? 'Generating...' : `Generate ${selectedMatchupIds.length} Article(s)`}
+                        </button>
+                        <button
+                            className="action-button"
+                            onClick={handleProcessHeatArticleV2}
+                            disabled={isGeneratingHeatArticle || isGeneratingHeatArticleV2 || selectedMatchupIds.length === 0}
+                            style={{ background: '#9c27b0', marginLeft: '0.5rem' }}
+                        >
+                            {isGeneratingHeatArticleV2 ? 'Generating V2...' : `Generate ${selectedMatchupIds.length} V2 Article(s)`}
                         </button>
                     </div>
                 </div>
@@ -1635,6 +1807,24 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
     const [posts, setPosts] = useState<HeatcheckPost[]>([]);
     const [loading, setLoading] = useState(true);
     const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+    
+    // Twitter/Reddit generation state for DFS articles
+    const [showTweetModal, setShowTweetModal] = useState(false);
+    const [selectedPostForTweet, setSelectedPostForTweet] = useState<HeatcheckPost | null>(null);
+    const [selectedPlayerIndex, setSelectedPlayerIndex] = useState<number>(0);
+    const [generatedTweet, setGeneratedTweet] = useState<string>('');
+    const [generatedReddit, setGeneratedReddit] = useState<{ title: string; body: string } | null>(null);
+    const [isGeneratingTweet, setIsGeneratingTweet] = useState(false);
+    const [activeTab, setActiveTab] = useState<'tweet' | 'reddit'>('tweet');
+    
+    // Heat Article content generation state
+    const [showHeatArticleModal, setShowHeatArticleModal] = useState(false);
+    const [selectedPostForHeatArticle, setSelectedPostForHeatArticle] = useState<HeatcheckPost | null>(null);
+    const [selectedNarrativeIndex, setSelectedNarrativeIndex] = useState<number>(0);
+    const [generatedHeatTweet, setGeneratedHeatTweet] = useState<string>('');
+    const [generatedHeatReddit, setGeneratedHeatReddit] = useState<{ title: string; body: string } | null>(null);
+    const [isGeneratingHeatContent, setIsGeneratingHeatContent] = useState(false);
+    const [activeHeatTab, setActiveHeatTab] = useState<'tweet' | 'reddit'>('tweet');
 
     useEffect(() => {
         setLoading(true);
@@ -1664,6 +1854,129 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
             alert(`Failed to delete post: ${errorMessage}\n\nPlease check that the backend server is running and the API key is correct.`);
         } finally {
             setDeletingPostId(null);
+        }
+    };
+
+    const handleGenerateTweet = async () => {
+        if (!selectedPostForTweet) return;
+        
+        const dfsPlayers = selectedPostForTweet.heatCheckData?.dfsPlayers || [];
+        if (dfsPlayers.length === 0) {
+            alert('No players found in this DFS article.');
+            return;
+        }
+        
+        const selectedPlayer = dfsPlayers[selectedPlayerIndex];
+        setIsGeneratingTweet(true);
+        setGeneratedTweet('');
+        setGeneratedReddit(null);
+        
+        try {
+            // Show progress message
+            setGeneratedTweet('🔍 Researching additional narratives for this player...\n\nThis may take 30-60 seconds...');
+            
+            const { tweet, reddit } = await generateDFSContent(
+                selectedPlayer,
+                selectedPostForTweet.league as 'NBA' | 'NFL',
+                selectedPostForTweet.matchupScheduledDate || selectedPostForTweet.createdAt
+            );
+            setGeneratedTweet(tweet);
+            setGeneratedReddit(reddit);
+        } catch (error: any) {
+            console.error("Failed to generate content:", error);
+            alert(`Failed to generate content: ${error.message || 'Unknown error'}`);
+            setGeneratedTweet('');
+            setGeneratedReddit(null);
+        } finally {
+            setIsGeneratingTweet(false);
+        }
+    };
+
+    const handleCopyTweet = () => {
+        if (generatedTweet) {
+            navigator.clipboard.writeText(generatedTweet).then(() => {
+                alert('Tweet copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy tweet. Please select and copy manually.');
+            });
+        }
+    };
+
+    const handleCopyReddit = () => {
+        if (generatedReddit) {
+            const redditText = `${generatedReddit.title}\n\n${generatedReddit.body}`;
+            navigator.clipboard.writeText(redditText).then(() => {
+                alert('Reddit post copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy Reddit post. Please select and copy manually.');
+            });
+        }
+    };
+
+    // Heat Article content generation handlers
+    const handleGenerateHeatArticleContent = async () => {
+        if (!selectedPostForHeatArticle) return;
+        
+        const narrativeCards = selectedPostForHeatArticle.heatCheckData?.narratives?.candidate_cards || [];
+        if (narrativeCards.length === 0) {
+            alert('No narratives found in this Heat Article.');
+            return;
+        }
+        
+        const selectedNarrative = narrativeCards[selectedNarrativeIndex];
+        setIsGeneratingHeatContent(true);
+        setGeneratedHeatTweet('');
+        setGeneratedHeatReddit(null);
+        
+        try {
+            // Show progress message
+            setGeneratedHeatTweet('🔍 Researching additional story context for this narrative...\n\nThis may take 30-60 seconds...');
+            
+            const { tweet, reddit } = await generateHeatArticleContent(
+                selectedNarrative,
+                {
+                    teamA: selectedPostForHeatArticle.teamA,
+                    teamB: selectedPostForHeatArticle.teamB,
+                    league: selectedPostForHeatArticle.league,
+                    matchupDate: selectedPostForHeatArticle.matchupScheduledDate || selectedPostForHeatArticle.createdAt,
+                    evidenceBundle: selectedPostForHeatArticle.heatCheckData?.evidenceBundle || selectedPostForHeatArticle.heatCheckData?.evidence_bundle,
+                    factPack: selectedPostForHeatArticle.heatCheckData?.factPack
+                }
+            );
+            setGeneratedHeatTweet(tweet);
+            setGeneratedHeatReddit(reddit);
+        } catch (error: any) {
+            console.error("Failed to generate Heat Article content:", error);
+            alert(`Failed to generate content: ${error.message || 'Unknown error'}`);
+            setGeneratedHeatTweet('');
+            setGeneratedHeatReddit(null);
+        } finally {
+            setIsGeneratingHeatContent(false);
+        }
+    };
+
+    const handleCopyHeatTweet = () => {
+        if (generatedHeatTweet) {
+            navigator.clipboard.writeText(generatedHeatTweet).then(() => {
+                alert('Tweet copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy tweet. Please select and copy manually.');
+            });
+        }
+    };
+
+    const handleCopyHeatReddit = () => {
+        if (generatedHeatReddit) {
+            const redditText = `${generatedHeatReddit.title}\n\n${generatedHeatReddit.body}`;
+            navigator.clipboard.writeText(redditText).then(() => {
+                alert('Reddit post copied to clipboard!');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                alert('Failed to copy Reddit post. Please select and copy manually.');
+            });
         }
     };
 
@@ -2028,9 +2341,746 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
                                 </a>
                             );
                         })()}
+
+                        {/* Create Tweet & Reddit Button - Only for published DFS articles */}
+                        {post.status === 'published' && post.storyType === 'dfs_article' && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedPostForTweet(post);
+                                    setShowTweetModal(true);
+                                    setSelectedPlayerIndex(0);
+                                    setGeneratedTweet('');
+                                    setGeneratedReddit(null);
+                                    setActiveTab('tweet');
+                                }}
+                                style={{
+                                    display: 'inline-block',
+                                    marginTop: '0.75rem',
+                                    padding: '0.5rem 1rem',
+                                    background: '#000',
+                                    border: '2px solid #00ff41',
+                                    color: '#fff',
+                                    textDecoration: 'none',
+                                    borderRadius: '4px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 'bold',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.1em',
+                                    transition: 'all 0.3s ease',
+                                    textAlign: 'center',
+                                    width: '100%',
+                                    boxSizing: 'border-box',
+                                    cursor: 'pointer'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#00ff41';
+                                    e.currentTarget.style.borderColor = '#00ff41';
+                                    e.currentTarget.style.color = '#000';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = '#000';
+                                    e.currentTarget.style.borderColor = '#00ff41';
+                                    e.currentTarget.style.color = '#fff';
+                                }}
+                            >
+                                🐦 Create Tweet & Reddit Post →
+                            </button>
+                        )}
+
+                        {/* Create Tweet & Reddit Button - Only for published Heat Articles */}
+                        {post.status === 'published' && post.storyType === 'heat_article' && (
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedPostForHeatArticle(post);
+                                    setShowHeatArticleModal(true);
+                                    setSelectedNarrativeIndex(0);
+                                    setGeneratedHeatTweet('');
+                                    setGeneratedHeatReddit(null);
+                                    setActiveHeatTab('tweet');
+                                }}
+                                style={{
+                                    display: 'inline-block',
+                                    marginTop: '0.75rem',
+                                    padding: '0.5rem 1rem',
+                                    background: '#000',
+                                    border: '2px solid #f84242',
+                                    color: '#fff',
+                                    textDecoration: 'none',
+                                    borderRadius: '4px',
+                                    fontSize: '0.75rem',
+                                    fontWeight: 'bold',
+                                    textTransform: 'uppercase',
+                                    letterSpacing: '0.1em',
+                                    transition: 'all 0.3s ease',
+                                    textAlign: 'center',
+                                    width: '100%',
+                                    boxSizing: 'border-box',
+                                    cursor: 'pointer'
+                                }}
+                                onMouseEnter={(e) => {
+                                    e.currentTarget.style.background = '#f84242';
+                                    e.currentTarget.style.borderColor = '#f84242';
+                                    e.currentTarget.style.color = '#fff';
+                                }}
+                                onMouseLeave={(e) => {
+                                    e.currentTarget.style.background = '#000';
+                                    e.currentTarget.style.borderColor = '#f84242';
+                                    e.currentTarget.style.color = '#fff';
+                                }}
+                            >
+                                🐦 Create Tweet & Reddit Post →
+                            </button>
+                        )}
                     </div>
                 );
             })}
+
+            {/* Tweet Generation Modal */}
+            {showTweetModal && selectedPostForTweet && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10000,
+                        padding: '2rem'
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setShowTweetModal(false);
+                        }
+                    }}
+                >
+                    <div
+                        style={{
+                            background: '#1a1a1a',
+                            border: '2px solid #00ff41',
+                            borderRadius: '8px',
+                            padding: '2rem',
+                            maxWidth: '800px',
+                            width: '100%',
+                            maxHeight: '90vh',
+                            overflow: 'auto',
+                            position: 'relative'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Close Button */}
+                        <button
+                            onClick={() => setShowTweetModal(false)}
+                            style={{
+                                position: 'absolute',
+                                top: '1rem',
+                                right: '1rem',
+                                background: '#dc3545',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '0.5rem 0.75rem',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold'
+                            }}
+                        >
+                            ✕ Close
+                        </button>
+
+                        <h2 style={{ color: '#00ff41', marginTop: 0, marginBottom: '1.5rem' }}>
+                            Create Tweet & Reddit Post for DFS Article
+                        </h2>
+
+                        {/* Player Selector */}
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                Select Player:
+                            </label>
+                            <select
+                                value={selectedPlayerIndex}
+                                onChange={(e) => {
+                                    setSelectedPlayerIndex(parseInt(e.target.value));
+                                    setGeneratedTweet('');
+                                    setGeneratedReddit(null);
+                                }}
+                                style={{
+                                    width: '100%',
+                                    padding: '0.75rem',
+                                    background: '#000',
+                                    border: '1px solid #00ff41',
+                                    color: '#fff',
+                                    borderRadius: '4px',
+                                    fontSize: '1rem',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                {(selectedPostForTweet.heatCheckData?.dfsPlayers || []).map((player: any, index: number) => (
+                                    <option key={index} value={index}>
+                                        #{player.rank} - {player.playerName} ({player.position}) - {player.team} vs {player.opponent} - ${player.salary}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Generate Button */}
+                        <button
+                            onClick={handleGenerateTweet}
+                            disabled={isGeneratingTweet}
+                            style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                background: isGeneratingTweet ? '#666' : '#00ff41',
+                                color: '#000',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '1rem',
+                                fontWeight: 'bold',
+                                cursor: isGeneratingTweet ? 'not-allowed' : 'pointer',
+                                marginBottom: '1.5rem',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            {isGeneratingTweet ? 'Generating Content...' : 'Generate Tweet & Reddit Post'}
+                        </button>
+
+                        {/* Generated Content Display with Tabs */}
+                        {(generatedTweet || generatedReddit) && (
+                            <div>
+                                {/* Tab Headers */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    gap: '0.5rem', 
+                                    marginBottom: '1rem',
+                                    borderBottom: '2px solid #333'
+                                }}>
+                                    <button
+                                        onClick={() => setActiveTab('tweet')}
+                                        disabled={!generatedTweet}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            background: activeTab === 'tweet' ? '#00ff41' : 'transparent',
+                                            color: activeTab === 'tweet' ? '#000' : generatedTweet ? '#00ff41' : '#666',
+                                            border: 'none',
+                                            borderBottom: activeTab === 'tweet' ? '2px solid #00ff41' : '2px solid transparent',
+                                            borderRadius: '4px 4px 0 0',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 'bold',
+                                            cursor: generatedTweet ? 'pointer' : 'not-allowed',
+                                            transition: 'all 0.2s',
+                                            marginBottom: '-2px'
+                                        }}
+                                    >
+                                        🐦 Tweet
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('reddit')}
+                                        disabled={!generatedReddit}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            background: activeTab === 'reddit' ? '#ff4500' : 'transparent',
+                                            color: activeTab === 'reddit' ? '#fff' : generatedReddit ? '#ff4500' : '#666',
+                                            border: 'none',
+                                            borderBottom: activeTab === 'reddit' ? '2px solid #ff4500' : '2px solid transparent',
+                                            borderRadius: '4px 4px 0 0',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 'bold',
+                                            cursor: generatedReddit ? 'pointer' : 'not-allowed',
+                                            transition: 'all 0.2s',
+                                            marginBottom: '-2px'
+                                        }}
+                                    >
+                                        📱 Reddit Post
+                                    </button>
+                                </div>
+
+                                {/* Tab Content */}
+                                <div>
+                                    {/* Tweet Tab Content */}
+                                    {activeTab === 'tweet' && generatedTweet && (
+                                        <div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                                <label style={{ color: '#00ff41', fontWeight: 'bold', fontSize: '1rem' }}>
+                                                    Generated Tweet
+                                                </label>
+                                                <button
+                                                    onClick={handleCopyTweet}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        background: '#000',
+                                                        border: '1px solid #00ff41',
+                                                        color: '#00ff41',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 'bold',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.background = '#00ff41';
+                                                        e.currentTarget.style.color = '#000';
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.background = '#000';
+                                                        e.currentTarget.style.color = '#00ff41';
+                                                    }}
+                                                >
+                                                    📋 Copy to Clipboard
+                                                </button>
+                                            </div>
+                                            <textarea
+                                                value={generatedTweet}
+                                                readOnly
+                                                style={{
+                                                    width: '100%',
+                                                    minHeight: '400px',
+                                                    padding: '1rem',
+                                                    background: '#000',
+                                                    border: '1px solid #00ff41',
+                                                    color: '#fff',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.9rem',
+                                                    fontFamily: 'monospace',
+                                                    lineHeight: '1.6',
+                                                    resize: 'vertical'
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Reddit Tab Content */}
+                                    {activeTab === 'reddit' && generatedReddit && (
+                                        <div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                                <label style={{ color: '#ff4500', fontWeight: 'bold', fontSize: '1rem' }}>
+                                                    Generated Reddit Post
+                                                </label>
+                                                <button
+                                                    onClick={handleCopyReddit}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        background: '#000',
+                                                        border: '1px solid #ff4500',
+                                                        color: '#ff4500',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 'bold',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.background = '#ff4500';
+                                                        e.currentTarget.style.color = '#fff';
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.background = '#000';
+                                                        e.currentTarget.style.color = '#ff4500';
+                                                    }}
+                                                >
+                                                    📋 Copy to Clipboard
+                                                </button>
+                                            </div>
+                                            
+                                            {/* Reddit Title */}
+                                            <div style={{ marginBottom: '1rem' }}>
+                                                <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Title:
+                                                </label>
+                                                <textarea
+                                                    value={generatedReddit.title}
+                                                    readOnly
+                                                    style={{
+                                                        width: '100%',
+                                                        minHeight: '60px',
+                                                        padding: '0.75rem',
+                                                        background: '#000',
+                                                        border: '1px solid #ff4500',
+                                                        color: '#fff',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.9rem',
+                                                        fontFamily: 'monospace',
+                                                        resize: 'vertical'
+                                                    }}
+                                                />
+                                            </div>
+
+                                            {/* Reddit Body */}
+                                            <div>
+                                                <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Body:
+                                                </label>
+                                                <textarea
+                                                    value={generatedReddit.body}
+                                                    readOnly
+                                                    style={{
+                                                        width: '100%',
+                                                        minHeight: '400px',
+                                                        padding: '1rem',
+                                                        background: '#000',
+                                                        border: '1px solid #ff4500',
+                                                        color: '#fff',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.9rem',
+                                                        fontFamily: 'monospace',
+                                                        lineHeight: '1.6',
+                                                        resize: 'vertical'
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Loading/Empty State */}
+                                    {!generatedTweet && !generatedReddit && (
+                                        <div style={{ 
+                                            padding: '2rem', 
+                                            textAlign: 'center', 
+                                            color: '#999',
+                                            fontStyle: 'italic'
+                                        }}>
+                                            Content will appear here after generation...
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Heat Article Content Generation Modal */}
+            {showHeatArticleModal && selectedPostForHeatArticle && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10000,
+                        padding: '2rem'
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setShowHeatArticleModal(false);
+                        }
+                    }}
+                >
+                    <div
+                        style={{
+                            background: '#1a1a1a',
+                            border: '2px solid #f84242',
+                            borderRadius: '8px',
+                            padding: '2rem',
+                            maxWidth: '800px',
+                            width: '100%',
+                            maxHeight: '90vh',
+                            overflow: 'auto',
+                            position: 'relative'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Close Button */}
+                        <button
+                            onClick={() => setShowHeatArticleModal(false)}
+                            style={{
+                                position: 'absolute',
+                                top: '1rem',
+                                right: '1rem',
+                                background: '#dc3545',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '0.5rem 0.75rem',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold'
+                            }}
+                        >
+                            ✕ Close
+                        </button>
+
+                        <h2 style={{ color: '#f84242', marginTop: 0, marginBottom: '1.5rem' }}>
+                            Create Tweet & Reddit Post for Heat Article
+                        </h2>
+
+                        {/* Narrative Selector */}
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                Select Narrative:
+                            </label>
+                            <select
+                                value={selectedNarrativeIndex}
+                                onChange={(e) => {
+                                    setSelectedNarrativeIndex(parseInt(e.target.value));
+                                    setGeneratedHeatTweet('');
+                                    setGeneratedHeatReddit(null);
+                                }}
+                                style={{
+                                    width: '100%',
+                                    padding: '0.75rem',
+                                    background: '#000',
+                                    border: '1px solid #f84242',
+                                    color: '#fff',
+                                    borderRadius: '4px',
+                                    fontSize: '1rem',
+                                    cursor: 'pointer'
+                                }}
+                            >
+                                {(selectedPostForHeatArticle.heatCheckData?.narratives?.candidate_cards || []).map((narrative: any, index: number) => {
+                                    const isPrimary = narrative.narrative_id === (selectedPostForHeatArticle.heatCheckData?.narratives?.selected?.primary_narrative_id || '');
+                                    return (
+                                        <option key={index} value={index}>
+                                            {isPrimary ? '⭐ ' : ''}{narrative.title} - {narrative.claim.substring(0, 60)}...
+                                        </option>
+                                    );
+                                })}
+                            </select>
+                        </div>
+
+                        {/* Generate Button */}
+                        <button
+                            onClick={handleGenerateHeatArticleContent}
+                            disabled={isGeneratingHeatContent}
+                            style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                background: isGeneratingHeatContent ? '#666' : '#f84242',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '1rem',
+                                fontWeight: 'bold',
+                                cursor: isGeneratingHeatContent ? 'not-allowed' : 'pointer',
+                                marginBottom: '1.5rem',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            {isGeneratingHeatContent ? 'Generating Content...' : 'Generate Tweet & Reddit Post'}
+                        </button>
+
+                        {/* Generated Content Display with Tabs */}
+                        {(generatedHeatTweet || generatedHeatReddit) && (
+                            <div>
+                                {/* Tab Headers */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    gap: '0.5rem', 
+                                    marginBottom: '1rem',
+                                    borderBottom: '2px solid #333'
+                                }}>
+                                    <button
+                                        onClick={() => setActiveHeatTab('tweet')}
+                                        disabled={!generatedHeatTweet}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            background: activeHeatTab === 'tweet' ? '#f84242' : 'transparent',
+                                            color: activeHeatTab === 'tweet' ? '#fff' : generatedHeatTweet ? '#f84242' : '#666',
+                                            border: 'none',
+                                            borderBottom: activeHeatTab === 'tweet' ? '2px solid #f84242' : '2px solid transparent',
+                                            borderRadius: '4px 4px 0 0',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 'bold',
+                                            cursor: generatedHeatTweet ? 'pointer' : 'not-allowed',
+                                            transition: 'all 0.2s',
+                                            marginBottom: '-2px'
+                                        }}
+                                    >
+                                        🐦 Tweet
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveHeatTab('reddit')}
+                                        disabled={!generatedHeatReddit}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            background: activeHeatTab === 'reddit' ? '#ff4500' : 'transparent',
+                                            color: activeHeatTab === 'reddit' ? '#fff' : generatedHeatReddit ? '#ff4500' : '#666',
+                                            border: 'none',
+                                            borderBottom: activeHeatTab === 'reddit' ? '2px solid #ff4500' : '2px solid transparent',
+                                            borderRadius: '4px 4px 0 0',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 'bold',
+                                            cursor: generatedHeatReddit ? 'pointer' : 'not-allowed',
+                                            transition: 'all 0.2s',
+                                            marginBottom: '-2px'
+                                        }}
+                                    >
+                                        🔴 Reddit
+                                    </button>
+                                </div>
+
+                                {/* Tab Content */}
+                                <div style={{ 
+                                    padding: '1.5rem',
+                                    background: '#000',
+                                    borderRadius: '0 0 4px 4px',
+                                    border: '1px solid #333',
+                                    borderTop: 'none'
+                                }}>
+                                    {activeHeatTab === 'tweet' && generatedHeatTweet && (
+                                        <div>
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center',
+                                                marginBottom: '1rem'
+                                            }}>
+                                                <label style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Tweet Content:
+                                                </label>
+                                                <button
+                                                    onClick={handleCopyHeatTweet}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        background: '#f84242',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: 'bold',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.background = '#ff6666';
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.background = '#f84242';
+                                                    }}
+                                                >
+                                                    📋 Copy Tweet
+                                                </button>
+                                            </div>
+                                            <textarea
+                                                value={generatedHeatTweet}
+                                                readOnly
+                                                style={{
+                                                    width: '100%',
+                                                    minHeight: '300px',
+                                                    padding: '1rem',
+                                                    background: '#000',
+                                                    border: '1px solid #f84242',
+                                                    color: '#fff',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.9rem',
+                                                    fontFamily: 'monospace',
+                                                    lineHeight: '1.6',
+                                                    resize: 'vertical'
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {activeHeatTab === 'reddit' && generatedHeatReddit && (
+                                        <div>
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center',
+                                                marginBottom: '1rem'
+                                            }}>
+                                                <label style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Reddit Post:
+                                                </label>
+                                                <button
+                                                    onClick={handleCopyHeatReddit}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        background: '#ff4500',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: 'bold',
+                                                        cursor: 'pointer',
+                                                        transition: 'all 0.2s'
+                                                    }}
+                                                    onMouseEnter={(e) => {
+                                                        e.currentTarget.style.background = '#ff6633';
+                                                    }}
+                                                    onMouseLeave={(e) => {
+                                                        e.currentTarget.style.background = '#ff4500';
+                                                    }}
+                                                >
+                                                    📋 Copy Reddit Post
+                                                </button>
+                                            </div>
+
+                                            {/* Reddit Title */}
+                                            <div style={{ marginBottom: '1rem' }}>
+                                                <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Title:
+                                                </label>
+                                                <textarea
+                                                    value={generatedHeatReddit.title}
+                                                    readOnly
+                                                    style={{
+                                                        width: '100%',
+                                                        minHeight: '60px',
+                                                        padding: '0.75rem',
+                                                        background: '#000',
+                                                        border: '1px solid #ff4500',
+                                                        color: '#fff',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.9rem',
+                                                        fontFamily: 'monospace',
+                                                        resize: 'vertical'
+                                                    }}
+                                                />
+                                            </div>
+
+                                            {/* Reddit Body */}
+                                            <div>
+                                                <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Body:
+                                                </label>
+                                                <textarea
+                                                    value={generatedHeatReddit.body}
+                                                    readOnly
+                                                    style={{
+                                                        width: '100%',
+                                                        minHeight: '400px',
+                                                        padding: '1rem',
+                                                        background: '#000',
+                                                        border: '1px solid #ff4500',
+                                                        color: '#fff',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.9rem',
+                                                        fontFamily: 'monospace',
+                                                        lineHeight: '1.6',
+                                                        resize: 'vertical'
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {/* Loading/Empty State */}
+                                    {!generatedHeatTweet && !generatedHeatReddit && (
+                                        <div style={{ 
+                                            padding: '2rem', 
+                                            textAlign: 'center', 
+                                            color: '#999',
+                                            fontStyle: 'italic'
+                                        }}>
+                                            Content will appear here after generation...
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -2044,6 +3094,11 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
     const [showImageSelector, setShowImageSelector] = useState(false);
     const [aiFeedback, setAiFeedback] = useState<string>('');
     const [isApplyingFeedback, setIsApplyingFeedback] = useState(false);
+    
+    // DFS AI Assistant state
+    const [selectedPlayerToReplace, setSelectedPlayerToReplace] = useState<number | null>(null);
+    const [dfsReplacementInstructions, setDfsReplacementInstructions] = useState<string>('');
+    const [isReplacingPlayer, setIsReplacingPlayer] = useState(false);
 
     useEffect(() => {
         if (post) {
@@ -2306,6 +3361,153 @@ IMPORTANT:
         setShowImageSelector(false);
     };
 
+    // DFS AI Assistant: Replace a player
+    const handleReplaceDFSPlayer = async () => {
+        if (!editedPost || selectedPlayerToReplace === null || !dfsReplacementInstructions.trim()) return;
+        setIsReplacingPlayer(true);
+        
+        try {
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (window as any).process?.env?.API_KEY || '';
+            if (!apiKey) {
+                throw new Error('API key not available');
+            }
+
+            const ai = new GoogleGenAI({ apiKey });
+            const playerToReplace = dfsPlayers[selectedPlayerToReplace];
+            const currentMarkdown = editedPost.websiteStory.theBackstory || '';
+            
+            // Find the section for this player in the markdown
+            // Look for the player section starting with ### [rank]. [Player Name]
+            const rank = selectedPlayerToReplace + 1;
+            const playerNameEscaped = playerToReplace.playerName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const playerSectionPattern = new RegExp(
+                `###\\s+${rank}\\.\\s+${playerNameEscaped}[\\s\\S]*?(?=###\\s+\\d+\\.|$)`,
+                'i'
+            );
+            const playerSection = currentMarkdown.match(playerSectionPattern)?.[0] || '';
+            
+            if (!playerSection) {
+                throw new Error(`Could not find player section for ${playerToReplace.playerName} in the article.`);
+            }
+
+            const prompt = `You are an AI assistant for editing DFS articles. Replace the following player section with a NEW player based on the instructions.
+
+CURRENT PLAYER TO REPLACE:
+${playerSection}
+
+INSTRUCTIONS: ${dfsReplacementInstructions}
+
+LEAGUE: ${editedPost.league}
+DATE: ${editedPost.matchupScheduledDate || editedPost.createdAt}
+
+TASK:
+1. Find a suitable replacement player from the same league that fits the instructions
+2. Generate a new player section in the EXACT same format as the current one
+3. Maintain the same markdown structure:
+   - ### [rank]. [Player Name] ([Position]) - [Team] vs [Opponent]
+   - **Salary:** $[salary] | **Confidence:** [score]% | **Narrative:** [type]
+   - **Key Stat:** [stat] (if applicable)
+   - [Analysis text]
+   - ---
+
+4. The new player should:
+   - Have a similar salary range or be a value play
+   - Have a strong narrative angle (Revenge, Pace, Game Script, etc.)
+   - Include compelling analysis in the same beat writer style
+   - Match the tone and format of the existing article
+
+Return ONLY the new player section in markdown format, exactly matching the structure above.`;
+
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-pro',
+                contents: prompt,
+                config: {
+                    tools: [{ googleSearch: {} }]
+                }
+            });
+
+            let newPlayerSection = response.text.trim();
+            
+            // Clean up the response - remove any markdown code blocks if present
+            const codeBlockMatch = newPlayerSection.match(/```(?:markdown)?\s*([\s\S]*?)\s*```/);
+            if (codeBlockMatch) {
+                newPlayerSection = codeBlockMatch[1].trim();
+            }
+            
+            // Ensure the section ends with --- separator
+            if (!newPlayerSection.trim().endsWith('---')) {
+                newPlayerSection = newPlayerSection.trim() + '\n\n---\n\n';
+            }
+            
+            // Extract player data from the new section
+            const playerNameMatch = newPlayerSection.match(/###\s+\d+\.\s+([^(]+)\s+\(/);
+            const positionMatch = newPlayerSection.match(/\(([^)]+)\)/);
+            const teamMatch = newPlayerSection.match(/\s+-\s+([A-Z]+)\s+vs/);
+            const opponentMatch = newPlayerSection.match(/vs\s+([A-Z]+)/);
+            const salaryMatch = newPlayerSection.match(/\*\*Salary:\*\*\s+\$(\d+)/);
+            const confidenceMatch = newPlayerSection.match(/\*\*Confidence:\*\*\s+(\d+)%/);
+            const narrativeMatch = newPlayerSection.match(/\*\*Narrative:\*\*\s+([^\n|]+)/);
+            const keyStatMatch = newPlayerSection.match(/\*\*Key Stat:\*\*\s+([^\n]+)/);
+            
+            // Extract analysis text (everything after the metadata lines, before ---)
+            const analysisStart = newPlayerSection.indexOf('**Key Stat:**') > -1 
+                ? newPlayerSection.indexOf('**Key Stat:**') + newPlayerSection.substring(newPlayerSection.indexOf('**Key Stat:**')).indexOf('\n\n') + 2
+                : newPlayerSection.indexOf('**Narrative:**') > -1
+                ? newPlayerSection.indexOf('**Narrative:**') + newPlayerSection.substring(newPlayerSection.indexOf('**Narrative:**')).indexOf('\n\n') + 2
+                : newPlayerSection.indexOf('\n\n') + 2;
+            const analysisEnd = newPlayerSection.lastIndexOf('---');
+            const analysis = newPlayerSection.substring(analysisStart, analysisEnd > -1 ? analysisEnd : newPlayerSection.length).trim();
+            
+            const newPlayer = {
+                rank: selectedPlayerToReplace + 1,
+                playerName: playerNameMatch?.[1]?.trim() || 'Unknown Player',
+                position: positionMatch?.[1] || 'N/A',
+                team: teamMatch?.[1] || 'N/A',
+                opponent: opponentMatch?.[1] || 'N/A',
+                salary: salaryMatch?.[1] || playerToReplace.salary,
+                narrativeType: narrativeMatch?.[1]?.trim() || 'General Value',
+                confidenceScore: parseInt(confidenceMatch?.[1] || '75'),
+                analysis: analysis || 'Analysis will be generated.',
+                keyStat: keyStatMatch?.[1]?.trim()
+            };
+
+            // Replace the player section in markdown
+            const updatedMarkdown = currentMarkdown.replace(playerSectionPattern, newPlayerSection);
+            
+            // Update the editedPost
+            setEditedPost(prev => {
+                if (!prev) return prev;
+                const newPost = JSON.parse(JSON.stringify(prev));
+                
+                // Update markdown
+                newPost.websiteStory.theBackstory = updatedMarkdown;
+                
+                // Update dfsPlayers array
+                newPost.heatCheckData = newPost.heatCheckData || {};
+                newPost.heatCheckData.dfsPlayers = newPost.heatCheckData.dfsPlayers || [];
+                newPost.heatCheckData.dfsPlayers[selectedPlayerToReplace] = newPlayer;
+                
+                // Update long_form_markdown if it exists
+                if (newPost.heatCheckData.article) {
+                    newPost.heatCheckData.article.long_form_markdown = updatedMarkdown;
+                }
+                
+                return newPost;
+            });
+
+            // Reset form
+            setSelectedPlayerToReplace(null);
+            setDfsReplacementInstructions('');
+            
+            alert('Player replaced successfully! Remember to save the article.');
+        } catch (error: any) {
+            console.error('Failed to replace player:', error);
+            alert(`Failed to replace player: ${error.message || 'Unknown error'}`);
+        } finally {
+            setIsReplacingPlayer(false);
+        }
+    };
+
     if (!editedPost) return null;
 
     // Extract heatCheckData if available
@@ -2317,6 +3519,10 @@ IMPORTANT:
     const qualityReport = heatCheckData?.quality_report;
     // Get validation warnings from stored data (validated during generation)
     const validationWarnings = heatCheckData?.validation_warnings || [];
+    
+    // Extract DFS players if this is a DFS article
+    const isDFSArticle = editedPost.storyType === 'dfs_article';
+    const dfsPlayers = heatCheckData?.dfsPlayers || [];
 
     return (
         <div className="modal-overlay" style={{ background: 'rgba(0,0,0,0.9)', zIndex: 1000 }}>
@@ -2418,7 +3624,92 @@ IMPORTANT:
                                 placeholder="Write your article in Markdown..."
                             />
 
-                            {/* AI Feedback Agent */}
+                            {/* DFS AI Assistant - Player Replacement */}
+                            {isDFSArticle && dfsPlayers.length > 0 && (
+                                <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#2a2a2a', borderRadius: '4px', border: '2px solid #00ff41' }}>
+                                    <label style={{ display: 'block', marginBottom: '1rem', fontWeight: 'bold', fontSize: '1.1rem', color: '#00ff41' }}>
+                                        🤖 DFS AI Assistant - Replace Player
+                                    </label>
+                                    
+                                    {/* Player Selector */}
+                                    <div style={{ marginBottom: '1rem' }}>
+                                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                            Select Player to Replace:
+                                        </label>
+                                        <select
+                                            value={selectedPlayerToReplace ?? ''}
+                                            onChange={(e) => setSelectedPlayerToReplace(e.target.value ? parseInt(e.target.value) : null)}
+                                            style={{
+                                                width: '100%',
+                                                padding: '0.75rem',
+                                                background: '#1a1a1a',
+                                                border: '1px solid #00ff41',
+                                                color: '#fff',
+                                                borderRadius: '4px',
+                                                fontSize: '0.9rem',
+                                                cursor: 'pointer'
+                                            }}
+                                        >
+                                            <option value="">-- Select a player --</option>
+                                            {dfsPlayers.map((player: any, index: number) => (
+                                                <option key={index} value={index}>
+                                                    #{player.rank} - {player.playerName} ({player.position}) - {player.team} vs {player.opponent} - ${player.salary}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Replacement Instructions */}
+                                    {selectedPlayerToReplace !== null && (
+                                        <>
+                                            <div style={{ marginBottom: '1rem' }}>
+                                                <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Replacement Instructions:
+                                                </label>
+                                                <textarea
+                                                    value={dfsReplacementInstructions}
+                                                    onChange={(e) => setDfsReplacementInstructions(e.target.value)}
+                                                    placeholder="E.g., 'Replace with a value play under $6000 with a revenge narrative' or 'Find a player from the same team with better matchup'..."
+                                                    style={{ 
+                                                        width: '100%', 
+                                                        minHeight: '100px', 
+                                                        padding: '0.75rem', 
+                                                        background: '#1a1a1a', 
+                                                        border: '1px solid #00ff41', 
+                                                        color: '#fff', 
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.9rem',
+                                                        fontFamily: 'monospace'
+                                                    }}
+                                                />
+                                            </div>
+                                            
+                                            <button
+                                                onClick={handleReplaceDFSPlayer}
+                                                disabled={isReplacingPlayer || !dfsReplacementInstructions.trim()}
+                                                style={{ 
+                                                    width: '100%',
+                                                    padding: '0.75rem 1rem', 
+                                                    background: isReplacingPlayer ? '#666' : '#00ff41', 
+                                                    color: isReplacingPlayer ? '#999' : '#000', 
+                                                    border: 'none', 
+                                                    borderRadius: '4px', 
+                                                    cursor: isReplacingPlayer ? 'not-allowed' : 'pointer',
+                                                    fontWeight: 'bold',
+                                                    fontSize: '0.9rem',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: '0.1em'
+                                                }}
+                                            >
+                                                {isReplacingPlayer ? 'Replacing Player...' : 'Replace Player with AI'}
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* AI Feedback Agent (for non-DFS articles) */}
+                            {!isDFSArticle && (
                             <div style={{ marginTop: '2rem', padding: '1rem', background: '#2a2a2a', borderRadius: '4px' }}>
                                 <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>
                                     AI Feedback Agent
@@ -2453,6 +3744,7 @@ IMPORTANT:
                                     {isApplyingFeedback ? 'Applying...' : 'Apply Feedback'}
                                 </button>
                             </div>
+                            )}
                         </div>
                     </div>
 
@@ -3686,6 +4978,355 @@ You may have exceeded your Gemini API quota. Please check your usage at https://
   }
 }
 
+// ===================================================================================
+// ENHANCED HEAT CHECK NARRATIVE GENERATOR V2 (with Emotional Spine™)
+// ===================================================================================
+
+async function generateHeatCheckNarrativeV2(matchup: { league: string; teamA: string; teamB: string }, retries = 3): Promise<any> {
+  const localApiKey = import.meta.env.VITE_GEMINI_API_KEY || 
+                      import.meta.env.GEMINI_API_KEY || 
+                      (typeof process !== 'undefined' && process.env?.API_KEY) || 
+                      (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY) || 
+                      apiKey || 
+                      '';
+  
+  if (!localApiKey || localApiKey.trim() === '') {
+    throw new Error('Gemini API key is missing. Please set VITE_GEMINI_API_KEY in your .env.local file.\n\nGet your API key from: https://aistudio.google.com/app/apikey');
+  }
+  
+  const localAi = new GoogleGenAI({ apiKey: localApiKey });
+  const sport = mapLeagueToSport(matchup.league);
+  
+  const prompt = `
+You are HeatChecks, an elite sports narrative intelligence system.
+Your task is to uncover the emotional truth of the matchup and transform it into a compelling HeatChecks article.
+
+CURRENT DATE: ${new Date().toLocaleDateString()}
+MATCHUP: ${matchup.teamA} vs ${matchup.teamB} (${sport})
+
+🧬 SYSTEM DIRECTIVE
+
+Your output must be:
+- Emotionally charged
+- Evidence-backed
+- Factually accurate
+- Structured for betting insight
+- Written for fans, DFS players, and bettors
+
+🧱 MANDATORY EXECUTION PHASES
+
+PHASE 1 — ORCHESTRATE (Fresh Data)
+Use live data via Google Search:
+- Current rosters, injuries, lineups
+- Recent results and form (last 5-10 games)
+- Betting odds & movement (opening vs current)
+- Recent quotes & press conferences (last 2 weeks)
+- Contract situations, trade rumors, role changes
+- Coaching context and recent decisions
+
+PHASE 2 — ODDS & FACTS
+Build factPack with:
+- Opening & current betting lines (Moneyline, Spread, Total)
+- Injury report (status + impact on game)
+- Recent performance (last 5-10 games for each team)
+- Key advanced stats (efficiency, pace, etc.)
+- Coaching context (recent decisions, pressure situations)
+- Line movement summary (if significant shifts occurred)
+
+PHASE 3 — EVIDENCE MINING
+Build evidenceBundle with:
+- Quotes from players/coaches/media (last 3 years, prioritize recent)
+- Timeline of key events (last 3 seasons)
+- Sources required for every claim (reliability tiering: A/B/C)
+- Press conference soundbites
+- Social media context (if relevant)
+- Transaction history (trades, signings, releases)
+
+PHASE 4 — NARRATIVE CANDIDATES
+Generate 3-5 narrative cards, each with:
+
+{
+  "narrative_id": "N_1",
+  "title": "Short, punchy title (3-5 words)",
+  "claim": "One sentence claim explaining the narrative",
+  "key_characters": ["Player/Coach names involved"],
+  "heat_score": {
+    "emotion": 0-5,           // Emotional intensity (revenge, pressure, etc.)
+    "conflict": 0-5,          // Level of conflict/tension
+    "stakes": 0-5,            // What's at stake (playoffs, legacy, etc.)
+    "evidence": 0-5,          // Quality and quantity of evidence
+    "audience_relevance": 0-5  // Relevance to DFS/betting/fan audience
+  },
+  "total": 0-25              // Sum of heat_score dimensions
+}
+
+Select the narrative with the highest total score as primary.
+
+PHASE 4.5 — EMOTIONAL MAP (NEW CORE LAYER)
+For the TOP narrative only, create an emotional blueprint:
+
+"emotional_map": {
+  "primary_emotion": "revenge | pressure | redemption | collapse | survival | arrival",
+  "secondary_emotion": "fear | pride | urgency | doubt | confidence",
+  "audience_identity": "DFS grinder | bettor | fan | rival fan | casual",
+  "emotional_question": "What happens if ___ fails today?",
+  "one_sentence_hook": "The opening 1-2 lines that capture the emotional core"
+}
+
+This map becomes the emotional blueprint for the entire article.
+
+PHASE 5 — THE AUDITOR (FACTUAL INTEGRITY)
+Verify all key characters from the selected narrative:
+- On current roster? (as of ${new Date().toLocaleDateString()})
+- Active and healthy?
+- Injury status? (exclude season-ending injuries, IL/IR)
+- No trades, firings, or releases?
+- Use Google Search to verify: "[Name] ${matchup.teamA} roster ${new Date().getFullYear()}"
+- Use Google Search to check injuries: "[Name] injury status ${new Date().toLocaleDateString()}"
+
+If any key character is invalid:
+- Remove them from key_characters OR
+- Pivot the narrative to discuss their absence
+- Log all corrections in quality_report.corrections_applied
+
+PHASE 6 — HEATCHECKS ARTICLE OUTPUT
+Generate article.long_form_markdown using the HeatChecks Emotional Spine™ in this EXACT order:
+
+1. **Hook** (1-2 emotionally explosive lines)
+   - Use the one_sentence_hook from emotional_map
+   - Must create immediate emotional tension
+   - No setup, no context—just raw emotion
+
+2. **Ignition** — Why this matchup matters right now
+   - What makes THIS game different?
+   - What's happening TODAY that amplifies the narrative?
+   - Connect to current context (standings, recent events, etc.)
+
+3. **Tension Build** — Pressure, conflict, stakes
+   - What's at stake for each side?
+   - What happens if they win? If they lose?
+   - Build the emotional pressure
+
+4. **Receipts** — Evidence & timeline
+   - Key quotes that prove the tension
+   - Timeline of events that led here
+   - Stats that support the narrative
+   - Format as bullet points or short paragraphs
+
+5. **Human Moment** — One emotional focal point
+   - Focus on ONE key character or moment
+   - Make it personal and relatable
+   - This is where the reader connects emotionally
+
+6. **Edge Transition** — Set up betting analysis (NO PICKS)
+   - Discuss betting lines and what they mean
+   - Analyze moneyline, spread, totals
+   - Explain what factors influence the lines
+   - DO NOT make predictions or recommendations
+   - Transition to: "The HeatChecks Edge analysis below..."
+
+CRITICAL ARTICLE RULES:
+- DO NOT make predictions or pick winners
+- Focus on betting line ANALYSIS, not recommendations
+- All predictions belong in HeatChecks Edge component
+- Use the emotional_map to guide the emotional flow
+- Every section must serve the emotional narrative
+
+PHASE 7 — EMOTIONAL INTEGRITY CHECK
+Review the article and confirm:
+- ✅ The hook reflects the emotional_map.primary_emotion
+- ✅ The emotional_question is clearly explored in the article
+- ✅ The human moment exists and is emotionally resonant
+- ✅ The article resolves emotional tension (even if outcome is uncertain)
+
+If ANY condition fails:
+- Revise the article to meet all conditions
+- Log revisions in quality_report.corrections_applied
+
+PHASE 8 — OUTPUT FORMAT
+Return ONLY valid JSON matching this schema:
+
+{
+  "factPack": {
+    "odds": {
+      "source": "string",
+      "last_updated_utc": "string",
+      "opening_markets": [
+        { "market": "Moneyline|Spread|Total", "outcomes": ["string"], "price": number, "point": number, "book": "string" }
+      ],
+      "current_markets": [
+        { "market": "Moneyline|Spread|Total", "outcomes": ["string"], "price": number, "point": number, "book": "string" }
+      ],
+      "movement_summary": ["string"]
+    },
+    "context": {
+      "recent_form": { "home": "string (last 5-10 games)", "away": "string (last 5-10 games)" },
+      "injuries": [
+        { "name": "string", "team": "string", "status": "string", "impact": "string" }
+      ],
+      "coaching_context": "string"
+    },
+    "key_stats": [
+      { "label": "string", "value": "string", "why_it_matters": "string" }
+    ]
+  },
+  "evidenceBundle": {
+    "sources": [
+      { "source_id": "SRC_1", "title": "string", "publisher": "string", "url": "string", "published_utc": "string", "reliability_tier": "A|B|C" }
+    ],
+    "quotes": [
+      { "quote_id": "Q_1", "speaker": "string", "team": "string", "quote": "string", "context": "string", "date_utc": "string", "source_id": "SRC_1" }
+    ],
+    "timeline_events": [
+      { "event_id": "E_1", "event_type": "trade|rivalry|injury|coaching|other", "date_utc": "string", "summary": "string", "source_id": "SRC_1" }
+    ]
+  },
+  "candidateCards": [
+    {
+      "narrative_id": "N_1",
+      "title": "string",
+      "claim": "string",
+      "key_characters": ["string"],
+      "heat_score": {
+        "emotion": 0-5,
+        "conflict": 0-5,
+        "stakes": 0-5,
+        "evidence": 0-5,
+        "audience_relevance": 0-5
+      },
+      "total": 0-25
+    }
+  ],
+  "selectedNarrative": {
+    "primary_narrative_id": "N_1",
+    "secondary_narrative_ids": ["N_2"]
+  },
+  "emotional_map": {
+    "primary_emotion": "revenge | pressure | redemption | collapse | survival | arrival",
+    "secondary_emotion": "fear | pride | urgency | doubt | confidence",
+    "audience_identity": "DFS grinder | bettor | fan | rival fan | casual",
+    "emotional_question": "What happens if ___ fails today?",
+    "one_sentence_hook": "string"
+  },
+  "qualityReport": {
+    "missing_data_warnings": ["string"],
+    "hallucination_checks_passed": true,
+    "corrections_applied": ["string"]
+  },
+  "article": {
+    "long_form_markdown": "string (must follow HeatChecks Emotional Spine™ structure)",
+    "seo": {
+      "primary_keyword": "string",
+      "title_options": ["string"],
+      "meta_description": "string"
+    }
+  }
+}
+
+CRITICAL: Return ONLY the JSON object. No markdown, no explanations, no code blocks.
+`;
+
+  console.log(`[generateHeatCheckNarrativeV2] Starting enhanced generation for ${matchup.teamA} vs ${matchup.teamB}`);
+  
+  try {
+    const response = await localAi.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+      }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("No response from AI");
+
+    // Clean response (remove markdown code blocks if present)
+    let cleanedText = text.trim();
+    const codeBlockMatch = cleanedText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      cleanedText = codeBlockMatch[1].trim();
+    }
+
+    const result = parseHeatCheckJSON(cleanedText);
+    
+    if (!result.candidateCards || result.candidateCards.length === 0) {
+      throw new Error("No candidate cards in response");
+    }
+    
+    if (!result.emotional_map) {
+      throw new Error("Missing emotional_map in response");
+    }
+    
+    if (!result.article?.long_form_markdown) {
+      throw new Error("Missing article markdown in response");
+    }
+
+    // Transform to match existing structure for compatibility
+    return {
+      fact_pack: result.factPack,
+      evidence_bundle: result.evidenceBundle,
+      narratives: {
+        candidate_cards: result.candidateCards.map((card: any) => ({
+          narrative_id: card.narrative_id,
+          title: card.title,
+          claim: card.claim,
+          key_characters: card.key_characters,
+          emotion_tags: [result.emotional_map.primary_emotion, result.emotional_map.secondary_emotion],
+          score_breakdown: {
+            factual_support: card.heat_score.evidence,
+            recency: 5, // Assume recent if selected
+            stakes: card.heat_score.stakes,
+            performance_alignment: card.heat_score.emotion,
+            uniqueness: card.heat_score.conflict,
+            audience_resonance: card.heat_score.audience_relevance,
+            volatility_optional: 0
+          },
+          total_score: card.total,
+          evidence_requirements_met: card.heat_score.evidence >= 3,
+          risk_notes: [],
+          must_cite_source_ids: []
+        })),
+        selected: {
+          primary_narrative_id: result.selectedNarrative.primary_narrative_id,
+          secondary_narrative_ids: result.selectedNarrative.secondary_narrative_ids || []
+        }
+      },
+      emotional_map: result.emotional_map, // NEW: Add emotional map
+      quality_report: result.qualityReport,
+      article: {
+        long_form_markdown: result.article.long_form_markdown,
+        seo: {
+          primary_keyword: result.article.seo?.primary_keyword || '',
+          title_options: result.article.seo?.title_options || [],
+          meta_description: result.article.seo?.meta_description || ''
+        }
+      }
+    };
+
+  } catch (error: any) {
+    console.error("[generateHeatCheckNarrativeV2] Error:", error);
+    
+    // Retry logic for rate limiting or network errors
+    const errorMessage = error.message || error.toString() || '';
+    const isRetryableError = 
+      errorMessage.includes('rate limit') || 
+      errorMessage.includes('quota') ||
+      errorMessage.includes('fetch') || 
+      errorMessage.includes('network') ||
+      errorMessage.includes('timeout') ||
+      errorMessage.includes('Failed to fetch') ||
+      error instanceof TypeError;
+    
+    if (retries > 0 && isRetryableError) {
+      const delayMs = (4 - retries) * 2000; // Exponential backoff: 2s, 4s, 6s
+      console.log(`[generateHeatCheckNarrativeV2] Retrying in ${delayMs}ms (${retries} retries left)... Error: ${errorMessage}`);
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+      return generateHeatCheckNarrativeV2(matchup, retries - 1);
+    }
+    
+    throw new Error(`Failed to generate V2 heat check narrative: exception ${errorMessage}`);
+  }
+}
 
 const getWebsiteReadyPrompt = (narrative: Narrative) => `
 You are an elite sports analyst operating in the "Heatchecks War Room." Your voice is edgy and controversial. Transform this initial angle into a full story using the "WAR ROOM STORY FORMAT."
