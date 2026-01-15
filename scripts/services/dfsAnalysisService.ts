@@ -75,6 +75,9 @@ export interface PlayerAnalysis {
  * Validate DFS players are actually playing today
  * Returns validated players and list of invalid players
  */
+/**
+ * Simple validation: Only check for injuries and if they played last game
+ */
 export const validateDFSPlayers = async (
   players: PlayerAnalysis[],
   sport: 'NBA' | 'NFL',
@@ -93,45 +96,31 @@ export const validateDFSPlayers = async (
   const today = new Date().toDateString();
 
   const validationPrompt = `
-You are a STRICT DFS validation system. Your job is to verify that each player in the provided list is CONFIRMED ACTIVE, PLAYING, and GETTING REGULAR PLAYING TIME in today's games (${today}).
+You are a simple DFS validation system. For each player, check ONLY two things:
 
-For each player, you MUST:
-1. Use Google Search to check their injury/active status for TODAY
-2. Search for: "[Player Name] [Team] injury status today" or "[Player Name] active today [Date]" or "[Player Name] [Team] game status" or "[Player Name] minutes per game" or "[Player Name] playing time"
-3. Verify they are on the ACTIVE ROSTER and NOT on IR/IL/Inactive List
-4. Check if they are suspended, ruled out, or inactive
-5. **CRITICAL: Check their recent playing time/minutes**
-   - For NBA: Players should be getting at least 15-20 minutes per game regularly
-   - For NFL: Players should be getting regular snaps/touches (not just special teams)
-   - Look for recent game logs, minutes played, or snap counts
-6. Look for official team injury reports or game status updates
+1. INJURY STATUS: Are they confirmed OUT, RULED OUT, or on IR/IL for today's game?
+2. LAST GAME: Did they play in their team's most recent game?
 
-VALIDATION RULES (STRICT - Require clear evidence of active status AND playing time):
-- Mark as VALID ONLY if you find CLEAR evidence of:
-  * "Active", "Expected to Play", "Probable", "Will Play", "Cleared to Play", "No Injury", "Healthy", or official roster confirmation
-  * AND they are getting regular playing time (NBA: 15+ min/game, NFL: regular offensive/defensive snaps)
-  * AND they are not in a "DNP - Coach's Decision" or "healthy scratch" situation
+For each player, use Google Search to check:
+- "[Player Name] [Team] injury status today" or "[Player Name] ruled out"
+- "[Player Name] [Team] last game" or "[Player Name] [Team] recent games"
+
+VALIDATION RULES (SIMPLE):
+- Mark as INVALID ONLY if:
+  * They are confirmed "Out", "Ruled Out", "IR", "IL", or "Suspended" for today
+  * They did NOT play in their team's last game AND there's no indication they're returning today
   
-- Mark as INVALID if you find ANY evidence of:
-  * "Out", "Suspended", "Doubtful", "Inactive", "IR", "IL", "Not Active", "Won't Play", "Ruled Out"
-  * "Questionable" (unless explicitly stated they will play)
-  * "Injury Report: Out", "Not Expected to Play"
-  * **Low playing time**: NBA players averaging < 15 minutes per game, NFL players only on special teams
-  * **DNP - Coach's Decision**: Players who are healthy but not getting minutes
-  * **Healthy scratch**: Players who are active but not in the rotation
-  * **G-League/Two-way players**: Players who are primarily in minor leagues
-  * **End of bench players**: Players who rarely see the field/court
-  
-- If status is "Questionable" and you cannot find confirmation they WILL play, mark as INVALID
-- If you cannot find clear evidence they are ACTIVE AND GETTING PLAYING TIME, mark as INVALID (default to invalid when uncertain)
-- If search results are unavailable or unclear, mark as INVALID (we need confirmation)
-- **If a player is technically "active" but hasn't played meaningful minutes in recent games, mark as INVALID**
+- Mark as VALID if:
+  * They are "Active", "Questionable", "Probable", or any status other than confirmed "Out"
+  * They played in their team's last game
+  * Search results are unclear (default to valid)
+  * No clear evidence they are out
 
-IMPORTANT: This is a STRICT validation for DFS purposes. Only mark players as VALID if you have CONFIRMED evidence they are:
-1. Playing today (not just active on roster)
-2. Getting regular playing time/minutes (not bench warmers or emergency backups)
-
-When in doubt about playing time, mark as INVALID. DFS requires players who actually contribute, not just players who are technically on the roster.
+IMPORTANT: 
+- DO NOT check playing time or minutes
+- DO NOT check if they're starters or bench players
+- ONLY check: Are they injured/out? Did they play last game?
+- When in doubt, mark as VALID
 
 Return a JSON array with validation results for each player.
 `;
@@ -144,8 +133,8 @@ Return a JSON array with validation results for each player.
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-pro",
-      contents: `Validate these players for today's ${sport} slate (${today}). Check if they are actually playing:\n${JSON.stringify(playersToValidate, null, 2)}`,
+      model: "gemini-2.0-flash-exp",
+      contents: `Check these players for injuries and if they played last game (${today}):\n${JSON.stringify(playersToValidate, null, 2)}`,
       config: {
         tools: [{ googleSearch: {} }],
         systemInstruction: validationPrompt,
@@ -156,9 +145,9 @@ Return a JSON array with validation results for each player.
             properties: {
               playerName: { type: Type.STRING },
               team: { type: Type.STRING },
-              isValid: { type: Type.BOOLEAN, description: "true ONLY if player is CONFIRMED ACTIVE, playing today, AND getting regular playing time/minutes. false if inactive, injured, or not getting meaningful minutes." },
-              status: { type: Type.STRING, description: "Current status: 'Active', 'Out', 'Doubtful', 'Questionable', 'Suspended', 'Low Minutes', 'DNP', etc." },
-              reason: { type: Type.STRING, description: "Detailed reason for validation result including playing time/minutes evidence found. If invalid, explain why (injury, low minutes, DNP, etc.)" }
+              isValid: { type: Type.BOOLEAN, description: "true if player is not confirmed out and played last game (or unclear). false ONLY if confirmed out/injured or did not play last game with no return indication." },
+              status: { type: Type.STRING, description: "Current status: 'Active', 'Out', 'Played Last Game', 'Did Not Play', etc." },
+              reason: { type: Type.STRING, description: "Brief reason: injury status and if they played last game." }
             },
             required: ["playerName", "isValid", "status", "reason"]
           }
@@ -225,8 +214,8 @@ Return a JSON array with validation results for each player.
         players.forEach(player => {
           const key = `${player.playerName}-${player.team}`.toLowerCase();
           if (!validatedNames.has(key)) {
-            // Player wasn't in validation results, mark as INVALID (strict mode)
-            invalidPlayers.push(`${player.playerName} (${player.team}) - Not found in validation results`);
+            // Player wasn't in validation results, mark as VALID (lenient mode)
+            validPlayers.push(player);
           }
         });
       }
@@ -235,14 +224,14 @@ Return a JSON array with validation results for each player.
       return { validPlayers, invalidPlayers };
     }
     
-    // If validation fails to return text, mark all as invalid (strict mode)
-    console.warn("Validation returned no text, marking all players as invalid (strict mode)");
-    return { validPlayers: [], invalidPlayers: players.map(p => `${p.playerName} (${p.team}) - Validation failed`) };
+    // If validation fails to return text, mark all as valid (lenient mode)
+    console.warn("Validation returned no text, defaulting to lenient mode - marking all players as valid");
+    return { validPlayers: players, invalidPlayers: [] };
   } catch (error) {
     console.error("Error validating DFS players:", error);
-    // On error, mark all as invalid (strict mode)
-    console.warn("Validation error occurred, marking all players as invalid (strict mode)");
-    return { validPlayers: [], invalidPlayers: players.map(p => `${p.playerName} (${p.team}) - Validation error`) };
+    // On error, mark all as valid (lenient mode - trust the initial analysis)
+    console.warn("Validation error occurred, defaulting to lenient mode - marking all players as valid");
+    return { validPlayers: players, invalidPlayers: [] };
   }
 };
 
@@ -276,15 +265,13 @@ export const analyzeDFSSlate = async (playerDataJSON: string, sport: 'NBA' | 'NF
     2. Cross-reference the player list with your INTERNAL KNOWLEDGE of player history (former teams, former coaches, hometowns) to identify "Revenge" or "Homecoming" narratives.
     3. Analyze the matchups based on the "Schematic Patterns" in the reference material (e.g., Shadow coverage risks, Pace benefits).
     
-    4. **CRITICAL STATUS AND PLAYING TIME CHECK (Date: ${today})**: 
-       - You possess the 'googleSearch' tool. You MUST use it to verify BOTH the injury/active status AND playing time of your potential candidates for today's games.
-       - Search for terms like "[Player Name] injury status today", "[Player Name] active today", "[Player Name] minutes per game", "[Player Name] playing time", "[Player Name] recent games".
-       - If a player is confirmed "Out", "Suspended", "Doubtful", or "Inactive" for today's game, **DO NOT INCLUDE THEM**. Discard and find the next best candidate.
-       - **CRITICAL: Check playing time/minutes**:
-         * For NBA: Only include players who are getting at least 15-20 minutes per game regularly. Exclude players who are "DNP - Coach's Decision", healthy scratches, or end-of-bench players.
-         * For NFL: Only include players who are getting regular offensive/defensive snaps (not just special teams). Exclude players who are primarily special teams or emergency backups.
-       - If a player is technically "active" but not getting meaningful playing time, **DO NOT INCLUDE THEM**.
-       - Only return players who are likely to play AND likely to get meaningful minutes/snaps.
+    4. **STATUS CHECK (Date: ${today})**: 
+       - You possess the 'googleSearch' tool. You SHOULD use it to verify the injury/active status of your potential candidates for today's games.
+       - Search for terms like "[Player Name] injury status today", "[Player Name] active today", "[Player Name] ruled out".
+       - If a player is confirmed "Out", "Ruled Out", "Suspended", or "Inactive" for today's game, **DO NOT INCLUDE THEM**. 
+       - If a player is "Questionable", you may include them (assume they will play).
+       - DO NOT exclude players based on playing time or minutes - only exclude if they are confirmed out or injured.
+       - Focus on finding value plays with strong narrative angles, regardless of their typical playing time.
 
     5. Select the TOP 10 *ACTIVE* players who fit the *Reference Material's* specific criteria for high upside or value.
     

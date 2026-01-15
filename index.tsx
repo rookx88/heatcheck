@@ -275,7 +275,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         const { websiteStory, heatchecksEdge } = await performDeepResearch(narrative);
         const tweetPrompt = getViralTweetPrompt(websiteStory, heatchecksEdge);
         const tweetResponse = await ai.models.generateContent({
-            model: "gemini-2.5-pro", contents: tweetPrompt,
+            model: "gemini-2.0-flash-exp", contents: tweetPrompt,
             config: { responseMimeType: "application/json", responseSchema: { type: Type.OBJECT, properties: { tweet1: {type: Type.STRING}, tweet2: {type: Type.STRING}}, required: ["tweet1", "tweet2"]}}
         });
         // FIX: Provide an explicit type to `extractJson` to prevent `generatedTweet` from being `unknown`.
@@ -569,14 +569,37 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
           // Filter to only roster-related warnings (not info messages)
           const rosterWarnings = validationWarnings.filter(w => w.startsWith('⚠️'));
           
-          if (rosterWarnings.length > 0) {
-            console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] ${rosterWarnings.length} roster validation warning(s) found - Applying AI Editor corrections...`);
-            setGenerationProgress(prev => prev ? { ...prev, step: `AI Editor: Correcting ${matchupLabel} (replacing ${rosterWarnings.length} invalid reference(s)...` } : null);
+          // Filter to only HIGH confidence invalidations for auto-correction
+          // Low/medium confidence warnings will be logged but require manual review
+          // Warnings without confidence info are treated as requiring review (not auto-corrected)
+          const highConfidenceWarnings = rosterWarnings.filter(w => 
+            w.includes('[High Confidence]') && 
+            !w.includes('LOW CONFIDENCE') &&
+            !w.includes('Medium Confidence') &&
+            !w.includes('Low Confidence')
+          );
+          
+          const lowMediumConfidenceWarnings = rosterWarnings.filter(w => 
+            w.includes('[Low Confidence') || 
+            w.includes('[Medium Confidence') ||
+            w.includes('LOW CONFIDENCE') ||
+            (!w.includes('[High Confidence]') && !w.includes('LOW CONFIDENCE') && !w.includes('Medium Confidence') && !w.includes('Low Confidence') && !w.includes('injury status'))
+          );
+          
+          // Log low/medium confidence warnings but don't auto-correct
+          if (lowMediumConfidenceWarnings.length > 0) {
+            console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] ${lowMediumConfidenceWarnings.length} low/medium confidence validation warning(s) - Skipping auto-correction, manual review recommended:`, lowMediumConfidenceWarnings);
+            validationWarnings.push(`ℹ️ ${lowMediumConfidenceWarnings.length} validation warning(s) require manual review due to low/medium confidence`);
+          }
+          
+          if (highConfidenceWarnings.length > 0) {
+            console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] ${highConfidenceWarnings.length} high-confidence roster validation warning(s) found - Applying AI Editor corrections...`);
+            setGenerationProgress(prev => prev ? { ...prev, step: `AI Editor: Correcting ${matchupLabel} (replacing ${highConfidenceWarnings.length} invalid reference(s)...` } : null);
             
             try {
               const correctionResult = await correctArticleWithAI(
                 article.long_form_markdown,
-                rosterWarnings,
+                highConfidenceWarnings,
                 matchup.teamA,
                 matchup.teamB,
                 matchup.league
@@ -587,7 +610,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
               
               // Update validation warnings to mark roster issues as fixed
               validationWarnings = validationWarnings.map(w => {
-                if (w.startsWith('⚠️') && rosterWarnings.includes(w)) {
+                if (w.startsWith('⚠️') && highConfidenceWarnings.includes(w)) {
                   return `${w} [Fixed by AI Editor]`;
                 }
                 return w;
@@ -853,14 +876,37 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
           // Filter to only roster-related warnings (not info messages)
           const rosterWarnings = validationWarnings.filter(w => w.startsWith('⚠️'));
           
-          if (rosterWarnings.length > 0) {
-            console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] ${rosterWarnings.length} roster validation warning(s) found - Applying AI Editor corrections...`);
-            setGenerationProgress(prev => prev ? { ...prev, step: `AI Editor: Correcting ${matchupLabel} (replacing ${rosterWarnings.length} invalid reference(s)...` } : null);
+          // Filter to only HIGH confidence invalidations for auto-correction
+          // Low/medium confidence warnings will be logged but require manual review
+          // Warnings without confidence info are treated as requiring review (not auto-corrected)
+          const highConfidenceWarnings = rosterWarnings.filter(w => 
+            w.includes('[High Confidence]') && 
+            !w.includes('LOW CONFIDENCE') &&
+            !w.includes('Medium Confidence') &&
+            !w.includes('Low Confidence')
+          );
+          
+          const lowMediumConfidenceWarnings = rosterWarnings.filter(w => 
+            w.includes('[Low Confidence') || 
+            w.includes('[Medium Confidence') ||
+            w.includes('LOW CONFIDENCE') ||
+            (!w.includes('[High Confidence]') && !w.includes('LOW CONFIDENCE') && !w.includes('Medium Confidence') && !w.includes('Low Confidence') && !w.includes('injury status'))
+          );
+          
+          // Log low/medium confidence warnings but don't auto-correct
+          if (lowMediumConfidenceWarnings.length > 0) {
+            console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] ${lowMediumConfidenceWarnings.length} low/medium confidence validation warning(s) - Skipping auto-correction, manual review recommended:`, lowMediumConfidenceWarnings);
+            validationWarnings.push(`ℹ️ ${lowMediumConfidenceWarnings.length} validation warning(s) require manual review due to low/medium confidence`);
+          }
+          
+          if (highConfidenceWarnings.length > 0) {
+            console.log(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] ${highConfidenceWarnings.length} high-confidence roster validation warning(s) found - Applying AI Editor corrections...`);
+            setGenerationProgress(prev => prev ? { ...prev, step: `AI Editor: Correcting ${matchupLabel} (replacing ${highConfidenceWarnings.length} invalid reference(s)...` } : null);
             
             try {
               const correctionResult = await correctArticleWithAI(
                 article.long_form_markdown,
-                rosterWarnings,
+                highConfidenceWarnings,
                 matchup.teamA,
                 matchup.teamB,
                 matchup.league
@@ -871,7 +917,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
               
               // Update validation warnings to mark roster issues as fixed
               validationWarnings = validationWarnings.map(w => {
-                if (w.startsWith('⚠️') && rosterWarnings.includes(w)) {
+                if (w.startsWith('⚠️') && highConfidenceWarnings.includes(w)) {
                   return `${w} [Fixed by AI Editor]`;
                 }
                 return w;
@@ -3419,7 +3465,7 @@ TASK:
 Return ONLY the new player section in markdown format, exactly matching the structure above.`;
 
             const response = await ai.models.generateContent({
-                model: 'gemini-2.5-pro',
+                model: 'gemini-2.0-flash-exp',
                 contents: prompt,
                 config: {
                     tools: [{ googleSearch: {} }]
@@ -4274,7 +4320,7 @@ Be VERY strict - it's better to flag someone as invalid incorrectly than to allo
 `;
     
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-pro',
+      model: 'gemini-2.0-flash-exp',
       contents: validationPrompt,
       config: {
         tools: [{ googleSearch: {} }],
@@ -4310,14 +4356,17 @@ Be VERY strict - it's better to flag someone as invalid incorrectly than to allo
         warnings.push(`⚠️ LOW CONFIDENCE: ${result.name} marked as valid but verification confidence is low. Status: ${result.current_status}${result.injury_status && result.injury_status !== 'N/A' ? `, Injury: ${result.injury_status}` : ''}`);
       }
       
-      // Mark invalid results with full details
+      // Mark invalid results with full details, including confidence level
       if (!result.is_valid && result.warning) {
         const injuryInfo = result.injury_status && result.injury_status !== 'N/A' 
           ? `, Injury: ${result.injury_status}` 
           : '';
-        const confidenceInfo = result.verification_confidence === 'low'
-          ? ` [Low Confidence]`
-          : '';
+        const confidenceLevel = result.verification_confidence || 'medium';
+        const confidenceInfo = confidenceLevel === 'low'
+          ? ` [Low Confidence - Manual Review Required]`
+          : confidenceLevel === 'medium'
+          ? ` [Medium Confidence - Review Recommended]`
+          : ` [High Confidence]`;
         warnings.push(`⚠️ ${result.name}: ${result.warning} (Current: ${result.current_status}${injuryInfo})${confidenceInfo}`);
       }
       
@@ -4444,7 +4493,7 @@ INSTRUCTIONS:
 `;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-pro',
+      model: 'gemini-2.0-flash-exp',
       contents: correctionPrompt,
       config: {
         tools: [{ googleSearch: {} }],
