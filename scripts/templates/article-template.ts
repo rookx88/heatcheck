@@ -405,6 +405,9 @@ export function generateArticlePage(
             return undefined;
         }
         
+        // Normalize team name for matching (trim, case-insensitive)
+        const normalizedTeamName = teamName.trim();
+        
         // Complete NBA venue mapping
         const nbaVenues: { [key: string]: { name: string; city: string; state: string; country?: string } } = {
             'Atlanta Hawks': { name: 'State Farm Arena', city: 'Atlanta', state: 'Georgia' },
@@ -439,7 +442,19 @@ export function generateArticlePage(
             'Washington Wizards': { name: 'Capital One Arena', city: 'Washington', state: 'D.C.' }
         };
         
-        const venue = nbaVenues[teamName];
+        // Try exact match first (case-insensitive)
+        let venue = nbaVenues[normalizedTeamName];
+        if (!venue) {
+            // Try case-insensitive lookup
+            const lowerTeamName = normalizedTeamName.toLowerCase();
+            for (const [key, value] of Object.entries(nbaVenues)) {
+                if (key.toLowerCase() === lowerTeamName) {
+                    venue = value;
+                    break;
+                }
+            }
+        }
+        
         if (!venue) {
             return undefined;
         }
@@ -467,12 +482,15 @@ export function generateArticlePage(
         }
     }
     
-    // Format startDate to ISO 8601 if not already
-    function formatStartDate(dateString: string | undefined): string | undefined {
-        if (!dateString) return undefined;
+    // Format startDate to ISO 8601 if not already - always returns a string
+    function formatStartDate(dateString: string | undefined): string {
+        if (!dateString) {
+            // Fallback to current date if no date provided
+            return new Date().toISOString();
+        }
         try {
             // If already ISO format, return as is
-            if (dateString.includes('T') && dateString.includes('Z')) {
+            if (dateString.includes('T') && (dateString.includes('Z') || dateString.includes('+'))) {
                 return dateString;
             }
             // If just date, add time (default to 8 PM ET / 1 AM UTC next day)
@@ -481,7 +499,12 @@ export function generateArticlePage(
             }
             return new Date(dateString).toISOString();
         } catch {
-            return dateString;
+            // Fallback: try to parse as date or use current date
+            try {
+                return new Date(dateString).toISOString();
+            } catch {
+                return new Date().toISOString();
+            }
         }
     }
     
@@ -514,6 +537,18 @@ export function generateArticlePage(
     const formattedStartDate = formatStartDate(post.matchupScheduledDate || post.createdAt);
     const venue = getVenueFromTeam(post.teamA, post.league);
     
+    // Ensure location is always present (required field)
+    // Use venue if available, otherwise create a fallback location
+    const location = venue || {
+        "@type": "Place",
+        "name": `${post.teamA} Arena`,
+        "address": {
+            "@type": "PostalAddress",
+            "addressLocality": post.teamA.split(' ').slice(-1)[0], // Use last word of team name as city fallback
+            "addressCountry": "US"
+        }
+    };
+    
     const sportsEventSchema: any = {
         "@context": "https://schema.org",
         "@type": "SportsEvent",
@@ -528,16 +563,12 @@ export function generateArticlePage(
             "name": post.teamB
         },
         "startDate": formattedStartDate,
+        "location": location,
         "eventStatus": {
             "@type": "EventStatusType",
             "eventStatusType": "https://schema.org/EventScheduled"
         }
     };
-    
-    // Add required location field if available
-    if (venue) {
-        sportsEventSchema.location = venue;
-    }
     
     // Add optional fields for better SEO
     if (formattedStartDate) {
