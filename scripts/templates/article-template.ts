@@ -398,6 +398,93 @@ export function generateArticlePage(
         ` : ''}
     `;
     
+    // Helper function to get venue/location from team name
+    function getVenueFromTeam(teamName: string, league: string): { "@type": string; name: string; address: { "@type": string; addressLocality: string; addressRegion: string; addressCountry: string } } | undefined {
+        // Only process NBA teams
+        if (league.toUpperCase() !== 'NBA') {
+            return undefined;
+        }
+        
+        // Complete NBA venue mapping
+        const nbaVenues: { [key: string]: { name: string; city: string; state: string; country?: string } } = {
+            'Atlanta Hawks': { name: 'State Farm Arena', city: 'Atlanta', state: 'Georgia' },
+            'Boston Celtics': { name: 'TD Garden', city: 'Boston', state: 'Massachusetts' },
+            'Brooklyn Nets': { name: 'Barclays Center', city: 'Brooklyn', state: 'New York' },
+            'Charlotte Hornets': { name: 'Spectrum Center', city: 'Charlotte', state: 'North Carolina' },
+            'Chicago Bulls': { name: 'United Center', city: 'Chicago', state: 'Illinois' },
+            'Cleveland Cavaliers': { name: 'Rocket Mortgage FieldHouse', city: 'Cleveland', state: 'Ohio' },
+            'Dallas Mavericks': { name: 'American Airlines Center', city: 'Dallas', state: 'Texas' },
+            'Denver Nuggets': { name: 'Ball Arena', city: 'Denver', state: 'Colorado' },
+            'Detroit Pistons': { name: 'Little Caesars Arena', city: 'Detroit', state: 'Michigan' },
+            'Golden State Warriors': { name: 'Chase Center', city: 'San Francisco', state: 'California' },
+            'Houston Rockets': { name: 'Toyota Center', city: 'Houston', state: 'Texas' },
+            'Indiana Pacers': { name: 'Gainbridge Fieldhouse', city: 'Indianapolis', state: 'Indiana' },
+            'Los Angeles Clippers': { name: 'Intuit Dome', city: 'Inglewood', state: 'California' },
+            'Los Angeles Lakers': { name: 'Crypto.com Arena', city: 'Los Angeles', state: 'California' },
+            'Memphis Grizzlies': { name: 'FedExForum', city: 'Memphis', state: 'Tennessee' },
+            'Miami Heat': { name: 'Kaseya Arena', city: 'Miami', state: 'Florida' },
+            'Milwaukee Bucks': { name: 'Fiserv Forum', city: 'Milwaukee', state: 'Wisconsin' },
+            'Minnesota Timberwolves': { name: 'Target Center', city: 'Minneapolis', state: 'Minnesota' },
+            'New Orleans Pelicans': { name: 'Smoothie King Center', city: 'New Orleans', state: 'Louisiana' },
+            'New York Knicks': { name: 'Madison Square Garden', city: 'New York', state: 'New York' },
+            'Oklahoma City Thunder': { name: 'Paycom Center', city: 'Oklahoma City', state: 'Oklahoma' },
+            'Orlando Magic': { name: 'Kia Center', city: 'Orlando', state: 'Florida' },
+            'Philadelphia 76ers': { name: 'Wells Fargo Center', city: 'Philadelphia', state: 'Pennsylvania' },
+            'Phoenix Suns': { name: 'Footprint Center', city: 'Phoenix', state: 'Arizona' },
+            'Portland Trail Blazers': { name: 'Moda Center', city: 'Portland', state: 'Oregon' },
+            'Sacramento Kings': { name: 'Golden 1 Center', city: 'Sacramento', state: 'California' },
+            'San Antonio Spurs': { name: 'Frost Bank Center', city: 'San Antonio', state: 'Texas' },
+            'Toronto Raptors': { name: 'Scotiabank Arena', city: 'Toronto', state: 'Ontario', country: 'Canada' },
+            'Utah Jazz': { name: 'Delta Center', city: 'Salt Lake City', state: 'Utah' },
+            'Washington Wizards': { name: 'Capital One Arena', city: 'Washington', state: 'D.C.' }
+        };
+        
+        const venue = nbaVenues[teamName];
+        if (!venue) {
+            return undefined;
+        }
+        
+        return {
+            "@type": "Place",
+            "name": venue.name,
+            "address": {
+                "@type": "PostalAddress",
+                "addressLocality": venue.city,
+                "addressRegion": venue.state,
+                "addressCountry": venue.country || "US"
+            }
+        };
+    }
+    
+    // Calculate end date (typically 2.5 hours for NBA games)
+    function calculateEndDate(startDate: string): string {
+        try {
+            const start = new Date(startDate);
+            const end = new Date(start.getTime() + (2.5 * 60 * 60 * 1000)); // 2.5 hours
+            return end.toISOString();
+        } catch {
+            return startDate; // Fallback to start date if parsing fails
+        }
+    }
+    
+    // Format startDate to ISO 8601 if not already
+    function formatStartDate(dateString: string | undefined): string | undefined {
+        if (!dateString) return undefined;
+        try {
+            // If already ISO format, return as is
+            if (dateString.includes('T') && dateString.includes('Z')) {
+                return dateString;
+            }
+            // If just date, add time (default to 8 PM ET / 1 AM UTC next day)
+            if (dateString.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                return new Date(`${dateString}T20:00:00-05:00`).toISOString();
+            }
+            return new Date(dateString).toISOString();
+        } catch {
+            return dateString;
+        }
+    }
+    
     // Generate Schema.org JSON-LD
     const schemaOrg = {
         "@context": "https://schema.org",
@@ -424,7 +511,10 @@ export function generateArticlePage(
         "articleSection": post.league
     };
     
-    const sportsEventSchema = {
+    const formattedStartDate = formatStartDate(post.matchupScheduledDate || post.createdAt);
+    const venue = getVenueFromTeam(post.teamA, post.league);
+    
+    const sportsEventSchema: any = {
         "@context": "https://schema.org",
         "@type": "SportsEvent",
         "name": `${post.teamA} vs ${post.teamB}`,
@@ -437,11 +527,37 @@ export function generateArticlePage(
             "@type": "SportsTeam",
             "name": post.teamB
         },
-        "startDate": post.matchupScheduledDate || post.createdAt,
+        "startDate": formattedStartDate,
         "eventStatus": {
             "@type": "EventStatusType",
             "eventStatusType": "https://schema.org/EventScheduled"
         }
+    };
+    
+    // Add required location field if available
+    if (venue) {
+        sportsEventSchema.location = venue;
+    }
+    
+    // Add optional fields for better SEO
+    if (formattedStartDate) {
+        sportsEventSchema.endDate = calculateEndDate(formattedStartDate);
+    }
+    
+    if (post.websiteStory.dek) {
+        sportsEventSchema.description = post.websiteStory.dek;
+    }
+    
+    if (imagePath) {
+        sportsEventSchema.image = imagePath.startsWith('http') ? imagePath : `${baseUrl}${imagePath}`;
+    } else {
+        sportsEventSchema.image = `${baseUrl}/images/default-og-image.jpg`;
+    }
+    
+    sportsEventSchema.organizer = {
+        "@type": "Organization",
+        "name": post.league,
+        "url": `${baseUrl}/${normalizeLeague(post.league)}/`
     };
     
     // Generate Review schema for matchup analysis
