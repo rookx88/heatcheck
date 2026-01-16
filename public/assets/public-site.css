@@ -909,15 +909,19 @@ body {
     /* Main Container - Single Column Layout */
     .public-container {
         grid-template-columns: 1fr;
-        grid-template-rows: auto auto 1fr;
+        grid-template-rows: auto 1fr; /* Removed middle row to eliminate gap */
     }
 
     /* Header - Stack Vertically */
     .top-left {
         grid-column: 1;
         grid-row: 1;
-        padding: 1rem 1rem 0.4rem 1rem;
+        padding: 0.4rem 0.5rem 0.1rem 0.5rem; /* Reduced bottom padding */
         justify-content: center;
+        align-items: flex-start; /* Override desktop align-items: center */
+        overflow: hidden; /* Clip bottom portion of container */
+        max-height: calc(220px * 0.8 + 0.4rem + 0.1rem); /* 80% of logo + padding */
+        position: relative;
     }
 
     .top-right {
@@ -935,10 +939,13 @@ body {
         display: none !important;
     }
 
-    /* Logo Size Reduction */
+    /* Logo - size to fit header space */
     .header-logo {
-        height: 192px;
-        transform: translateY(0);
+        height: 190px; /* Enlarged to fit header space */
+        width: auto;
+        max-height: 100%; /* Fit within container */
+        object-fit: contain; /* Maintain aspect ratio */
+        transform: translateY(0); /* Remove desktop offset */
     }
 
     /* Hide Desktop Sidebar Navigation */
@@ -949,9 +956,10 @@ body {
     /* Content Area - Full Width, No Left Margin */
     .bottom-right {
         grid-column: 1;
-        grid-row: 3;
+        grid-row: 2; /* Moved to row 2 to eliminate gap from row 3 */
         margin-left: 0;
-        padding: 0.5rem;
+        margin-top: -0.1rem; /* Negative margin to pull up closer to header */
+        padding: 0.1rem 0.5rem 0.5rem 0.5rem; /* Further reduced top padding */
     }
 
     /* Article Page Layout - Stack Columns on Mobile */
@@ -1061,7 +1069,8 @@ body {
     /* Content Title */
     .content-area-title {
         font-size: 0.85rem;
-        padding: 0.5rem 0.75rem;
+        padding: 0.15rem 0.75rem; /* Further reduced top/bottom padding */
+        margin-top: 0; /* Remove any default margin */
     }
 
     /* Radar Modal - Hidden on mobile */
@@ -1105,7 +1114,11 @@ body {
 @media (max-width: 480px) {
     /* Further Reduce Padding */
     .top-left {
-        padding: 0.75rem 0.75rem 0.3rem 0.75rem;
+        padding: 0.3rem 0.4rem 0.05rem 0.4rem; /* Further reduced bottom padding */
+        align-items: flex-start; /* Override desktop align-items: center */
+        overflow: hidden; /* Clip bottom portion of container */
+        max-height: calc(200px * 0.8 + 0.3rem + 0.05rem); /* 80% of logo + padding */
+        position: relative;
     }
 
     .top-right {
@@ -1123,12 +1136,18 @@ body {
         display: none !important;
     }
 
+    /* Logo - size to fit header space */
     .header-logo {
-        height: 160px;
+        height: 175px; /* Enlarged to fit header space */
+        width: auto;
+        max-width: 100%; /* Ensure it doesn't overflow */
+        max-height: 100%; /* Fit within container */
+        object-fit: contain; /* Maintain aspect ratio */
     }
 
     .bottom-right {
-        padding: 0.5rem;
+        margin-top: -0.1rem; /* Negative margin to pull up closer to header */
+        padding: 0.1rem 0.4rem 0.5rem 0.4rem; /* Further reduced top padding */
     }
 
     /* Radar Modal Content - Hidden on small mobile */
@@ -1142,6 +1161,8 @@ body {
     /* Smaller Font Sizes */
     .content-area-title {
         font-size: 0.75rem;
+        padding: 0.1rem 0.75rem; /* Further reduced padding */
+        margin-top: 0; /* Remove any default margin */
     }
 
     .nav-link, .crawler-nav a {
@@ -1391,6 +1412,13 @@ body {
     flex: 1;
     overflow-y: auto;
     padding: 1rem;
+    position: relative;
+    background-image: 
+        radial-gradient(circle at center, transparent 0%, rgba(0, 255, 65, 0.1) 50%, transparent 100%),
+        linear-gradient(0deg, rgba(0, 255, 65, 0.1) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0, 255, 65, 0.1) 1px, transparent 1px);
+    background-size: 100% 100%, 20px 20px, 20px 20px;
+    background-position: center, 0 0, 0 0;
 }
 
 .mobile-radar-screen {
