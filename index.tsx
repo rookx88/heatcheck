@@ -915,6 +915,12 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
               correctedArticleMarkdown = correctionResult.correctedMarkdown;
               aiCorrections.corrections_applied = correctionResult.correctionsSummary;
               
+              // Check if corrections were actually applied
+              if (correctionResult.correctionsSummary.length === 0) {
+                validationWarnings.push(`⚠️ CRITICAL: ${highConfidenceWarnings.length} invalid player/coach reference(s) could not be automatically corrected. Manual review required before publishing.`);
+                console.warn(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] ⚠️ CRITICAL: No corrections were applied for invalid references.`);
+              }
+              
               // Update validation warnings to mark roster issues as fixed
               validationWarnings = validationWarnings.map(w => {
                 if (w.startsWith('⚠️') && highConfidenceWarnings.includes(w)) {
@@ -932,7 +938,17 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
               
             } catch (error: any) {
               console.error(`[${matchupLabel}] [${i + 1}/${selectedMatchups.length}] AI Editor correction failed:`, error);
-              validationWarnings.push(`⚠️ AI Editor correction failed: ${error.message || 'Unknown error'} - Using original article`);
+              validationWarnings.push(`⚠️ CRITICAL: AI Editor correction failed: ${error.message || 'Unknown error'} - Invalid player/coach references remain in article. Manual review required.`);
+            }
+          } else {
+            // Also check for any invalidations that weren't high confidence but should still be flagged
+            const invalidWarnings = rosterWarnings.filter(w => 
+              !w.includes('[Fixed') && 
+              (w.includes('not on') || w.includes('Invalid') || w.includes('traded') || w.includes('released'))
+            );
+            
+            if (invalidWarnings.length > 0) {
+              validationWarnings.push(`⚠️ WARNING: ${invalidWarnings.length} player/coach validation issue(s) found with medium/low confidence. Manual review recommended.`);
             }
           }
           
@@ -4316,6 +4332,16 @@ VALIDATION RULES:
 - Mark as VALID only if: currently on roster AND active/healthy (minor injuries that don't prevent playing are OK)
 - If uncertain, mark as INVALID with confidence: "low" and provide clear status description
 
+CRITICAL: When a player/coach is clearly NOT on the team (traded, released, fired, or on another team):
+- Set verification_confidence to "high"
+- Set is_valid to false
+- Provide a clear warning explaining why they're invalid (e.g., "Traded to [Team] on [Date]", "Released/waived on [Date]", "Not on current roster")
+
+When uncertain or search results are ambiguous:
+- Set verification_confidence to "low" or "medium"
+- Set is_valid based on best available information
+- Always include detailed explanation in warning field
+
 Be VERY strict - it's better to flag someone as invalid incorrectly than to allow an invalid reference in the article.
 `;
     
@@ -4324,6 +4350,7 @@ Be VERY strict - it's better to flag someone as invalid incorrectly than to allo
       contents: validationPrompt,
       config: {
         tools: [{ googleSearch: {} }],
+        responseMimeType: "application/json",
         responseSchema: {
           type: Type.ARRAY,
           items: {
@@ -4670,15 +4697,20 @@ Return ONLY a valid JSON object matching this schema:
     const text = response.text;
     if (!text) throw new Error("No response from AI for Edge generation");
 
-    // Parse the JSON response
+    // Parse the JSON response - use extractJson first to handle markdown code fences
     let edgeData: HeatchecksEdge;
     try {
-      edgeData = JSON.parse(text);
+      // Try extractJson first (handles markdown code fences)
+      edgeData = extractJson<HeatchecksEdge>(text);
     } catch (parseError: any) {
       console.error('[generateHeatChecksEdge] Failed to parse JSON:', parseError);
       console.error('[generateHeatChecksEdge] Response text:', text.substring(0, 500));
-      // Fallback: try extractJson approach
-      edgeData = extractJson<HeatchecksEdge>(text);
+      // Fallback: try direct JSON.parse if extractJson fails
+      try {
+        edgeData = JSON.parse(text);
+      } catch (e) {
+        throw new Error(`Failed to parse Edge JSON response: ${parseError.message}`);
+      }
     }
 
     // Validate required fields
