@@ -471,7 +471,7 @@ function generateHeatBreakdown(post) {
         <div style="padding: 0.25rem; background: rgba(0, 0, 0, 0.95); border: 2px solid #ff0040; border-radius: 4px; font-family: 'Courier New', monospace; color: #fff; height: 100%; width: 100%; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; position: absolute; top: 0; left: 0;">
             <div style="margin-bottom: 0.15rem; padding-bottom: 0.12rem; border-bottom: 1px solid rgba(255, 0, 64, 0.5); flex-shrink: 0;">
                 <div style="font-size: 0.38rem; color: rgba(255, 255, 255, 0.7); margin-bottom: 0.03rem; line-height: 1;">HEAT BREAKDOWN</div>
-                <div style="font-size: 0.7rem; font-weight: 900; color: #ff0033; line-height: 1;">${total}/100</div>
+                <div style="font-size: 0.7rem; font-weight: 900; color: #ff1a1a; line-height: 1;">${total}/100</div>
             </div>
             <div style="flex: 1; overflow: hidden; display: flex; flex-direction: column; gap: 0.12rem; min-height: 0; padding-top: 0.05rem;">
     `;
@@ -961,9 +961,9 @@ function generatePostCard(post) {
                     ` : `
                     <!-- Regular Heat Indicator -->
                     <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #00ff41; border-radius: 50%; opacity: 0.5;"></div>
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
                         <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff0033; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">${heatScore}</div>
+                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">${heatScore}</div>
                     </div>
                     `}
                     <div class="post-card-image-container" data-post-id="${post.id}" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
@@ -2329,7 +2329,8 @@ function updateStaticPageHeatScores() {
             const hasPosition = style.includes('position') && style.includes('relative');
             const hasRedColor =
                 style.includes('#ff0040') || style.includes('color: #ff0040') || style.includes('color:#ff0040') ||
-                style.includes('#ff0033') || style.includes('color: #ff0033') || style.includes('color:#ff0033');
+                style.includes('#ff0033') || style.includes('color: #ff0033') || style.includes('color:#ff0033') ||
+                style.includes('#ff1a1a') || style.includes('color: #ff1a1a') || style.includes('color:#ff1a1a');
             const isNumber = /^\d+$/.test(textContent);
             
             if (hasZIndex && hasPosition && hasRedColor && isNumber) {
