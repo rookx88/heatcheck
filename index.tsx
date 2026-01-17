@@ -4346,7 +4346,7 @@ Be VERY strict - it's better to flag someone as invalid incorrectly than to allo
 `;
     
     const response = await ai.models.generateContent({
-      model: 'gemini-2.0-flash-exp',
+      model: 'gemini-2.5-pro',
       contents: validationPrompt,
       config: {
         tools: [{ googleSearch: {} }],

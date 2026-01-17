@@ -316,9 +316,10 @@ Return ONLY a JSON object:
 
     try {
         const response = await ai.models.generateContent({
-            model: 'gemini-2.0-flash-exp',
+            model: 'gemini-2.5-pro',
             contents: validationPrompt,
             config: {
+                tools: [{ googleSearch: {} }],
                 responseMimeType: 'application/json',
                 responseSchema: {
                     type: Type.OBJECT,
