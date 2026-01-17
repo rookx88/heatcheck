@@ -10,6 +10,11 @@ html, body {
     min-height: 100vh;
 }
 
+/* Heat indicator number hover glow effect */
+.heat-indicator-container:hover .heat-number {
+    text-shadow: 0 0 20px currentColor, 0 0 30px currentColor, 0 0 40px currentColor, 0 0 50px currentColor !important;
+}
+
 body { 
     font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif;
     font-weight: 900;
