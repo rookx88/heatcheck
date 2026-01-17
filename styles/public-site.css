@@ -148,15 +148,17 @@ body {
 .content-area-title {
     color: rgba(0, 255, 65, 0.9);
     font-size: 1rem;
-    font-weight: bold;
+    font-weight: 900;
     text-transform: uppercase;
-    font-family: 'Courier New', monospace;
+    font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif;
     letter-spacing: 0.2em;
     margin: 0;
     padding: 0.75rem 1rem;
     background: rgba(0, 255, 65, 0.05);
     border-bottom: 2px solid rgba(0, 255, 65, 0.3);
     text-align: left;
+    -webkit-text-stroke: 1px #000000;
+    text-stroke: 1px #000000;
 }
 
 .post-list { 
