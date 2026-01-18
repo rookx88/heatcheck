@@ -202,6 +202,107 @@ async function findOrCreateTeam(teamName: string, league: string, pool: Pool): P
     return newTeamId;
 }
 
+// --- NBA ABBREVIATION HELPERS (for manual matchup imports) ---
+const NBA_ABBREV_TO_TEAM: Record<string, string> = {
+    ATL: 'Atlanta Hawks',
+    BKN: 'Brooklyn Nets',
+    BOS: 'Boston Celtics',
+    CHA: 'Charlotte Hornets',
+    CHI: 'Chicago Bulls',
+    CLE: 'Cleveland Cavaliers',
+    DAL: 'Dallas Mavericks',
+    DEN: 'Denver Nuggets',
+    DET: 'Detroit Pistons',
+    GSW: 'Golden State Warriors',
+    HOU: 'Houston Rockets',
+    IND: 'Indiana Pacers',
+    LAC: 'Los Angeles Clippers',
+    LAL: 'Los Angeles Lakers',
+    MEM: 'Memphis Grizzlies',
+    MIA: 'Miami Heat',
+    MIL: 'Milwaukee Bucks',
+    MIN: 'Minnesota Timberwolves',
+    NOP: 'New Orleans Pelicans',
+    NYK: 'New York Knicks',
+    OKC: 'Oklahoma City Thunder',
+    ORL: 'Orlando Magic',
+    PHI: 'Philadelphia 76ers',
+    PHX: 'Phoenix Suns',
+    POR: 'Portland Trail Blazers',
+    SAC: 'Sacramento Kings',
+    SAS: 'San Antonio Spurs',
+    TOR: 'Toronto Raptors',
+    UTA: 'Utah Jazz',
+    WAS: 'Washington Wizards',
+};
+
+function parseEtTimeTo24h(timeStr: string): string {
+    // Examples: "7:00 pm ET", "12:00 pm ET", "9:30 pm ET"
+    const cleaned = timeStr.replace(/\s*ET\s*$/i, '').trim();
+    const match = cleaned.match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
+    if (!match) throw new Error(`Invalid ET time format: "${timeStr}"`);
+    let hh = parseInt(match[1], 10);
+    const mm = match[2];
+    const ampm = match[3].toLowerCase();
+    if (ampm === 'am') {
+        if (hh === 12) hh = 0;
+    } else {
+        if (hh !== 12) hh += 12;
+    }
+    return `${String(hh).padStart(2, '0')}:${mm}`; // HH:MM
+}
+
+async function ensureTeamAbbreviation(pool: Pool, teamId: string, abbreviation: string): Promise<void> {
+    const abbrev = abbreviation.trim().toUpperCase();
+    if (!abbrev) return;
+    const existing = await pool.query('SELECT abbreviation FROM teams WHERE id = $1', [teamId]);
+    const current = (existing.rows[0]?.abbreviation || '').trim();
+    if (!current) {
+        await pool.query('UPDATE teams SET abbreviation = $1, updated_at = NOW() WHERE id = $2', [abbrev, teamId]);
+    }
+}
+
+type UpcomingWeekGameRow = {
+    scheduledDate: string; // YYYY-MM-DD
+    homeAbbrev: string;
+    awayAbbrev: string;
+    venueName: string;
+    timeEt: string; // e.g. "7:00 pm ET"
+};
+
+function parseUpcomingWeekGamesText(text: string): UpcomingWeekGameRow[] {
+    const rows: UpcomingWeekGameRow[] = [];
+    const lines = text.split(/\r?\n/);
+    for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        if (trimmed.startsWith('game_date_est')) continue;
+        if (trimmed.startsWith('---')) continue;
+        if (/\(\d+\s+rows\)/i.test(trimmed)) continue;
+
+        const parts = line.split('|').map(p => p.trim());
+        if (parts.length < 5) continue;
+
+        const scheduledDate = parts[0];
+        const homeAbbrev = parts[1];
+        const awayAbbrev = parts[2];
+        const venueName = parts[3];
+        const timeEt = parts[4];
+
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(scheduledDate)) continue;
+        if (!homeAbbrev || !awayAbbrev) continue;
+
+        rows.push({
+            scheduledDate,
+            homeAbbrev,
+            awayAbbrev,
+            venueName,
+            timeEt,
+        });
+    }
+    return rows;
+}
+
 // --- API ROUTES ---
 
 // GET /api/images - Get list of available images from assets/images directory
@@ -758,6 +859,109 @@ app.post('/api/matchups/import', apiKeyAuth, async (req: express.Request, res: e
             error: err.message,
             imported: totalImported,
             games: importedGames
+        });
+    }
+});
+
+// POST /api/matchups/import-upcoming-week-games - Import matchups from upcoming_week_games.txt
+app.post('/api/matchups/import-upcoming-week-games', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    const league = String(req.body?.league || 'NBA').toUpperCase();
+    if (league !== 'NBA') {
+        return res.status(400).json({ message: 'Only NBA is supported for this importer right now.' });
+    }
+
+    const sourceFile = String(req.body?.sourceFile || 'upcoming_week_games.txt');
+    const sourcePath = path.join(process.cwd(), sourceFile);
+    if (!fs.existsSync(sourcePath)) {
+        return res.status(404).json({ message: `Source file not found: ${sourceFile}` });
+    }
+
+    const rawText = fs.readFileSync(sourcePath, 'utf8');
+    const rows = parseUpcomingWeekGamesText(rawText);
+    if (rows.length === 0) {
+        return res.status(400).json({ message: 'No rows parsed from source file.' });
+    }
+
+    const importedGames: Array<{ league: string; teamA: string; teamB: string; date: string }> = [];
+    let totalImported = 0;
+    let totalSkipped = 0;
+
+    try {
+        for (const row of rows) {
+            const homeAbbrev = row.homeAbbrev.trim().toUpperCase();
+            const awayAbbrev = row.awayAbbrev.trim().toUpperCase();
+
+            const homeName = NBA_ABBREV_TO_TEAM[homeAbbrev];
+            const awayName = NBA_ABBREV_TO_TEAM[awayAbbrev];
+            if (!homeName || !awayName) {
+                totalSkipped++;
+                console.warn(`[IMPORT upcoming_week_games] Unknown abbrev(s):`, { homeAbbrev, awayAbbrev, scheduledDate: row.scheduledDate });
+                continue;
+            }
+
+            let scheduledTime: string;
+            try {
+                scheduledTime = parseEtTimeTo24h(row.timeEt.trim());
+            } catch (e: any) {
+                totalSkipped++;
+                console.warn(`[IMPORT upcoming_week_games] Bad time format:`, { timeEt: row.timeEt, scheduledDate: row.scheduledDate, homeAbbrev, awayAbbrev });
+                continue;
+            }
+
+            const teamAId = await findOrCreateTeam(homeName, league, pool);
+            const teamBId = await findOrCreateTeam(awayName, league, pool);
+            await ensureTeamAbbreviation(pool, teamAId, homeAbbrev);
+            await ensureTeamAbbreviation(pool, teamBId, awayAbbrev);
+
+            const existingCheck = await pool.query(
+                `SELECT id FROM matchups 
+                 WHERE team_a_id = $1 AND team_b_id = $2 AND scheduled_date = $3 AND league = $4`,
+                [teamAId, teamBId, row.scheduledDate, league]
+            );
+            if (existingCheck.rows.length > 0) {
+                totalSkipped++;
+                continue;
+            }
+
+            const metadata = {
+                source: 'upcoming_week_games.txt',
+                sourceFile,
+                timezone: 'America/New_York',
+                time_et: row.timeEt.trim(),
+                home_abbrev: homeAbbrev,
+                away_abbrev: awayAbbrev,
+            };
+
+            await pool.query(
+                `INSERT INTO matchups
+                 (id, league, team_a_id, team_b_id, scheduled_date, scheduled_time, game_status, venue, metadata, created_at, updated_at)
+                 VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 'scheduled', $6, $7, NOW(), NOW())`,
+                [league, teamAId, teamBId, row.scheduledDate, scheduledTime, row.venueName || null, JSON.stringify(metadata)]
+            );
+
+            importedGames.push({
+                league,
+                teamA: homeName,
+                teamB: awayName,
+                date: row.scheduledDate,
+            });
+            totalImported++;
+        }
+
+        return res.json({
+            success: true,
+            imported: totalImported,
+            skipped: totalSkipped,
+            games: importedGames,
+        });
+    } catch (err: any) {
+        console.error('Error importing upcoming week games:', err);
+        return res.status(500).json({
+            message: 'Internal server error',
+            error: err.message,
+            imported: totalImported,
+            skipped: totalSkipped,
+            games: importedGames,
         });
     }
 });

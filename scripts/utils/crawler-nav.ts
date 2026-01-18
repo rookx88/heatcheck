@@ -40,7 +40,10 @@ export function generateCrawlerNav(recentDates: RecentDate[], baseUrl: string = 
         const dates = datesByLeague[league] || [];
         
         navHtml += `  <div class="league-nav-item">\n`;
-        navHtml += `    <a href="javascript:void(0)" class="nav-link league-link" data-league="${league}">${league} <span class="league-arrow">▶</span></a>\n`;
+        // IMPORTANT: Use a real href so search engines can crawl these links.
+        // JS will still intercept clicks (toggle submenu) via initCrawlerNavInteractivity().
+        const leagueHref = league === 'DFS' ? `${urlPrefix}/dfs/` : `${urlPrefix}/${leagueLower}/`;
+        navHtml += `    <a href="${leagueHref}" class="nav-link league-link" data-league="${league}">${league} <span class="league-arrow">▶</span></a>\n`;
         navHtml += `    <div class="nav-submenu hidden">\n`;
         
         // Special handling for DFS - just link to hub

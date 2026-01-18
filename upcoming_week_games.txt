@@ -1,0 +1,63 @@
+ game_date_est | home | away |        venue_name        | game_status 
+---------------+------+------+--------------------------+-------------
+ 2026-01-18    | MEM  | ORL  | The O2 Arena             | 12:00 pm ET
+ 2026-01-18    | CHI  | BKN  | United Center            | 7:00 pm ET
+ 2026-01-18    | HOU  | NOP  | Toyota Center            | 7:00 pm ET
+ 2026-01-18    | DEN  | CHA  | Ball Arena               | 8:00 pm ET
+ 2026-01-18    | SAC  | POR  | Golden 1 Center          | 9:00 pm ET
+ 2026-01-18    | LAL  | TOR  | Crypto.com Arena         | 9:30 pm ET
+ 2026-01-19    | ATL  | MIL  | State Farm Arena         | 1:00 pm ET
+ 2026-01-19    | CLE  | OKC  | Rocket Arena             | 2:30 pm ET
+ 2026-01-19    | NYK  | DAL  | Madison Square Garden    | 5:00 pm ET
+ 2026-01-19    | DET  | BOS  | Little Caesars Arena     | 8:00 pm ET
+ 2026-01-19    | WAS  | LAC  | Capital One Arena        | 3:00 pm ET
+ 2026-01-19    | PHI  | IND  | Xfinity Mobile Arena     | 7:00 pm ET
+ 2026-01-19    | BKN  | PHX  | Barclays Center          | 7:30 pm ET
+ 2026-01-19    | SAS  | UTA  | Frost Bank Center        | 5:00 pm ET
+ 2026-01-19    | GSW  | MIA  | Chase Center             | 10:00 pm ET
+ 2026-01-20    | PHI  | PHX  | Xfinity Mobile Arena     | 7:00 pm ET
+ 2026-01-20    | CHI  | LAC  | United Center            | 8:00 pm ET
+ 2026-01-20    | HOU  | SAS  | Toyota Center            | 8:00 pm ET
+ 2026-01-20    | UTA  | MIN  | Delta Center             | 9:00 pm ET
+ 2026-01-20    | DEN  | LAL  | Ball Arena               | 10:00 pm ET
+ 2026-01-20    | GSW  | TOR  | Chase Center             | 10:00 pm ET
+ 2026-01-20    | SAC  | MIA  | Golden 1 Center          | 10:00 pm ET
+ 2026-01-21    | CHA  | CLE  | Spectrum Center          | 7:00 pm ET
+ 2026-01-21    | BOS  | IND  | TD Garden                | 7:30 pm ET
+ 2026-01-21    | NYK  | BKN  | Madison Square Garden    | 7:30 pm ET
+ 2026-01-21    | MEM  | ATL  | FedExForum               | 8:00 pm ET
+ 2026-01-21    | NOP  | DET  | Smoothie King Center     | 8:00 pm ET
+ 2026-01-21    | MIL  | OKC  | Fiserv Forum             | 9:30 pm ET
+ 2026-01-21    | SAC  | TOR  | Golden 1 Center          | 10:00 pm ET
+ 2026-01-22    | ORL  | CHA  | Kia Center               | 7:00 pm ET
+ 2026-01-22    | PHI  | HOU  | Xfinity Mobile Arena     | 7:00 pm ET
+ 2026-01-22    | WAS  | DEN  | Capital One Arena        | 7:00 pm ET
+ 2026-01-22    | DAL  | GSW  | American Airlines Center | 7:30 pm ET
+ 2026-01-22    | MIN  | CHI  | Target Center            | 8:00 pm ET
+ 2026-01-22    | UTA  | SAS  | Delta Center             | 9:00 pm ET
+ 2026-01-22    | LAC  | LAL  | Intuit Dome              | 10:00 pm ET
+ 2026-01-22    | POR  | MIA  | Moda Center              | 10:00 pm ET
+ 2026-01-23    | DET  | HOU  | Little Caesars Arena     | 7:00 pm ET
+ 2026-01-23    | ATL  | PHX  | State Farm Arena         | 7:30 pm ET
+ 2026-01-23    | BKN  | BOS  | Barclays Center          | 7:30 pm ET
+ 2026-01-23    | CLE  | SAC  | Rocket Arena             | 7:30 pm ET
+ 2026-01-23    | MEM  | NOP  | FedExForum               | 8:00 pm ET
+ 2026-01-23    | MIL  | DEN  | Fiserv Forum             | 9:30 pm ET
+ 2026-01-23    | OKC  | IND  | Paycom Center            | 8:00 pm ET
+ 2026-01-23    | POR  | TOR  | Moda Center              | 10:00 pm ET
+ 2026-01-24    | PHI  | NYK  | Xfinity Mobile Arena     | 3:00 pm ET
+ 2026-01-24    | MIN  | GSW  | Target Center            | 5:30 pm ET
+ 2026-01-24    | CHA  | WAS  | Spectrum Center          | 6:00 pm ET
+ 2026-01-24    | ORL  | CLE  | Kia Center               | 7:00 pm ET
+ 2026-01-24    | CHI  | BOS  | United Center            | 8:00 pm ET
+ 2026-01-24    | DAL  | LAL  | American Airlines Center | 8:30 pm ET
+ 2026-01-24    | UTA  | MIA  | Delta Center             | 9:30 pm ET
+ 2026-01-25    | DET  | SAC  | Little Caesars Arena     | 3:00 pm ET
+ 2026-01-25    | MEM  | DEN  | FedExForum               | 3:30 pm ET
+ 2026-01-25    | MIL  | DAL  | Fiserv Forum             | 7:00 pm ET
+ 2026-01-25    | OKC  | TOR  | Paycom Center            | 7:00 pm ET
+ 2026-01-25    | SAS  | NOP  | Frost Bank Center        | 7:00 pm ET
+ 2026-01-25    | PHX  | MIA  | Mortgage Matchup Center  | 8:00 pm ET
+ 2026-01-25    | LAC  | BKN  | Intuit Dome              | 9:00 pm ET
+(59 rows)
+
