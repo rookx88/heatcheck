@@ -220,6 +220,12 @@ export function generateArticlePage(
     const tempCheck: any = (heatCheckData as any).temperatureCheck;
     const tempSummary: any = tempCheck?.summary || null;
     const tempAI: any = tempCheck?.ai || null;
+    
+    // Check if edge exists for button display
+    const hasEdge = post.heatchecksEdge && (
+        (typeof post.heatchecksEdge === 'object' && 'game' in post.heatchecksEdge && 'player_props' in post.heatchecksEdge) ||
+        (typeof post.heatchecksEdge === 'object' && 'finalCall' in post.heatchecksEdge)
+    );
 
     const temperatureCheckHtml = matchPackV3 ? (() => {
         const renderedOverride = typeof tempCheck?.renderedMarkdown === 'string' && tempCheck.renderedMarkdown.trim()
@@ -348,7 +354,9 @@ export function generateArticlePage(
             const lines: string[] = [];
             if (tempScore !== null) {
                 const label = tempScore >= 70 ? 'HOT' : tempScore >= 45 ? 'WARM' : 'COOL';
-                lines.push(`<div style="color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.8rem; letter-spacing:0.08em;">TEMP: <span style="color:#00ff41; font-weight:900; text-shadow:0 0 10px rgba(0,255,65,0.25);">${escapeHtml(label)}</span></div>`);
+                // Only show button if edge section exists (hasEdge is from outer scope)
+                const buttonHtml = hasEdge ? `<button onclick="document.getElementById('heatchecks-edge-section')?.scrollIntoView({behavior: 'smooth', block: 'start'}); return false;" style="margin-left: 0.75rem; padding: 0.3rem 0.6rem; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.95); font-family: 'Courier New', monospace; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; transition: all 0.2s ease; border-radius: 3px; white-space: nowrap;" onmouseover="this.style.background='rgba(255,255,255,0.25)'; this.style.borderColor='rgba(255,255,255,0.6)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(255,255,255,0.15)'; this.style.borderColor='rgba(255,255,255,0.4)'; this.style.color='rgba(255,255,255,0.95)';">See Prediction</button>` : '';
+                lines.push(`<div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.8rem; letter-spacing:0.08em;"><span>TEMP: <span style="color:#00ff41; font-weight:900; text-shadow:0 0 10px rgba(0,255,65,0.25);">${escapeHtml(label)}</span></span>${buttonHtml}</div>`);
             }
             const teamA = String(matchPackV3?.matchup?.teamA || matchPackV3?.matchup?.teamAAbbr || 'Team A');
             const teamB = String(matchPackV3?.matchup?.teamB || matchPackV3?.matchup?.teamBAbbr || 'Team B');
@@ -817,7 +825,7 @@ export function generateArticlePage(
         // This ensures users see the edge section even when no edge is found
         if (hasGame || hasProps || noEdgeReason) {
             edgeHtml = `
-        <div style="margin-top: 3rem; margin-bottom: 2rem; padding: 2rem; background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.3); border-left: 4px solid rgba(255, 255, 255, 0.5); border-right: 4px solid rgba(255, 255, 255, 0.5); border-radius: 4px; box-shadow: 0 0 40px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); position: relative; isolation: isolate;">
+        <div id="heatchecks-edge-section" style="margin-top: 3rem; margin-bottom: 2rem; padding: 2rem; background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.3); border-left: 4px solid rgba(255, 255, 255, 0.5); border-right: 4px solid rgba(255, 255, 255, 0.5); border-radius: 4px; box-shadow: 0 0 40px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); position: relative; isolation: isolate;">
             <div style="position: absolute; top: 0.75rem; right: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite;"></div>
             <div style="position: absolute; bottom: 0.75rem; right: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite 1s;"></div>
             <div style="position: absolute; top: 0.75rem; left: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite 0.5s;"></div>
@@ -884,7 +892,7 @@ export function generateArticlePage(
         const edgeCall = (edge as any).finalCall || '';
         if (edgeCall) {
             edgeHtml = `
-        <div style="margin-top: 3rem; margin-bottom: 2rem; padding: 2rem; background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.3); border-left: 4px solid rgba(255, 255, 255, 0.5); border-right: 4px solid rgba(255, 255, 255, 0.5); border-radius: 4px; box-shadow: 0 0 40px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); position: relative; isolation: isolate;">
+        <div id="heatchecks-edge-section" style="margin-top: 3rem; margin-bottom: 2rem; padding: 2rem; background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.3); border-left: 4px solid rgba(255, 255, 255, 0.5); border-right: 4px solid rgba(255, 255, 255, 0.5); border-radius: 4px; box-shadow: 0 0 40px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); position: relative; isolation: isolate;">
             <div style="position: absolute; top: 0.75rem; right: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite;"></div>
             <div style="position: absolute; bottom: 0.75rem; right: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite 1s;"></div>
             <div style="position: absolute; top: 0.75rem; left: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite 0.5s;"></div>
@@ -960,6 +968,10 @@ export function generateArticlePage(
                     overflow-x: hidden !important;
                     max-height: none !important;
                 }
+                /* Hide "See Prediction" button in temperature check (we show it in header instead) */
+                section[aria-label="Temperature Check"] button {
+                    display: none !important;
+                }
             }
         </style>
         ${breadcrumbHtml}
@@ -974,13 +986,14 @@ export function generateArticlePage(
                 </div>
                 <div style="flex: 1; overflow-y: auto; padding: 1.5rem; font-family: 'Courier New', monospace; color: rgba(255, 255, 255, 0.85); font-size: 0.95rem; line-height: 1.8; scrollbar-width: none; -ms-overflow-style: none;">
                     <style>.main-article-content::-webkit-scrollbar { display: none; }</style>
-                    <nav aria-label="Breadcrumb navigation">
-                        <a href="/" class="article-back-btn" style="display: inline-block; margin-bottom: 1rem; padding: 0.4rem 0.8rem; background: #000; border: 1px solid #f84242; color: #f84242; text-decoration: none; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.9rem; transition: all 0.3s ease;">← BACK</a>
-                    </nav>
                     <header style="margin-bottom: 2rem; border-bottom: 1px dashed rgba(255, 255, 255, 0.3); padding-bottom: 1rem;">
                         <h1 style="color: rgba(255, 255, 255, 0.95); font-size: 1.3rem; margin-bottom: 0.5rem; font-weight: bold; line-height: 1.3;">${escapeHtml(post.storyType === 'heat_article_v3' ? `${matchupMeta} Preview` : post.websiteStory.headline)}</h1>
+                        ${hasEdge ? `<div style="margin-bottom: 0.75rem;"><button onclick="document.getElementById('heatchecks-edge-section')?.scrollIntoView({behavior: 'smooth', block: 'start'}); return false;" style="display: inline-block; padding: 0.4rem 0.8rem; background: #000; border: 1px solid #00ff41; color: #00ff41; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.9rem; cursor: pointer; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(0,255,65,0.1)'; this.style.borderColor='#00ff41';" onmouseout="this.style.background='#000'; this.style.borderColor='#00ff41';">See Prediction/Stats</button></div>` : ''}
                         <p style="color: rgba(255, 255, 255, 0.6); font-size: 0.85rem; margin-bottom: 0.5rem;">// ${escapeHtml(post.websiteStory.dek)}</p>
                         <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.8rem; font-family: 'Courier New', monospace;">&gt; MATCHUP: ${escapeHtml(post.league.toUpperCase())} | ${escapeHtml(post.teamA)} vs ${escapeHtml(post.teamB)} | DATE: <time datetime="${post.matchupScheduledDate || post.createdAt}">${escapeHtml(date)}</time></div>
+                        <nav aria-label="Article navigation" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed rgba(255, 255, 255, 0.15);">
+                            <a href="/" class="article-back-btn" style="display: inline-block; padding: 0.3rem 0.6rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(248, 66, 66, 0.5); color: rgba(248, 66, 66, 0.9); text-decoration: none; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.75rem; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(248,66,66,0.1)'; this.style.borderColor='rgba(248,66,66,0.7)'; this.style.color='#f84242';" onmouseout="this.style.background='rgba(0,0,0,0.3)'; this.style.borderColor='rgba(248,66,66,0.5)'; this.style.color='rgba(248,66,66,0.9)';">← BACK</a>
+                        </nav>
                     </header>
                     ${imagePath ? `
                     <div style="margin-bottom: 2rem; border: 1px solid rgba(255, 255, 255, 0.2); padding: 0.5rem; background: rgba(255, 255, 255, 0.03);">
