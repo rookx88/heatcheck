@@ -46,16 +46,21 @@ export function generateCrawlerNav(recentDates: RecentDate[], baseUrl: string = 
         navHtml += `    <a href="${leagueHref}" class="nav-link league-link" data-league="${league}">${league} <span class="league-arrow">▶</span></a>\n`;
         navHtml += `    <div class="nav-submenu hidden">\n`;
         
-        // Special handling for DFS - just link to hub
+        // DFS: show HUB + most recent DFS date (if present)
         if (league === 'DFS') {
             navHtml += `      <a href="${urlPrefix}/dfs/" class="nav-link nav-submenu-item">HUB</a>\n`;
+            const latest = dates[0];
+            if (latest) {
+                navHtml += `      <a href="${latest.url}" class="nav-link nav-submenu-item">${latest.display}</a>\n`;
+            }
         } else {
             navHtml += `      <a href="${urlPrefix}/${leagueLower}/" class="nav-link nav-submenu-item">HUB</a>\n`;
             
-            // Add date links (limit to 10 most recent)
-            dates.slice(0, 10).forEach(date => {
-                navHtml += `      <a href="${urlPrefix}/${leagueLower}/${date.date}/" class="nav-link nav-submenu-item">${date.display}</a>\n`;
-            });
+            // Add ONLY the most recent date link (if any)
+            const latest = dates[0];
+            if (latest) {
+                navHtml += `      <a href="${latest.url}" class="nav-link nav-submenu-item">${latest.display}</a>\n`;
+            }
         }
         
         navHtml += `    </div>\n`;
@@ -80,13 +85,29 @@ export function extractRecentDates(posts: any[]): RecentDate[] {
         
         // Use formatDateISO which now handles timezone issues correctly
         const dateStr = formatDateISO(date);
-        const league = (post.league || '').toUpperCase();
-        const leagueLower = normalizeLeague(league);
-        
-        const key = `${league}-${dateStr}`;
+        const storyType = String(post.storyType || '').toLowerCase();
+        const leagueRaw = String(post.league || '').toUpperCase();
+        const leagueLower = normalizeLeague(leagueRaw);
+
+        // DFS articles live under /dfs/{sport}/{date}/ and should NOT pollute the main league nav
+        if (storyType === 'dfs_article') {
+            const dfsSport = leagueLower; // nba | nfl | epl
+            const dfsKey = `DFS-${dfsSport}-${dateStr}`;
+            if (!dateMap.has(dfsKey)) {
+                dateMap.set(dfsKey, {
+                    league: 'DFS',
+                    date: dateStr,
+                    display: `${formatDateForNav(date)} ${leagueRaw}`, // e.g., "Jan 15 NBA"
+                    url: `/dfs/${dfsSport}/${dateStr}/`
+                });
+            }
+            return;
+        }
+
+        const key = `${leagueRaw}-${dateStr}`;
         if (!dateMap.has(key)) {
             dateMap.set(key, {
-                league,
+                league: leagueRaw,
                 date: dateStr,
                 display: formatDateForNav(date), // Also uses fixed date parsing
                 url: `/${leagueLower}/${dateStr}/`

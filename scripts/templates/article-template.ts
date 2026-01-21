@@ -65,6 +65,11 @@ export interface HeatcheckPost {
         article?: {
             long_form_markdown?: string;
         };
+        humanPassHtmlBlocks?: {
+            early?: string;
+            mid?: string;
+            closing?: string;
+        };
         dfsPlayers?: Array<{
             rank: number;
             playerName: string;
@@ -140,7 +145,29 @@ export function generateArticlePage(
     
     // Get article content (prefer long_form_markdown from heatCheckData, fallback to theBackstory)
     const articleContent = heatCheckData.article?.long_form_markdown || post.websiteStory.theBackstory || '';
-    const htmlContent = markdownToHtml(articleContent);
+    let htmlContent = markdownToHtml(articleContent);
+    
+    // Note: QUOTE/STAT anchors are now rendered as HTML directly in renderHeatArticleV3Markdown()
+    // They are wrapped in HTML_BLOCK markers, so markdownToHtml preserves them correctly
+    // This eliminates the need for regex workarounds to fix nesting issues
+    
+    // Fix escaped headings that appear inside paragraph divs anywhere
+    htmlContent = htmlContent.replace(
+        /<div style="margin-top: 0\.5rem;">\s*&lt;div style=&quot;color: #ff8000[^&]*&quot;&gt;([^&]+)&lt;\/div&gt;\s*<\/div>/g,
+        (match, headingText) => {
+            const cleanHeading = headingText.trim();
+            return '<div style="color: #ff8000; font-size: 1.2rem; margin-top: 1.5rem; margin-bottom: 0.75rem; font-weight: bold;">' + escapeHtml(cleanHeading) + '</div>';
+        }
+    );
+    
+    // Fix any other escaped heading HTML that appears as text
+    htmlContent = htmlContent.replace(
+        /&lt;div style=&quot;color: #ff8000[^&]*&quot;&gt;([^&]+)&lt;\/div&gt;/g,
+        (match, headingText) => {
+            const cleanHeading = headingText.trim();
+            return '<div style="color: #ff8000; font-size: 1.2rem; margin-top: 1.5rem; margin-bottom: 0.75rem; font-weight: bold;">' + escapeHtml(cleanHeading) + '</div>';
+        }
+    );
     
     // Get image path - use relative path for local development
     const imageName = post.websiteStory.image || post.websiteStory.imageUrl || '';
@@ -187,6 +214,526 @@ export function generateArticlePage(
                 </div>
             </div>`;
     }).join('');
+
+    // Temperature Check (HeatArticleV3): sits above Narrative.log (Narrative Rack)
+    const matchPackV3: any = (heatCheckData as any).matchPackV3;
+    const tempCheck: any = (heatCheckData as any).temperatureCheck;
+    const tempSummary: any = tempCheck?.summary || null;
+    const tempAI: any = tempCheck?.ai || null;
+
+    const temperatureCheckHtml = matchPackV3 ? (() => {
+        const renderedOverride = typeof tempCheck?.renderedMarkdown === 'string' && tempCheck.renderedMarkdown.trim()
+            ? tempCheck.renderedMarkdown.trim()
+            : null;
+
+        const bullets: any[] = Array.isArray(matchPackV3?.factDrop?.bullets) ? matchPackV3.factDrop.bullets : [];
+        const comparisons: any[] = Array.isArray(matchPackV3?.factDrop?.comparisons) ? matchPackV3.factDrop.comparisons : [];
+        const sections: any[] = Array.isArray(matchPackV3?.factDrop?.sections) ? matchPackV3.factDrop.sections : [];
+        const charts: any = matchPackV3?.factDrop?.charts || null;
+
+        const visibleKeys: string[] = Array.isArray(tempSummary?.visibleBulletKeys) && tempSummary.visibleBulletKeys.length > 0
+            ? tempSummary.visibleBulletKeys
+            : bullets.map(b => b?.key).filter(Boolean);
+
+        const visibleBullets = bullets.filter(b => visibleKeys.includes(b?.key)).map(b => ({
+            key: b?.key,
+            label: b.label || b.key || 'BULLET',
+            display: b.display || '',
+            raw: (b as any)?.raw
+        }));
+
+        const getWinner = (key: string, raw: any): 'A' | 'B' | 'even' | null => {
+            try {
+                if (!raw) return null;
+                const k = String(key || '').toLowerCase();
+                const num = (v: any) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v));
+                const isFiniteNum = (v: any) => typeof v === 'number' && Number.isFinite(v);
+
+                if (k === 'last10') {
+                    const aM = num(raw?.A?.margin10);
+                    const bM = num(raw?.B?.margin10);
+                    if (isFiniteNum(aM) && isFiniteNum(bM) && aM !== bM) return aM > bM ? 'A' : 'B';
+                    const aW = num(raw?.A?.w10);
+                    const bW = num(raw?.B?.w10);
+                    if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
+                    return 'even';
+                }
+
+                if (k === 'last3') {
+                    const aM = num(raw?.A?.margin3);
+                    const bM = num(raw?.B?.margin3);
+                    if (isFiniteNum(aM) && isFiniteNum(bM) && aM !== bM) return aM > bM ? 'A' : 'B';
+                    const aW = num(raw?.A?.w3);
+                    const bW = num(raw?.B?.w3);
+                    if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
+                    return 'even';
+                }
+
+                if (k === 'momentum') {
+                    const a = num(raw?.A);
+                    const b = num(raw?.B);
+                    if (isFiniteNum(a) && isFiniteNum(b) && a !== b) return a > b ? 'A' : 'B';
+                    return 'even';
+                }
+
+                if (k === 'closegames') {
+                    const aW = num(raw?.A?.closeW10);
+                    const bW = num(raw?.B?.closeW10);
+                    if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
+                    const aL = num(raw?.A?.closeL10);
+                    const bL = num(raw?.B?.closeL10);
+                    if (isFiniteNum(aL) && isFiniteNum(bL) && aL !== bL) return aL < bL ? 'A' : 'B';
+                    return 'even';
+                }
+
+                if (k === 'standings') {
+                    const aR = num(raw?.A?.rank);
+                    const bR = num(raw?.B?.rank);
+                    if (isFiniteNum(aR) && isFiniteNum(bR) && aR !== bR) return aR < bR ? 'A' : 'B';
+                    const aW = num(raw?.A?.wins);
+                    const bW = num(raw?.B?.wins);
+                    if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
+                    return 'even';
+                }
+
+                return null;
+            } catch {
+                return null;
+            }
+        };
+
+        const renderWinnerSplit = (b: any) => {
+            const winner = getWinner(String(b?.key || ''), b?.raw);
+            const disp = String(b?.display || '');
+            const parts = disp.split(' | ');
+            if (parts.length < 2 || !winner) return escapeHtml(disp);
+
+            const left = escapeHtml(parts[0]);
+            const right = escapeHtml(parts.slice(1).join(' | '));
+
+            const base = 'padding:0.22rem 0.35rem; border-radius:8px; border:1px solid rgba(255,255,255,0.10);';
+            const win = 'background:rgba(0,255,65,0.10); border:1px solid rgba(0,255,65,0.28); color:rgba(255,255,255,0.92); font-weight:900; box-shadow:0 0 12px rgba(0,255,65,0.10);';
+            const lose = 'background:transparent; border:1px solid rgba(255,255,255,0.08); color:rgba(255,255,255,0.72); font-weight:700;';
+            const even = 'background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.10); color:rgba(255,255,255,0.80); font-weight:800;';
+
+            const leftStyle = base + (winner === 'A' ? win : winner === 'B' ? lose : even);
+            const rightStyle = base + (winner === 'B' ? win : winner === 'A' ? lose : even);
+
+            return `<span style="display:inline-flex; gap:0.35rem; flex-wrap:wrap; align-items:center;"><span style="${leftStyle}">${left}</span><span style="color:rgba(255,255,255,0.35); font-weight:900;">|</span><span style="${rightStyle}">${right}</span></span>`;
+        };
+
+        const highlightComparisonKey = tempSummary?.highlightComparisonKey || 'margin10';
+        const highlightComparison = comparisons.find(c => c?.key === highlightComparisonKey) || comparisons[0] || null;
+
+        const availability = matchPackV3?.factDrop?.raw?.availability?.majorAbsences || null;
+        const availabilityCounts = availability ? {
+            A: availability?.A?.count ?? 0,
+            B: availability?.B?.count ?? 0
+        } : null;
+
+        const formLeaders = sections.find(s => s?.key === 'formLeaders') || null;
+        const priorityPlayers = Array.isArray(tempSummary?.priorityPlayersOverride) && tempSummary.priorityPlayersOverride.length > 0
+            ? tempSummary.priorityPlayersOverride
+            : (Array.isArray(formLeaders?.priorityPlayers) ? formLeaders.priorityPlayers.map((p: any) => p.displayText || '').filter(Boolean) : []);
+
+        const availabilityOverride = typeof tempSummary?.availabilityDisplayOverride === 'string' && tempSummary.availabilityDisplayOverride.trim()
+            ? tempSummary.availabilityDisplayOverride.trim()
+            : null;
+
+        const aiTakeaways = Array.isArray(tempAI?.takeaways) ? tempAI.takeaways : [];
+        const aiRisks = Array.isArray(tempAI?.risks) ? tempAI.risks : [];
+        const tempScore = Number.isFinite(tempAI?.tempScore) ? tempAI.tempScore : null;
+
+        const buildDefaultMarkdown = () => {
+            const lines: string[] = [];
+            if (tempScore !== null) {
+                const label = tempScore >= 70 ? 'HOT' : tempScore >= 45 ? 'WARM' : 'COOL';
+                lines.push(`<div style="color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.8rem; letter-spacing:0.08em;">TEMP: <span style="color:#00ff41; font-weight:900; text-shadow:0 0 10px rgba(0,255,65,0.25);">${escapeHtml(label)}</span></div>`);
+            }
+            const teamA = String(matchPackV3?.matchup?.teamA || matchPackV3?.matchup?.teamAAbbr || 'Team A');
+            const teamB = String(matchPackV3?.matchup?.teamB || matchPackV3?.matchup?.teamBAbbr || 'Team B');
+            const haA = String(matchPackV3?.matchup?.homeAway?.A || '');
+            const haB = String(matchPackV3?.matchup?.homeAway?.B || '');
+            if (haA || haB) {
+                lines.push(`<div style="margin-top:0.15rem; color:rgba(255,255,255,0.72); font-family:'Courier New', monospace; font-size:0.78rem;">HOME/AWAY: <span style="color:rgba(255,255,255,0.9); font-weight:700;">${escapeHtml(teamA)}</span> (${escapeHtml(haA || 'n/a')}) | <span style="color:rgba(255,255,255,0.9); font-weight:700;">${escapeHtml(teamB)}</span> (${escapeHtml(haB || 'n/a')})</div>`);
+            }
+            if (availabilityOverride) {
+                lines.push(`<div style="margin-top:0.35rem; padding:0.45rem 0.55rem; background:rgba(0,0,0,0.25); border:1px solid rgba(0,255,65,0.18); border-left:2px solid rgba(0,255,65,0.45); border-radius:8px; color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.78rem;"><span style="color:#00ff41; font-weight:900; letter-spacing:0.1em;">AVAIL</span> ${escapeHtml(availabilityOverride)}</div>`);
+            }
+            if (visibleBullets.length > 0) {
+                lines.push(`<div style="margin-top:0.55rem; color:#00ff41; font-weight:900; letter-spacing:0.14em; font-family:'Courier New', monospace; font-size:0.75rem; text-transform:uppercase;">FACTDROP</div>`);
+                lines.push(`<div style="margin-top:0.25rem; display:flex; flex-direction:column; gap:0.25rem;">${visibleBullets.map(b => `
+                    <div style="padding:0.35rem 0.45rem; background:rgba(0,0,0,0.18); border:1px solid rgba(0,255,65,0.14); border-radius:8px;">
+                        <div style="color:rgba(255,255,255,0.9); font-weight:800; font-family:'Courier New', monospace; font-size:0.78rem;">${escapeHtml(b.label)}:</div>
+                        <div style="margin-top:0.12rem; color:rgba(255,255,255,0.76); font-family:'Courier New', monospace; font-size:0.78rem; line-height:1.35;">${renderWinnerSplit(b)}</div>
+                    </div>
+                `).join('')}</div>`);
+            }
+            if (highlightComparison) {
+                const metric = escapeHtml(String(highlightComparison.metric || highlightComparison.key || 'comparison'));
+                const aDisp = escapeHtml(String(highlightComparison.display?.A || String(highlightComparison.A || '')));
+                const bDisp = escapeHtml(String(highlightComparison.display?.B || String(highlightComparison.B || '')));
+                const winner = escapeHtml(String(highlightComparison.winner || 'even'));
+                lines.push(`<div style="margin-top:0.55rem; color:#00ff41; font-weight:900; letter-spacing:0.14em; font-family:'Courier New', monospace; font-size:0.75rem; text-transform:uppercase;">KEY_COMP</div>`);
+                lines.push(`<div style="margin-top:0.2rem; padding:0.45rem 0.55rem; background:rgba(0,0,0,0.22); border:1px solid rgba(0,255,65,0.16); border-radius:10px; color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.78rem;">${metric}: A=${aDisp} | B=${bDisp} <span style="color:rgba(255,255,255,0.6);">(winner: ${winner})</span></div>`);
+            }
+
+            // Replace "AI takeaways/risks" with a human-first impact block
+            const hook = (aiTakeaways.find((t: string) => t && t.trim().length <= 130) || '').trim();
+            const watchFor = (aiRisks.find((r: string) => r && r.trim().length <= 140) || '').trim();
+
+            lines.push(`<div style="margin-top:0.65rem; color:#00ff41; font-weight:900; letter-spacing:0.14em; font-family:'Courier New', monospace; font-size:0.75rem; text-transform:uppercase;">IMPACT</div>`);
+            if (hook) {
+                lines.push(`<div style="margin-top:0.2rem; color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.8rem; line-height:1.35;">${escapeHtml(hook)}</div>`);
+            }
+            if (highlightComparison) {
+                const metric = (highlightComparison.metric || highlightComparison.key || 'edge');
+                const aDisp = highlightComparison.display?.A || String(highlightComparison.A || '');
+                const bDisp = highlightComparison.display?.B || String(highlightComparison.B || '');
+                const winner =
+                    highlightComparison.winner === 'A' ? teamA :
+                    highlightComparison.winner === 'B' ? teamB : 'Neither side';
+                lines.push(`<div style="margin-top:0.25rem; color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.78rem;">EDGE: <span style="color:rgba(255,255,255,0.92); font-weight:800;">${escapeHtml(winner)}</span> ${escapeHtml(metric)} (${escapeHtml(aDisp)} vs ${escapeHtml(bDisp)})</div>`);
+            }
+
+            const swing =
+                availabilityOverride ||
+                ((availabilityCounts && (availabilityCounts.A > 0 || availabilityCounts.B > 0))
+                    ? 'Availability is the swing—late scratches can flip the entire script.'
+                    : 'Health looks stable—this swings on execution and shot-making.');
+            lines.push(`<div style="margin-top:0.25rem; color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.78rem;">SWING: ${escapeHtml(swing)}</div>`);
+
+            if (watchFor) {
+                lines.push(`<div style="margin-top:0.25rem; color:rgba(255,255,255,0.7); font-family:'Courier New', monospace; font-size:0.78rem;">WATCH: ${escapeHtml(watchFor)}</div>`);
+            }
+            return lines.join('');
+        };
+
+        const finalMarkdown = renderedOverride || buildDefaultMarkdown();
+        // IMPORTANT:
+        // - buildDefaultMarkdown() returns styled HTML blocks already.
+        // - renderedOverride is often ALSO pre-rendered HTML (we store it that way for V3).
+        // Passing HTML through markdownToHtml() can introduce <br/> whitespace between tags,
+        // which creates the “dead space” you’re seeing in FACTDROP cards.
+        const renderedOverrideLooksHtml =
+            !!renderedOverride && /<\s*(div|section|span|canvas|table|p|ul|ol|h[1-6]|br)\b/i.test(renderedOverride);
+        const finalContentHtml = renderedOverride
+            ? (renderedOverrideLooksHtml ? renderedOverride : markdownToHtml(renderedOverride))
+            : finalMarkdown;
+
+        const chartsDataId = `v3-charts-data-${post.id}`;
+        const momentumCanvasId = `v3-chart-momentum-${post.id}`;
+        const starLoadCanvasId = `v3-chart-starload-${post.id}`;
+        const pressureCanvasId = `v3-chart-pressure-${post.id}`;
+        const volatilityCanvasId = `v3-chart-volatility-${post.id}`;
+
+        const hasCharts =
+            charts &&
+            (charts?.momentumLine || charts?.starLoad || charts?.pressureBar || charts?.roleVolatility);
+
+        const momentumLegendA = String(charts?.momentumLine?.series?.A?.label || matchPackV3?.matchup?.teamAAbbr || 'A');
+        const momentumLegendB = String(charts?.momentumLine?.series?.B?.label || matchPackV3?.matchup?.teamBAbbr || 'B');
+
+        const chartsJson = (() => {
+            try {
+                return JSON.stringify(charts || {}).replace(/</g, '\\u003c');
+            } catch {
+                return '{}';
+            }
+        })();
+
+        const chartsHtml = hasCharts ? `
+            <div style="margin-top:0.75rem;">
+                <div style="color:#00ff41; font-weight:900; letter-spacing:0.14em; font-family:'Courier New', monospace; font-size:0.75rem; text-transform:uppercase;">CHARTS</div>
+
+                <div style="margin-top:0.35rem; display:flex; flex-direction:column; gap:0.5rem;">
+                    <div style="padding:0.55rem; background:rgba(0, 8, 4, 0.88); border:1px solid rgba(0, 255, 65, 0.18); border-radius:10px;">
+                        <div style="color:rgba(255,255,255,0.86); font-family:'Courier New', monospace; font-size:0.78rem; line-height:1.35;">
+                            Rolling margin trend (last 12): who’s actually building momentum right now.
+                        </div>
+                        <div style="margin-top:0.35rem; display:flex; gap:0.75rem; align-items:center; flex-wrap:wrap; font-family:'Courier New', monospace; font-size:0.75rem; color:rgba(255,255,255,0.72);">
+                            <div style="display:flex; align-items:center; gap:0.35rem;">
+                                <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:rgba(255,26,26,0.95); box-shadow:0 0 10px rgba(255,26,26,0.18);"></span>
+                                <span>${escapeHtml(momentumLegendA)}</span>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:0.35rem;">
+                                <span style="display:inline-block; width:10px; height:10px; border-radius:999px; background:rgba(255,230,109,0.95); box-shadow:0 0 10px rgba(255,230,109,0.12);"></span>
+                                <span>${escapeHtml(momentumLegendB)}</span>
+                            </div>
+                        </div>
+                        <div style="margin-top:0.35rem; height:170px;">
+                            <canvas id="${momentumCanvasId}" style="width:100%; height:100%;"></canvas>
+                        </div>
+                        <div style="margin-top:0.25rem; color:rgba(255,255,255,0.70); font-family:'Courier New', monospace; font-size:0.74rem; line-height:1.35;">
+                            Read it like a heartbeat: sustained above-zero stretches are real control; whiplash swings mean volatility.
+                        </div>
+                    </div>
+
+                    <div style="padding:0.55rem; background:rgba(0, 8, 4, 0.88); border:1px solid rgba(0, 255, 65, 0.18); border-radius:10px;">
+                        <div style="color:rgba(255,255,255,0.86); font-family:'Courier New', monospace; font-size:0.78rem; line-height:1.35;">
+                            Usage vs minutes stress: which stars are carrying the load (and whose role is quietly spiking).
+                        </div>
+                        <div style="margin-top:0.35rem; height:200px;">
+                            <canvas id="${starLoadCanvasId}" style="width:100%; height:100%;"></canvas>
+                        </div>
+                        <div style="margin-top:0.25rem; color:rgba(255,255,255,0.70); font-family:'Courier New', monospace; font-size:0.74rem; line-height:1.35;">
+                            When MIN10 climbs with USG10, late-game decision volume rises—and so does the swing potential.
+                        </div>
+                    </div>
+
+                    <div style="padding:0.55rem; background:rgba(0, 8, 4, 0.88); border:1px solid rgba(0, 255, 65, 0.18); border-radius:10px;">
+                        <div style="color:rgba(255,255,255,0.86); font-family:'Courier New', monospace; font-size:0.78rem; line-height:1.35;">
+                            Close-game record (≤ ${escapeHtml(String(matchPackV3?.factDrop?.charts?.pressureBar?.closeMargin ?? matchPackV3?.factDrop?.meta?.closeMargin ?? 6))}): who survives the pressure possessions.
+                        </div>
+                        <div style="margin-top:0.35rem; height:140px;">
+                            <canvas id="${pressureCanvasId}" style="width:100%; height:100%;"></canvas>
+                        </div>
+                        <div style="margin-top:0.25rem; color:rgba(255,255,255,0.70); font-family:'Courier New', monospace; font-size:0.74rem; line-height:1.35;">
+                            Tight-game reps matter: teams that win these tend to execute cleaner in the final two minutes.
+                        </div>
+                    </div>
+
+                    <div style="padding:0.55rem; background:rgba(0, 8, 4, 0.88); border:1px solid rgba(0, 255, 65, 0.18); border-radius:10px;">
+                        <div style="color:rgba(255,255,255,0.86); font-family:'Courier New', monospace; font-size:0.78rem; line-height:1.35;">
+                            Role volatility (ΔUSG last 3 vs season): who’s being asked to do more (or less) right now.
+                        </div>
+                        <div style="margin-top:0.35rem; height:220px;">
+                            <canvas id="${volatilityCanvasId}" style="width:100%; height:100%;"></canvas>
+                        </div>
+                        <div style="margin-top:0.25rem; color:rgba(255,255,255,0.70); font-family:'Courier New', monospace; font-size:0.74rem; line-height:1.35;">
+                            Big positive spikes usually mean injuries or tactical shifts; big negatives often mean role compression or foul/rotation swings.
+                        </div>
+                    </div>
+                </div>
+
+                <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js"></script>
+                <script type="application/json" id="${chartsDataId}">${chartsJson}</script>
+                <script>
+                (function(){
+                  var tries = 0;
+                  function padFront(arr, len){
+                    var a = Array.isArray(arr) ? arr.slice() : [];
+                    while(a.length < len) a.unshift(null);
+                    return a;
+                  }
+                  function buildLabels(len){
+                    var out = [];
+                    for (var i=0;i<len;i++) out.push('G' + (i+1));
+                    return out;
+                  }
+                  function colorForVol(v){
+                    if (typeof v !== 'number' || !isFinite(v)) return 'rgba(255,255,255,0.25)';
+                    return v >= 0 ? 'rgba(255,26,26,0.85)' : 'rgba(255,230,109,0.80)';
+                  }
+                  function go(){
+                    try {
+                      var dataEl = document.getElementById('${chartsDataId}');
+                      if (!dataEl) return;
+                      var payload = JSON.parse(dataEl.textContent || '{}');
+                      if (!payload || !window.Chart) {
+                        if (tries++ < 60) return setTimeout(go, 50);
+                        return;
+                      }
+
+                      var common = {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: { duration: 0 },
+                        plugins: {
+                          legend: { display: false },
+                          tooltip: {
+                            backgroundColor: 'rgba(0,0,0,0.92)',
+                            borderColor: 'rgba(0,255,65,0.25)',
+                            borderWidth: 1,
+                            titleColor: 'rgba(255,255,255,0.92)',
+                            bodyColor: 'rgba(255,255,255,0.85)'
+                          }
+                        },
+                        scales: {
+                          x: {
+                            ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } },
+                            grid: { color: 'rgba(255,255,255,0.08)' }
+                          },
+                          y: {
+                            ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } },
+                            grid: { color: function(ctx){ return ctx.tick && ctx.tick.value === 0 ? 'rgba(0,255,65,0.25)' : 'rgba(255,255,255,0.08)'; } }
+                          }
+                        }
+                      };
+
+                      // 1) Momentum line
+                      var m = payload.momentumLine || null;
+                      if (m && m.series) {
+                        var a = (m.series.A && m.series.A.margins) || [];
+                        var b = (m.series.B && m.series.B.margins) || [];
+                        var aLabel = (m.series.A && m.series.A.label) || 'A';
+                        var bLabel = (m.series.B && m.series.B.label) || 'B';
+                        var len = Math.max(a.length, b.length, 1);
+                        var labels = buildLabels(len);
+                        var ctx1 = document.getElementById('${momentumCanvasId}');
+                        if (ctx1) {
+                          new Chart(ctx1, {
+                            type: 'line',
+                            data: {
+                              labels: labels,
+                              datasets: [
+                                { label: aLabel, data: padFront(a, len), borderColor: 'rgba(255,26,26,0.95)', backgroundColor: 'rgba(255,26,26,0.15)', tension: 0.25, pointRadius: 0, borderWidth: 2 },
+                                { label: bLabel, data: padFront(b, len), borderColor: 'rgba(255,230,109,0.95)', backgroundColor: 'rgba(255,230,109,0.12)', tension: 0.25, pointRadius: 0, borderWidth: 2 }
+                              ]
+                            },
+                            options: common
+                          });
+                        }
+                      }
+
+                      // 2) Star load (USG10 vs MIN10)
+                      var s = payload.starLoad || null;
+                      var players = (s && Array.isArray(s.players)) ? s.players : [];
+                      if (players.length > 0) {
+                        var labels2 = players.map(function(p){
+                          var ta = (p.teamAbbr || '').toString();
+                          var nm = (p.playerName || '').toString();
+                          return (ta ? (ta + ' ') : '') + nm;
+                        });
+                        var usg = players.map(function(p){ return (typeof p.USG10 === 'number' && isFinite(p.USG10)) ? p.USG10 : null; });
+                        var min = players.map(function(p){ return (typeof p.MIN10 === 'number' && isFinite(p.MIN10)) ? p.MIN10 : null; });
+                        var ctx2 = document.getElementById('${starLoadCanvasId}');
+                        if (ctx2) {
+                          new Chart(ctx2, {
+                            type: 'bar',
+                            data: {
+                              labels: labels2,
+                              datasets: [
+                                { label: 'USG10', data: usg, yAxisID: 'yUSG', backgroundColor: 'rgba(255,26,26,0.80)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 },
+                                { label: 'MIN10', data: min, yAxisID: 'yMIN', backgroundColor: 'rgba(255,230,109,0.78)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 }
+                              ]
+                            },
+                            options: {
+                              responsive: true,
+                              maintainAspectRatio: false,
+                              animation: { duration: 0 },
+                              plugins: { legend: { display: false }, tooltip: common.plugins.tooltip },
+                              scales: {
+                                x: { ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                                yUSG: { position: 'left', beginAtZero: true, ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                                yMIN: { position: 'right', beginAtZero: true, ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } }, grid: { drawOnChartArea: false } }
+                              }
+                            }
+                          });
+                        }
+                      }
+
+                      // 3) Pressure bar (close-game record)
+                      var p = payload.pressureBar || null;
+                      if (p && p.A && p.B) {
+                        var labels3 = [p.A.label || 'A', p.B.label || 'B'];
+                        var wins = [p.A.wins || 0, p.B.wins || 0];
+                        var losses = [p.A.losses || 0, p.B.losses || 0];
+                        var ctx3 = document.getElementById('${pressureCanvasId}');
+                        if (ctx3) {
+                          new Chart(ctx3, {
+                            type: 'bar',
+                            data: {
+                              labels: labels3,
+                              datasets: [
+                                { label: 'Wins', data: wins, backgroundColor: 'rgba(255,26,26,0.78)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1, stack: 's' },
+                                { label: 'Losses', data: losses, backgroundColor: 'rgba(255,255,255,0.18)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1, stack: 's' }
+                              ]
+                            },
+                            options: {
+                              indexAxis: 'y',
+                              responsive: true,
+                              maintainAspectRatio: false,
+                              animation: { duration: 0 },
+                              plugins: { legend: { display: false }, tooltip: common.plugins.tooltip },
+                              scales: {
+                                x: { stacked: true, beginAtZero: true, ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                                y: { stacked: true, ticks: { color: 'rgba(255,255,255,0.70)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } }
+                              }
+                            }
+                          });
+                        }
+                      }
+
+                      // 4) Role volatility (ΔUSG3 vs season)
+                      var rv = payload.roleVolatility || null;
+                      var rvPlayers = (rv && Array.isArray(rv.players)) ? rv.players : [];
+                      if (rvPlayers.length > 0) {
+                        var labels4 = rvPlayers.map(function(p){
+                          var ta = (p.teamAbbr || '').toString();
+                          var nm = (p.playerName || '').toString();
+                          return (ta ? (ta + ' ') : '') + nm;
+                        });
+                        var vals4 = rvPlayers.map(function(p){
+                          var v = p.deltaUSG3vsSeason;
+                          return (typeof v === 'number' && isFinite(v)) ? v : 0;
+                        });
+                        var maxAbs = 1;
+                        for (var i=0;i<vals4.length;i++) maxAbs = Math.max(maxAbs, Math.abs(vals4[i] || 0));
+                        var ctx4 = document.getElementById('${volatilityCanvasId}');
+                        if (ctx4) {
+                          new Chart(ctx4, {
+                            type: 'bar',
+                            data: {
+                              labels: labels4,
+                              datasets: [
+                                {
+                                  label: 'ΔUSG3',
+                                  data: vals4,
+                                  backgroundColor: rvPlayers.map(function(p){ return colorForVol(p.deltaUSG3vsSeason); }),
+                                  borderColor: 'rgba(0,0,0,0.65)',
+                                  borderWidth: 1
+                                }
+                              ]
+                            },
+                            options: {
+                              indexAxis: 'y',
+                              responsive: true,
+                              maintainAspectRatio: false,
+                              animation: { duration: 0 },
+                              plugins: { legend: { display: false }, tooltip: common.plugins.tooltip },
+                              scales: {
+                                x: {
+                                  suggestedMin: -maxAbs,
+                                  suggestedMax: maxAbs,
+                                  ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } },
+                                  grid: { color: function(ctx){ return ctx.tick && ctx.tick.value === 0 ? 'rgba(0,255,65,0.25)' : 'rgba(255,255,255,0.08)'; } }
+                                },
+                                y: { ticks: { color: 'rgba(255,255,255,0.70)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } }
+                              }
+                            }
+                          });
+                        }
+                      }
+                    } catch (e) {
+                      try { console.error('V3 charts init failed', e); } catch(_) {}
+                    }
+                  }
+                  go();
+                })();
+                </script>
+            </div>
+        ` : '';
+
+        return `
+            <section aria-label="Temperature Check" style="flex: 0 0 auto; display: flex; flex-direction: column; background: rgba(0, 12, 6, 0.96); border: 2px solid rgba(0, 136, 51, 0.85); box-shadow: 0 0 18px rgba(0, 136, 51, 0.25), inset 0 0 14px rgba(0, 255, 65, 0.06); overflow: hidden;">
+                <div style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                    <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.5); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);"></div>
+                    <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.5); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);"></div>
+                    <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);"></div>
+                    <div style="color: rgba(255, 255, 255, 0.9); font-size: 0.75rem; font-family: 'Courier New', monospace; margin-left: 0.5rem; letter-spacing: 0.1em; font-weight: bold;">TEMPERATURE_CHECK.log</div>
+                </div>
+                <div style="position: relative; padding: 0.75rem; font-family: 'Courier New', monospace; font-size: 0.9rem; color: rgba(255, 255, 255, 0.88); line-height: 1.6; background: radial-gradient(circle at 60% 35%, rgba(0, 255, 65, 0.06) 0%, transparent 70%);">
+                    <div style="position:absolute; inset:0; pointer-events:none; opacity:0.20; background-image: radial-gradient(circle at center, rgba(0, 255, 65, 0.16) 1px, transparent 1px), radial-gradient(circle at center, rgba(0, 255, 65, 0.08) 2px, transparent 2px); background-size: 52px 52px, 104px 104px; background-position:center;"></div>
+                    <div style="position:absolute; inset:0; pointer-events:none; opacity:0.06; background: linear-gradient(180deg, rgba(0,255,65,0.0) 0%, rgba(0,255,65,0.12) 50%, rgba(0,255,65,0.0) 100%);"></div>
+                    <div style="position:relative;">
+                        ${finalContentHtml}
+                        ${chartsHtml}
+                    </div>
+                </div>
+            </section>
+        `;
+    })() : '';
     
     // Generate quotes HTML
     const quotesHtml = displayQuotes.map(quote => `
@@ -252,9 +799,91 @@ export function generateArticlePage(
         `;
     }).join('');
     
-    // Generate HeatChecks Edge HTML
-    const edgeCall = post.heatchecksEdge?.finalCall || '';
-    const edgeHtml = edgeCall ? `
+    // Generate HeatChecks Edge HTML (support both old and new schemas)
+    const edge = post.heatchecksEdge;
+    let edgeHtml = '';
+    
+    // Check if it's the new V2 schema (has 'game' and 'player_props' properties)
+    const isEdgeV2 = edge && typeof edge === 'object' && 'game' in edge && 'player_props' in edge;
+    
+    if (isEdgeV2) {
+        // New V2 schema
+        const edgeV2 = edge as any;
+        const hasGame = edgeV2.game && edgeV2.game.market !== 'none';
+        const hasProps = edgeV2.player_props && edgeV2.player_props.length > 0;
+        const noEdgeReason = edgeV2.no_edge_reason;
+        
+        // Show edge if there's a game, props, or a reason explaining why there's no edge
+        // This ensures users see the edge section even when no edge is found
+        if (hasGame || hasProps || noEdgeReason) {
+            edgeHtml = `
+        <div style="margin-top: 3rem; margin-bottom: 2rem; padding: 2rem; background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.3); border-left: 4px solid rgba(255, 255, 255, 0.5); border-right: 4px solid rgba(255, 255, 255, 0.5); border-radius: 4px; box-shadow: 0 0 40px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); position: relative; isolation: isolate;">
+            <div style="position: absolute; top: 0.75rem; right: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite;"></div>
+            <div style="position: absolute; bottom: 0.75rem; right: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite 1s;"></div>
+            <div style="position: absolute; top: 0.75rem; left: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite 0.5s;"></div>
+            <style>@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.1); } }</style>
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid rgba(255, 255, 255, 0.3);">
+                <div style="width: 4px; height: 30px; background: rgba(255, 255, 255, 0.5); box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);"></div>
+                <div style="color: rgba(255, 255, 255, 0.95); font-size: 1rem; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.2em; text-shadow: 0 0 10px rgba(255, 255, 255, 0.3), 0 0 20px rgba(255, 255, 255, 0.1);">
+                    &gt; HEATCHECKS EDGE
+                </div>
+                <div style="flex: 1; height: 1px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.3) 0%, transparent 100%);"></div>
+            </div>
+            ${hasGame ? `
+            <div style="margin-bottom: 1.5rem;">
+                <div style="color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; font-family: 'Courier New', monospace; font-weight: bold; margin-bottom: 0.5rem; text-transform: uppercase;">
+                    GAME: ${escapeHtml(edgeV2.game.market.toUpperCase())} ${(() => {
+                        if (edgeV2.game.selection === 'none') return '';
+                        if (edgeV2.game.selection === 'TEAM_A') return escapeHtml(post.teamA);
+                        if (edgeV2.game.selection === 'TEAM_B') return escapeHtml(post.teamB);
+                        return escapeHtml(edgeV2.game.selection); // OVER/UNDER for totals
+                    })()}
+                </div>
+                <div style="color: rgba(255, 255, 255, 0.95); font-size: 1.1rem; line-height: 1.8; font-family: 'Courier New', monospace; font-weight: bold; text-shadow: 0 0 15px rgba(255, 255, 255, 0.3), 0 2px 10px rgba(0, 0, 0, 0.5); padding: 1rem; background: rgba(0, 0, 0, 0.3); border-radius: 2px; border: 1px solid rgba(248, 66, 66, 0.4);">
+                    ${escapeHtml((edgeV2.game.one_sentence_call || '').replace(/TEAM_A/g, post.teamA).replace(/TEAM_B/g, post.teamB))}
+                </div>
+                ${edgeV2.game.receipts && edgeV2.game.receipts.filter((r: string) => r).length > 0 ? `
+                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.2);">
+                    <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.5rem;">RECEIPTS:</div>
+                    <ul style="margin: 0; padding-left: 1.5rem; color: rgba(255, 255, 255, 0.9); font-size: 0.85rem; line-height: 1.6;">
+                        ${edgeV2.game.receipts.filter((r: string) => r).map((r: string) => `<li>${escapeHtml(r.replace(/TEAM_A/g, post.teamA).replace(/TEAM_B/g, post.teamB))}</li>`).join('')}
+                    </ul>
+                </div>
+                ` : ''}
+            </div>
+            ` : ''}
+            ${hasProps ? edgeV2.player_props.map((prop: any, idx: number) => `
+            <div style="margin-bottom: ${idx < edgeV2.player_props.length - 1 ? '1.5rem' : '0'}; padding-top: ${idx > 0 ? '1.5rem' : '0'}; border-top: ${idx > 0 ? '1px solid rgba(255, 255, 255, 0.2)' : 'none'};">
+                <div style="color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; font-family: 'Courier New', monospace; font-weight: bold; margin-bottom: 0.5rem; text-transform: uppercase;">
+                    PROP: ${escapeHtml(prop.player_name)} ${escapeHtml(prop.market.replace('player_', '').toUpperCase())} ${escapeHtml(prop.selection)} ${prop.line}
+                </div>
+                ${prop.receipts && prop.receipts.filter((r: string) => r).length > 0 ? `
+                <div style="margin-top: 0.5rem;">
+                    <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.5rem;">RECEIPTS:</div>
+                    <ul style="margin: 0; padding-left: 1.5rem; color: rgba(255, 255, 255, 0.9); font-size: 0.85rem; line-height: 1.6;">
+                        ${prop.receipts.filter((r: string) => r).map((r: string) => `<li>${escapeHtml(r.replace(/TEAM_A/g, post.teamA).replace(/TEAM_B/g, post.teamB))}</li>`).join('')}
+                    </ul>
+                </div>
+                ` : ''}
+            </div>
+            `).join('') : ''}
+            ${noEdgeReason && !hasGame && !hasProps ? `
+            <div style="color: rgba(255, 255, 255, 0.95); font-size: 1.1rem; line-height: 1.8; font-family: 'Courier New', monospace; font-weight: bold; text-shadow: 0 0 15px rgba(255, 255, 255, 0.3), 0 2px 10px rgba(0, 0, 0, 0.5); padding: 1rem; background: rgba(0, 0, 0, 0.3); border-radius: 2px; border: 1px solid rgba(255, 255, 255, 0.2);">
+                ${escapeHtml(noEdgeReason)}
+            </div>
+            ` : noEdgeReason ? `
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.2); color: rgba(255, 255, 255, 0.7); font-size: 0.85rem; font-style: italic;">
+                ${escapeHtml(noEdgeReason)}
+            </div>
+            ` : ''}
+        </div>
+    `;
+        }
+    } else if (edge && typeof edge === 'object' && 'finalCall' in edge) {
+        // Old schema (backward compatibility)
+        const edgeCall = (edge as any).finalCall || '';
+        if (edgeCall) {
+            edgeHtml = `
         <div style="margin-top: 3rem; margin-bottom: 2rem; padding: 2rem; background: rgba(255, 255, 255, 0.08); border: 2px solid rgba(255, 255, 255, 0.3); border-left: 4px solid rgba(255, 255, 255, 0.5); border-right: 4px solid rgba(255, 255, 255, 0.5); border-radius: 4px; box-shadow: 0 0 40px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.5); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); position: relative; isolation: isolate;">
             <div style="position: absolute; top: 0.75rem; right: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite;"></div>
             <div style="position: absolute; bottom: 0.75rem; right: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite 1s;"></div>
@@ -271,7 +900,9 @@ export function generateArticlePage(
                 ${escapeHtml(edgeCall)}
             </div>
         </div>
-    ` : '';
+    `;
+        }
+    }
     
     // Get short team names for meta tags and breadcrumbs (define once, reuse)
     const teamAShort = getShortTeamName(post.teamA || '');
@@ -322,7 +953,7 @@ export function generateArticlePage(
                         <a href="/" class="article-back-btn" style="display: inline-block; margin-bottom: 1rem; padding: 0.4rem 0.8rem; background: #000; border: 1px solid #f84242; color: #f84242; text-decoration: none; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.9rem; transition: all 0.3s ease;">← BACK</a>
                     </nav>
                     <header style="margin-bottom: 2rem; border-bottom: 1px dashed rgba(255, 255, 255, 0.3); padding-bottom: 1rem;">
-                        <h1 style="color: rgba(255, 255, 255, 0.95); font-size: 1.3rem; margin-bottom: 0.5rem; font-weight: bold; line-height: 1.3;">${escapeHtml(post.websiteStory.headline)}</h1>
+                        <h1 style="color: rgba(255, 255, 255, 0.95); font-size: 1.3rem; margin-bottom: 0.5rem; font-weight: bold; line-height: 1.3;">${escapeHtml(post.storyType === 'heat_article_v3' ? `${matchupMeta} Preview` : post.websiteStory.headline)}</h1>
                         <p style="color: rgba(255, 255, 255, 0.6); font-size: 0.85rem; margin-bottom: 0.5rem;">// ${escapeHtml(post.websiteStory.dek)}</p>
                         <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.8rem; font-family: 'Courier New', monospace;">&gt; MATCHUP: ${escapeHtml(post.league.toUpperCase())} | ${escapeHtml(post.teamA)} vs ${escapeHtml(post.teamB)} | DATE: <time datetime="${post.matchupScheduledDate || post.createdAt}">${escapeHtml(date)}</time></div>
                     </header>
@@ -332,7 +963,7 @@ export function generateArticlePage(
                         <img src="${imagePath}" alt="${escapeHtml(`${matchupMeta} ${post.league} ${narrativeKeyword} - ${post.websiteStory.headline} - HeatChecks Analysis`)}" class="heatcheck-header-image" style="width: 100%; max-height: 400px; object-fit: contain; display: block; border: 1px dashed rgba(255, 255, 255, 0.2);">
                     </div>
                     ` : ''}
-                    <div style="color: rgba(255, 255, 255, 0.7); white-space: pre-wrap; word-wrap: break-word;">
+                    <div style="color: rgba(255, 255, 255, 0.7); white-space: normal; overflow-wrap: anywhere; word-break: break-word;">
                         ${htmlContent
                             .replace(/style="color: #ffaa00; fontSize:/g, 'style="color: #ffaa00; font-size:')
                             .replace(/marginTop:/g, 'margin-top:')
@@ -345,6 +976,7 @@ export function generateArticlePage(
             
             <!-- Right Column: Narrative Rack & Evidence Board -->
             <aside class="article-sidebar-column" style="grid-column: 2; grid-row: 1 / -1; display: flex; flex-direction: column; gap: 0.5rem; overflow: hidden;">
+                ${temperatureCheckHtml}
                 <!-- Narrative Rack -->
                 <section aria-label="Narrative Analysis" style="flex: 1 1 50%; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden; min-height: 0;">
                     <div style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(248, 66, 66, 0.3); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">

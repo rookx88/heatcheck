@@ -162,6 +162,15 @@ export const apiClient = {
         const response = await apiRequest('/api/matchups');
         return response.json();
     },
+
+    async getMatchupsV3(startDate?: string, endDate?: string): Promise<Array<{ id: string; league: string; teamA: string; teamB: string; scheduledDate: string; scheduledTime: string | null; venue: string | null; status: string }>> {
+        const params = new URLSearchParams();
+        if (startDate) params.set('startDate', startDate);
+        if (endDate) params.set('endDate', endDate);
+        const qs = params.toString();
+        const response = await apiRequest(`/api/matchups/v3${qs ? `?${qs}` : ''}`);
+        return response.json();
+    },
     
     async updateMatchup(id: string, scheduledDate: string, scheduledTime?: string | null): Promise<{ success: boolean; matchup: { id: string; scheduledDate: string; scheduledTime: string | null } }> {
         const response = await apiRequest(`/api/matchups/${id}`, {
@@ -173,6 +182,54 @@ export const apiClient = {
     
     async getImages(): Promise<string[]> {
         const response = await apiRequest('/api/images');
+        return response.json();
+    },
+
+    async getMatchPackV3(
+        teamA: string,
+        teamB: string,
+        gameDateEst?: string | null,
+        season?: string | null
+    ): Promise<{ pack: any }> {
+        const params = new URLSearchParams();
+        params.set('teamA', teamA);
+        params.set('teamB', teamB);
+        if (gameDateEst) params.set('gameDateEst', gameDateEst);
+        if (season) params.set('season', season);
+
+        const response = await apiRequest(`/api/match-pack-v3?${params.toString()}`, {
+            method: 'GET',
+        });
+        return response.json();
+    },
+
+    async getOddsForGame(eventId: string, sport: string = 'basketball_nba'): Promise<{
+        eventId: string;
+        gameMarkets: any;
+        playerProps: any;
+        retrievedAt: string;
+    }> {
+        const response = await apiRequest(`/api/odds/game/${eventId}?sport=${encodeURIComponent(sport)}`, {
+            method: 'GET',
+        });
+        return response.json();
+    },
+
+    async findOddsEventId(teamA: string, teamB: string, gameDate?: string, sport: string = 'basketball_nba'): Promise<{
+        eventId: string;
+        homeTeam: string;
+        awayTeam: string;
+        commenceTime: string;
+    }> {
+        const params = new URLSearchParams();
+        params.set('teamA', teamA);
+        params.set('teamB', teamB);
+        if (gameDate) params.set('gameDate', gameDate);
+        params.set('sport', sport);
+        
+        const response = await apiRequest(`/api/odds/find-event?${params.toString()}`, {
+            method: 'GET',
+        });
         return response.json();
     }
 };

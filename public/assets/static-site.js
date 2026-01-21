@@ -1035,9 +1035,24 @@ function extractRecentDates(posts) {
         if (!date) return;
         
         const dateStr = formatDateForUrl(date);
+        const storyType = String(post.storyType || '').toLowerCase();
         // Normalize league name using the same function used elsewhere
         const leagueUpper = (post.league || '').toUpperCase();
         const leagueLower = normalizeLeague(leagueUpper);
+
+        // DFS articles belong under /dfs/{sport}/{date}/ and should not populate main league submenus.
+        if (storyType === 'dfs_article') {
+            const dfsKey = 'DFS';
+            if (!dateMap.has(dfsKey)) {
+                dateMap.set(dfsKey, { items: new Set() });
+            }
+            dateMap.get(dfsKey).items.add(JSON.stringify({
+                date: dateStr,
+                display: `${formatDateForNav(dateStr)} ${leagueUpper}`,
+                url: `/dfs/${leagueLower}/${dateStr}/`
+            }));
+            return;
+        }
         
         // Use uppercase for key matching with data-league attribute
         if (!dateMap.has(leagueUpper)) {
@@ -1049,10 +1064,19 @@ function extractRecentDates(posts) {
     // Convert to array and sort
     const result = {};
     dateMap.forEach((data, leagueUpper) => {
+        if (leagueUpper === 'DFS') {
+            const items = Array.from(data.items || [])
+                .map(s => { try { return JSON.parse(s); } catch { return null; } })
+                .filter(Boolean)
+                .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+            result[leagueUpper] = items.slice(0, 1); // ONLY most recent DFS date
+            return;
+        }
+
         result[leagueUpper] = Array.from(data.dates)
             .sort()
             .reverse()
-            .slice(0, 10) // Limit to 10 most recent dates
+            .slice(0, 1) // ONLY the most recent date
             .map(dateStr => ({
                 date: dateStr,
                 display: formatDateForNav(dateStr),
@@ -1119,44 +1143,44 @@ function initCrawlerNavInteractivity() {
 function initCrawlerNav(posts) {
     const recentDates = extractRecentDates(posts);
     const leagueLinks = document.querySelectorAll('.league-link');
-    
+
     leagueLinks.forEach(link => {
         const league = link.getAttribute('data-league');
         const leagueContainer = link.closest('.league-nav-item');
         if (!leagueContainer) return;
-        
+
         const submenu = leagueContainer.querySelector('.nav-submenu');
-        
-        if (submenu && recentDates[league]) {
-            // Clear existing date links (keep HUB link)
-            const existingDateLinks = submenu.querySelectorAll('.nav-submenu-item:not([href*="/hub"]):not([href*="/' + league.toLowerCase() + '/"])');
-            existingDateLinks.forEach(el => el.remove());
-            
-            // Fix HUB link if it exists
-            const hubLink = submenu.querySelector('a[href*="/hub"]') || submenu.querySelector('a[href*="/' + league.toLowerCase() + '/"]');
-            if (hubLink) {
-                hubLink.href = `/${league.toLowerCase()}/`;
-                hubLink.className = 'nav-link nav-submenu-item';
-            }
-            
-            // Add date links
-            recentDates[league].forEach(dateInfo => {
-                // Check if link already exists
-                const existingLink = Array.from(submenu.querySelectorAll('a')).find(a => a.href.endsWith(dateInfo.url));
-                if (!existingLink) {
-                    const dateLink = document.createElement('a');
-                    dateLink.href = dateInfo.url;
-                    dateLink.className = 'nav-link nav-submenu-item';
-                    dateLink.textContent = dateInfo.display;
-                    
-                    // Navigation will be handled by initLinkHandling (already initialized)
-                    submenu.appendChild(dateLink);
-                }
-            });
-                }
-            });
+        const items = league && recentDates[league] ? recentDates[league] : null;
+        if (!submenu || !items || items.length === 0) return;
+
+        // Keep (or create) HUB link
+        let hubLink = Array.from(submenu.querySelectorAll('a')).find(a => (a.textContent || '').trim().toUpperCase() === 'HUB');
+        if (!hubLink) {
+            hubLink = document.createElement('a');
+            hubLink.className = 'nav-link nav-submenu-item';
+            hubLink.textContent = 'HUB';
+            submenu.prepend(hubLink);
         }
-        
+        hubLink.href = (league || '').toUpperCase() === 'DFS' ? `/dfs/` : `/${String(league).toLowerCase()}/`;
+
+        // Remove everything else
+        Array.from(submenu.querySelectorAll('a')).forEach(a => {
+            if (a === hubLink) return;
+            a.remove();
+        });
+
+        // Add ONLY the most recent date link
+        const dateInfo = items[0];
+        if (dateInfo && dateInfo.url) {
+            const dateLink = document.createElement('a');
+            dateLink.href = dateInfo.url;
+            dateLink.className = 'nav-link nav-submenu-item';
+            dateLink.textContent = dateInfo.display;
+            submenu.appendChild(dateLink);
+        }
+    });
+}
+
 /**
  * Get today's date in YYYY-MM-DD format (America/New_York timezone)
  * This ensures consistency with stored matchup dates which are in EST/EDT

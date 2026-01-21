@@ -1,12 +1,14 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from '@google/genai';
+import Chart from 'chart.js/auto';
 import { apiClient } from './apiClient';
 import { PublicHomePage } from './pages/index';
 import { parseExcelFile } from './scripts/utils/excelParser';
 import { analyzeDFSSlate } from './scripts/services/dfsAnalysisService';
 import { generateDFSContent } from './scripts/services/dfsTweetService';
 import { generateHeatArticleContent } from './scripts/services/heatArticleContentService';
+import { markdownToHtml } from './scripts/utils/markdown-converter';
 
 // ===================================================================================
 // TYPE DEFINITIONS (Unchanged, but now shared with backend)
@@ -66,6 +68,32 @@ interface HeatchecksEdge {
     finalCall: string;
 }
 
+interface HeatchecksEdgeV2 {
+    game: {
+        market: "moneyline" | "spread" | "total" | "none";
+        selection: "TEAM_A" | "TEAM_B" | "OVER" | "UNDER" | "none";
+        line: number | null;
+        price_american: number | null;
+        book: string | null;
+        confidence: "low" | "medium" | "high";
+        receipts: [string, string, string];
+        risks: [string, string];
+        one_sentence_call: string;
+    };
+    player_props: Array<{
+        player_name: string;
+        market: string;
+        selection: "OVER" | "UNDER";
+        line: number;
+        price_american: number;
+        book: string;
+        confidence: "low" | "medium" | "high";
+        receipts: [string, string, string];
+        risks: [string, string];
+    }>;
+    no_edge_reason: string | null;
+}
+
 export interface HeatcheckPost {
     id: string;
     createdAt: string;
@@ -77,7 +105,7 @@ export interface HeatcheckPost {
     scanNarrative: string;
     status: "draft" | "published";
     websiteStory: HeatcheckStory;
-    heatchecksEdge: HeatchecksEdge;
+    heatchecksEdge: HeatchecksEdge | HeatchecksEdgeV2;
     matchupScheduledDate?: string;
     heatCheckData?: {
         factPack?: any;
@@ -182,6 +210,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   const [selectedMatchupIds, setSelectedMatchupIds] = useState<string[]>([]);
   const [isGeneratingHeatArticle, setIsGeneratingHeatArticle] = useState<boolean>(false);
   const [isGeneratingHeatArticleV2, setIsGeneratingHeatArticleV2] = useState<boolean>(false);
+  const [isGeneratingHeatArticleV3, setIsGeneratingHeatArticleV3] = useState<boolean>(false);
   const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number; step: string; matchup: string } | null>(null);
   const [editingMatchupId, setEditingMatchupId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState<string>('');
@@ -194,6 +223,21 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   const [showDFSModal, setShowDFSModal] = useState<boolean>(false);
   const [isGeneratingDFSArticle, setIsGeneratingDFSArticle] = useState<boolean>(false);
   const [dfsSport, setDfsSport] = useState<'NBA' | 'NFL'>('NBA');
+
+  const isGeneratingAnyHeatArticle = isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3;
+  const [matchupModalSource, setMatchupModalSource] = useState<'oddsapi' | 'v3'>('oddsapi');
+
+  const formatDateYmdForDisplay = (ymd: string) => {
+    // Treat YYYY-MM-DD as a calendar date (no timezone shifting).
+    // new Date('YYYY-MM-DD') is parsed as UTC and can display as the prior day in US timezones.
+    const parts = (ymd || '').split('-');
+    if (parts.length !== 3) return ymd;
+    const y = Number(parts[0]);
+    const m = Number(parts[1]);
+    const d = Number(parts[2]);
+    if (!y || !m || !d) return ymd;
+    return new Date(y, m - 1, d).toLocaleDateString();
+  };
 
   const fetchNarratives = useCallback(async () => {
     setIsLoading(true); setError(null); setNarratives([]); setCardState({});
@@ -348,6 +392,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
       setError(null);
       const matchups = await apiClient.getMatchups();
       setAvailableMatchups(matchups);
+      setMatchupModalSource('oddsapi');
       setSelectedMatchupIds([]);
       setEditingMatchupId(null);
       setEditDate('');
@@ -371,6 +416,31 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
       setError(null);
       const matchups = await apiClient.getMatchups();
       setAvailableMatchups(matchups);
+      setMatchupModalSource('oddsapi');
+      setSelectedMatchupIds([]);
+      setEditingMatchupId(null);
+      setEditDate('');
+      setEditTime('');
+      // Reset filters
+      setMatchupFilterLeague([]);
+      setMatchupFilterSearch('');
+      setMatchupFilterDate('all');
+      setMatchupFilterCustomStart('');
+      setMatchupFilterCustomEnd('');
+      setShowMatchupModal(true);
+    } catch (e: any) {
+      console.error("Failed to load matchups:", e);
+      setError(e.message || "Failed to load matchups from database.");
+    }
+  };
+
+  const handleGenerateArticleV3 = async () => {
+    // Load available matchups and show selection modal (same as V2)
+    try {
+      setError(null);
+      const matchups = await apiClient.getMatchupsV3();
+      setAvailableMatchups(matchups);
+      setMatchupModalSource('v3');
       setSelectedMatchupIds([]);
       setEditingMatchupId(null);
       setEditDate('');
@@ -397,6 +467,10 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   };
 
   const handleEditMatchup = (matchup: typeof availableMatchups[0]) => {
+    if (matchupModalSource === 'v3') {
+      setError('V3 matchups are sourced from the stats DB and cannot be edited here.');
+      return;
+    }
     setEditingMatchupId(matchup.id);
     setEditDate(matchup.scheduledDate);
     setEditTime(matchup.scheduledTime || '');
@@ -404,6 +478,10 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   };
 
   const handleSaveMatchup = async (matchupId: string) => {
+    if (matchupModalSource === 'v3') {
+      setError('V3 matchups are sourced from the stats DB and cannot be edited here.');
+      return;
+    }
     try {
       setError(null);
       // Normalize time: HTML time input returns HH:MM format, but ensure it's properly formatted
@@ -1118,6 +1196,269 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
     }
   };
 
+  const handleProcessHeatArticleV3 = async () => {
+    if (selectedMatchupIds.length === 0) {
+      setError("Please select at least one matchup.");
+      return;
+    }
+
+    setIsGeneratingHeatArticleV3(true);
+    setError(null);
+
+    const selectedMatchups = filteredMatchups.filter(m => selectedMatchupIds.includes(m.id));
+    const completed: string[] = [];
+    const failed: Array<{ matchup: string; error: string }> = [];
+
+    try {
+      for (let i = 0; i < selectedMatchups.length; i++) {
+        const matchup = selectedMatchups[i];
+        const matchupLabel = `${matchup.teamA} vs ${matchup.teamB}`;
+
+        setGenerationProgress({
+          current: i + 1,
+          total: selectedMatchups.length,
+          step: `Fetching MatchPackV3 for ${matchupLabel}...`,
+          matchup: matchupLabel
+        });
+
+        try {
+          const { pack } = await apiClient.getMatchPackV3(
+            matchup.teamA,
+            matchup.teamB,
+            matchup.scheduledDate || null,
+            null
+          );
+
+          if (!pack) throw new Error('MatchPackV3 returned null pack');
+          if (pack.error) throw new Error(`${pack.error}: ${pack.message || 'MatchPack generation failed'}`);
+
+          setGenerationProgress(prev => prev ? { ...prev, step: `Researching evidence + odds for ${matchupLabel}...` } : null);
+          const v2Research = await generateHeatCheckNarrativeV2(matchup);
+          const factPack = v2Research.fact_pack || {};
+          const evidenceBundleRaw = v2Research.evidence_bundle || {};
+
+          // Normalize evidence for V3 (adds quoteIds, timeline ids, relatedPlayers placeholder)
+          const evidenceForV3 = normalizeEvidenceForV3(evidenceBundleRaw);
+
+          setGenerationProgress(prev => prev ? { ...prev, step: `V3 Narrative Engine: building story for ${matchupLabel}...` } : null);
+          const v3Narrative = await generateHeatArticleV3Narrative(pack, evidenceForV3);
+
+          // Temperature Check (summary + small AI takeaways)
+          setGenerationProgress(prev => prev ? { ...prev, step: `Temperature Check: assembling ${matchupLabel}...` } : null);
+          const tempSummary = buildTemperatureCheckSummary(pack);
+          let tempAI: any = null;
+          try {
+            tempAI = await generateTemperatureCheckV3AI(pack, evidenceForV3);
+          } catch (e: any) {
+            console.warn('[V3 TemperatureCheck] AI takeaways failed, proceeding with summary only:', e?.message || e);
+            tempAI = { tempScore: 0, takeaways: [], risks: [], usedStatAnchors: [], usedQuoteIds: [], warnings: [`AI takeaways failed: ${e?.message || 'unknown error'}`] };
+          }
+          const tempRenderedMarkdown = buildTemperatureCheckRenderedMarkdown(pack, tempSummary, tempAI);
+
+          // Render markdown article from V3 narrative JSON
+          const v3Markdown = renderHeatArticleV3Markdown(v3Narrative, evidenceForV3);
+
+          // Map narrative cards to existing narrative rack structure
+          const cards = Array.isArray(v3Narrative?.narrativeCards) ? v3Narrative.narrativeCards : [];
+          const primaryAngleId = v3Narrative?.selectedAngles?.primary?.id || cards?.[0]?.id || 'N_1';
+          const candidateCards = cards.map((c: any) => ({
+            narrative_id: String(c.id || ''),
+            title: String(c.title || ''),
+            claim: String(c.claim || ''),
+            emotion_tags: Array.isArray(c.emotionTags) ? c.emotionTags : [],
+            total_score: Number.isFinite(c.score) ? c.score : 0,
+          }));
+
+          // Build narratives container
+          const narrativesForPost = {
+            candidate_cards: candidateCards,
+            selected: { primary_narrative_id: String(primaryAngleId) }
+          };
+
+          // Edge generation: use new 3-layer system for V3
+          setGenerationProgress(prev => prev ? { ...prev, step: `Finding Edge candidates for ${matchupLabel}...` } : null);
+          
+          let heatChecksEdge: HeatchecksEdgeV2 = {
+            game: { market: 'none', selection: 'none', line: null, price_american: null, book: null, confidence: 'low', receipts: ['', '', ''], risks: ['', ''], one_sentence_call: '' },
+            player_props: [],
+            no_edge_reason: null
+          };
+
+          try {
+            // Try to get event ID from factPack or find it from OddsAPI
+            let eventId: string | null = null;
+            if (factPack.odds?.event_id) {
+              eventId = factPack.odds.event_id;
+            } else {
+              // Try to find event ID by querying OddsAPI with team names and date
+              setGenerationProgress(prev => prev ? { ...prev, step: `Finding OddsAPI event ID for ${matchupLabel}...` } : null);
+              try {
+                const eventInfo = await apiClient.findOddsEventId(
+                  matchup.teamA,
+                  matchup.teamB,
+                  matchup.scheduledDate || pack?.matchup?.gameDateEst || null,
+                  'basketball_nba'
+                );
+                eventId = eventInfo.eventId;
+                console.log(`[V3 Edge] Found event ID: ${eventId} for ${matchupLabel}`);
+              } catch (findError: any) {
+                console.warn(`[V3 Edge] Could not find event ID for ${matchupLabel}:`, findError.message || findError);
+                // Continue without event ID - will set no_edge_reason below
+              }
+            }
+
+            if (eventId) {
+              // Fetch odds from OddsAPI
+              setGenerationProgress(prev => prev ? { ...prev, step: `Fetching odds from OddsAPI for ${matchupLabel}...` } : null);
+              const oddsData = await apiClient.getOddsForGame(eventId, 'basketball_nba');
+              
+              // Layer 1: Edge Finder
+              setGenerationProgress(prev => prev ? { ...prev, step: `Scoring Edge candidates for ${matchupLabel}...` } : null);
+              const candidates = await findEdgeCandidates(
+                pack,
+                oddsData.gameMarkets,
+                oddsData.playerProps,
+                matchup.teamA,
+                matchup.teamB
+              );
+
+              // Layer 2: Edge Validator
+              setGenerationProgress(prev => prev ? { ...prev, step: `Validating Edge candidates for ${matchupLabel}...` } : null);
+              const validated = await validateEdgeCandidates(candidates, pack);
+
+              // Layer 3: Edge Writer
+              setGenerationProgress(prev => prev ? { ...prev, step: `Writing HeatChecks Edge for ${matchupLabel}...` } : null);
+              heatChecksEdge = await generateHeatChecksEdgeV3(
+                validated,
+                pack,
+                matchup.teamA,
+                matchup.teamB,
+                matchup.league
+              );
+            } else {
+              heatChecksEdge.no_edge_reason = `Could not find OddsAPI event ID for ${matchupLabel}. Team names may not match OddsAPI format, or game may not be available yet. Article will be created without Edge recommendations.`;
+              console.warn(`[V3 Edge] ${heatChecksEdge.no_edge_reason}`);
+            }
+          } catch (edgeError: any) {
+            console.error(`[V3 Edge] Error generating Edge for ${matchupLabel}:`, edgeError);
+            // Don't fail completely - just set a reason
+            heatChecksEdge.no_edge_reason = `Edge generation failed: ${edgeError.message || 'Unknown error'}. Article will be created without Edge recommendations.`;
+          }
+
+          const headline = v3Narrative?.deepDive?.headline || `${matchup.teamA} vs ${matchup.teamB} — HeatChecks V3`;
+          const dek = v3Narrative?.narrativeThesis || `A story-first deep dive powered by local stats + evidence logs.`;
+
+          const newDraftPost = await apiClient.createDraft({
+            league: matchup.league,
+            teamA: matchup.teamA,
+            teamB: matchup.teamB,
+            matchupScheduledDate: matchup.scheduledDate,
+            storyType: 'heat_article_v3',
+            scanNarrative: v3Narrative?.selectedAngles?.primary?.title || dek,
+            websiteStory: {
+              formatStyle: "QUOTE_LEDE",
+              headline,
+              dek,
+              whyItMatters: [],
+              theBackstory: v3Markdown,
+              theData: [],
+              keyMomentsTimeline: [],
+              theReceipts: [],
+              pressurePoints: [],
+              whatToWatch: [],
+              edgeAngle: dek,
+              tags: ['HeatArticleV3', matchup.league],
+              sources: [],
+              seo: {
+                slug: `${matchup.teamA}-vs-${matchup.teamB}-matchpack-v3`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+                metaTitle: `${headline} | HeatChecks`,
+                metaDescription: dek
+              },
+              image: '',
+              imageUrl: undefined
+            },
+            heatchecksEdge: heatChecksEdge,
+            heatCheckData: {
+              matchPackV3: pack,
+              temperatureCheck: { summary: tempSummary, ai: tempAI, renderedMarkdown: tempRenderedMarkdown },
+              v3Narrative,
+              narratives: narrativesForPost,
+              article: { long_form_markdown: v3Markdown, long_form_markdown_original: v3Markdown },
+              // store evidence + odds for template + edge
+              evidence_bundle: {
+                sources: evidenceForV3.sources.map(s => ({
+                  source_id: s.sourceId,
+                  title: s.title || '',
+                  publisher: s.publisher || '',
+                  url: s.url || '',
+                  published_utc: s.publishedUtc || '',
+                  reliability_tier: s.reliabilityTier || ''
+                })),
+                quotes: evidenceForV3.quotes.map(q => ({
+                  quote_id: q.quoteId,
+                  quote: q.quote,
+                  speaker: q.speaker || '',
+                  team: q.team || '',
+                  source_id: q.sourceId || '',
+                  context: ''
+                })),
+                timeline_events: evidenceForV3.timeline.map(t => ({
+                  event_id: t.eventId,
+                  event_type: 'other',
+                  date_utc: t.dateUtc || '',
+                  summary: t.summary,
+                  source_id: ''
+                }))
+              },
+              fact_pack: factPack
+            }
+          });
+
+          completed.push(matchupLabel);
+          console.log(`✅ [${matchupLabel}] [${i + 1}/${selectedMatchups.length}] V3 MatchPack draft created: ${newDraftPost.id}`);
+          setGenerationProgress(prev => prev ? { ...prev, step: `✅ Completed ${i + 1}/${selectedMatchups.length}: ${matchupLabel}` } : null);
+        } catch (articleError: any) {
+          const errorMessage = articleError.message || 'Unknown error';
+          failed.push({ matchup: matchupLabel, error: errorMessage });
+          console.error(`❌ [${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Failed to generate V3 MatchPack draft:`, articleError);
+          setGenerationProgress(prev => prev ? { ...prev, step: `❌ Failed ${i + 1}/${selectedMatchups.length}: ${matchupLabel} - ${errorMessage}` } : null);
+          continue;
+        }
+      }
+
+      setGenerationProgress({
+        current: selectedMatchups.length,
+        total: selectedMatchups.length,
+        step: completed.length === selectedMatchups.length
+          ? `✅ All ${completed.length} V3 pack(s) created successfully!`
+          : `Completed ${completed.length}/${selectedMatchups.length} V3 pack(s). ${failed.length} failed.`,
+        matchup: ''
+      });
+
+      console.log('=== HEAT ARTICLE V3 MATCHPACK SUMMARY ===');
+      console.log(`✅ Completed: ${completed.length}`);
+      completed.forEach((m, idx) => console.log(`  ${idx + 1}. ${m}`));
+      if (failed.length > 0) {
+        console.log(`❌ Failed: ${failed.length}`);
+        failed.forEach((f, idx) => console.log(`  ${idx + 1}. ${f.matchup}: ${f.error}`));
+      }
+      console.log('========================================');
+
+      setTimeout(() => {
+        setGenerationProgress(null);
+        setShowMatchupModal(false);
+        setSelectedMatchupIds([]);
+        setError(failed.length > 0 ? `Created ${completed.length} of ${selectedMatchups.length} V3 pack drafts. ${failed.length} failed. Check console for details.` : null);
+      }, 2000);
+    } catch (e: any) {
+      console.error("Fatal error in V3 MatchPack generation:", e);
+      setError(e.message || "V3 MatchPack generation failed. Check console for details.");
+      setGenerationProgress(null);
+    } finally {
+      setIsGeneratingHeatArticleV3(false);
+    }
+  };
+
   const handleGenerateDFSArticle = async (file: File) => {
     setIsGeneratingDFSArticle(true);
     setError(null);
@@ -1301,11 +1642,14 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
             <button className="scan-button" onClick={fetchNarratives} disabled={isLoading}>{isLoading ? 'Scanning...' : 'Find Revenge Narratives'}</button>
             <button className="scan-button" onClick={handleImportMatchups} disabled={isLoading}>Import Matchups</button>
-            <button className="scan-button" onClick={handleGenerateArticle} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2}>
+            <button className="scan-button" onClick={handleGenerateArticle} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3}>
                 {isGeneratingHeatArticle ? 'Generating...' : 'Heat Article Generator'}
             </button>
-            <button className="scan-button" onClick={handleGenerateArticleV2} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2}>
+            <button className="scan-button" onClick={handleGenerateArticleV2} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3}>
                 {isGeneratingHeatArticleV2 ? 'Generating...' : 'Heat Article v2'}
+            </button>
+            <button className="scan-button" onClick={handleGenerateArticleV3} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3}>
+                {isGeneratingHeatArticleV3 ? 'Generating...' : 'Heat Article v3 (MatchPack)'}
             </button>
             <button className="scan-button" onClick={() => setShowDFSModal(true)} disabled={isLoading || isGeneratingDFSArticle}>
                 DFS Article Generator
@@ -1415,12 +1759,20 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
 
         {/* Matchup Selection Modal for Heat Article Generator */}
         {showMatchupModal && (
-            <div className="modal-overlay" onClick={() => { if (!isGeneratingHeatArticle) setShowMatchupModal(false); }}>
+            <div className="modal-overlay" onClick={() => { if (!isGeneratingAnyHeatArticle) setShowMatchupModal(false); }}>
                 <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '900px', maxHeight: '90vh', overflowY: 'auto' }}>
                     <h3>Select Matchups for Heat Article Generation</h3>
                     <p style={{ marginBottom: '1rem', color: '#666' }}>
                         Select one or more matchups to generate heat articles. Each matchup will be processed sequentially.
                     </p>
+                    {matchupModalSource === 'v3' && (
+                      <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#fff8e1', border: '1px solid #ffe082', borderRadius: '6px', color: '#6d4c41' }}>
+                        <div style={{ fontWeight: 'bold' }}>V3 Matchups Source</div>
+                        <div style={{ fontSize: '0.9rem' }}>
+                          These matchups are loaded from the local stats DB (`nba_heat_sheet`). Date/time edits are disabled here to keep published state aligned to the schedule.
+                        </div>
+                      </div>
+                    )}
 
                     {/* Filter Section */}
                     {availableMatchups.length > 0 && (
@@ -1443,8 +1795,8 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                                         setMatchupFilterLeague(matchupFilterLeague.filter(l => l !== league));
                                                     }
                                                 }}
-                                                disabled={isGeneratingHeatArticle}
-                                                style={{ width: '16px', height: '16px', cursor: isGeneratingHeatArticle ? 'not-allowed' : 'pointer' }}
+                                                disabled={isGeneratingAnyHeatArticle}
+                                                style={{ width: '16px', height: '16px', cursor: isGeneratingAnyHeatArticle ? 'not-allowed' : 'pointer' }}
                                             />
                                             <span>{league}</span>
                                         </label>
@@ -1452,14 +1804,14 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                     {matchupFilterLeague.length > 0 && (
                                         <button
                                             onClick={() => setMatchupFilterLeague([])}
-                                            disabled={isGeneratingHeatArticle}
+                                            disabled={isGeneratingAnyHeatArticle}
                                             style={{
                                                 padding: '0.25rem 0.5rem',
                                                 background: 'transparent',
                                                 color: '#666',
                                                 border: '1px solid #ccc',
                                                 borderRadius: '4px',
-                                                cursor: isGeneratingHeatArticle ? 'not-allowed' : 'pointer',
+                                                cursor: isGeneratingAnyHeatArticle ? 'not-allowed' : 'pointer',
                                                 fontSize: '0.75rem'
                                             }}
                                         >
@@ -1477,7 +1829,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                     placeholder="Enter team name (e.g., Lakers, Packers)..."
                                     value={matchupFilterSearch}
                                     onChange={(e) => setMatchupFilterSearch(e.target.value)}
-                                    disabled={isGeneratingHeatArticle}
+                                    disabled={isGeneratingAnyHeatArticle}
                                     style={{
                                         width: '100%',
                                         padding: '0.5rem',
@@ -1499,8 +1851,8 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                             name="dateFilter"
                                             checked={matchupFilterDate === 'all'}
                                             onChange={() => setMatchupFilterDate('all')}
-                                            disabled={isGeneratingHeatArticle}
-                                            style={{ cursor: isGeneratingHeatArticle ? 'not-allowed' : 'pointer' }}
+                                            disabled={isGeneratingAnyHeatArticle}
+                                            style={{ cursor: isGeneratingAnyHeatArticle ? 'not-allowed' : 'pointer' }}
                                         />
                                         <span>All</span>
                                     </label>
@@ -1510,8 +1862,8 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                             name="dateFilter"
                                             checked={matchupFilterDate === 'today'}
                                             onChange={() => setMatchupFilterDate('today')}
-                                            disabled={isGeneratingHeatArticle}
-                                            style={{ cursor: isGeneratingHeatArticle ? 'not-allowed' : 'pointer' }}
+                                            disabled={isGeneratingAnyHeatArticle}
+                                            style={{ cursor: isGeneratingAnyHeatArticle ? 'not-allowed' : 'pointer' }}
                                         />
                                         <span>Today</span>
                                     </label>
@@ -1521,8 +1873,8 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                             name="dateFilter"
                                             checked={matchupFilterDate === 'tomorrow'}
                                             onChange={() => setMatchupFilterDate('tomorrow')}
-                                            disabled={isGeneratingHeatArticle}
-                                            style={{ cursor: isGeneratingHeatArticle ? 'not-allowed' : 'pointer' }}
+                                            disabled={isGeneratingAnyHeatArticle}
+                                            style={{ cursor: isGeneratingAnyHeatArticle ? 'not-allowed' : 'pointer' }}
                                         />
                                         <span>Tomorrow</span>
                                     </label>
@@ -1532,8 +1884,8 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                             name="dateFilter"
                                             checked={matchupFilterDate === 'thisWeek'}
                                             onChange={() => setMatchupFilterDate('thisWeek')}
-                                            disabled={isGeneratingHeatArticle}
-                                            style={{ cursor: isGeneratingHeatArticle ? 'not-allowed' : 'pointer' }}
+                                            disabled={isGeneratingAnyHeatArticle}
+                                            style={{ cursor: isGeneratingAnyHeatArticle ? 'not-allowed' : 'pointer' }}
                                         />
                                         <span>This Week</span>
                                     </label>
@@ -1543,8 +1895,8 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                             name="dateFilter"
                                             checked={matchupFilterDate === 'custom'}
                                             onChange={() => setMatchupFilterDate('custom')}
-                                            disabled={isGeneratingHeatArticle}
-                                            style={{ cursor: isGeneratingHeatArticle ? 'not-allowed' : 'pointer' }}
+                                            disabled={isGeneratingAnyHeatArticle}
+                                            style={{ cursor: isGeneratingAnyHeatArticle ? 'not-allowed' : 'pointer' }}
                                         />
                                         <span>Custom Range</span>
                                     </label>
@@ -1555,7 +1907,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                             type="date"
                                             value={matchupFilterCustomStart}
                                             onChange={(e) => setMatchupFilterCustomStart(e.target.value)}
-                                            disabled={isGeneratingHeatArticle}
+                                            disabled={isGeneratingAnyHeatArticle}
                                             placeholder="Start date"
                                             style={{ padding: '0.4rem', fontSize: '0.85rem', border: '1px solid #ccc', borderRadius: '4px' }}
                                         />
@@ -1564,7 +1916,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                             type="date"
                                             value={matchupFilterCustomEnd}
                                             onChange={(e) => setMatchupFilterCustomEnd(e.target.value)}
-                                            disabled={isGeneratingHeatArticle}
+                                            disabled={isGeneratingAnyHeatArticle}
                                             placeholder="End date"
                                             style={{ padding: '0.4rem', fontSize: '0.85rem', border: '1px solid #ccc', borderRadius: '4px' }}
                                         />
@@ -1631,34 +1983,34 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem' }}>
                                                 <button
                                                     onClick={() => handleSaveMatchup(matchup.id)}
-                                                    disabled={isGeneratingHeatArticle}
+                                                    disabled={isGeneratingAnyHeatArticle}
                                                     style={{ 
                                                         padding: '0.5rem 1rem', 
                                                         background: '#4caf50', 
                                                         color: 'white', 
                                                         border: 'none', 
                                                         borderRadius: '4px', 
-                                                        cursor: isGeneratingHeatArticle ? 'not-allowed' : 'pointer',
+                                                        cursor: isGeneratingAnyHeatArticle ? 'not-allowed' : 'pointer',
                                                         fontSize: '0.9rem',
                                                         fontWeight: '500',
-                                                        opacity: isGeneratingHeatArticle ? 0.5 : 1
+                                                        opacity: isGeneratingAnyHeatArticle ? 0.5 : 1
                                                     }}
                                                 >
                                                     Save
                                                 </button>
                                                 <button
                                                     onClick={handleCancelEdit}
-                                                    disabled={isGeneratingHeatArticle}
+                                                    disabled={isGeneratingAnyHeatArticle}
                                                     style={{ 
                                                         padding: '0.5rem 1rem', 
                                                         background: '#999', 
                                                         color: 'white', 
                                                         border: 'none', 
                                                         borderRadius: '4px', 
-                                                        cursor: isGeneratingHeatArticle ? 'not-allowed' : 'pointer',
+                                                        cursor: isGeneratingAnyHeatArticle ? 'not-allowed' : 'pointer',
                                                         fontSize: '0.9rem',
                                                         fontWeight: '500',
-                                                        opacity: isGeneratingHeatArticle ? 0.5 : 1
+                                                        opacity: isGeneratingAnyHeatArticle ? 0.5 : 1
                                                     }}
                                                 >
                                                     Cancel
@@ -1678,15 +2030,15 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                                 type="checkbox"
                                                 checked={selectedMatchupIds.includes(matchup.id)}
                                                 onChange={() => handleToggleMatchup(matchup.id)}
-                                                disabled={isGeneratingHeatArticle}
-                                                style={{ marginRight: '1rem', width: '18px', height: '18px', cursor: isGeneratingHeatArticle ? 'not-allowed' : 'pointer' }}
+                                                disabled={isGeneratingAnyHeatArticle}
+                                                style={{ marginRight: '1rem', width: '18px', height: '18px', cursor: isGeneratingAnyHeatArticle ? 'not-allowed' : 'pointer' }}
                                             />
                                             <div style={{ flex: 1 }}>
                                                 <div style={{ fontWeight: 'bold' }}>
                                                     {matchup.teamA} vs {matchup.teamB}
                                                 </div>
                                                 <div style={{ fontSize: '0.9rem', color: '#666' }}>
-                                                    {matchup.league} • {new Date(matchup.scheduledDate).toLocaleDateString()}
+                                                    {matchup.league} • {formatDateYmdForDisplay(matchup.scheduledDate)}
                                                     {matchup.scheduledTime && ` • ${matchup.scheduledTime}`}
                                                 </div>
                                             </div>
@@ -1696,17 +2048,17 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                                     e.preventDefault();
                                                     handleEditMatchup(matchup);
                                                 }}
-                                                disabled={isGeneratingHeatArticle}
+                                                disabled={isGeneratingAnyHeatArticle || matchupModalSource === 'v3'}
                                                 style={{
                                                     padding: '0.5rem 1rem',
                                                     background: '#ff9800',
                                                     color: 'white',
                                                     border: 'none',
                                                     borderRadius: '4px',
-                                                    cursor: isGeneratingHeatArticle ? 'not-allowed' : 'pointer',
+                                                    cursor: (isGeneratingAnyHeatArticle || matchupModalSource === 'v3') ? 'not-allowed' : 'pointer',
                                                     fontSize: '0.85rem',
                                                     fontWeight: '500',
-                                                    opacity: isGeneratingHeatArticle ? 0.5 : 1,
+                                                    opacity: (isGeneratingAnyHeatArticle || matchupModalSource === 'v3') ? 0.5 : 1,
                                                     marginLeft: '0.5rem'
                                                 }}
                                             >
@@ -1719,7 +2071,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                         </div>
                     )}
 
-                    {isGeneratingHeatArticle && generationProgress && (
+                    {isGeneratingAnyHeatArticle && generationProgress && (
                         <div style={{ marginBottom: '1rem', padding: '1rem', background: '#f0f0f0', borderRadius: '4px' }}>
                             <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>
                                 Processing: {generationProgress.matchup} ({generationProgress.current}/{generationProgress.total})
@@ -1738,7 +2090,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                         <button
                             className="cancel"
                             onClick={() => {
-                                if (!isGeneratingHeatArticle) {
+                                if (!isGeneratingAnyHeatArticle) {
                                     setShowMatchupModal(false);
                                     setSelectedMatchupIds([]);
                                     setEditingMatchupId(null);
@@ -1747,24 +2099,32 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                                     setError(null);
                                 }
                             }}
-                            disabled={isGeneratingHeatArticle}
+                            disabled={isGeneratingAnyHeatArticle}
                         >
                             Cancel
                         </button>
                         <button
                             className="action-button"
                             onClick={handleProcessHeatArticle}
-                            disabled={isGeneratingHeatArticle || isGeneratingHeatArticleV2 || selectedMatchupIds.length === 0}
+                            disabled={isGeneratingAnyHeatArticle || selectedMatchupIds.length === 0}
                         >
                             {isGeneratingHeatArticle ? 'Generating...' : `Generate ${selectedMatchupIds.length} Article(s)`}
                         </button>
                         <button
                             className="action-button"
                             onClick={handleProcessHeatArticleV2}
-                            disabled={isGeneratingHeatArticle || isGeneratingHeatArticleV2 || selectedMatchupIds.length === 0}
+                            disabled={isGeneratingAnyHeatArticle || selectedMatchupIds.length === 0}
                             style={{ background: '#9c27b0', marginLeft: '0.5rem' }}
                         >
                             {isGeneratingHeatArticleV2 ? 'Generating V2...' : `Generate ${selectedMatchupIds.length} V2 Article(s)`}
+                        </button>
+                        <button
+                            className="action-button"
+                            onClick={handleProcessHeatArticleV3}
+                            disabled={isGeneratingAnyHeatArticle || selectedMatchupIds.length === 0}
+                            style={{ background: '#1976d2', marginLeft: '0.5rem' }}
+                        >
+                            {isGeneratingHeatArticleV3 ? 'Generating V3...' : `Generate ${selectedMatchupIds.length} V3 Pack(s)`}
                         </button>
                     </div>
                 </div>
@@ -3161,6 +3521,23 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
     const [selectedPlayerToReplace, setSelectedPlayerToReplace] = useState<number | null>(null);
     const [dfsReplacementInstructions, setDfsReplacementInstructions] = useState<string>('');
     const [isReplacingPlayer, setIsReplacingPlayer] = useState(false);
+    const [v3NarrativeJson, setV3NarrativeJson] = useState<string>('');
+    const [v3TempAiJson, setV3TempAiJson] = useState<string>('');
+    const [v3EvidenceJson, setV3EvidenceJson] = useState<string>('');
+    const [showV3Advanced, setShowV3Advanced] = useState<boolean>(false);
+    const v3ChartInstancesRef = useRef<any[]>([]);
+
+    const v3ChartsPayload: any = (editedPost as any)?.storyType === 'heat_article_v3'
+        ? (editedPost as any)?.heatCheckData?.matchPackV3?.factDrop?.charts
+        : null;
+
+    const v3ChartsKey = useMemo(() => {
+        try {
+            return JSON.stringify(v3ChartsPayload || null);
+        } catch {
+            return '';
+        }
+    }, [v3ChartsPayload]);
 
     useEffect(() => {
         if (post) {
@@ -3174,6 +3551,18 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
             // Initialize articleImage from post's image
             const existingImage = post.websiteStory?.image || post.websiteStory?.imageUrl || '';
             setArticleImage(existingImage);
+
+            // Initialize V3 JSON editors (only for V3 posts)
+            if ((post as any).storyType === 'heat_article_v3') {
+                const hc: any = (post as any).heatCheckData || {};
+                setV3NarrativeJson(JSON.stringify(hc.v3Narrative || {}, null, 2));
+                setV3TempAiJson(JSON.stringify(hc.temperatureCheck?.ai || {}, null, 2));
+                setV3EvidenceJson(JSON.stringify(hc.evidence_bundle || hc.evidenceBundle || {}, null, 2));
+            } else {
+                setV3NarrativeJson('');
+                setV3TempAiJson('');
+                setV3EvidenceJson('');
+            }
             
             // Load available images dynamically from backend
             apiClient.getImages()
@@ -3189,8 +3578,231 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
         } else {
             setEditedPost(null);
             setArticleImage('');
+            setV3NarrativeJson('');
+            setV3TempAiJson('');
+            setV3EvidenceJson('');
         }
     }, [post]);
+
+    // V3 charts preview (Chart.js canvas) in the editor
+    useEffect(() => {
+        // cleanup previous charts
+        try {
+            for (const c of v3ChartInstancesRef.current) {
+                try { c?.destroy?.(); } catch {}
+            }
+        } finally {
+            v3ChartInstancesRef.current = [];
+        }
+
+        if (!editedPost || (editedPost as any).storyType !== 'heat_article_v3') return;
+        const charts: any = v3ChartsPayload;
+        if (!charts) return;
+
+        const idSuffix = editedPost.id;
+        const momentumCanvasId = `v3-editor-chart-momentum-${idSuffix}`;
+        const starLoadCanvasId = `v3-editor-chart-starload-${idSuffix}`;
+        const pressureCanvasId = `v3-editor-chart-pressure-${idSuffix}`;
+        const volatilityCanvasId = `v3-editor-chart-volatility-${idSuffix}`;
+
+        const padFront = (arr: any[], len: number) => {
+            const a = Array.isArray(arr) ? arr.slice() : [];
+            while (a.length < len) a.unshift(null);
+            return a;
+        };
+        const buildLabels = (len: number) => Array.from({ length: len }, (_, i) => `G${i + 1}`);
+        const colorForVol = (v: any) => {
+            if (typeof v !== 'number' || !Number.isFinite(v)) return 'rgba(255,255,255,0.25)';
+            return v >= 0 ? 'rgba(255,26,26,0.85)' : 'rgba(255,230,109,0.80)';
+        };
+
+        const commonOptions: any = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 0 },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(0,0,0,0.92)',
+                    borderColor: 'rgba(0,255,65,0.25)',
+                    borderWidth: 1,
+                    titleColor: 'rgba(255,255,255,0.92)',
+                    bodyColor: 'rgba(255,255,255,0.85)',
+                },
+            },
+            scales: {
+                x: {
+                    ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.08)' },
+                },
+                y: {
+                    ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } },
+                    grid: {
+                        color: (ctx: any) =>
+                            ctx?.tick?.value === 0 ? 'rgba(0,255,65,0.25)' : 'rgba(255,255,255,0.08)',
+                    },
+                },
+            },
+        };
+
+        // 1) Momentum line
+        try {
+            const m = charts?.momentumLine;
+            if (m?.series) {
+                const a = m?.series?.A?.margins || [];
+                const b = m?.series?.B?.margins || [];
+                const aLabel = m?.series?.A?.label || 'A';
+                const bLabel = m?.series?.B?.label || 'B';
+                const len = Math.max(a.length, b.length, 1);
+
+                const el = document.getElementById(momentumCanvasId) as HTMLCanvasElement | null;
+                if (el) {
+                    const chart = new Chart(el, {
+                        type: 'line',
+                        data: {
+                            labels: buildLabels(len),
+                            datasets: [
+                                { label: aLabel, data: padFront(a, len), borderColor: 'rgba(255,26,26,0.95)', backgroundColor: 'rgba(255,26,26,0.15)', tension: 0.25, pointRadius: 0, borderWidth: 2 },
+                                { label: bLabel, data: padFront(b, len), borderColor: 'rgba(255,230,109,0.95)', backgroundColor: 'rgba(255,230,109,0.12)', tension: 0.25, pointRadius: 0, borderWidth: 2 },
+                            ],
+                        },
+                        options: commonOptions,
+                    });
+                    v3ChartInstancesRef.current.push(chart);
+                }
+            }
+        } catch {}
+
+        // 2) Star load (USG10 vs MIN10)
+        try {
+            const s = charts?.starLoad;
+            const players: any[] = Array.isArray(s?.players) ? s.players : [];
+            if (players.length > 0) {
+                const labels = players.map(p => `${String(p?.teamAbbr || '').trim()} ${String(p?.playerName || '').trim()}`.trim());
+                const usg = players.map(p => (typeof p?.USG10 === 'number' && Number.isFinite(p.USG10)) ? p.USG10 : null);
+                const min = players.map(p => (typeof p?.MIN10 === 'number' && Number.isFinite(p.MIN10)) ? p.MIN10 : null);
+
+                const el = document.getElementById(starLoadCanvasId) as HTMLCanvasElement | null;
+                if (el) {
+                    const chart = new Chart(el, {
+                        type: 'bar',
+                        data: {
+                            labels,
+                            datasets: [
+                                { label: 'USG10', data: usg, yAxisID: 'yUSG', backgroundColor: 'rgba(255,26,26,0.80)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 },
+                                { label: 'MIN10', data: min, yAxisID: 'yMIN', backgroundColor: 'rgba(255,230,109,0.78)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 },
+                            ],
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: { duration: 0 },
+                            plugins: { legend: { display: false }, tooltip: commonOptions.plugins.tooltip },
+                            scales: {
+                                x: { ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                                yUSG: { position: 'left', beginAtZero: true, ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                                yMIN: { position: 'right', beginAtZero: true, ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } }, grid: { drawOnChartArea: false } },
+                            },
+                        } as any,
+                    });
+                    v3ChartInstancesRef.current.push(chart);
+                }
+            }
+        } catch {}
+
+        // 3) Pressure bar (close-game record)
+        try {
+            const p = charts?.pressureBar;
+            if (p?.A && p?.B) {
+                const labels = [String(p?.A?.label || 'A'), String(p?.B?.label || 'B')];
+                const wins = [Number(p?.A?.wins || 0), Number(p?.B?.wins || 0)];
+                const losses = [Number(p?.A?.losses || 0), Number(p?.B?.losses || 0)];
+
+                const el = document.getElementById(pressureCanvasId) as HTMLCanvasElement | null;
+                if (el) {
+                    const chart = new Chart(el, {
+                        type: 'bar',
+                        data: {
+                            labels,
+                            datasets: [
+                                { label: 'Wins', data: wins, backgroundColor: 'rgba(255,26,26,0.78)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1, stack: 's' },
+                                { label: 'Losses', data: losses, backgroundColor: 'rgba(255,255,255,0.18)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1, stack: 's' },
+                            ],
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: { duration: 0 },
+                            plugins: { legend: { display: false }, tooltip: commonOptions.plugins.tooltip },
+                            scales: {
+                                x: { stacked: true, beginAtZero: true, ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                                y: { stacked: true, ticks: { color: 'rgba(255,255,255,0.70)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                            },
+                        } as any,
+                    });
+                    v3ChartInstancesRef.current.push(chart);
+                }
+            }
+        } catch {}
+
+        // 4) Role volatility (ΔUSG3 vs season)
+        try {
+            const rv = charts?.roleVolatility;
+            const rvPlayers: any[] = Array.isArray(rv?.players) ? rv.players : [];
+            if (rvPlayers.length > 0) {
+                const labels = rvPlayers.map(p => `${String(p?.teamAbbr || '').trim()} ${String(p?.playerName || '').trim()}`.trim());
+                const vals = rvPlayers.map(p => {
+                    const v = p?.deltaUSG3vsSeason;
+                    return (typeof v === 'number' && Number.isFinite(v)) ? v : 0;
+                });
+                const maxAbs = Math.max(1, ...vals.map(v => Math.abs(Number(v) || 0)));
+
+                const el = document.getElementById(volatilityCanvasId) as HTMLCanvasElement | null;
+                if (el) {
+                    const chart = new Chart(el, {
+                        type: 'bar',
+                        data: {
+                            labels,
+                            datasets: [
+                                {
+                                    label: 'ΔUSG3',
+                                    data: vals,
+                                    backgroundColor: rvPlayers.map(p => colorForVol(p?.deltaUSG3vsSeason)),
+                                    borderColor: 'rgba(0,0,0,0.65)',
+                                    borderWidth: 1,
+                                },
+                            ],
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: { duration: 0 },
+                            plugins: { legend: { display: false }, tooltip: commonOptions.plugins.tooltip },
+                            scales: {
+                                x: {
+                                    suggestedMin: -maxAbs,
+                                    suggestedMax: maxAbs,
+                                    ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } },
+                                    grid: { color: (ctx: any) => ctx?.tick?.value === 0 ? 'rgba(0,255,65,0.25)' : 'rgba(255,255,255,0.08)' },
+                                },
+                                y: { ticks: { color: 'rgba(255,255,255,0.70)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                            },
+                        } as any,
+                    });
+                    v3ChartInstancesRef.current.push(chart);
+                }
+            }
+        } catch {}
+
+        return () => {
+            for (const c of v3ChartInstancesRef.current) {
+                try { c?.destroy?.(); } catch {}
+            }
+            v3ChartInstancesRef.current = [];
+        };
+    }, [editedPost?.id, v3ChartsKey]);
 
     const handleFieldChange = (fieldPath: string, value: any) => {
         if (!editedPost) return;
@@ -3200,6 +3812,9 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
             let current: any = newPost;
             const nameParts = fieldPath.split('.');
             for (let i = 0; i < nameParts.length - 1; i++) {
+                if (current[nameParts[i]] == null || typeof current[nameParts[i]] !== 'object') {
+                    current[nameParts[i]] = {};
+                }
                 current = current[nameParts[i]];
             }
             current[nameParts[nameParts.length - 1]] = value;
@@ -3223,7 +3838,7 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
             // Deep merge to preserve all websiteStory properties
             const imageToSave = articleImage || editedPost.websiteStory?.image || editedPost.websiteStory?.imageUrl || '';
             
-            const postToSave = {
+            const postToSave: any = {
                 ...editedPost,
                 websiteStory: {
                     ...(editedPost.websiteStory || {}), // Ensure websiteStory exists
@@ -3231,6 +3846,30 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
                 },
                 status: newStatus
             };
+
+            // V3: apply JSON editors if present
+            if (postToSave.storyType === 'heat_article_v3') {
+                postToSave.heatCheckData = postToSave.heatCheckData || {};
+
+                if (showV3Advanced) {
+                    try {
+                        postToSave.heatCheckData.v3Narrative = v3NarrativeJson.trim() ? JSON.parse(v3NarrativeJson) : postToSave.heatCheckData.v3Narrative;
+                    } catch (e: any) {
+                        throw new Error(`V3 Narrative JSON invalid: ${e.message}`);
+                    }
+                    try {
+                        postToSave.heatCheckData.temperatureCheck = postToSave.heatCheckData.temperatureCheck || {};
+                        postToSave.heatCheckData.temperatureCheck.ai = v3TempAiJson.trim() ? JSON.parse(v3TempAiJson) : postToSave.heatCheckData.temperatureCheck.ai;
+                    } catch (e: any) {
+                        throw new Error(`Temperature Check AI JSON invalid: ${e.message}`);
+                    }
+                    try {
+                        postToSave.heatCheckData.evidence_bundle = v3EvidenceJson.trim() ? JSON.parse(v3EvidenceJson) : postToSave.heatCheckData.evidence_bundle;
+                    } catch (e: any) {
+                        throw new Error(`Evidence JSON invalid: ${e.message}`);
+                    }
+                }
+            }
             
             // Remove imageUrl if image is set (to avoid confusion and match old articles structure)
             if (postToSave.websiteStory.image && postToSave.websiteStory.imageUrl) {
@@ -3261,6 +3900,54 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
             setIsSaving(false);
         }
     };
+
+    const handleApplyV3NarrativeToArticle = () => {
+        if (!editedPost) return;
+        if ((editedPost as any).storyType !== 'heat_article_v3') return;
+        try {
+            const hc: any = (editedPost as any).heatCheckData || {};
+            const v3 = showV3Advanced ? (v3NarrativeJson.trim() ? JSON.parse(v3NarrativeJson) : hc.v3Narrative) : hc.v3Narrative;
+            if (!v3) throw new Error('No v3Narrative available');
+
+            // Extract evidence bundle for speaker lookup
+            const evidenceBundle = hc.evidence_bundle || hc.evidenceBundle || {};
+            const evidenceForV3 = normalizeEvidenceForV3(evidenceBundle);
+            const markdown = renderHeatArticleV3Markdown(v3, evidenceForV3);
+
+            // Map narrative cards into Narrative.log structure
+            const cards = Array.isArray(v3?.narrativeCards) ? v3.narrativeCards : [];
+            const primaryAngleId = v3?.selectedAngles?.primary?.id || cards?.[0]?.id || 'N_1';
+            const candidateCards = cards.map((c: any) => ({
+                narrative_id: String(c.id || ''),
+                title: String(c.title || ''),
+                claim: String(c.claim || ''),
+                emotion_tags: Array.isArray(c.emotionTags) ? c.emotionTags : [],
+                total_score: Number.isFinite(c.score) ? c.score : 0,
+            }));
+
+            setEditedPost(prev => {
+                if (!prev) return prev;
+                const newPost: any = JSON.parse(JSON.stringify(prev));
+                newPost.websiteStory = newPost.websiteStory || {};
+                newPost.websiteStory.theBackstory = markdown;
+
+                newPost.heatCheckData = newPost.heatCheckData || {};
+                newPost.heatCheckData.article = newPost.heatCheckData.article || {};
+                newPost.heatCheckData.article.long_form_markdown = markdown;
+                newPost.heatCheckData.v3Narrative = v3;
+                newPost.heatCheckData.narratives = {
+                    candidate_cards: candidateCards,
+                    selected: { primary_narrative_id: String(primaryAngleId) }
+                };
+                return newPost;
+            });
+
+            alert('Applied V3 Narrative JSON → Article markdown + Narrative.log cards. Remember to Save Draft.');
+        } catch (e: any) {
+            alert(`Failed to apply V3 narrative: ${e.message || 'Unknown error'}`);
+        }
+    };
+
 
     const handleApplyFeedback = async () => {
         if (!editedPost || !aiFeedback.trim()) return;
@@ -3612,6 +4299,28 @@ Return ONLY the new player section in markdown format, exactly matching the stru
                         <button className="publish" onClick={() => handleSave("published")} disabled={isSaving} style={{ background: '#4caf50', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
                             {isSaving ? 'Publishing...' : 'Publish'}
                         </button>
+                        <button
+                            className="delete"
+                            onClick={async () => {
+                                if (!editedPost || isSaving) return;
+                                const ok = confirm(`Delete this post?\\n\\n${editedPost.websiteStory?.headline || editedPost.id}`);
+                                if (!ok) return;
+                                try {
+                                    setIsSaving(true);
+                                    await apiClient.deletePost(editedPost.id);
+                                    onSave();
+                                    onClose();
+                                } catch (e: any) {
+                                    alert(`Failed to delete: ${e.message || 'Unknown error'}`);
+                                } finally {
+                                    setIsSaving(false);
+                                }
+                            }}
+                            disabled={isSaving}
+                            style={{ background: '#c62828', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}
+                        >
+                            {isSaving ? 'Working...' : 'Delete'}
+                        </button>
                         <button className="cancel" onClick={onClose} disabled={isSaving} style={{ background: '#666', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
                             Cancel
                         </button>
@@ -3624,6 +4333,196 @@ Return ONLY the new player section in markdown format, exactly matching the stru
                     <div style={{ flex: '1 1 60%', padding: '2rem', overflowY: 'auto', borderRight: '1px solid #333' }}>
                         <div style={{ marginBottom: '2rem' }}>
                             <h3 style={{ marginBottom: '0.5rem', fontSize: '1.2rem' }}>Article (Markdown)</h3>
+
+                            {/* V3 Editor (Temperature Check + Advanced JSON) */}
+                            {(editedPost as any).storyType === 'heat_article_v3' && (
+                                <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#222', border: '1px solid rgba(255, 230, 109, 0.35)', borderRadius: '6px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                                        <div>
+                                            <div style={{ fontWeight: 'bold', color: '#ffe66d' }}>HeatArticleV3 Editor</div>
+                                            <div style={{ color: '#aaa', fontSize: '0.85rem' }}>Edit Temperature Check + (optional) raw V3 JSON before publishing.</div>
+                                        </div>
+                                        <button
+                                            onClick={() => setShowV3Advanced(v => !v)}
+                                            style={{ padding: '0.4rem 0.75rem', background: showV3Advanced ? '#444' : '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px', cursor: 'pointer' }}
+                                        >
+                                            {showV3Advanced ? 'Hide Advanced' : 'Show Advanced'}
+                                        </button>
+                                    </div>
+
+                                    <div style={{ marginTop: '1rem' }}>
+                                        <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>Temperature Check (Published Text)</div>
+                                        <div style={{ color: '#aaa', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                                            This is the exact text that will display in the Temperature Check section on the published page.
+                                        </div>
+                                        <textarea
+                                            value={String(((editedPost as any).heatCheckData?.temperatureCheck?.renderedMarkdown) || '')}
+                                            onChange={(e) => handleFieldChange('heatCheckData.temperatureCheck.renderedMarkdown', e.target.value)}
+                                            placeholder="Write the Temperature Check exactly how you want it to appear..."
+                                            style={{ width: '100%', minHeight: '160px', padding: '0.75rem', background: '#111', border: '1px solid rgba(255, 230, 109, 0.35)', color: '#fff', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.9rem', lineHeight: '1.5' }}
+                                        />
+
+                                        <div style={{ marginTop: '0.75rem' }}>
+                                            <div style={{ fontWeight: 'bold', marginBottom: '0.4rem' }}>Preview (Published)</div>
+                                            <div
+                                                style={{ padding: '0.75rem', background: '#0d0d0d', border: '1px solid #333', borderRadius: '4px' }}
+                                                dangerouslySetInnerHTML={{
+                                                    __html: (() => {
+                                                        const raw = String(((editedPost as any).heatCheckData?.temperatureCheck?.renderedMarkdown) || '');
+                                                        const looksHtml = /<\s*(div|section|span|canvas|table|p|ul|ol|h[1-6]|br)\b/i.test(raw);
+                                                        return looksHtml ? raw : markdownToHtml(raw);
+                                                    })()
+                                                }}
+                                            />
+                                        </div>
+
+                                        {(() => {
+                                            const charts: any = (editedPost as any).heatCheckData?.matchPackV3?.factDrop?.charts || null;
+                                            const hasCharts =
+                                                charts &&
+                                                (charts?.momentumLine || charts?.starLoad || charts?.pressureBar || charts?.roleVolatility);
+                                            if (!hasCharts) return null;
+                                            const idSuffix = editedPost.id;
+                                            return (
+                                                <div style={{ marginTop: '0.75rem' }}>
+                                                    <div style={{ fontWeight: 'bold', marginBottom: '0.4rem' }}>Charts Preview (Canvas)</div>
+                                                    <div style={{ color: '#aaa', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                                                        These charts render from MatchPackV3 data (canvas). SEO still comes from the surrounding written analysis.
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                                        <div style={{ padding: '0.75rem', background: '#0d0d0d', border: '1px solid #333', borderRadius: '6px' }}>
+                                                            <div style={{ color: '#ddd', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Rolling Margin Trend</div>
+                                                            {(() => {
+                                                                const m = (editedPost as any).heatCheckData?.matchPackV3?.factDrop?.charts?.momentumLine;
+                                                                const aLabel = String(m?.series?.A?.label || (editedPost as any).heatCheckData?.matchPackV3?.matchup?.teamAAbbr || 'A');
+                                                                const bLabel = String(m?.series?.B?.label || (editedPost as any).heatCheckData?.matchPackV3?.matchup?.teamBAbbr || 'B');
+                                                                return (
+                                                                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', fontFamily: 'Courier New, monospace', fontSize: '0.75rem', color: 'rgba(255,255,255,0.72)', marginBottom: '0.5rem' }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                                            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: 'rgba(255,26,26,0.95)', boxShadow: '0 0 10px rgba(255,26,26,0.18)' }} />
+                                                                            <span>{aLabel}</span>
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                                            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: 'rgba(255,230,109,0.95)', boxShadow: '0 0 10px rgba(255,230,109,0.12)' }} />
+                                                                            <span>{bLabel}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                            <div style={{ height: 170 }}>
+                                                                <canvas id={`v3-editor-chart-momentum-${idSuffix}`} style={{ width: '100%', height: '100%' }} />
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ padding: '0.75rem', background: '#0d0d0d', border: '1px solid #333', borderRadius: '6px' }}>
+                                                            <div style={{ color: '#ddd', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Usage vs Minutes Stress</div>
+                                                            <div style={{ height: 200 }}>
+                                                                <canvas id={`v3-editor-chart-starload-${idSuffix}`} style={{ width: '100%', height: '100%' }} />
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ padding: '0.75rem', background: '#0d0d0d', border: '1px solid #333', borderRadius: '6px' }}>
+                                                            <div style={{ color: '#ddd', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Close-Game Record</div>
+                                                            <div style={{ height: 140 }}>
+                                                                <canvas id={`v3-editor-chart-pressure-${idSuffix}`} style={{ width: '100%', height: '100%' }} />
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ padding: '0.75rem', background: '#0d0d0d', border: '1px solid #333', borderRadius: '6px' }}>
+                                                            <div style={{ color: '#ddd', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Role Volatility (ΔUSG3 vs Season)</div>
+                                                            <div style={{ height: 220 }}>
+                                                                <canvas id={`v3-editor-chart-volatility-${idSuffix}`} style={{ width: '100%', height: '100%' }} />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
+                                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                                            <button
+                                                onClick={handleApplyV3NarrativeToArticle}
+                                                style={{ padding: '0.5rem 0.75rem', background: '#ffe66d', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                                            >
+                                                Apply V3 Narrative JSON → Article
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {showV3Advanced && (
+                                        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #333' }}>
+                                            <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>Advanced (Raw JSON)</div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
+                                                <div style={{ padding: '0.75rem', background: '#151515', border: '1px solid #333', borderRadius: '4px' }}>
+                                                    <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>Temperature Check (Auto-build settings)</div>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                                        <div>
+                                                            <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Highlight comparison key</label>
+                                                            <input
+                                                                type="text"
+                                                                value={((editedPost as any).heatCheckData?.temperatureCheck?.summary?.highlightComparisonKey) || ''}
+                                                                onChange={(e) => handleFieldChange('heatCheckData.temperatureCheck.summary.highlightComparisonKey', e.target.value)}
+                                                                placeholder="e.g., margin10"
+                                                                style={{ width: '100%', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px' }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Availability display override</label>
+                                                            <input
+                                                                type="text"
+                                                                value={((editedPost as any).heatCheckData?.temperatureCheck?.summary?.availabilityDisplayOverride) || ''}
+                                                                onChange={(e) => handleFieldChange('heatCheckData.temperatureCheck.summary.availabilityDisplayOverride', e.target.value)}
+                                                                placeholder="Optional: custom text to display"
+                                                                style={{ width: '100%', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px' }}
+                                                            />
+                                                        </div>
+                                                        <div style={{ gridColumn: '1 / -1' }}>
+                                                            <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Visible bullet keys (one per line)</label>
+                                                            <textarea
+                                                                value={Array.isArray((editedPost as any).heatCheckData?.temperatureCheck?.summary?.visibleBulletKeys) ? (editedPost as any).heatCheckData.temperatureCheck.summary.visibleBulletKeys.join('\\n') : ''}
+                                                                onChange={(e) => handleFieldChange('heatCheckData.temperatureCheck.summary.visibleBulletKeys', e.target.value.split('\\n').map(s => s.trim()).filter(Boolean))}
+                                                                style={{ width: '100%', minHeight: '80px', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontFamily: 'monospace' }}
+                                                            />
+                                                        </div>
+                                                        <div style={{ gridColumn: '1 / -1' }}>
+                                                            <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Priority players override (displayText, one per line)</label>
+                                                            <textarea
+                                                                value={Array.isArray((editedPost as any).heatCheckData?.temperatureCheck?.summary?.priorityPlayersOverride) ? (editedPost as any).heatCheckData.temperatureCheck.summary.priorityPlayersOverride.join('\\n') : ''}
+                                                                onChange={(e) => handleFieldChange('heatCheckData.temperatureCheck.summary.priorityPlayersOverride', e.target.value.split('\\n').map(s => s.trim()).filter(Boolean))}
+                                                                style={{ width: '100%', minHeight: '80px', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontFamily: 'monospace' }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>V3 Narrative JSON (editable)</label>
+                                                    <textarea
+                                                        value={v3NarrativeJson}
+                                                        onChange={(e) => setV3NarrativeJson(e.target.value)}
+                                                        style={{ width: '100%', minHeight: '180px', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Temperature Check AI JSON (editable)</label>
+                                                    <textarea
+                                                        value={v3TempAiJson}
+                                                        onChange={(e) => setV3TempAiJson(e.target.value)}
+                                                        style={{ width: '100%', minHeight: '140px', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Evidence Bundle JSON (editable)</label>
+                                                    <textarea
+                                                        value={v3EvidenceJson}
+                                                        onChange={(e) => setV3EvidenceJson(e.target.value)}
+                                                        style={{ width: '100%', minHeight: '140px', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div style={{ color: '#999', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                                                Tip: After editing V3 Narrative JSON, click <span style={{ color: '#ffe66d', fontWeight: 'bold' }}>Apply V3 Narrative JSON → Article</span> to sync markdown + Narrative.log.
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                             
                             {/* Article Image */}
                             <div style={{ marginBottom: '1.5rem' }}>
@@ -4550,6 +5449,544 @@ INSTRUCTIONS:
 }
 
 // ===================================================================================
+// HEATCHECKS EDGE V3 - 3-Layer System (Edge Finder, Edge Validator, Edge Writer)
+// ===================================================================================
+
+// Layer 1: Edge Finder (Deterministic Scoring)
+interface EdgeCandidate {
+    type: 'game' | 'prop';
+    market?: string; // 'moneyline' | 'spread' | 'total'
+    selection?: string; // 'TEAM_A' | 'TEAM_B' | 'OVER' | 'UNDER'
+    line?: number;
+    price_american?: number;
+    book?: string;
+    // For props
+    player_name?: string;
+    prop_market?: string; // 'player_points', 'player_assists', etc.
+    prop_selection?: 'OVER' | 'UNDER';
+    // Scoring
+    score: number;
+    signals?: any;
+}
+
+async function findEdgeCandidates(
+    matchPackV3: any,
+    gameMarkets: any,
+    playerProps: any,
+    teamA: string,
+    teamB: string
+): Promise<{ gameCandidate: EdgeCandidate | null; propCandidates: EdgeCandidate[] }> {
+    const candidates: EdgeCandidate[] = [];
+
+    // Extract team form from MatchPackV3
+    const factDrop = matchPackV3?.factDrop || {};
+    const teamFormA = factDrop.raw?.teamForm?.A || {};
+    const teamFormB = factDrop.raw?.teamForm?.B || {};
+    const availability = factDrop.raw?.availability || {};
+    const formLeaders = factDrop.sections?.find((s: any) => s.title === 'FORM_LEADERS')?.itemsDetailed || [];
+
+    // Score game markets
+    // Extract team names from gameMarkets (could be in different places depending on OddsAPI response)
+    const homeTeamName = gameMarkets?.home_team || gameMarkets?.sport_title?.includes('NBA') ? teamA : teamA;
+    const awayTeamName = gameMarkets?.away_team || gameMarkets?.sport_title?.includes('NBA') ? teamB : teamB;
+    
+    if (gameMarkets && gameMarkets.bookmakers) {
+        for (const bookmaker of gameMarkets.bookmakers) {
+            // Moneyline
+            if (bookmaker.markets) {
+                for (const market of bookmaker.markets) {
+                    if (market.key === 'h2h' && market.outcomes) {
+                        const homeOutcome = market.outcomes.find((o: any) => 
+                            o.name === homeTeamName || o.name === teamA || o.name?.includes(teamA.split(' ').pop() || '')
+                        );
+                        const awayOutcome = market.outcomes.find((o: any) => 
+                            o.name === awayTeamName || o.name === teamB || o.name?.includes(teamB.split(' ').pop() || '')
+                        );
+                        
+                        if (homeOutcome && awayOutcome) {
+                            // Simple scoring: favor team with better recent form
+                            const marginA = teamFormA.margin10 || 0;
+                            const marginB = teamFormB.margin10 || 0;
+                            const isHomeA = gameMarkets.home_team === teamA;
+                            const homeAdvantage = isHomeA ? 3 : -3; // ~3 point home advantage
+                            const scoreA = marginA + homeAdvantage;
+                            const scoreB = marginB - homeAdvantage;
+                            
+                            if (scoreA > scoreB) {
+                                candidates.push({
+                                    type: 'game',
+                                    market: 'moneyline',
+                                    selection: isHomeA ? 'TEAM_A' : 'TEAM_B',
+                                    line: null,
+                                    price_american: isHomeA ? homeOutcome.price : awayOutcome.price,
+                                    book: bookmaker.title,
+                                    score: Math.abs(scoreA - scoreB),
+                                    signals: { marginA, marginB, homeAdvantage }
+                                });
+                            } else {
+                                candidates.push({
+                                    type: 'game',
+                                    market: 'moneyline',
+                                    selection: isHomeA ? 'TEAM_B' : 'TEAM_A',
+                                    line: null,
+                                    price_american: isHomeA ? awayOutcome.price : homeOutcome.price,
+                                    book: bookmaker.title,
+                                    score: Math.abs(scoreB - scoreA),
+                                    signals: { marginA, marginB, homeAdvantage }
+                                });
+                            }
+                        }
+                    }
+                    
+                    // Spread
+                    if (market.key === 'spreads' && market.outcomes) {
+                        const homeOutcome = market.outcomes.find((o: any) => 
+                            o.name === homeTeamName || o.name === teamA || o.name?.includes(teamA.split(' ').pop() || '')
+                        );
+                        const awayOutcome = market.outcomes.find((o: any) => 
+                            o.name === awayTeamName || o.name === teamB || o.name?.includes(teamB.split(' ').pop() || '')
+                        );
+                        
+                        if (homeOutcome && awayOutcome && homeOutcome.point !== undefined) {
+                            const marginA = teamFormA.margin10 || 0;
+                            const marginB = teamFormB.margin10 || 0;
+                            const isHomeA = gameMarkets.home_team === teamA;
+                            const homeAdvantage = isHomeA ? 3 : -3;
+                            const projectedMargin = (marginA - marginB) + (isHomeA ? homeAdvantage : -homeAdvantage);
+                            const spread = homeOutcome.point;
+                            const edge = Math.abs(projectedMargin - spread);
+                            
+                            candidates.push({
+                                type: 'game',
+                                market: 'spread',
+                                selection: projectedMargin > spread ? (isHomeA ? 'TEAM_A' : 'TEAM_B') : (isHomeA ? 'TEAM_B' : 'TEAM_A'),
+                                line: spread,
+                                price_american: projectedMargin > spread ? homeOutcome.price : awayOutcome.price,
+                                book: bookmaker.title,
+                                score: edge,
+                                signals: { marginA, marginB, projectedMargin, spread }
+                            });
+                        }
+                    }
+                    
+                    // Total
+                    if (market.key === 'totals' && market.outcomes) {
+                        const overOutcome = market.outcomes.find((o: any) => o.name === 'Over');
+                        const underOutcome = market.outcomes.find((o: any) => o.name === 'Under');
+                        
+                        if (overOutcome && underOutcome && overOutcome.point !== undefined) {
+                            // Simple scoring: use team pace/offense metrics if available, otherwise neutral
+                            const total = overOutcome.point;
+                            // For now, use a simple heuristic - can be enhanced with actual pace data
+                            candidates.push({
+                                type: 'game',
+                                market: 'total',
+                                selection: 'OVER', // Default to OVER, can be refined
+                                line: total,
+                                price_american: overOutcome.price,
+                                book: bookmaker.title,
+                                score: 1.0, // Neutral score
+                                signals: { total }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Score player props
+    if (playerProps && playerProps.bookmakers) {
+        // Create a map of player name to form leader data
+        const playerDataMap = new Map<string, any>();
+        for (const leader of formLeaders) {
+            if (leader.playerName) {
+                playerDataMap.set(leader.playerName.toLowerCase(), leader);
+            }
+        }
+
+        // Also check availability for injury status
+        const availabilityMap = new Map<string, string>();
+        const majorAbsences = availability.majorAbsences || {};
+        for (const [teamId, data] of Object.entries(majorAbsences)) {
+            if (data && typeof data === 'object' && 'players' in data) {
+                const players = (data as any).players || [];
+                for (const player of players) {
+                    if (player.playerName) {
+                        availabilityMap.set(player.playerName.toLowerCase(), player.status || 'OUT');
+                    }
+                }
+            }
+        }
+
+        for (const bookmaker of playerProps.bookmakers) {
+            if (bookmaker.markets) {
+                for (const market of bookmaker.markets) {
+                    const marketKey = market.key || '';
+                    if (!marketKey.startsWith('player_')) continue;
+
+                    if (market.outcomes) {
+                        for (const outcome of market.outcomes) {
+                            const playerName = outcome.description || outcome.name || '';
+                            if (!playerName) continue;
+
+                            const playerData = playerDataMap.get(playerName.toLowerCase());
+                            if (!playerData) continue; // Skip if player not in form leaders
+
+                            // Get signals
+                            const minutesDelta = playerData.deltaMIN10vsSeason || 0;
+                            const usageDelta = playerData.deltaUSG10vsSeason || 0;
+                            const minutesAvg3 = playerData.minutesAvg3 || 0;
+                            const gamesCount10 = playerData.gamesCount10 || 0;
+
+                            // Prop fit mapping
+                            let propScore = 0;
+                            if (marketKey === 'player_points') {
+                                propScore = usageDelta + minutesDelta;
+                            } else if (marketKey === 'player_assists' || marketKey === 'player_rebounds' || marketKey === 'player_threes') {
+                                propScore = minutesDelta;
+                            } else if (marketKey === 'player_points_rebounds_assists') {
+                                propScore = (usageDelta + minutesDelta) * 1.2; // Boost for PRA
+                            } else {
+                                propScore = minutesDelta; // Default
+                            }
+
+                            // Only consider OVER props for now (can add UNDER logic later)
+                            if (outcome.name === 'Over' && outcome.point !== undefined && propScore > 0) {
+                                candidates.push({
+                                    type: 'prop',
+                                    player_name: playerName,
+                                    prop_market: marketKey,
+                                    prop_selection: 'OVER',
+                                    line: outcome.point,
+                                    price_american: outcome.price,
+                                    book: bookmaker.title,
+                                    score: propScore,
+                                    signals: {
+                                        minutesDelta,
+                                        usageDelta,
+                                        minutesAvg3,
+                                        gamesCount10,
+                                        marketKey
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Select top game candidate
+    const gameCandidates = candidates.filter(c => c.type === 'game').sort((a, b) => b.score - a.score);
+    const gameCandidate = gameCandidates.length > 0 ? gameCandidates[0] : null;
+
+    // Select top 2 prop candidates
+    const propCandidates = candidates
+        .filter(c => c.type === 'prop')
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 2);
+
+    return { gameCandidate, propCandidates };
+}
+
+// Layer 2: Edge Validator (Rules Only)
+async function validateEdgeCandidates(
+    candidates: { gameCandidate: EdgeCandidate | null; propCandidates: EdgeCandidate[] },
+    matchPackV3: any
+): Promise<{ validatedGame: EdgeCandidate | null; validatedProps: EdgeCandidate[] }> {
+    const validatedProps: EdgeCandidate[] = [];
+
+    // Validate game candidate (basic checks)
+    let validatedGame = candidates.gameCandidate;
+    if (validatedGame) {
+        // Verify line exists if needed
+        if (validatedGame.market === 'spread' || validatedGame.market === 'total') {
+            if (validatedGame.line === undefined || validatedGame.line === null) {
+                validatedGame = null;
+            }
+        }
+        // Verify price exists
+        if (validatedGame.price_american === undefined || validatedGame.price_american === null) {
+            validatedGame = null;
+        }
+        // Verify book exists
+        if (!validatedGame.book) {
+            validatedGame = null;
+        }
+    }
+
+    // Validate prop candidates
+    const formLeaders = matchPackV3?.factDrop?.sections?.find((s: any) => s.title === 'FORM_LEADERS')?.itemsDetailed || [];
+    const availability = matchPackV3?.factDrop?.raw?.availability || {};
+    const majorAbsences = availability.majorAbsences || {};
+    
+    // Build availability map
+    const availabilityMap = new Map<string, string>();
+    for (const [teamId, data] of Object.entries(majorAbsences)) {
+        if (data && typeof data === 'object' && 'players' in data) {
+            const players = (data as any).players || [];
+            for (const player of players) {
+                if (player.playerName) {
+                    availabilityMap.set(player.playerName.toLowerCase(), player.status || 'OUT');
+                }
+            }
+        }
+    }
+
+    for (const prop of candidates.propCandidates) {
+        if (!prop.player_name) continue;
+
+        // Find player data
+        const playerData = formLeaders.find((l: any) => 
+            l.playerName && l.playerName.toLowerCase() === prop.player_name!.toLowerCase()
+        );
+        
+        if (!playerData) {
+            continue; // Skip if player not found
+        }
+
+        // Eligibility rules
+        const minutesAvg3 = playerData.minutesAvg3 || 0;
+        const gamesCount10 = playerData.gamesCount10 || 0;
+        const playerStatus = availabilityMap.get(prop.player_name.toLowerCase()) || 'ACTIVE';
+
+        // Check eligibility
+        if (minutesAvg3 < 24) {
+            continue; // Skip if not enough minutes
+        }
+        if (gamesCount10 < 6) {
+            continue; // Skip if not enough games
+        }
+        if (playerStatus.toUpperCase().includes('OUT')) {
+            continue; // Block OUT players
+        }
+
+        // Verify prop data
+        if (prop.line === undefined || prop.line === null) {
+            continue;
+        }
+        if (prop.price_american === undefined || prop.price_american === null) {
+            continue;
+        }
+        if (!prop.book) {
+            continue;
+        }
+
+        // Downgrade confidence if QUESTIONABLE
+        if (playerStatus.toUpperCase().includes('QUESTIONABLE')) {
+            prop.signals = { ...prop.signals, confidenceDowngrade: true };
+        }
+
+        validatedProps.push(prop);
+    }
+
+    return { validatedGame, validatedProps };
+}
+
+// Layer 3: Edge Writer (Gemini)
+async function generateHeatChecksEdgeV3(
+    validatedCandidates: { validatedGame: EdgeCandidate | null; validatedProps: EdgeCandidate[] },
+    matchPackV3: any,
+    teamA: string,
+    teamB: string,
+    league: string
+): Promise<HeatchecksEdgeV2> {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    if (!apiKey) {
+        console.warn('API key not available for Edge V3 generation, returning no edge');
+        return {
+            game: { market: 'none', selection: 'none', line: null, price_american: null, book: null, confidence: 'low', receipts: ['', '', ''], risks: ['', ''], one_sentence_call: '' },
+            player_props: [],
+            no_edge_reason: 'API key not available'
+        };
+    }
+
+    try {
+        const ai = new GoogleGenAI({ apiKey });
+
+        // Extract context from MatchPackV3
+        const factDrop = matchPackV3?.factDrop || {};
+        const teamFormA = factDrop.raw?.teamForm?.A || {};
+        const teamFormB = factDrop.raw?.teamForm?.B || {};
+        const availability = factDrop.raw?.availability || {};
+        const matchup = matchPackV3?.matchup || {};
+
+        // Build narrative tags
+        const narrativeTags = {
+            revenge_game: false, // Can be enhanced with MatchPackV3 data
+            role_surge: validatedCandidates.validatedProps.length > 0,
+            injury_consolidation: (availability.majorAbsences?.A?.count || 0) > 0 || (availability.majorAbsences?.B?.count || 0) > 0,
+            fatigue_stack: false, // Can be enhanced
+            must_win: false // Can be enhanced
+        };
+
+        // Build prop shortlist
+        const propShortlist = validatedCandidates.validatedProps.map(prop => ({
+            player_name: prop.player_name || '',
+            market_key: prop.prop_market || '',
+            selection: prop.prop_selection || 'OVER',
+            line: prop.line || 0,
+            price_american: prop.price_american || 0,
+            book: prop.book || '',
+            supporting_signals: {
+                minutes_avg_3: prop.signals?.minutesAvg3 || 0,
+                minutes_delta_3_vs_season: prop.signals?.minutesDelta || 0,
+                usage_proxy_avg_3: 0, // Not in current data
+                usage_delta_3_vs_season: prop.signals?.usageDelta || 0,
+                injury_context: '',
+                rest_flags: { back_to_back: false, three_in_four: false }
+            }
+        }));
+
+        // Build game markets
+        const gameMarkets: any = {};
+        if (validatedCandidates.validatedGame) {
+            const game = validatedCandidates.validatedGame;
+            gameMarkets[game.market || 'none'] = {
+                selection: game.selection,
+                line: game.line,
+                price_american: game.price_american,
+                book: game.book
+            };
+        }
+
+        const edgePrompt = `
+You are HeatChecks Edge Writer.
+
+Goal:
+Create a concise, credible betting "Edge" summary for an NBA matchup using ONLY the provided data.
+You are NOT allowed to invent lines, odds, injuries, or stats.
+
+Inputs you will receive:
+1) matchup: teams, date, event_id
+2) game_markets: moneyline/spread/total with best available line + price + book
+3) prop_shortlist: up to 2 props, each with:
+   - player_name
+   - market_key (ex: player_points, player_assists, player_threes, player_points_rebounds_assists)
+   - selection (OVER/UNDER)
+   - line, price_american, book
+   - supporting signals:
+     minutes_avg_3, minutes_delta_3_vs_season
+     usage_proxy_avg_3, usage_delta_3_vs_season
+     injury_context: notable OUT players on team/opponent
+     rest_flags: back_to_back, three_in_four
+4) narrative_tags: revenge_game, role_surge, injury_consolidation, fatigue_stack, must_win (booleans)
+
+MATCHUP: ${teamA} vs ${teamB} (${league})
+GAME DATE: ${matchup.gameDateEst || 'Unknown'}
+
+GAME MARKETS:
+${JSON.stringify(gameMarkets, null, 2)}
+
+PROP SHORTLIST:
+${JSON.stringify(propShortlist, null, 2)}
+
+TEAM FORM:
+Team A (${teamA}): L10 margin ${teamFormA.margin10 || 0}, L3 margin ${teamFormA.margin3 || 0}
+Team B (${teamB}): L10 margin ${teamFormB.margin10 || 0}, L3 margin ${teamFormB.margin3 || 0}
+
+NARRATIVE TAGS:
+${JSON.stringify(narrativeTags, null, 2)}
+
+Output STRICT JSON matching this schema:
+
+{
+  "game": {
+    "market": "moneyline"|"spread"|"total"|"none",
+    "selection": "TEAM_A"|"TEAM_B"|"OVER"|"UNDER"|"none",
+    "line": number|null,
+    "price_american": number|null,
+    "book": string|null,
+    "confidence": "low"|"medium"|"high",
+    "receipts": [string, string, string],
+    "risks": [string, string],
+    "one_sentence_call": string
+  },
+  "player_props": [
+    {
+      "player_name": string,
+      "market": string,
+      "selection": "OVER"|"UNDER",
+      "line": number,
+      "price_american": number,
+      "book": string,
+      "confidence": "low"|"medium"|"high",
+      "receipts": [string, string, string],
+      "risks": [string, string]
+    }
+  ],
+  "no_edge_reason": string|null
+}
+
+Rules:
+- If there is not enough evidence, set game.market="none" and/or return an empty player_props array.
+- Receipts must reference the provided signals (minutes_delta, usage_delta, injuries, rest), not vague claims.
+- Keep receipts short, punchy, and measurable.
+- Never exceed 2 props.
+- TEAM_A refers to ${teamA}, TEAM_B refers to ${teamB}.
+- If no validated game candidate, set game.market="none".
+- If no validated props, return empty player_props array.
+`;
+
+        console.log(`[generateHeatChecksEdgeV3] Generating Edge V3 for ${teamA} vs ${teamB}...`);
+
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro',
+            contents: edgePrompt,
+            config: {
+                // Note: Cannot use responseMimeType with tools enabled
+                // Rely on prompt to ensure JSON output, then parse manually
+                tools: [{ googleSearch: {} }],
+            }
+        });
+
+        const text = response.text;
+        if (!text) throw new Error("No response from AI for Edge V3 generation");
+
+        // Parse the JSON response
+        let edgeData: HeatchecksEdgeV2;
+        try {
+            edgeData = extractJson<HeatchecksEdgeV2>(text);
+        } catch (parseError: any) {
+            console.error('[generateHeatChecksEdgeV3] Failed to parse JSON:', parseError);
+            console.error('[generateHeatChecksEdgeV3] Response text:', text.substring(0, 500));
+            try {
+                edgeData = JSON.parse(text);
+            } catch (e) {
+                throw new Error(`Failed to parse Edge V3 JSON response: ${parseError.message}`);
+            }
+        }
+
+        // Validate and ensure required fields
+        return {
+            game: {
+                market: edgeData.game?.market || 'none',
+                selection: edgeData.game?.selection || 'none',
+                line: edgeData.game?.line ?? null,
+                price_american: edgeData.game?.price_american ?? null,
+                book: edgeData.game?.book || null,
+                confidence: edgeData.game?.confidence || 'low',
+                receipts: edgeData.game?.receipts || ['', '', ''],
+                risks: edgeData.game?.risks || ['', ''],
+                one_sentence_call: edgeData.game?.one_sentence_call || ''
+            },
+            player_props: Array.isArray(edgeData.player_props) ? edgeData.player_props.slice(0, 2) : [],
+            no_edge_reason: edgeData.no_edge_reason || null
+        };
+
+    } catch (error: any) {
+        console.error('[generateHeatChecksEdgeV3] Error generating Edge V3:', error);
+        return {
+            game: { market: 'none', selection: 'none', line: null, price_american: null, book: null, confidence: 'low', receipts: ['', '', ''], risks: ['', ''], one_sentence_call: '' },
+            player_props: [],
+            no_edge_reason: `Edge generation failed: ${error.message || 'Unknown error'}`
+        };
+    }
+}
+
+// ===================================================================================
 // HEATCHECKS EDGE GENERATOR - Creates betting recommendation from narratives and odds
 // ===================================================================================
 
@@ -4770,6 +6207,888 @@ Return ONLY a valid JSON object matching this schema:
       finalCall: `Edge generation encountered an error. Please manually create the betting recommendation based on the narrative: "${primaryCard?.claim || 'No narrative available'}"`
     };
   }
+}
+
+// ===================================================================================
+// HEAT ARTICLE V3 HELPERS (MatchPack-driven narrative + Temperature Check)
+// ===================================================================================
+type MatchPackV3 = any;
+
+type EvidenceForV3 = {
+  sources: Array<{ sourceId: string; title?: string; publisher?: string; url?: string; publishedUtc?: string; reliabilityTier?: string }>;
+  quotes: Array<{ quoteId: string; quote: string; speaker?: string | null; team?: string | null; sourceId?: string | null; sourceName?: string | null }>;
+  timeline: Array<{ eventId: string; dateUtc?: string | null; summary: string; relatedPlayers: string[] }>;
+};
+
+function normalizeEvidenceForV3(evidenceBundle: any): EvidenceForV3 {
+  const sourcesIn = Array.isArray(evidenceBundle?.sources) ? evidenceBundle.sources : [];
+  const quotesIn = Array.isArray(evidenceBundle?.quotes) ? evidenceBundle.quotes : [];
+  const timelineIn = Array.isArray(evidenceBundle?.timeline_events) ? evidenceBundle.timeline_events : [];
+
+  const sources = sourcesIn.map((s: any, idx: number) => ({
+    sourceId: String(s.source_id || s.sourceId || `SRC_${idx + 1}`),
+    title: s.title || undefined,
+    publisher: s.publisher || undefined,
+    url: s.url || undefined,
+    publishedUtc: s.published_utc || s.publishedUtc || undefined,
+    reliabilityTier: s.reliability_tier || s.reliabilityTier || undefined,
+  }));
+
+  const sourceNameById = new Map<string, string>();
+  sources.forEach(s => {
+    if (s.sourceId) sourceNameById.set(s.sourceId, s.publisher || s.title || '');
+  });
+
+  const quotes = quotesIn
+    .filter((q: any) => q && typeof q.quote === 'string' && q.quote.trim())
+    .slice(0, 8)
+    .map((q: any, idx: number) => {
+      const quoteId = String(q.quote_id || q.quoteId || `Q_${idx + 1}`);
+      const sourceId = q.source_id ? String(q.source_id) : (q.sourceId ? String(q.sourceId) : null);
+      return {
+        quoteId,
+        quote: String(q.quote).trim(),
+        speaker: q.speaker ? String(q.speaker) : null,
+        team: q.team ? String(q.team) : null,
+        sourceId,
+        sourceName: sourceId ? (sourceNameById.get(sourceId) || null) : null,
+      };
+    });
+
+  const timeline = timelineIn
+    .filter((e: any) => e && typeof e.summary === 'string' && e.summary.trim())
+    .slice(0, 12)
+    .map((e: any, idx: number) => ({
+      eventId: String(e.event_id || e.eventId || `E_${idx + 1}`),
+      dateUtc: e.date_utc ? String(e.date_utc) : null,
+      summary: String(e.summary).trim(),
+      relatedPlayers: Array.isArray(e.relatedPlayers) ? e.relatedPlayers.map((p: any) => String(p)) : [],
+    }));
+
+  return { sources, quotes, timeline };
+}
+
+function buildTemperatureCheckSummary(matchPack: MatchPackV3) {
+  const bullets = Array.isArray(matchPack?.factDrop?.bullets) ? matchPack.factDrop.bullets : [];
+  const comparisons = Array.isArray(matchPack?.factDrop?.comparisons) ? matchPack.factDrop.comparisons : [];
+  const sections = Array.isArray(matchPack?.factDrop?.sections) ? matchPack.factDrop.sections : [];
+
+  const margin10 = comparisons.find((c: any) => c?.key === 'margin10') || comparisons[0] || null;
+  const formLeaders = sections.find((s: any) => s?.key === 'formLeaders') || null;
+  const availability = matchPack?.factDrop?.raw?.availability?.majorAbsences || null;
+
+  return {
+    visibleBulletKeys: bullets.map((b: any) => b?.key).filter(Boolean),
+    highlightComparisonKey: margin10?.key || null,
+    availabilityDisplayOverride: '',
+    priorityPlayersOverride: [] as string[],
+    computed: {
+      homeAway: matchPack?.matchup?.homeAway || null,
+      bullets: bullets.map((b: any) => ({ key: b.key, label: b.label, display: b.display })),
+      highlightComparison: margin10,
+      availabilityCounts: availability
+        ? { A: availability?.A?.count ?? 0, B: availability?.B?.count ?? 0 }
+        : null,
+      priorityPlayers: Array.isArray(formLeaders?.priorityPlayers) ? formLeaders.priorityPlayers : [],
+    }
+  };
+}
+
+async function generateTemperatureCheckV3AI(matchPack: MatchPackV3, evidence: EvidenceForV3): Promise<any> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (window as any).process?.env?.API_KEY || '';
+  if (!apiKey) throw new Error('API key not available');
+  const ai = new GoogleGenAI({ apiKey });
+
+  const prompt = `
+SYSTEM
+You are HeatChecks V3 Temperature Check engine.
+
+DATA DISCIPLINE (HARD RULES)
+- Do not invent statistics, injuries, or quotes.
+- Any numbers must be copied from:
+  - factDrop.bullets[].display
+  - factDrop.comparisons[].display
+  - factDrop.sections[key=formLeaders].priorityPlayers[].displayText
+- Any quote used must be copied exactly from evidence.quotes[].quote.
+
+USER
+MATCHPACK (AUTHORITATIVE)
+${JSON.stringify({ matchPack, evidence }, null, 2)}
+
+TASK
+Return a tight pre-game readout:
+- tempScore (0-100)
+- 3 takeaways
+- 2 risks
+- optionally 0-1 quote anchor (verbatim)
+
+RETURN JSON ONLY:
+{
+  "tempScore": 0-100,
+  "takeaways": ["..."],
+  "risks": ["..."],
+  "usedStatAnchors": ["exact display strings used"],
+  "usedQuoteIds": ["quoteId"],
+  "warnings": []
+}
+`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-pro',
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          tempScore: { type: Type.NUMBER },
+          takeaways: { type: Type.ARRAY, items: { type: Type.STRING } },
+          risks: { type: Type.ARRAY, items: { type: Type.STRING } },
+          usedStatAnchors: { type: Type.ARRAY, items: { type: Type.STRING } },
+          usedQuoteIds: { type: Type.ARRAY, items: { type: Type.STRING } },
+          warnings: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+        required: ['tempScore', 'takeaways', 'risks', 'usedStatAnchors', 'usedQuoteIds', 'warnings']
+      }
+    }
+  });
+
+  return JSON.parse(response.text);
+}
+
+function buildTemperatureCheckRenderedMarkdown(matchPack: MatchPackV3, summary: any, tempAI: any) {
+  const escapeHtmlSimple = (s: string) =>
+    String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
+
+  const buildPriorityPlayersChartHtml = (players: any[], title: string) => {
+    if (!Array.isArray(players) || players.length === 0) return '';
+
+    const clean = players
+      .map(p => ({
+        teamAbbr: String(p?.teamAbbr || ''),
+        playerName: String(p?.playerName || '').trim(),
+        usg10: Number(p?.USG10),
+        min10: Number(p?.MIN10),
+        usgSeason: Number(p?.USGSeason),
+        minSeason: Number(p?.MINSeason),
+        deltaUSG10vsSeason: Number(p?.deltaUSG10vsSeason),
+      }))
+      .filter(p => p.playerName);
+
+    if (clean.length === 0) return '';
+
+    const maxUsg = Math.max(
+      1,
+      ...clean.map(p => (Number.isFinite(p.usg10) ? p.usg10 : 0)),
+      ...clean.map(p => (Number.isFinite(p.usgSeason) ? p.usgSeason : 0))
+    );
+    const maxMin = Math.max(
+      1,
+      ...clean.map(p => (Number.isFinite(p.min10) ? p.min10 : 0)),
+      ...clean.map(p => (Number.isFinite(p.minSeason) ? p.minSeason : 0))
+    );
+
+    const groups = new Map<string, typeof clean>();
+    for (const p of clean) {
+      const k = p.teamAbbr || 'TEAM';
+      const arr = groups.get(k) || [];
+      arr.push(p);
+      groups.set(k, arr);
+    }
+
+    const groupHtml = [...groups.entries()].map(([teamAbbr, arr]) => {
+      const rows = arr.slice(0, 4).map((p, idx) => {
+        const usgW = Math.round(((Number.isFinite(p.usg10) ? p.usg10 : 0) / maxUsg) * 100);
+        const minW = Math.round(((Number.isFinite(p.min10) ? p.min10 : 0) / maxMin) * 100);
+        const usgSeasonW = Math.round(((Number.isFinite(p.usgSeason) ? p.usgSeason : 0) / maxUsg) * 100);
+        const minSeasonW = Math.round(((Number.isFinite(p.minSeason) ? p.minSeason : 0) / maxMin) * 100);
+        const du = Number.isFinite(p.deltaUSG10vsSeason)
+          ? (p.deltaUSG10vsSeason > 0 ? `+${p.deltaUSG10vsSeason.toFixed(1)}` : p.deltaUSG10vsSeason.toFixed(1))
+          : '';
+
+        const rowStyle = idx === 0
+          ? 'padding:0.35rem 0 0.45rem 0;'
+          : 'padding:0.45rem 0; border-top:1px dashed rgba(255,255,255,0.12);';
+
+        return `
+<div style="${rowStyle}">
+  <div style="display:flex; justify-content:space-between; gap:0.75rem;">
+    <div style="color:rgba(255,255,255,0.92); font-weight:900;">${escapeHtmlSimple(p.playerName)}</div>
+    ${du ? `<div style="font-family:'Courier New', monospace; font-size:0.75rem; color:#ffe66d; border:1px solid rgba(255,230,109,0.35); padding:0.05rem 0.35rem; border-radius:999px;">ΔUSG10 ${escapeHtmlSimple(du)}</div>` : ``}
+  </div>
+
+  <div style="margin-top:0.35rem; display:grid; grid-template-columns:54px 1fr 76px; gap:0.5rem; align-items:center;">
+    <div style="font-family:'Courier New', monospace; font-size:0.75rem; color:rgba(255,255,255,0.7);">USG10</div>
+    <div style="height:10px; position:relative; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:999px; overflow:hidden;">
+      <div style="height:100%; width:${usgSeasonW}%; background:linear-gradient(90deg, rgba(255,26,26,0.35), rgba(248,66,66,0.18));"></div>
+      <div style="height:100%; width:${usgW}%; position:absolute; left:0; top:0; background:linear-gradient(90deg, rgba(255,26,26,0.95), rgba(248,66,66,0.65));"></div>
+    </div>
+    <div style="font-family:'Courier New', monospace; font-size:0.75rem; color:rgba(255,255,255,0.75); text-align:right;">
+      ${Number.isFinite(p.usg10) ? p.usg10.toFixed(1) : '—'}${Number.isFinite(p.usgSeason) ? `/${p.usgSeason.toFixed(1)}` : ''}
+    </div>
+  </div>
+
+  <div style="margin-top:0.25rem; display:grid; grid-template-columns:54px 1fr 76px; gap:0.5rem; align-items:center;">
+    <div style="font-family:'Courier New', monospace; font-size:0.75rem; color:rgba(255,255,255,0.7);">MIN10</div>
+    <div style="height:10px; position:relative; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:999px; overflow:hidden;">
+      <div style="height:100%; width:${minSeasonW}%; background:linear-gradient(90deg, rgba(255,230,109,0.35), rgba(255,230,109,0.18));"></div>
+      <div style="height:100%; width:${minW}%; position:absolute; left:0; top:0; background:linear-gradient(90deg, rgba(255,230,109,0.95), rgba(255,230,109,0.55));"></div>
+    </div>
+    <div style="font-family:'Courier New', monospace; font-size:0.75rem; color:rgba(255,255,255,0.75); text-align:right;">
+      ${Number.isFinite(p.min10) ? p.min10.toFixed(1) : '—'}${Number.isFinite(p.minSeason) ? `/${p.minSeason.toFixed(1)}` : ''}
+    </div>
+  </div>
+</div>
+        `;
+      }).join('');
+
+      return `
+<div style="padding:0.4rem 0.45rem; background:transparent; border-left:2px solid rgba(0,255,65,0.28);">
+  <div style="color:rgba(255,230,109,0.92); font-weight:900; letter-spacing:0.12em; margin-bottom:0.1rem;">${escapeHtmlSimple(teamAbbr)}</div>
+  ${rows}
+</div>
+      `;
+    }).join('');
+
+    return `
+<div style="margin-top:0.45rem; padding:0.55rem; background:rgba(0, 12, 6, 0.96); border:1px solid rgba(0, 255, 65, 0.18); border-radius:10px; box-shadow:0 0 14px rgba(0, 255, 65, 0.10), inset 0 0 14px rgba(0, 255, 65, 0.04); position:relative; overflow:hidden;">
+  <div style="position:absolute; inset:0; pointer-events:none; opacity:0.22; background-image: radial-gradient(circle at center, rgba(0, 255, 65, 0.16) 1px, transparent 1px), radial-gradient(circle at center, rgba(0, 255, 65, 0.08) 2px, transparent 2px); background-size: 52px 52px, 104px 104px; background-position:center;"></div>
+  <div style="position:absolute; inset:0; pointer-events:none; opacity:0.06; background: linear-gradient(180deg, rgba(0,255,65,0.0) 0%, rgba(0,255,65,0.12) 50%, rgba(0,255,65,0.0) 100%);"></div>
+  <div style="position:relative; display:flex; flex-direction:column; gap:0.6rem;">
+    ${groupHtml}
+  </div>
+</div>
+    `;
+  };
+
+  const bullets: any[] = Array.isArray(matchPack?.factDrop?.bullets) ? matchPack.factDrop.bullets : [];
+  const comparisons: any[] = Array.isArray(matchPack?.factDrop?.comparisons) ? matchPack.factDrop.comparisons : [];
+  const sections: any[] = Array.isArray(matchPack?.factDrop?.sections) ? matchPack.factDrop.sections : [];
+
+  const visibleKeys: string[] = Array.isArray(summary?.visibleBulletKeys) && summary.visibleBulletKeys.length > 0
+    ? summary.visibleBulletKeys
+    : bullets.map((b: any) => b?.key).filter(Boolean);
+
+  const visibleBullets = bullets
+    .filter((b: any) => visibleKeys.includes(b?.key))
+    .map((b: any) => ({
+      key: b?.key,
+      label: b.label || b.key || 'BULLET',
+      display: b.display || '',
+      raw: b?.raw,
+    }));
+
+  const highlightComparisonKey = summary?.highlightComparisonKey || 'margin10';
+  const highlightComparison = comparisons.find((c: any) => c?.key === highlightComparisonKey) || comparisons[0] || null;
+
+  const formLeaders = sections.find((s: any) => s?.key === 'formLeaders') || null;
+  const priorityPlayers = Array.isArray(summary?.priorityPlayersOverride) && summary.priorityPlayersOverride.length > 0
+    ? summary.priorityPlayersOverride
+    : (Array.isArray((formLeaders as any)?.priorityPlayers) ? (formLeaders as any).priorityPlayers.map((p: any) => p.displayText || '').filter(Boolean) : []);
+
+  const availabilityOverride = typeof summary?.availabilityDisplayOverride === 'string' && summary.availabilityDisplayOverride.trim()
+    ? summary.availabilityDisplayOverride.trim()
+    : null;
+
+  const availability = (matchPack as any)?.factDrop?.raw?.availability?.majorAbsences || null;
+  const availabilityCounts = availability ? {
+    A: availability?.A?.count ?? 0,
+    B: availability?.B?.count ?? 0
+  } : null;
+
+  const aiTakeaways = Array.isArray(tempAI?.takeaways) ? tempAI.takeaways : [];
+  const aiRisks = Array.isArray(tempAI?.risks) ? tempAI.risks : [];
+  const tempScore = Number.isFinite(tempAI?.tempScore) ? tempAI.tempScore : null;
+
+  const teamA = String((matchPack as any)?.matchup?.teamA || (matchPack as any)?.matchup?.teamAAbbr || 'Team A');
+  const teamB = String((matchPack as any)?.matchup?.teamB || (matchPack as any)?.matchup?.teamBAbbr || 'Team B');
+  const haA = String((matchPack as any)?.matchup?.homeAway?.A || '');
+  const haB = String((matchPack as any)?.matchup?.homeAway?.B || '');
+
+  const lines: string[] = [];
+  if (tempScore !== null) {
+    const label = tempScore >= 70 ? 'HOT' : tempScore >= 45 ? 'WARM' : 'COOL';
+    lines.push(`<div style="color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.8rem; letter-spacing:0.08em;">TEMP: <span style="color:#00ff41; font-weight:900; text-shadow:0 0 10px rgba(0,255,65,0.25);">${escapeHtmlSimple(label)}</span></div>`);
+  }
+  if (haA || haB) {
+    lines.push(`<div style="margin-top:0.15rem; color:rgba(255,255,255,0.72); font-family:'Courier New', monospace; font-size:0.78rem;">HOME/AWAY: <span style="color:rgba(255,255,255,0.9); font-weight:700;">${escapeHtmlSimple(teamA)}</span> (${escapeHtmlSimple(haA || 'n/a')}) | <span style="color:rgba(255,255,255,0.9); font-weight:700;">${escapeHtmlSimple(teamB)}</span> (${escapeHtmlSimple(haB || 'n/a')})</div>`);
+  }
+  if (availabilityOverride) {
+    lines.push(`<div style="margin-top:0.35rem; padding:0.45rem 0.55rem; background:rgba(0,0,0,0.25); border:1px solid rgba(0,255,65,0.18); border-left:2px solid rgba(0,255,65,0.45); border-radius:8px; color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.78rem;"><span style="color:#00ff41; font-weight:900; letter-spacing:0.1em;">AVAIL</span> ${escapeHtmlSimple(availabilityOverride)}</div>`);
+  }
+  if (visibleBullets.length > 0) {
+    lines.push(`<div style="margin-top:0.55rem; color:#00ff41; font-weight:900; letter-spacing:0.14em; font-family:'Courier New', monospace; font-size:0.75rem; text-transform:uppercase;">FACTDROP</div>`);
+
+    const getWinner = (key: string, raw: any): 'A' | 'B' | 'even' | null => {
+      try {
+        if (!raw) return null;
+        const k = String(key || '').toLowerCase();
+        const num = (v: any) => (typeof v === 'number' && Number.isFinite(v) ? v : Number(v));
+        const isFiniteNum = (v: any) => typeof v === 'number' && Number.isFinite(v);
+
+        if (k === 'last10') {
+          const aM = num(raw?.A?.margin10);
+          const bM = num(raw?.B?.margin10);
+          if (isFiniteNum(aM) && isFiniteNum(bM) && aM !== bM) return aM > bM ? 'A' : 'B';
+          const aW = num(raw?.A?.w10);
+          const bW = num(raw?.B?.w10);
+          if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
+          return 'even';
+        }
+
+        if (k === 'last3') {
+          const aM = num(raw?.A?.margin3);
+          const bM = num(raw?.B?.margin3);
+          if (isFiniteNum(aM) && isFiniteNum(bM) && aM !== bM) return aM > bM ? 'A' : 'B';
+          const aW = num(raw?.A?.w3);
+          const bW = num(raw?.B?.w3);
+          if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
+          return 'even';
+        }
+
+        if (k === 'momentum') {
+          const a = num(raw?.A);
+          const b = num(raw?.B);
+          if (isFiniteNum(a) && isFiniteNum(b) && a !== b) return a > b ? 'A' : 'B';
+          return 'even';
+        }
+
+        if (k === 'closegames') {
+          const aW = num(raw?.A?.closeW10);
+          const bW = num(raw?.B?.closeW10);
+          if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
+          const aL = num(raw?.A?.closeL10);
+          const bL = num(raw?.B?.closeL10);
+          if (isFiniteNum(aL) && isFiniteNum(bL) && aL !== bL) return aL < bL ? 'A' : 'B';
+          return 'even';
+        }
+
+        if (k === 'standings') {
+          const aR = num(raw?.A?.rank);
+          const bR = num(raw?.B?.rank);
+          // Smaller rank is better
+          if (isFiniteNum(aR) && isFiniteNum(bR) && aR !== bR) return aR < bR ? 'A' : 'B';
+          const aW = num(raw?.A?.wins);
+          const bW = num(raw?.B?.wins);
+          if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
+          return 'even';
+        }
+
+        return null;
+      } catch {
+        return null;
+      }
+    };
+
+    const renderWinnerSplit = (b: any) => {
+      const winner = getWinner(String(b?.key || ''), b?.raw);
+      const disp = String(b?.display || '');
+      const parts = disp.split(' | ');
+      if (parts.length < 2 || !winner) return escapeHtmlSimple(disp);
+
+      const left = escapeHtmlSimple(parts[0]);
+      const right = escapeHtmlSimple(parts.slice(1).join(' | '));
+
+      const base = 'padding:0.22rem 0.35rem; border-radius:8px; border:1px solid rgba(255,255,255,0.10);';
+      const win = 'background:rgba(0,255,65,0.10); border:1px solid rgba(0,255,65,0.28); color:rgba(255,255,255,0.92); font-weight:900; box-shadow:0 0 12px rgba(0,255,65,0.10);';
+      const lose = 'background:transparent; border:1px solid rgba(255,255,255,0.08); color:rgba(255,255,255,0.72); font-weight:700;';
+      const even = 'background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.10); color:rgba(255,255,255,0.80); font-weight:800;';
+
+      const leftStyle = base + (winner === 'A' ? win : winner === 'B' ? lose : even);
+      const rightStyle = base + (winner === 'B' ? win : winner === 'A' ? lose : even);
+
+      return `<span style="display:inline-flex; gap:0.35rem; flex-wrap:wrap; align-items:center;"><span style="${leftStyle}">${left}</span><span style="color:rgba(255,255,255,0.35); font-weight:900;">|</span><span style="${rightStyle}">${right}</span></span>`;
+    };
+
+    lines.push(`<div style="margin-top:0.25rem; display:flex; flex-direction:column; gap:0.25rem;">${
+      visibleBullets.map(b => `
+        <div style="padding:0.35rem 0.45rem; background:rgba(0,0,0,0.18); border:1px solid rgba(0,255,65,0.14); border-radius:8px;">
+          <div style="color:rgba(255,255,255,0.9); font-weight:800; font-family:'Courier New', monospace; font-size:0.78rem;">${escapeHtmlSimple(b.label)}:</div>
+          <div style="margin-top:0.12rem; color:rgba(255,255,255,0.76); font-family:'Courier New', monospace; font-size:0.78rem; line-height:1.35;">${renderWinnerSplit(b)}</div>
+        </div>
+      `).join('')
+    }</div>`);
+  }
+  if (highlightComparison) {
+    const metric = escapeHtmlSimple(String(highlightComparison.metric || highlightComparison.key || 'comparison'));
+    const aDisp = escapeHtmlSimple(String(highlightComparison.display?.A || String(highlightComparison.A || '')));
+    const bDisp = escapeHtmlSimple(String(highlightComparison.display?.B || String(highlightComparison.B || '')));
+    const winner = escapeHtmlSimple(String(highlightComparison.winner || 'even'));
+    lines.push(`<div style="margin-top:0.55rem; color:#00ff41; font-weight:900; letter-spacing:0.14em; font-family:'Courier New', monospace; font-size:0.75rem; text-transform:uppercase;">KEY_COMP</div>`);
+    lines.push(`<div style="margin-top:0.2rem; padding:0.45rem 0.55rem; background:rgba(0,0,0,0.22); border:1px solid rgba(0,255,65,0.16); border-radius:10px; color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.78rem;">${metric}: A=${aDisp} | B=${bDisp} <span style="color:rgba(255,255,255,0.6);">(winner: ${winner})</span></div>`);
+  }
+  // NOTE: charts now render via Chart.js in the published Temperature_Check panel.
+  // We intentionally do not inject the old priority-player HTML chart here anymore.
+
+  // Replace "AI_TAKEAWAYS / AI_RISKS" with a human-first impact block
+  const hook = (aiTakeaways.find((t: string) => t && t.trim().length <= 130) || '').trim();
+  const watchFor = (aiRisks.find((r: string) => r && r.trim().length <= 140) || '').trim();
+
+  lines.push(`<div style="margin-top:0.65rem; color:#00ff41; font-weight:900; letter-spacing:0.14em; font-family:'Courier New', monospace; font-size:0.75rem; text-transform:uppercase;">IMPACT</div>`);
+  if (hook) {
+    lines.push(`<div style="margin-top:0.2rem; color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.8rem; line-height:1.35;">${escapeHtmlSimple(hook)}</div>`);
+  }
+  if (highlightComparison) {
+    const metric = (highlightComparison.metric || highlightComparison.key || 'edge');
+    const aDisp = highlightComparison.display?.A || String(highlightComparison.A || '');
+    const bDisp = highlightComparison.display?.B || String(highlightComparison.B || '');
+    const winner =
+      highlightComparison.winner === 'A' ? teamA :
+      highlightComparison.winner === 'B' ? teamB : 'Neither side';
+    lines.push(`<div style="margin-top:0.25rem; color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.78rem;">EDGE: <span style="color:rgba(255,255,255,0.92); font-weight:800;">${escapeHtmlSimple(winner)}</span> ${escapeHtmlSimple(metric)} (${escapeHtmlSimple(aDisp)} vs ${escapeHtmlSimple(bDisp)})</div>`);
+  }
+
+  const swing =
+    availabilityOverride ||
+    ((availabilityCounts && (availabilityCounts.A > 0 || availabilityCounts.B > 0))
+      ? 'Availability is the swing—late scratches can flip the entire script.'
+      : 'Health looks stable—this swings on execution and shot-making.');
+  lines.push(`<div style="margin-top:0.25rem; color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.78rem;">SWING: ${escapeHtmlSimple(swing)}</div>`);
+
+  if (watchFor) {
+    lines.push(`<div style="margin-top:0.25rem; color:rgba(255,255,255,0.7); font-family:'Courier New', monospace; font-size:0.78rem;">WATCH: ${escapeHtmlSimple(watchFor)}</div>`);
+  }
+  return lines.join('');
+}
+
+async function generateHeatArticleV3Narrative(matchPack: MatchPackV3, evidence: EvidenceForV3): Promise<any> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (window as any).process?.env?.API_KEY || '';
+  if (!apiKey) throw new Error('API key not available');
+  const ai = new GoogleGenAI({ apiKey });
+
+  const prompt = `
+SYSTEM
+You are HeatChecks V3 Narrative Engine.
+
+You will receive a MatchPack JSON generated from HeatChecks’ local stats database plus an evidence bundle.
+
+DATA DISCIPLINE (HARD RULES)
+- Do not invent statistics, injuries, or quotes.
+- Any numbers must be copied from:
+  - factDrop.bullets[].display
+  - factDrop.comparisons[].display
+  - factDrop.sections[key=formLeaders].priorityPlayers[].displayText
+- Any quote used must be copied exactly from evidence.quotes[].quote.
+- You may paraphrase what a quote implies, but do not alter the quote text.
+
+PLAYER MENTION RULE
+- You may only name players that appear in:
+  - factDrop.sections[key=formLeaders].itemsDetailed or priorityPlayers
+  - factDrop.sections[key=revengeWatch].items
+  - evidence.timeline[].relatedPlayers
+
+STYLE
+HeatChecks terminal vibe: tense, cinematic, sharp. Avoid ESPN clichés.
+
+USER
+MATCHPACK (AUTHORITATIVE)
+${JSON.stringify({ matchPack, evidence }, null, 2)}
+
+TASK
+Write a story-first matchup narrative with a deep dive angle.
+Use quotes to make the narrative feel lived-in and documented.
+
+OUTPUT (VALID JSON ONLY)
+{
+  "selectedAngles": {
+    "primary": {
+      "id": "string",
+      "title": "string",
+      "supportedBy": { "bullets": ["bulletKey"], "comparisons": ["comparisonKey"], "sections": ["sectionKey"], "quoteIds": ["quoteId"] }
+    },
+    "secondary": [
+      {
+        "id": "string",
+        "title": "string",
+        "supportedBy": { "bullets": ["bulletKey"], "comparisons": ["comparisonKey"], "sections": ["sectionKey"], "quoteIds": ["quoteId"] }
+      }
+    ]
+  },
+  "narrativeThesis": "2–4 sentences. Establish conflict. Include at most ONE quoted stat display OR ONE quote.",
+  "deepDive": {
+    "headline": "string",
+    "lede": "One punchy paragraph.",
+    "acts": [
+      {
+        "actTitle": "ACT I — Setup",
+        "whatItMeans": "Explain the tension and what’s at stake.",
+        "anchors": [
+          { "type": "stat", "text": "copy exact bullets[].display OR comparisons[].display OR player displayText" },
+          { "type": "quote", "text": "copy exact evidence.quotes[].quote", "quoteId": "string" }
+        ]
+      },
+      {
+        "actTitle": "ACT II — Pressure",
+        "whatItMeans": "Late-game nerves, close-game identity, standings pressure.",
+        "anchors": [
+          { "type": "stat", "text": "copy exact display string" }
+        ]
+      },
+      {
+        "actTitle": "ACT III — Break",
+        "whatItMeans": "Two scripts: A controls it if… B flips it if…",
+        "anchors": [
+          { "type": "quote", "text": "copy exact quote", "quoteId": "string" }
+        ]
+      }
+    ],
+    "pressurePoints": [
+      "3–6 concrete moments that could swing the game (no new stats)."
+    ],
+    "quotesUsed": [
+      { "quoteId": "string", "quote": "exact quote", "speaker": "string|null", "sourceName": "string|null" }
+    ]
+  },
+  "narrativeCards": [
+    {
+      "id": "string",
+      "title": "string",
+      "claim": "one-sentence claim tied to selectedAngles.supportedBy",
+      "emotionTags": ["pressure","momentum","control","volatility","revenge","urgency","expectation","instability","confidence"],
+      "score": 0
+    }
+  ],
+  "matchupMeaning": "1 paragraph, no numbers, what this reveals about both teams",
+  "quality": {
+    "usedStatAnchors": ["exact display strings used"],
+    "usedQuoteIds": ["quoteId", "..."],
+    "warnings": ["If evidence.quotes is empty, say so and proceed without quotes."]
+  }
+}
+
+QUOTE RULES
+- Use 0–2 quotes total. If none exist, proceed with no quotes.
+- Quotes must be copied verbatim.
+- Don’t stack quotes back-to-back; space them as anchors.
+
+RETURN JSON ONLY.
+`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-pro',
+    contents: prompt,
+    config: { responseMimeType: "application/json" }
+  });
+
+  return JSON.parse(response.text);
+}
+
+// ===================================================================================
+// HEAT ARTICLE V3: HUMAN PASS (post-processing pulse layer)
+// ===================================================================================
+type HumanPassOutput = {
+  humanPass: {
+    overlayParagraphs: string[];
+    recognitionLines: string[];
+    tensionLeans: Array<{ direction: 'teamA' | 'teamB' | 'neither'; line: string }>;
+    closingBeat: string;
+  };
+};
+
+function escapeHtmlSimple(s: string) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+/**
+ * Render QUOTE or STAT anchor as HTML directly
+ * This bypasses markdown conversion to prevent nesting issues
+ */
+function renderQuoteStatAnchor(type: 'QUOTE' | 'STAT', text: string, speaker?: string | null): string {
+  const t = escapeHtmlSimple(String(text || '').trim());
+  const labelColor = type === 'STAT' ? '#00ff41' : '#ffe66d';
+  const leftColor = type === 'STAT' ? 'rgba(0, 255, 65, 0.75)' : 'rgba(255, 230, 109, 0.85)';
+  const textStyle = type === 'QUOTE'
+    ? `color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.74rem; line-height:1.45; font-style:italic;`
+    : `color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.74rem; line-height:1.45;`;
+  
+  // For QUOTE, add speaker attribution if available
+  const speakerHtml = (type === 'QUOTE' && speaker) 
+    ? `<span style="color:rgba(255,255,255,0.65); font-size:0.70rem; margin-left:0.4rem; white-space:nowrap;">— ${escapeHtmlSimple(speaker)}</span>` 
+    : '';
+  
+  // Render the HTML block (minified, no literal newlines)
+  const htmlBlock = (
+    `<div style="margin:0.45rem 0; padding:0.5rem 0.65rem; background:rgba(0, 20, 10, 0.92); border:1px solid rgba(255,255,255,0.14); border-left:3px solid ${leftColor}; border-radius:10px; box-shadow:0 0 12px rgba(0,0,0,0.35), inset 0 0 14px rgba(255,255,255,0.04);">` +
+    `<div style="display:flex; align-items:flex-start; gap:0.5rem;">` +
+    `<div style="font-family:'Courier New', monospace; font-size:0.70rem; letter-spacing:0.16em; font-weight:900; color:${labelColor}; flex-shrink:0; white-space:nowrap;">${type}:</div>` +
+    `<div style="${textStyle} flex:1; word-wrap:break-word; overflow-wrap:break-word;">${t}${speakerHtml}</div>` +
+    `</div>` +
+    `</div>`
+  );
+  
+  // Wrap in HTML block markers so markdownToHtml preserves it as-is
+  return `<!-- HTML_BLOCK_START -->${htmlBlock}<!-- HTML_BLOCK_END -->`;
+}
+
+async function generateHeatArticleV3HumanPass(
+  articleMarkdown: string,
+  teamA: string,
+  teamB: string
+): Promise<HumanPassOutput> {
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (window as any).process?.env?.API_KEY || '';
+  if (!apiKey) throw new Error('API key not available');
+
+  const ai = new GoogleGenAI({ apiKey });
+
+  const prompt = `
+system
+You are the Human Pass for HeatChecks.
+
+You are not the analyst.
+You are the voice that shows up after the analysis is written.
+
+You have read the article.
+You agree with the facts.
+You do not try to improve structure or correctness.
+
+Your job is to give the piece a pulse.
+
+RULES:
+- Do NOT add new statistics, records, or numbers.
+- Do NOT introduce new players or teams.
+- Do NOT contradict the article.
+- Do NOT explain concepts again.
+- Do NOT summarize the article.
+
+You may:
+- add emotional recognition
+- add tension
+- lean into doubt
+- sound unfinished
+- speak directly to the reader
+- leave questions hanging
+
+user
+ORIGINAL ARTICLE (AUTHORITATIVE)
+${articleMarkdown}
+
+TASK
+Apply a Human Pass.
+
+OUTPUT:
+Return JSON only, with this exact shape:
+
+{
+  "humanPass": {
+    "overlayParagraphs": [
+      "1–3 short paragraphs (2–4 sentences each). These should feel like thoughts that interrupt the article, not replace it."
+    ],
+    "recognitionLines": [
+      "2–4 single-sentence lines that name a feeling fans already have."
+    ],
+    "tensionLeans": [
+      {
+        "direction": "teamA | teamB | neither",
+        "line": "A slightly opinionated line that leans emotionally, not statistically."
+      }
+    ],
+    "closingBeat": "One unresolved line that lingers after the article ends."
+  }
+}
+
+STYLE GUIDANCE
+- Fragments are encouraged.
+- Short sentences are better than polished ones.
+- Avoid formal transitions.
+- Avoid buzzwords.
+- Write like this will be screenshot and shared.
+- If it feels slightly uncomfortable, you’re doing it right.
+`;
+
+  const response = await ai.models.generateContent({
+    model: 'gemini-2.5-pro',
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          humanPass: {
+            type: Type.OBJECT,
+            properties: {
+              overlayParagraphs: { type: Type.ARRAY, items: { type: Type.STRING } },
+              recognitionLines: { type: Type.ARRAY, items: { type: Type.STRING } },
+              tensionLeans: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    direction: { type: Type.STRING },
+                    line: { type: Type.STRING }
+                  },
+                  required: ['direction', 'line']
+                }
+              },
+              closingBeat: { type: Type.STRING }
+            },
+            required: ['overlayParagraphs', 'recognitionLines', 'tensionLeans', 'closingBeat']
+          }
+        },
+        required: ['humanPass']
+      }
+    }
+  });
+
+  // responseMimeType should guarantee JSON; still guard just in case.
+  try {
+    return JSON.parse(response.text);
+  } catch {
+    return extractJson<HumanPassOutput>(response.text);
+  }
+}
+
+function applyHumanPassToMarkdown(
+  originalMarkdown: string,
+  humanPass: HumanPassOutput['humanPass'],
+  teamA: string,
+  teamB: string
+): { markdown: string; htmlBlocks: { early?: string; mid?: string; closing?: string } } {
+  if (!originalMarkdown || !humanPass) {
+    return { markdown: originalMarkdown, htmlBlocks: {} };
+  }
+
+  const overlayParagraphs = Array.isArray(humanPass.overlayParagraphs) ? humanPass.overlayParagraphs.filter(Boolean).slice(0, 3) : [];
+  const recognitionLines = Array.isArray(humanPass.recognitionLines) ? humanPass.recognitionLines.filter(Boolean).slice(0, 4) : [];
+  const tensionLeans = Array.isArray(humanPass.tensionLeans) ? humanPass.tensionLeans.slice(0, 3) : [];
+  const closingBeat = (humanPass.closingBeat || '').trim();
+
+  const formatDirection = (d: any) => {
+    if (d === 'teamA') return teamA;
+    if (d === 'teamB') return teamB;
+    return null; // Return null instead of 'Neither' to skip these
+  };
+
+  const buildHtmlBlock = (title: string, lines: string[]) => {
+    const cleanLines = Array.isArray(lines) ? lines.map(l => String(l || '').trim()).filter(Boolean) : [];
+    if (cleanLines.length === 0) return '';
+    const first = cleanLines[0];
+    const rest = cleanLines.slice(1);
+    const titleText = escapeHtmlSimple(title);
+
+    // Make the "OUR TAKE" body text small (quote-log scale); label stays bold.
+    const firstHtml = `<div style="color:rgba(255,255,255,0.88); font-family:'Courier New', monospace; font-size:0.75rem; line-height:1.55; font-weight:700; word-wrap:break-word; overflow-wrap:break-word;">${escapeHtmlSimple(first)}</div>`;
+    const restHtml = rest.length > 0
+      ? `<div style="margin-top:0.25rem; display:flex; flex-direction:column; gap:0.2rem;">${rest
+          .map(l => `<div style="color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.74rem; line-height:1.45; word-wrap:break-word; overflow-wrap:break-word;">${escapeHtmlSimple(l)}</div>`)
+          .join('')}</div>`
+      : '';
+
+    // Return clean HTML block (no comment markers - will be injected directly in template)
+    return (
+      `<div style="margin:0.35rem 0 0.55rem 0; padding:0.55rem 0.75rem; background:linear-gradient(180deg, rgba(255,255,255,0.06), rgba(0,0,0,0.22)); border:1px solid rgba(255,255,255,0.20); border-left:3px solid rgba(255,230,109,0.90); border-radius:10px; box-shadow:0 0 18px rgba(0,0,0,0.5), inset 0 0 18px rgba(255,255,255,0.06);">` +
+      `<div style="display:flex; align-items:flex-start; gap:0.5rem; margin-bottom:0.15rem; flex-wrap:nowrap;">` +
+      `<div style="width:6px; height:6px; border-radius:50%; background:rgba(255,230,109,0.95); box-shadow:0 0 14px rgba(255,230,109,0.55); flex-shrink:0; margin-top:0.2rem;"></div>` +
+      `<span style="color:rgba(255,230,109,0.98); font-weight:900; letter-spacing:0.12em; font-family:'Courier New', monospace; flex-shrink:0; white-space:nowrap; display:inline-block;">${titleText}:</span>` +
+      `<div style="flex:1; min-width:0;">${firstHtml}</div>` +
+      `</div>` +
+      `${restHtml}` +
+      `</div>`
+    );
+  };
+
+  const earlyLines: string[] = [];
+  overlayParagraphs.forEach(p => {
+    const t = String(p).trim();
+    if (t) earlyLines.push(t);
+  });
+  if (recognitionLines.length > 0) {
+    earlyLines.push(...recognitionLines.map(r => `— ${String(r).trim()}`).filter(Boolean));
+  }
+
+  const midLines: string[] = [];
+  for (const t of tensionLeans) {
+    const dir = formatDirection((t as any)?.direction);
+    const line = String((t as any)?.line || '').trim();
+    if (!line || !dir) continue; // Skip if direction is null (Neither)
+    midLines.push(`${dir}: ${line}`);
+  }
+
+  // Build HTML blocks but DON'T insert them into markdown
+  // Store them separately so template can inject them directly
+  const earlyBlock = earlyLines.length > 0 ? buildHtmlBlock('OUR TAKE', earlyLines) : '';
+  const midBlock = midLines.length > 0 ? buildHtmlBlock('OUR TAKE', midLines) : '';
+  const closingBlock = closingBeat ? buildHtmlBlock('OUR TAKE', [closingBeat]) : '';
+
+  // Return markdown unchanged and HTML blocks separately
+  return {
+    markdown: String(originalMarkdown),
+    htmlBlocks: {
+      early: earlyBlock || undefined,
+      mid: midBlock || undefined,
+      closing: closingBlock || undefined
+    }
+  };
+}
+
+function renderHeatArticleV3Markdown(v3: any, evidence?: EvidenceForV3): string {
+  const dd = v3?.deepDive || {};
+  const acts = Array.isArray(dd.acts) ? dd.acts : [];
+  
+  // Build a map of quoteId to speaker for quick lookup
+  const quoteSpeakerMap = new Map<string, string>();
+  if (evidence?.quotes) {
+    for (const q of evidence.quotes) {
+      if (q.quoteId && q.speaker) {
+        quoteSpeakerMap.set(q.quoteId, q.speaker);
+      }
+    }
+  }
+  // Also check quotesUsed in v3 narrative
+  if (Array.isArray(dd.quotesUsed)) {
+    for (const q of dd.quotesUsed) {
+      if (q.quoteId && q.speaker) {
+        quoteSpeakerMap.set(q.quoteId, q.speaker);
+      }
+    }
+  }
+
+  const lines: string[] = [];
+  if (dd.headline) lines.push(`# ${dd.headline}`);
+  if (dd.lede) lines.push('', dd.lede);
+
+  if (v3?.narrativeThesis) {
+    lines.push('', '## Thesis', '', v3.narrativeThesis);
+  }
+
+  lines.push('', '## Deep Dive');
+  for (const act of acts) {
+    lines.push('', `### ${act.actTitle || 'ACT'}`, '', act.whatItMeans || '');
+    const anchors = Array.isArray(act.anchors) ? act.anchors : [];
+    if (anchors.length > 0) {
+      for (const a of anchors) {
+        if (a?.type === 'quote') {
+          const speaker = a.quoteId ? quoteSpeakerMap.get(a.quoteId) : null;
+          const quoteText = String(a.text || '').trim();
+          // Render QUOTE as HTML directly instead of markdown
+          lines.push('', renderQuoteStatAnchor('QUOTE', quoteText, speaker || undefined));
+        } else if (a?.type === 'stat') {
+          const statText = String(a.text || '').trim();
+          // Render STAT as HTML directly instead of markdown
+          lines.push('', renderQuoteStatAnchor('STAT', statText));
+        }
+      }
+    }
+  }
+
+  if (Array.isArray(dd.pressurePoints) && dd.pressurePoints.length > 0) {
+    lines.push('', '## Pressure Points', '', ...dd.pressurePoints.map((p: string) => `- ${p}`));
+  }
+
+  if (v3?.matchupMeaning) {
+    lines.push('', '## What This Means', '', v3.matchupMeaning);
+  }
+
+  return lines.join('\n');
 }
 
 // ===================================================================================

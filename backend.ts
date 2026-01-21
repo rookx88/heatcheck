@@ -68,6 +68,32 @@ interface HeatchecksEdge {
     finalCall: string;
 }
 
+interface HeatchecksEdgeV2 {
+    game: {
+        market: "moneyline" | "spread" | "total" | "none";
+        selection: "TEAM_A" | "TEAM_B" | "OVER" | "UNDER" | "none";
+        line: number | null;
+        price_american: number | null;
+        book: string | null;
+        confidence: "low" | "medium" | "high";
+        receipts: [string, string, string];
+        risks: [string, string];
+        one_sentence_call: string;
+    };
+    player_props: Array<{
+        player_name: string;
+        market: string;
+        selection: "OVER" | "UNDER";
+        line: number;
+        price_american: number;
+        book: string;
+        confidence: "low" | "medium" | "high";
+        receipts: [string, string, string];
+        risks: [string, string];
+    }>;
+    no_edge_reason: string | null;
+}
+
 interface HeatcheckPost {
     id: string;
     createdAt: string;
@@ -79,7 +105,7 @@ interface HeatcheckPost {
     scanNarrative: string;
     status: "draft" | "published";
     websiteStory: HeatcheckStory;
-    heatchecksEdge: HeatchecksEdge;
+    heatchecksEdge: HeatchecksEdge | HeatchecksEdgeV2;
 }
 
 const app = express();
@@ -94,6 +120,12 @@ app.use(express.json());
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
+
+// --- NBA HEAT SHEET DATABASE CONNECTION (separate DB for MatchPack V3) ---
+// Uses NBA_HEAT_SHEET_DATABASE_URL so we don't mix application content DB with stats DB.
+const nbaHeatSheetPool: Pool | null = process.env.NBA_HEAT_SHEET_DATABASE_URL
+  ? new Pool({ connectionString: process.env.NBA_HEAT_SHEET_DATABASE_URL })
+  : null;
 
 const SECRET_API_KEY = process.env.API_KEY || 'your-secret-api-key';
 const ODDS_API_KEY = process.env.THE_ODDS_API_KEY;
@@ -395,6 +427,330 @@ app.get('/api/posts/slug/:slug', async (req: express.Request, res: express.Respo
     }
 });
 
+// GET /api/match-pack-v3 - Get MatchPackV3 JSON from nba_heat_sheet DB (auth required)
+app.get('/api/match-pack-v3', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        if (!nbaHeatSheetPool) {
+            return res.status(500).json({ message: 'NBA_HEAT_SHEET_DATABASE_URL is not configured on the server.' });
+        }
+
+        const teamA = String(req.query.teamA || '').trim();
+        const teamB = String(req.query.teamB || '').trim();
+        const gameDateEstRaw = req.query.gameDateEst ? String(req.query.gameDateEst).trim() : '';
+        const seasonRaw = req.query.season ? String(req.query.season).trim() : '';
+
+        const closeMargin = req.query.closeMargin ? Number(req.query.closeMargin) : 6;
+        const formLeaders = req.query.formLeaders ? Number(req.query.formLeaders) : 3;
+
+        if (!teamA || !teamB) {
+            return res.status(400).json({ message: 'Missing required query params: teamA and teamB' });
+        }
+        if (!Number.isFinite(closeMargin) || closeMargin <= 0 || closeMargin > 50) {
+            return res.status(400).json({ message: 'Invalid closeMargin; expected 1-50' });
+        }
+        if (!Number.isFinite(formLeaders) || formLeaders <= 0 || formLeaders > 10) {
+            return res.status(400).json({ message: 'Invalid formLeaders; expected 1-10' });
+        }
+
+        // Validate optional date format (YYYY-MM-DD) if provided
+        let gameDateEst: string | null = null;
+        if (gameDateEstRaw) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(gameDateEstRaw)) {
+                return res.status(400).json({ message: 'Invalid gameDateEst; expected YYYY-MM-DD' });
+            }
+            gameDateEst = gameDateEstRaw;
+        }
+
+        const season: string | null = seasonRaw || null;
+
+        const result = await nbaHeatSheetPool.query(
+            'select public.get_match_pack_v3($1::text,$2::text,$3::date,$4::varchar,$5::int,$6::int) as pack',
+            [teamA, teamB, gameDateEst, season, closeMargin, formLeaders]
+        );
+
+        const pack = result.rows?.[0]?.pack ?? null;
+        res.json({ pack });
+    } catch (err: any) {
+        console.error('Error fetching MatchPackV3:', err);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// GET /api/odds/game/:eventId - Fetch game odds and player props from OddsAPI (auth required)
+app.get('/api/odds/game/:eventId', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        if (!ODDS_API_KEY) {
+            return res.status(500).json({ message: 'THE_ODDS_API_KEY is not configured on the server.' });
+        }
+
+        const eventId = String(req.params.eventId || '').trim();
+        const sport = String(req.query.sport || 'basketball_nba').trim();
+
+        if (!eventId) {
+            return res.status(400).json({ message: 'Missing required param: eventId' });
+        }
+
+        const baseUrl = 'https://api.the-odds-api.com/v4';
+
+        // Fetch game markets (moneyline, spread, total)
+        const gameParams = new URLSearchParams({
+            apiKey: ODDS_API_KEY,
+            regions: 'us',
+            markets: 'h2h,spreads,totals',
+            dateFormat: 'iso',
+            oddsFormat: 'american'
+        });
+        const gameUrl = `${baseUrl}/sports/${sport}/events/${eventId}/odds?${gameParams.toString()}`;
+
+        // Fetch player prop markets
+        const propMarkets = [
+            'player_points',
+            'player_rebounds',
+            'player_assists',
+            'player_threes',
+            'player_points_rebounds_assists',
+            'player_blocks',
+            'player_steals'
+        ].join(',');
+        const propParams = new URLSearchParams({
+            apiKey: ODDS_API_KEY,
+            regions: 'us',
+            markets: propMarkets,
+            oddsFormat: 'american'
+        });
+        const propUrl = `${baseUrl}/sports/${sport}/events/${eventId}/odds?${propParams.toString()}`;
+
+        // Fetch both in parallel
+        const [gameResponse, propResponse] = await Promise.all([
+            fetch(gameUrl),
+            fetch(propUrl)
+        ]);
+
+        if (!gameResponse.ok) {
+            const errorText = await gameResponse.text();
+            console.error(`[GET /api/odds/game/:eventId] Game odds error (${gameResponse.status}):`, errorText);
+            return res.status(gameResponse.status).json({ 
+                message: 'Failed to fetch game odds from OddsAPI',
+                error: errorText.substring(0, 500)
+            });
+        }
+
+        if (!propResponse.ok) {
+            const errorText = await propResponse.text();
+            console.error(`[GET /api/odds/game/:eventId] Prop odds error (${propResponse.status}):`, errorText);
+            // Don't fail completely if props fail - return game odds only
+        }
+
+        const gameData = await gameResponse.json();
+        let propData = null;
+        if (propResponse.ok) {
+            try {
+                propData = await propResponse.json();
+            } catch (e) {
+                console.warn('[GET /api/odds/game/:eventId] Failed to parse prop response as JSON');
+            }
+        }
+
+        // Structure the response
+        const result: {
+            eventId: string;
+            gameMarkets: any;
+            playerProps: any;
+            retrievedAt: string;
+        } = {
+            eventId,
+            gameMarkets: gameData,
+            playerProps: propData,
+            retrievedAt: new Date().toISOString()
+        };
+
+        res.json(result);
+    } catch (error: any) {
+        console.error('[GET /api/odds/game/:eventId] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// GET /api/odds/find-event - Find OddsAPI event ID by team names and date (auth required)
+app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        if (!ODDS_API_KEY) {
+            return res.status(500).json({ message: 'THE_ODDS_API_KEY is not configured on the server.' });
+        }
+
+        const teamA = String(req.query.teamA || '').trim();
+        const teamB = String(req.query.teamB || '').trim();
+        const gameDate = String(req.query.gameDate || '').trim(); // YYYY-MM-DD format
+        const sport = String(req.query.sport || 'basketball_nba').trim();
+
+        if (!teamA || !teamB) {
+            return res.status(400).json({ message: 'Missing required query params: teamA and teamB' });
+        }
+
+        const baseUrl = 'https://api.the-odds-api.com/v4';
+        const params = new URLSearchParams({
+            apiKey: ODDS_API_KEY,
+            regions: 'us',
+            markets: 'h2h',
+            dateFormat: 'iso',
+            oddsFormat: 'american'
+        });
+        
+        const url = `${baseUrl}/sports/${sport}/odds?${params.toString()}`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[GET /api/odds/find-event] OddsAPI error (${response.status}):`, errorText);
+            return res.status(response.status).json({ 
+                message: 'Failed to fetch games from OddsAPI',
+                error: errorText.substring(0, 500)
+            });
+        }
+
+        const games = await response.json();
+        if (!Array.isArray(games)) {
+            return res.status(500).json({ message: 'Invalid response format from OddsAPI' });
+        }
+
+        // Enhanced team name normalization
+        const normalizeTeamName = (name: string) => {
+            return name.toLowerCase()
+                .replace(/\s+/g, ' ')
+                .replace(/^la\s+/i, 'los angeles ') // "LA Clippers" -> "los angeles clippers"
+                .replace(/^ny\s+/i, 'new york ') // "NY Knicks" -> "new york knicks"
+                .replace(/^phx\s+/i, 'phoenix ') // "PHX Suns" -> "phoenix suns"
+                .trim();
+        };
+
+        // Extract team name without city (last word or last two words for special cases)
+        const getTeamNameOnly = (fullName: string) => {
+            const parts = fullName.toLowerCase().split(/\s+/);
+            if (parts.length <= 1) return fullName.toLowerCase();
+            // Return last word (e.g., "Clippers", "Bulls")
+            return parts[parts.length - 1];
+        };
+
+        const teamANorm = normalizeTeamName(teamA);
+        const teamBNorm = normalizeTeamName(teamB);
+        const teamANameOnly = getTeamNameOnly(teamA);
+        const teamBNameOnly = getTeamNameOnly(teamB);
+
+        // Helper to check if two team names match (exact or partial)
+        const teamsMatch = (team1: string, team2: string, team1NameOnly: string, team2NameOnly: string) => {
+            // Exact match
+            if (team1 === team2) return true;
+            // Partial match (one contains the other)
+            if (team1.includes(team2) || team2.includes(team1)) return true;
+            // Team name only match (e.g., "Clippers" matches "Los Angeles Clippers")
+            if (team1.includes(team2NameOnly) || team2.includes(team1NameOnly)) return true;
+            if (team1NameOnly === team2NameOnly && team1NameOnly.length > 3) return true; // Avoid false matches on short names
+            return false;
+        };
+
+        // Find matching game
+        let matchedGame = null;
+        const availableGames: string[] = []; // For debugging
+        
+        for (const game of games) {
+            const homeTeam = normalizeTeamName(game.home_team || '');
+            const awayTeam = normalizeTeamName(game.away_team || '');
+            const homeTeamNameOnly = getTeamNameOnly(game.home_team || '');
+            const awayTeamNameOnly = getTeamNameOnly(game.away_team || '');
+            
+            // Log available games for debugging (first 5)
+            if (availableGames.length < 5) {
+                availableGames.push(`${game.home_team} vs ${game.away_team} (${game.commence_time})`);
+            }
+            
+            // Check if teams match (either order, with flexible matching)
+            const matches = (
+                (teamsMatch(homeTeam, teamANorm, homeTeamNameOnly, teamANameOnly) && 
+                 teamsMatch(awayTeam, teamBNorm, awayTeamNameOnly, teamBNameOnly)) ||
+                (teamsMatch(homeTeam, teamBNorm, homeTeamNameOnly, teamBNameOnly) && 
+                 teamsMatch(awayTeam, teamANorm, awayTeamNameOnly, teamANameOnly))
+            );
+
+            if (matches) {
+                // If gameDate provided, check date (convert to EST for comparison)
+                if (gameDate) {
+                    if (game.commence_time) {
+                        const gameDateObj = new Date(game.commence_time);
+                        
+                        // Convert game date to EST/EDT (America/New_York timezone)
+                        const gameDateEST = new Intl.DateTimeFormat('en-CA', {
+                            timeZone: 'America/New_York',
+                            year: 'numeric',
+                            month: '2-digit',
+                            day: '2-digit'
+                        }).format(gameDateObj);
+                        
+                        // Compare with target date (which should already be in YYYY-MM-DD format)
+                        // gameDateEST will be in YYYY-MM-DD format from Intl.DateTimeFormat
+                        if (gameDateEST === gameDate) {
+                            console.log(`[GET /api/odds/find-event] Date match found: ${gameDateEST} === ${gameDate}`);
+                            matchedGame = game;
+                            break;
+                        }
+                        
+                        // Also check if dates are within 1 day (for edge cases)
+                        const gameDateESTObj = new Date(gameDateEST + 'T00:00:00');
+                        const targetDateESTObj = new Date(gameDate + 'T00:00:00');
+                        const daysDiffEST = Math.abs(Math.floor((gameDateESTObj.getTime() - targetDateESTObj.getTime()) / (1000 * 60 * 60 * 24)));
+                        
+                        if (daysDiffEST <= 1) {
+                            console.log(`[GET /api/odds/find-event] Date within 1 day: ${gameDateEST} vs ${gameDate} (${daysDiffEST} days)`);
+                            matchedGame = game;
+                            break;
+                        }
+                        
+                        // Fallback: also check UTC date and within 1 day
+                        const gameDateStr = gameDateObj.toISOString().split('T')[0];
+                        const targetDateObj = new Date(gameDate + 'T00:00:00Z');
+                        const targetDateStr = targetDateObj.toISOString().split('T')[0];
+                        const daysDiff = Math.abs(Math.floor((gameDateObj.getTime() - targetDateObj.getTime()) / (1000 * 60 * 60 * 24)));
+                        
+                        if (gameDateStr === targetDateStr || daysDiff <= 1) {
+                            matchedGame = game;
+                            break;
+                        }
+                    } else {
+                        // No commence_time, but teams match - use it if no date filter
+                        if (!gameDate) {
+                            matchedGame = game;
+                            break;
+                        }
+                    }
+                } else {
+                    // No date filter, use first match
+                    matchedGame = game;
+                    break;
+                }
+            }
+        }
+
+        if (!matchedGame) {
+            console.warn(`[GET /api/odds/find-event] Game not found. Searched: ${teamA} vs ${teamB} on ${gameDate || 'any'}`);
+            console.warn(`[GET /api/odds/find-event] Available games (sample):`, availableGames);
+            return res.status(404).json({ 
+                message: 'Event not found in OddsAPI',
+                searched: { teamA, teamB, gameDate: gameDate || 'any' },
+                availableGamesSample: availableGames.slice(0, 5) // Return sample for debugging
+            });
+        }
+
+        res.json({
+            eventId: matchedGame.id,
+            homeTeam: matchedGame.home_team,
+            awayTeam: matchedGame.away_team,
+            commenceTime: matchedGame.commence_time
+        });
+    } catch (error: any) {
+        console.error('[GET /api/odds/find-event] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
 // POST /api/posts - Create a new post (as a draft)
 app.post('/api/posts', apiKeyAuth, async (req: express.Request, res: express.Response) => {
     const now = new Date().toISOString();
@@ -565,6 +921,61 @@ app.get('/api/matchups', async (req: express.Request, res: express.Response) => 
         res.json(matchups);
     } catch (err) {
         console.error('Error fetching matchups:', err);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// GET /api/matchups/v3 - List upcoming NBA games from nba_heat_sheet DB for HeatArticleV3 picker
+// Returns the same general shape as /api/matchups so the existing modal can be reused.
+app.get('/api/matchups/v3', async (req: express.Request, res: express.Response) => {
+    try {
+        if (!nbaHeatSheetPool) {
+            return res.status(500).json({ message: 'NBA_HEAT_SHEET_DATABASE_URL is not configured on the server.' });
+        }
+
+        const startDate = req.query.startDate ? String(req.query.startDate).trim() : '';
+        const endDate = req.query.endDate ? String(req.query.endDate).trim() : '';
+
+        const params: any[] = [];
+        let where = `g.game_date_utc >= now() - interval '6 hours'`;
+
+        if (startDate) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+                return res.status(400).json({ message: 'Invalid startDate; expected YYYY-MM-DD' });
+            }
+            params.push(startDate);
+            where += ` AND g.game_date_est >= $${params.length}::date`;
+        }
+        if (endDate) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+                return res.status(400).json({ message: 'Invalid endDate; expected YYYY-MM-DD' });
+            }
+            params.push(endDate);
+            where += ` AND g.game_date_est <= $${params.length}::date`;
+        }
+
+        const sql = `
+            select
+                g.game_id as id,
+                'NBA' as league,
+                ta.full_name as "teamA",
+                tb.full_name as "teamB",
+                to_char(g.game_date_est, 'YYYY-MM-DD') as "scheduledDate",
+                to_char((g.game_date_utc at time zone 'America/New_York'), 'HH24:MI') as "scheduledTime",
+                g.venue_name as venue,
+                coalesce(g.game_status, 'scheduled') as status
+            from public.games g
+            join public.teams ta on ta.team_id = g.away_team_id
+            join public.teams tb on tb.team_id = g.home_team_id
+            where ${where}
+            order by g.game_date_utc asc
+            limit 300;
+        `;
+
+        const result = await nbaHeatSheetPool.query(sql, params);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching V3 matchups:', err);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
@@ -997,13 +1408,18 @@ app.listen(port, () => {
     console.log('  GET    /api/posts');
     console.log('  GET    /api/posts/published');
     console.log('  GET    /api/posts/slug/:slug');
+    console.log('  GET    /api/match-pack-v3 (auth required)');
+    console.log('  GET    /api/odds/game/:eventId (auth required)');
+    console.log('  GET    /api/odds/find-event (auth required)');
     console.log('  POST   /api/posts (auth required)');
     console.log('  PUT    /api/posts/:id (auth required)');
     console.log('  DELETE /api/posts/:id (auth required)');
     console.log('  GET    /api/matchups');
+    console.log('  GET    /api/matchups/v3');
     console.log('  PUT    /api/matchups/:id (auth required)');
     console.log('  POST   /api/matchups/import (auth required)');
     console.log('  GET    /sitemap.xml');
     console.log('  GET    /robots.txt');
     console.log(`API Key configured: ${SECRET_API_KEY ? 'YES (***' + SECRET_API_KEY.slice(-4) + ')' : 'NO (using default)'}`);
+    console.log(`NBA Heat Sheet DB configured: ${nbaHeatSheetPool ? 'YES' : 'NO (set NBA_HEAT_SHEET_DATABASE_URL)'}`);
 });
