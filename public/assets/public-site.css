@@ -1582,6 +1582,20 @@ body {
     font-size: 0.85rem;
 }
 
+.mobile-radar-games .game-heat-score {
+    margin-left: 0.75rem;
+    flex-shrink: 0;
+    text-align: right;
+}
+
+.mobile-radar-games .game-heat-score > div:first-child {
+    font-size: 0.85rem !important;
+}
+
+.mobile-radar-games .game-heat-score > div:last-child {
+    font-size: 0.75rem !important;
+}
+
 .mobile-radar-games .no-games-message {
     color: rgba(0, 255, 65, 0.5);
     font-family: 'Courier New', monospace;

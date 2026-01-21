@@ -1322,6 +1322,21 @@ function generateMatchupButton(post) {
     const league = (post.league || '').toUpperCase();
     const articleUrl = generateArticleUrl(post);
     
+    // Calculate heat score
+    const heatScore = calculateHeatScoreFromMatchupData(post);
+    const scoreTotal = heatScore.total || 0;
+    
+    // Determine score label based on score
+    let scoreLabel = 'COOL';
+    let scoreColor = 'rgba(255, 255, 255, 0.5)';
+    if (scoreTotal >= 70) {
+        scoreLabel = 'HOT';
+        scoreColor = '#ff8000';
+    } else if (scoreTotal >= 45) {
+        scoreLabel = 'WARM';
+        scoreColor = '#ffaa00';
+    }
+    
     // Debug: log date issues
     if (rawDate && rawDate.includes('2026-01-10') || rawDate.includes('2026-01-11')) {
         console.log('Matchup button date:', {
@@ -1334,9 +1349,15 @@ function generateMatchupButton(post) {
     }
     
     return `
-        <a href="${articleUrl}" class="roundup-game-item">
-            <div class="game-matchup">${matchup}</div>
-            <div class="game-date">${dateMMDD} • ${league}</div>
+        <a href="${articleUrl}" class="roundup-game-item" style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="flex: 1; min-width: 0;">
+                <div class="game-matchup">${matchup}</div>
+                <div class="game-date">${dateMMDD} • ${league}</div>
+            </div>
+            <div class="game-heat-score" style="margin-left: 0.75rem; flex-shrink: 0; text-align: right;">
+                <div style="color: ${scoreColor}; font-family: 'Courier New', monospace; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">${scoreLabel}</div>
+                <div style="color: rgba(255, 255, 255, 0.6); font-family: 'Courier New', monospace; font-size: 0.6rem; margin-top: 0.15rem;">${scoreTotal}</div>
+            </div>
         </a>
     `;
 }
