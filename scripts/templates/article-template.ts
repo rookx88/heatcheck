@@ -381,9 +381,24 @@ export function generateArticlePage(
                 const metric = escapeHtml(String(highlightComparison.metric || highlightComparison.key || 'comparison'));
                 const aDisp = escapeHtml(String(highlightComparison.display?.A || String(highlightComparison.A || '')));
                 const bDisp = escapeHtml(String(highlightComparison.display?.B || String(highlightComparison.B || '')));
-                const winner = escapeHtml(String(highlightComparison.winner || 'even'));
+                const winnerRaw = String(highlightComparison.winner || 'even');
+                
+                // Get team names - prefer matchPackV3 data, fallback to post data
+                const teamAName = getShortTeamName(matchPackV3?.matchup?.teamA || post.teamA || 'Team A');
+                const teamBName = getShortTeamName(matchPackV3?.matchup?.teamB || post.teamB || 'Team B');
+                
+                // Map winner to team name
+                let winnerDisplay = winnerRaw;
+                if (winnerRaw === 'A') {
+                    winnerDisplay = teamAName;
+                } else if (winnerRaw === 'B') {
+                    winnerDisplay = teamBName;
+                } else {
+                    winnerDisplay = escapeHtml(winnerRaw);
+                }
+                
                 lines.push(`<div style="margin-top:0.55rem; color:#00ff41; font-weight:900; letter-spacing:0.14em; font-family:'Courier New', monospace; font-size:0.75rem; text-transform:uppercase;">KEY_COMP</div>`);
-                lines.push(`<div style="margin-top:0.2rem; padding:0.45rem 0.55rem; background:rgba(0,0,0,0.22); border:1px solid rgba(0,255,65,0.16); border-radius:10px; color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.78rem;">${metric}: A=${aDisp} | B=${bDisp} <span style="color:rgba(255,255,255,0.6);">(winner: ${winner})</span></div>`);
+                lines.push(`<div style="margin-top:0.2rem; padding:0.45rem 0.55rem; background:rgba(0,0,0,0.22); border:1px solid rgba(0,255,65,0.16); border-radius:10px; color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.78rem;">${metric}: ${escapeHtml(teamAName)}=${aDisp} | ${escapeHtml(teamBName)}=${bDisp} <span style="color:rgba(255,255,255,0.6);">(winner: ${winnerDisplay})</span></div>`);
             }
 
             // Replace "AI takeaways/risks" with a human-first impact block
@@ -830,12 +845,9 @@ export function generateArticlePage(
             <div style="position: absolute; bottom: 0.75rem; right: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite 1s;"></div>
             <div style="position: absolute; top: 0.75rem; left: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite 0.5s;"></div>
             <style>@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.1); } }</style>
-            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid rgba(255, 255, 255, 0.3);">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-top: -1rem; margin-bottom: 0; padding-bottom: 0; border-bottom: 2px solid rgba(255, 255, 255, 0.3);">
                 <div style="width: 4px; height: 30px; background: rgba(255, 255, 255, 0.5); box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);"></div>
-                <div style="color: rgba(255, 255, 255, 0.95); font-size: 1rem; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.2em; text-shadow: 0 0 10px rgba(255, 255, 255, 0.3), 0 0 20px rgba(255, 255, 255, 0.1);">
-                    &gt; HEATCHECKS EDGE
-                </div>
-                <div style="flex: 1; height: 1px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.3) 0%, transparent 100%);"></div>
+                <img src="/assets/images/heatchecksedge-3.png" alt="HeatChecks Edge" style="height: 160px; width: auto; display: block; margin-bottom: -1rem;" />
             </div>
             ${hasGame ? `
             <div style="margin-bottom: 1.5rem;">
@@ -897,12 +909,9 @@ export function generateArticlePage(
             <div style="position: absolute; bottom: 0.75rem; right: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite 1s;"></div>
             <div style="position: absolute; top: 0.75rem; left: 0.75rem; width: 12px; height: 12px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2); animation: pulse 2s infinite 0.5s;"></div>
             <style>@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.1); } }</style>
-            <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 2px solid rgba(255, 255, 255, 0.3);">
+            <div style="display: flex; align-items: center; gap: 0.75rem; margin-top: -1rem; margin-bottom: 0; padding-bottom: 0; border-bottom: 2px solid rgba(255, 255, 255, 0.3);">
                 <div style="width: 4px; height: 30px; background: rgba(255, 255, 255, 0.5); box-shadow: 0 0 10px rgba(255, 255, 255, 0.3);"></div>
-                <div style="color: rgba(255, 255, 255, 0.95); font-size: 1rem; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.2em; text-shadow: 0 0 10px rgba(255, 255, 255, 0.3), 0 0 20px rgba(255, 255, 255, 0.1);">
-                    &gt; HEATCHECKS EDGE
-                </div>
-                <div style="flex: 1; height: 1px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.3) 0%, transparent 100%);"></div>
+                <img src="/assets/images/heatchecksedge-3.png" alt="HeatChecks Edge" style="height: 160px; width: auto; display: block; margin-bottom: -1rem;" />
             </div>
             <div style="color: rgba(255, 255, 255, 0.95); font-size: 1.2rem; line-height: 2; font-family: 'Courier New', monospace; font-weight: bold; text-shadow: 0 0 15px rgba(255, 255, 255, 0.3), 0 2px 10px rgba(0, 0, 0, 0.5); padding: 1rem; background: rgba(0, 0, 0, 0.3); border-radius: 2px; border: 1px solid rgba(248, 66, 66, 0.4);">
                 ${escapeHtml(edgeCall)}
