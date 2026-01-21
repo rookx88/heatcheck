@@ -716,7 +716,7 @@ export function generateArticlePage(
         ` : '';
 
         return `
-            <section aria-label="Temperature Check" style="flex: 0 0 auto; display: flex; flex-direction: column; background: rgba(0, 12, 6, 0.96); border: 2px solid rgba(0, 136, 51, 0.85); box-shadow: 0 0 18px rgba(0, 136, 51, 0.25), inset 0 0 14px rgba(0, 255, 65, 0.06); overflow: hidden;">
+            <section aria-label="Temperature Check" style="flex: 0 0 auto; display: flex; flex-direction: column; background: rgba(0, 12, 6, 0.96); border: 2px solid rgba(0, 136, 51, 0.85); box-shadow: 0 0 18px rgba(0, 136, 51, 0.25), inset 0 0 14px rgba(0, 255, 65, 0.06); overflow-y: visible; overflow-x: hidden;">
                 <div style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
                     <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.5); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);"></div>
                     <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.5); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);"></div>
@@ -937,6 +937,31 @@ export function generateArticlePage(
     
     // Main content area (two-column layout) with semantic HTML
     const content = `
+        <style>
+            /* Mobile responsive styles */
+            @media (max-width: 768px) {
+                .article-content-grid {
+                    grid-template-columns: 1fr !important;
+                    grid-template-rows: auto auto !important;
+                }
+                .article-main-column {
+                    grid-column: 1 !important;
+                    grid-row: 1 !important;
+                }
+                .article-sidebar-column {
+                    grid-column: 1 !important;
+                    grid-row: 2 !important;
+                    overflow-y: visible !important;
+                    overflow-x: hidden !important;
+                    max-height: none !important;
+                }
+                section[aria-label="Temperature Check"] {
+                    overflow-y: visible !important;
+                    overflow-x: hidden !important;
+                    max-height: none !important;
+                }
+            }
+        </style>
         ${breadcrumbHtml}
         <article class="article-content-grid" style="display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: auto 1fr; gap: 0.5rem; padding: 0.5rem;">
             <!-- Left Column: Main Article -->
@@ -975,7 +1000,7 @@ export function generateArticlePage(
             </section>
             
             <!-- Right Column: Narrative Rack & Evidence Board -->
-            <aside class="article-sidebar-column" style="grid-column: 2; grid-row: 1 / -1; display: flex; flex-direction: column; gap: 0.5rem; overflow: hidden;">
+            <aside class="article-sidebar-column" style="grid-column: 2; grid-row: 1 / -1; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; overflow-x: hidden;">
                 ${temperatureCheckHtml}
                 <!-- Narrative Rack -->
                 <section aria-label="Narrative Analysis" style="flex: 1 1 50%; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden; min-height: 0;">
