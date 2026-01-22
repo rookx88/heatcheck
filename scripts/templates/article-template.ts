@@ -861,15 +861,23 @@ export function generateArticlePage(
                 </div>
                 <div style="color: rgba(255, 255, 255, 0.95); font-size: 1.1rem; line-height: 1.8; font-family: 'Courier New', monospace; font-weight: bold; text-shadow: 0 0 15px rgba(255, 255, 255, 0.3), 0 2px 10px rgba(0, 0, 0, 0.5); padding: 1rem; background: rgba(0, 0, 0, 0.3); border-radius: 2px; border: 1px solid rgba(248, 66, 66, 0.4);">
                     ${escapeHtml((edgeV2.game.one_sentence_call || '').replace(/TEAM_A/g, post.teamA).replace(/TEAM_B/g, post.teamB))}
+                    ${edgeV2.game.receipts && edgeV2.game.receipts.filter((r: string) => r).length > 0 ? `
+                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.2);">
+                        <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.5rem; font-weight: bold;">RECEIPTS:</div>
+                        <ul style="margin: 0; padding-left: 1.5rem; color: rgba(255, 255, 255, 0.9); font-size: 0.85rem; line-height: 1.6;">
+                            ${edgeV2.game.receipts.filter((r: string) => r).map((r: string) => `<li>${escapeHtml(r.replace(/TEAM_A/g, post.teamA).replace(/TEAM_B/g, post.teamB))}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+                    ${edgeV2.game.risks && edgeV2.game.risks.filter((r: string) => r).length > 0 ? `
+                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255, 152, 0, 0.3);">
+                        <div style="color: rgba(255, 152, 0, 0.9); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.5rem; font-weight: bold;">RISKS:</div>
+                        <ul style="margin: 0; padding-left: 1.5rem; color: rgba(255, 152, 0, 0.9); font-size: 0.85rem; line-height: 1.6;">
+                            ${edgeV2.game.risks.filter((r: string) => r).map((r: string) => `<li>${escapeHtml(r.replace(/TEAM_A/g, post.teamA).replace(/TEAM_B/g, post.teamB))}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
                 </div>
-                ${edgeV2.game.receipts && edgeV2.game.receipts.filter((r: string) => r).length > 0 ? `
-                <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.2);">
-                    <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.5rem;">RECEIPTS:</div>
-                    <ul style="margin: 0; padding-left: 1.5rem; color: rgba(255, 255, 255, 0.9); font-size: 0.85rem; line-height: 1.6;">
-                        ${edgeV2.game.receipts.filter((r: string) => r).map((r: string) => `<li>${escapeHtml(r.replace(/TEAM_A/g, post.teamA).replace(/TEAM_B/g, post.teamB))}</li>`).join('')}
-                    </ul>
-                </div>
-                ` : ''}
             </div>
             ` : ''}
             ${hasProps ? edgeV2.player_props.map((prop: any, idx: number) => `
@@ -877,7 +885,27 @@ export function generateArticlePage(
                 <div style="color: rgba(255, 255, 255, 0.9); font-size: 0.9rem; font-family: 'Courier New', monospace; font-weight: bold; margin-bottom: 0.5rem; text-transform: uppercase;">
                     PROP: ${escapeHtml(prop.player_name)} ${escapeHtml(prop.market.replace('player_', '').toUpperCase())} ${escapeHtml(prop.selection)} ${prop.line}
                 </div>
-                ${prop.receipts && prop.receipts.filter((r: string) => r).length > 0 ? `
+                ${prop.one_sentence_call ? `
+                <div style="color: rgba(255, 255, 255, 0.95); font-size: 1.1rem; line-height: 1.8; font-family: 'Courier New', monospace; font-weight: bold; text-shadow: 0 0 15px rgba(255, 255, 255, 0.3), 0 2px 10px rgba(0, 0, 0, 0.5); padding: 1rem; background: rgba(0, 0, 0, 0.3); border-radius: 2px; border: 1px solid rgba(0, 255, 65, 0.4);">
+                    ${escapeHtml((prop.one_sentence_call || '').replace(/TEAM_A/g, post.teamA).replace(/TEAM_B/g, post.teamB))}
+                    ${prop.receipts && prop.receipts.filter((r: string) => r).length > 0 ? `
+                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255, 255, 255, 0.2);">
+                        <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.5rem; font-weight: bold;">RECEIPTS:</div>
+                        <ul style="margin: 0; padding-left: 1.5rem; color: rgba(255, 255, 255, 0.9); font-size: 0.85rem; line-height: 1.6;">
+                            ${prop.receipts.filter((r: string) => r).map((r: string) => `<li>${escapeHtml(r.replace(/TEAM_A/g, post.teamA).replace(/TEAM_B/g, post.teamB))}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+                    ${prop.risks && prop.risks.filter((r: string) => r).length > 0 ? `
+                    <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255, 152, 0, 0.3);">
+                        <div style="color: rgba(255, 152, 0, 0.9); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.5rem; font-weight: bold;">RISKS:</div>
+                        <ul style="margin: 0; padding-left: 1.5rem; color: rgba(255, 152, 0, 0.9); font-size: 0.85rem; line-height: 1.6;">
+                            ${prop.risks.filter((r: string) => r).map((r: string) => `<li>${escapeHtml(r.replace(/TEAM_A/g, post.teamA).replace(/TEAM_B/g, post.teamB))}</li>`).join('')}
+                        </ul>
+                    </div>
+                    ` : ''}
+                </div>
+                ` : prop.receipts && prop.receipts.filter((r: string) => r).length > 0 ? `
                 <div style="margin-top: 0.5rem;">
                     <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.5rem;">RECEIPTS:</div>
                     <ul style="margin: 0; padding-left: 1.5rem; color: rgba(255, 255, 255, 0.9); font-size: 0.85rem; line-height: 1.6;">

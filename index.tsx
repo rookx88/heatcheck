@@ -2229,6 +2229,8 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
     const [posts, setPosts] = useState<HeatcheckPost[]>([]);
     const [loading, setLoading] = useState(true);
     const [deletingPostId, setDeletingPostId] = useState<string | null>(null);
+    const [currentPage, setCurrentPage] = useState(1);
+    const postsPerPage = 10;
     
     // Twitter/Reddit generation state for DFS articles
     const [showTweetModal, setShowTweetModal] = useState(false);
@@ -2251,8 +2253,16 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
     useEffect(() => {
         setLoading(true);
         apiClient.listPosts().then(data => {
-            setPosts(data);
+            // Sort by latest first (by updatedAt, then createdAt)
+            const sorted = [...data].sort((a, b) => {
+                const dateA = new Date(a.updatedAt || a.createdAt).getTime();
+                const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+                return dateB - dateA; // Descending order (newest first)
+            });
+            setPosts(sorted);
             setLoading(false);
+            // Reset to page 1 when data changes
+            setCurrentPage(1);
         }).catch(err => {
             console.error("Failed to load posts:", err);
             setLoading(false);
@@ -2405,9 +2415,62 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
     if (loading) return <div className="loader">Loading feed...</div>;
     if (posts.length === 0) return <div className="initial-message">No posts found. Create one from the Scanner Console.</div>;
 
+    // Calculate pagination
+    const totalPages = Math.ceil(posts.length / postsPerPage);
+    const startIndex = (currentPage - 1) * postsPerPage;
+    const endIndex = startIndex + postsPerPage;
+    const currentPosts = posts.slice(startIndex, endIndex);
+
     return (
-        <div className="results-grid">
-            {posts.map(post => {
+        <div>
+            <div style={{ marginBottom: '1rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px' }}>
+                <div style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.7)' }}>
+                    Showing {startIndex + 1}-{Math.min(endIndex, posts.length)} of {posts.length} posts
+                </div>
+                {totalPages > 1 && (
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                            disabled={currentPage === 1}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                background: currentPage === 1 ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)',
+                                border: '1px solid rgba(255, 255, 255, 0.3)',
+                                borderRadius: '4px',
+                                color: currentPage === 1 ? 'rgba(255, 255, 255, 0.3)' : '#fff',
+                                cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            ← Previous
+                        </button>
+                        <div style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.7)', minWidth: '80px', textAlign: 'center' }}>
+                            Page {currentPage} of {totalPages}
+                        </div>
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                            disabled={currentPage === totalPages}
+                            style={{
+                                padding: '0.5rem 1rem',
+                                background: currentPage === totalPages ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)',
+                                border: '1px solid rgba(255, 255, 255, 0.3)',
+                                borderRadius: '4px',
+                                color: currentPage === totalPages ? 'rgba(255, 255, 255, 0.3)' : '#fff',
+                                cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            Next →
+                        </button>
+                    </div>
+                )}
+            </div>
+            <div className="results-grid">
+            {currentPosts.map(post => {
                 const statusColor = post.status === 'published' ? 'var(--secondary-color)' : '#f0e68c';
                 const heatCheckData = (post as any).heatCheckData;
                 const narrativeCards = heatCheckData?.narratives?.candidate_cards || [];
@@ -2858,6 +2921,79 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
                     </div>
                 );
             })}
+            </div>
+            
+            {/* Pagination Footer */}
+            {totalPages > 1 && (
+                <div style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.5rem', padding: '0.75rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px' }}>
+                    <button
+                        onClick={() => setCurrentPage(1)}
+                        disabled={currentPage === 1}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            background: currentPage === 1 ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)',
+                            border: '1px solid rgba(255, 255, 255, 0.3)',
+                            borderRadius: '4px',
+                            color: currentPage === 1 ? 'rgba(255, 255, 255, 0.3)' : '#fff',
+                            cursor: currentPage === 1 ? 'not-allowed' : 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold'
+                        }}
+                    >
+                        First
+                    </button>
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                        .filter(page => {
+                            // Show first page, last page, current page, and pages around current
+                            return page === 1 || 
+                                   page === totalPages || 
+                                   (page >= currentPage - 1 && page <= currentPage + 1);
+                        })
+                        .map((page, idx, arr) => {
+                            // Add ellipsis if there's a gap
+                            const showEllipsisBefore = idx > 0 && arr[idx] - arr[idx - 1] > 1;
+                            return (
+                                <React.Fragment key={page}>
+                                    {showEllipsisBefore && (
+                                        <span style={{ color: 'rgba(255, 255, 255, 0.5)', padding: '0 0.25rem' }}>...</span>
+                                    )}
+                                    <button
+                                        onClick={() => setCurrentPage(page)}
+                                        style={{
+                                            padding: '0.5rem 0.75rem',
+                                            background: currentPage === page ? 'rgba(0, 255, 65, 0.3)' : 'rgba(255, 255, 255, 0.1)',
+                                            border: `1px solid ${currentPage === page ? 'rgba(0, 255, 65, 0.5)' : 'rgba(255, 255, 255, 0.3)'}`,
+                                            borderRadius: '4px',
+                                            color: currentPage === page ? '#00ff41' : '#fff',
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 'bold',
+                                            minWidth: '40px'
+                                        }}
+                                    >
+                                        {page}
+                                    </button>
+                                </React.Fragment>
+                            );
+                        })}
+                    <button
+                        onClick={() => setCurrentPage(totalPages)}
+                        disabled={currentPage === totalPages}
+                        style={{
+                            padding: '0.5rem 1rem',
+                            background: currentPage === totalPages ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.2)',
+                            border: '1px solid rgba(255, 255, 255, 0.3)',
+                            borderRadius: '4px',
+                            color: currentPage === totalPages ? 'rgba(255, 255, 255, 0.3)' : '#fff',
+                            cursor: currentPage === totalPages ? 'not-allowed' : 'pointer',
+                            fontSize: '0.75rem',
+                            fontWeight: 'bold'
+                        }}
+                    >
+                        Last
+                    </button>
+                </div>
+            )}
 
             {/* Tweet Generation Modal */}
             {showTweetModal && selectedPostForTweet && (
@@ -3514,6 +3650,7 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
     const [articleImage, setArticleImage] = useState<string>('');
     const [availableImages, setAvailableImages] = useState<string[]>([]);
     const [showImageSelector, setShowImageSelector] = useState(false);
+    const [imageDateFilter, setImageDateFilter] = useState<string>('');
     const [aiFeedback, setAiFeedback] = useState<string>('');
     const [isApplyingFeedback, setIsApplyingFeedback] = useState(false);
     
@@ -3578,6 +3715,7 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
         } else {
             setEditedPost(null);
             setArticleImage('');
+            setImageDateFilter('');
             setV3NarrativeJson('');
             setV3TempAiJson('');
             setV3EvidenceJson('');
@@ -4108,6 +4246,7 @@ IMPORTANT:
         setArticleImage(imagePath);
         handleFieldChange('websiteStory.image', imagePath); // Save to editedPost
         setShowImageSelector(false);
+        setImageDateFilter(''); // Reset filter when closing
     };
 
     // DFS AI Assistant: Replace a player
@@ -4550,17 +4689,70 @@ Return ONLY the new player section in markdown format, exactly matching the stru
                                 </div>
                                 {showImageSelector && (
                                     <div style={{ marginTop: '0.5rem', padding: '1rem', background: '#2a2a2a', borderRadius: '4px', maxHeight: '200px', overflowY: 'auto' }}>
-                                        {availableImages.map(img => (
-                                            <div
-                                                key={img}
-                                                onClick={() => handleSelectImage(img)}
-                                                style={{ padding: '0.5rem', cursor: 'pointer', borderRadius: '4px', marginBottom: '0.25rem', background: articleImage.includes(img) ? '#4caf50' : 'transparent' }}
-                                                onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
-                                                onMouseLeave={(e) => e.currentTarget.style.background = articleImage.includes(img) ? '#4caf50' : 'transparent'}
-                                            >
-                                                {img}
-                                            </div>
-                                        ))}
+                                        <div style={{ marginBottom: '0.75rem' }}>
+                                            <input
+                                                type="text"
+                                                value={imageDateFilter}
+                                                onChange={(e) => setImageDateFilter(e.target.value)}
+                                                placeholder="Filter by date (YYYY-MM-DD)"
+                                                style={{ 
+                                                    width: '100%', 
+                                                    padding: '0.5rem', 
+                                                    background: '#1a1a1a', 
+                                                    border: '1px solid #444', 
+                                                    color: '#fff', 
+                                                    borderRadius: '4px',
+                                                    fontFamily: 'monospace',
+                                                    fontSize: '0.85rem'
+                                                }}
+                                            />
+                                        </div>
+                                        {(() => {
+                                            // Filter images by date if filter is provided
+                                            const filteredImages = imageDateFilter.trim() 
+                                                ? availableImages.filter(img => {
+                                                    // Extract date from filename (YYYY-MM-DD pattern at the end)
+                                                    const dateMatch = img.match(/(\d{4}-\d{2}-\d{2})/);
+                                                    if (!dateMatch) return false;
+                                                    const imageDate = dateMatch[1];
+                                                    // Support partial matches (e.g., "2026-01" matches "2026-01-20")
+                                                    return imageDate.includes(imageDateFilter.trim());
+                                                })
+                                                : availableImages;
+                                            
+                                            if (filteredImages.length === 0) {
+                                                return (
+                                                    <div style={{ padding: '0.5rem', color: '#888', fontStyle: 'italic', textAlign: 'center' }}>
+                                                        No images found for date: {imageDateFilter}
+                                                    </div>
+                                                );
+                                            }
+                                            
+                                            return filteredImages.map(img => {
+                                                // Extract date from filename for display
+                                                const dateMatch = img.match(/(\d{4}-\d{2}-\d{2})/);
+                                                const imageDate = dateMatch ? dateMatch[1] : '';
+                                                
+                                                return (
+                                                    <div
+                                                        key={img}
+                                                        onClick={() => handleSelectImage(img)}
+                                                        style={{ padding: '0.5rem', cursor: 'pointer', borderRadius: '4px', marginBottom: '0.25rem', background: articleImage.includes(img) ? '#4caf50' : 'transparent' }}
+                                                        onMouseEnter={(e) => e.currentTarget.style.background = '#333'}
+                                                        onMouseLeave={(e) => e.currentTarget.style.background = articleImage.includes(img) ? '#4caf50' : 'transparent'}
+                                                    >
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            <span>{img}</span>
+                                                            {imageDate && (
+                                                                <span style={{ color: '#888', fontSize: '0.75rem', marginLeft: '0.5rem', fontFamily: 'monospace' }}>
+                                                                    {imageDate}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            });
+                                        })()}
                                     </div>
                                 )}
                             </div>
@@ -4862,244 +5054,512 @@ Return ONLY the new player section in markdown format, exactly matching the stru
                         {editedPost.heatchecksEdge && editedPost.storyType !== 'dfs_article' && (
                             <div style={{ marginTop: '2rem' }}>
                                 <h3 style={{ marginBottom: '1rem', fontSize: '1.2rem' }}>HeatChecks Edge</h3>
-                                <div style={{
-                                    padding: '1.5rem',
-                                    background: 'rgba(255, 255, 255, 0.08)',
-                                    border: '2px solid rgba(255, 255, 255, 0.3)',
-                                    borderLeft: '4px solid rgba(248, 66, 66, 0.6)',
-                                    borderRadius: '4px',
-                                    position: 'relative'
-                                }}>
-                                    {/* Decorative dots */}
-                                    <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
-                                    <div style={{ position: 'absolute', bottom: '0.75rem', right: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
-                                    <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
+                                {(() => {
+                                    const edge = editedPost.heatchecksEdge as any;
+                                    const isV2 = edge && typeof edge === 'object' && 'game' in edge && 'player_props' in edge;
                                     
-                                    {/* Header with Lean and Confidence Selectors */}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '2px solid rgba(255, 255, 255, 0.3)' }}>
-                                        <div style={{ width: '4px', height: '30px', background: 'rgba(255, 255, 255, 0.5)', boxShadow: '0 0 10px rgba(255, 255, 255, 0.3)' }}></div>
-                                        <div style={{ color: 'rgba(255, 255, 255, 0.95)', fontSize: '0.9rem', fontFamily: "'Courier New', monospace", fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.2em', textShadow: '0 0 10px rgba(255, 255, 255, 0.3), 0 0 20px rgba(255, 255, 255, 0.1)' }}>
-                                            &gt; HEATCHECKS EDGE
-                                        </div>
-                                        <div style={{ flex: 1, height: '1px', background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.3) 0%, transparent 100%)' }}></div>
-                                        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                            {/* Lean Dropdown */}
-                                            <select
-                                                value={editedPost.heatchecksEdge.lean || 'NO_EDGE'}
-                                                onChange={(e) => handleFieldChange('heatchecksEdge.lean', e.target.value as "FAVOR" | "FADE" | "NO_EDGE")}
-                                                style={{
-                                                    padding: '0.25rem 0.75rem',
-                                                    background: editedPost.heatchecksEdge.lean === 'FAVOR' ? 'rgba(76, 175, 80, 0.2)' : editedPost.heatchecksEdge.lean === 'FADE' ? 'rgba(248, 66, 66, 0.2)' : 'rgba(255, 255, 255, 0.1)',
-                                                    border: `1px solid ${editedPost.heatchecksEdge.lean === 'FAVOR' ? 'rgba(76, 175, 80, 0.5)' : editedPost.heatchecksEdge.lean === 'FADE' ? 'rgba(248, 66, 66, 0.5)' : 'rgba(255, 255, 255, 0.3)'}`,
-                                                    borderRadius: '4px',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: 'bold',
-                                                    color: editedPost.heatchecksEdge.lean === 'FAVOR' ? '#4caf50' : editedPost.heatchecksEdge.lean === 'FADE' ? '#f84242' : 'rgba(255, 255, 255, 0.7)',
-                                                    textTransform: 'uppercase',
-                                                    cursor: 'pointer',
-                                                    fontFamily: "'Courier New', monospace"
-                                                }}
-                                            >
-                                                <option value="NO_EDGE">NO EDGE</option>
-                                                <option value="FAVOR">FAVOR</option>
-                                                <option value="FADE">FADE</option>
-                                            </select>
-                                            {/* Confidence Dropdown */}
-                                            <select
-                                                value={editedPost.heatchecksEdge.confidence || 'medium'}
-                                                onChange={(e) => handleFieldChange('heatchecksEdge.confidence', e.target.value as "low" | "medium" | "high")}
-                                                style={{
-                                                    padding: '0.25rem 0.75rem',
-                                                    background: 'rgba(255, 255, 255, 0.1)',
-                                                    border: '1px solid rgba(255, 255, 255, 0.3)',
-                                                    borderRadius: '4px',
-                                                    fontSize: '0.75rem',
-                                                    fontWeight: 'bold',
-                                                    color: editedPost.heatchecksEdge.confidence === 'high' ? '#4caf50' : editedPost.heatchecksEdge.confidence === 'medium' ? '#ffc107' : '#ff9800',
-                                                    textTransform: 'uppercase',
-                                                    cursor: 'pointer',
-                                                    fontFamily: "'Courier New', monospace"
-                                                }}
-                                            >
-                                                <option value="low">LOW</option>
-                                                <option value="medium">MEDIUM</option>
-                                                <option value="high">HIGH</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    
-                                    {/* Betting Lines (Read-only - from API) */}
-                                    {editedPost.heatchecksEdge.lines && editedPost.heatchecksEdge.lines.length > 0 && (
-                                        <div style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                                            <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace" }}>BETTING LINES:</div>
-                                            {editedPost.heatchecksEdge.lines.map((line: any, idx: number) => (
-                                                <div key={idx} style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.9)', marginBottom: '0.25rem', fontFamily: "'Courier New', monospace" }}>
-                                                    {line.marketType}: {line.label} {line.line} ({line.price}) - {line.book}
+                                    if (isV2) {
+                                        // V2 Schema Editor
+                                        return (
+                                            <div style={{
+                                                padding: '1.5rem',
+                                                background: 'rgba(255, 255, 255, 0.08)',
+                                                border: '2px solid rgba(255, 255, 255, 0.3)',
+                                                borderLeft: '4px solid rgba(248, 66, 66, 0.6)',
+                                                borderRadius: '4px',
+                                                position: 'relative'
+                                            }}>
+                                                {/* Decorative dots */}
+                                                <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
+                                                <div style={{ position: 'absolute', bottom: '0.75rem', right: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
+                                                <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
+                                                
+                                                {/* Header */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '2px solid rgba(255, 255, 255, 0.3)' }}>
+                                                    <div style={{ width: '4px', height: '30px', background: 'rgba(255, 255, 255, 0.5)', boxShadow: '0 0 10px rgba(255, 255, 255, 0.3)' }}></div>
+                                                    <div style={{ color: 'rgba(255, 255, 255, 0.95)', fontSize: '0.9rem', fontFamily: "'Courier New', monospace", fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.2em', textShadow: '0 0 10px rgba(255, 255, 255, 0.3), 0 0 20px rgba(255, 255, 255, 0.1)' }}>
+                                                        &gt; HEATCHECKS EDGE (V2)
+                                                    </div>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                    
-                                    {/* Rationale Bullets (Editable) */}
-                                    <div style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                                        <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace", display: 'block' }}>RATIONALE:</label>
-                                        {(editedPost.heatchecksEdge.rationaleBullets || []).map((bullet: string, idx: number) => (
-                                            <div key={idx} style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                                                <span style={{ color: '#f84242', fontSize: '1.2rem', lineHeight: '1.5' }}>•</span>
-                                                <textarea
-                                                    value={bullet}
-                                                    onChange={(e) => {
-                                                        const newBullets = [...(editedPost.heatchecksEdge.rationaleBullets || [])];
-                                                        newBullets[idx] = e.target.value;
-                                                        handleFieldChange('heatchecksEdge.rationaleBullets', newBullets);
-                                                    }}
-                                                    style={{
-                                                        flex: 1,
-                                                        padding: '0.5rem',
-                                                        background: 'rgba(0, 0, 0, 0.3)',
-                                                        border: '1px solid rgba(255, 255, 255, 0.2)',
-                                                        borderRadius: '4px',
-                                                        color: 'rgba(255, 255, 255, 0.9)',
-                                                        fontSize: '0.85rem',
-                                                        fontFamily: "'Courier New', monospace",
-                                                        resize: 'vertical',
-                                                        minHeight: '2rem'
-                                                    }}
-                                                    rows={2}
-                                                />
-                                                <button
-                                                    onClick={() => {
-                                                        const newBullets = [...(editedPost.heatchecksEdge.rationaleBullets || [])];
-                                                        newBullets.splice(idx, 1);
-                                                        handleFieldChange('heatchecksEdge.rationaleBullets', newBullets);
-                                                    }}
-                                                    style={{
-                                                        padding: '0.25rem 0.5rem',
-                                                        background: 'rgba(248, 66, 66, 0.2)',
-                                                        border: '1px solid rgba(248, 66, 66, 0.5)',
-                                                        borderRadius: '4px',
-                                                        color: '#f84242',
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.75rem'
-                                                    }}
-                                                >
-                                                    ×
-                                                </button>
+                                                
+                                                {/* Game Edge Section */}
+                                                <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                                                    <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace", display: 'block', fontWeight: 'bold' }}>GAME EDGE:</label>
+                                                    <div style={{ padding: '1rem', background: 'rgba(0, 0, 0, 0.3)', borderRadius: '4px' }}>
+                                                        <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                            <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)' }}>Market:</label>
+                                                            <select
+                                                                value={edge.game?.market || 'none'}
+                                                                onChange={(e) => {
+                                                                    const newEdge = { ...edge };
+                                                                    newEdge.game = { ...(newEdge.game || {}), market: e.target.value };
+                                                                    if (e.target.value === 'none') {
+                                                                        newEdge.game.selection = 'none';
+                                                                    }
+                                                                    handleFieldChange('heatchecksEdge', newEdge);
+                                                                }}
+                                                                style={{ padding: '0.25rem 0.5rem', background: '#2a2a2a', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontSize: '0.75rem' }}
+                                                            >
+                                                                <option value="none">None</option>
+                                                                <option value="moneyline">Moneyline</option>
+                                                                <option value="spread">Spread</option>
+                                                                <option value="total">Total</option>
+                                                            </select>
+                                                            
+                                                            {edge.game?.market !== 'none' && (
+                                                                <>
+                                                                    <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginLeft: '0.5rem' }}>Selection:</label>
+                                                                    <select
+                                                                        value={edge.game?.selection || 'none'}
+                                                                        onChange={(e) => {
+                                                                            const newEdge = { ...edge };
+                                                                            newEdge.game = { ...newEdge.game, selection: e.target.value };
+                                                                            handleFieldChange('heatchecksEdge', newEdge);
+                                                                        }}
+                                                                        style={{ padding: '0.25rem 0.5rem', background: '#2a2a2a', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontSize: '0.75rem' }}
+                                                                    >
+                                                                        <option value="none">None</option>
+                                                                        {edge.game?.market === 'moneyline' || edge.game?.market === 'spread' ? (
+                                                                            <>
+                                                                                <option value="TEAM_A">Team A</option>
+                                                                                <option value="TEAM_B">Team B</option>
+                                                                            </>
+                                                                        ) : (
+                                                                            <>
+                                                                                <option value="OVER">Over</option>
+                                                                                <option value="UNDER">Under</option>
+                                                                            </>
+                                                                        )}
+                                                                    </select>
+                                                                    
+                                                                    <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginLeft: '0.5rem' }}>Confidence:</label>
+                                                                    <select
+                                                                        value={edge.game?.confidence || 'low'}
+                                                                        onChange={(e) => {
+                                                                            const newEdge = { ...edge };
+                                                                            newEdge.game = { ...newEdge.game, confidence: e.target.value };
+                                                                            handleFieldChange('heatchecksEdge', newEdge);
+                                                                        }}
+                                                                        style={{ padding: '0.25rem 0.5rem', background: '#2a2a2a', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontSize: '0.75rem' }}
+                                                                    >
+                                                                        <option value="low">Low</option>
+                                                                        <option value="medium">Medium</option>
+                                                                        <option value="high">High</option>
+                                                                    </select>
+                                                                </>
+                                                            )}
+                                                        </div>
+                                                        
+                                                        {edge.game?.market !== 'none' && (
+                                                            <>
+                                                                <div style={{ marginBottom: '0.75rem' }}>
+                                                                    <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.25rem', display: 'block' }}>One Sentence Call:</label>
+                                                                    <textarea
+                                                                        value={edge.game?.one_sentence_call || ''}
+                                                                        onChange={(e) => {
+                                                                            const newEdge = { ...edge };
+                                                                            newEdge.game = { ...newEdge.game, one_sentence_call: e.target.value };
+                                                                            handleFieldChange('heatchecksEdge', newEdge);
+                                                                        }}
+                                                                        style={{ width: '100%', padding: '0.5rem', background: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255, 255, 255, 0.2)', color: '#fff', borderRadius: '4px', minHeight: '60px', fontSize: '0.85rem', fontFamily: "'Courier New', monospace" }}
+                                                                    />
+                                                                </div>
+                                                                
+                                                                <div style={{ marginBottom: '0.75rem' }}>
+                                                                    <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.25rem', display: 'block' }}>Receipts:</label>
+                                                                    {(edge.game?.receipts || ['', '', '']).map((receipt: string, idx: number) => (
+                                                                        <textarea
+                                                                            key={idx}
+                                                                            value={receipt}
+                                                                            onChange={(e) => {
+                                                                                const newEdge = { ...edge };
+                                                                                const newReceipts = [...(newEdge.game.receipts || ['', '', ''])];
+                                                                                newReceipts[idx] = e.target.value;
+                                                                                newEdge.game.receipts = newReceipts as [string, string, string];
+                                                                                handleFieldChange('heatchecksEdge', newEdge);
+                                                                            }}
+                                                                            style={{ width: '100%', marginBottom: '0.25rem', padding: '0.5rem', background: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255, 255, 255, 0.2)', color: '#fff', borderRadius: '4px', minHeight: '40px', fontSize: '0.85rem', fontFamily: "'Courier New', monospace" }}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                                
+                                                                <div>
+                                                                    <label style={{ fontSize: '0.75rem', color: 'rgba(255, 152, 0, 0.9)', marginBottom: '0.25rem', display: 'block' }}>Risks:</label>
+                                                                    {(edge.game?.risks || ['', '']).map((risk: string, idx: number) => (
+                                                                        <textarea
+                                                                            key={idx}
+                                                                            value={risk}
+                                                                            onChange={(e) => {
+                                                                                const newEdge = { ...edge };
+                                                                                const newRisks = [...(newEdge.game.risks || ['', ''])];
+                                                                                newRisks[idx] = e.target.value;
+                                                                                newEdge.game.risks = newRisks as [string, string];
+                                                                                handleFieldChange('heatchecksEdge', newEdge);
+                                                                            }}
+                                                                            style={{ width: '100%', marginBottom: '0.25rem', padding: '0.5rem', background: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255, 152, 0, 0.3)', color: 'rgba(255, 152, 0, 0.9)', borderRadius: '4px', minHeight: '40px', fontSize: '0.85rem', fontFamily: "'Courier New', monospace" }}
+                                                                        />
+                                                                    ))}
+                                                                </div>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Player Props Section */}
+                                                <div style={{ marginBottom: '1.5rem', paddingBottom: '1.5rem', borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                                                    <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace", display: 'block', fontWeight: 'bold' }}>PLAYER PROPS:</label>
+                                                    {(edge.player_props || []).map((prop: any, idx: number) => (
+                                                        <div key={idx} style={{ marginBottom: '1rem', padding: '1rem', background: 'rgba(0, 0, 0, 0.3)', borderRadius: '4px', border: '1px solid rgba(0, 255, 65, 0.3)' }}>
+                                                            <div style={{ marginBottom: '0.75rem', display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                                <span style={{ fontSize: '0.85rem', color: '#00ff41', fontWeight: 'bold' }}>{prop.player_name}</span>
+                                                                <span style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)' }}>{prop.market}</span>
+                                                                <span style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)' }}>{prop.selection} {prop.line}</span>
+                                                                <span style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.5)' }}>({prop.price_american > 0 ? '+' : ''}{prop.price_american})</span>
+                                                                <span style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.5)' }}>@{prop.book}</span>
+                                                                
+                                                                <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginLeft: '0.5rem' }}>Confidence:</label>
+                                                                <select
+                                                                    value={prop.confidence || 'low'}
+                                                                    onChange={(e) => {
+                                                                        const newEdge = { ...edge };
+                                                                        const newProps = [...(newEdge.player_props || [])];
+                                                                        newProps[idx] = { ...newProps[idx], confidence: e.target.value };
+                                                                        newEdge.player_props = newProps;
+                                                                        handleFieldChange('heatchecksEdge', newEdge);
+                                                                    }}
+                                                                    style={{ padding: '0.25rem 0.5rem', background: '#2a2a2a', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontSize: '0.75rem' }}
+                                                                >
+                                                                    <option value="low">Low</option>
+                                                                    <option value="medium">Medium</option>
+                                                                    <option value="high">High</option>
+                                                                </select>
+                                                            </div>
+                                                            
+                                                            <div style={{ marginBottom: '0.75rem' }}>
+                                                                <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.25rem', display: 'block' }}>One Sentence Call:</label>
+                                                                <textarea
+                                                                    value={prop.one_sentence_call || ''}
+                                                                    onChange={(e) => {
+                                                                        const newEdge = { ...edge };
+                                                                        const newProps = [...(newEdge.player_props || [])];
+                                                                        newProps[idx] = { ...newProps[idx], one_sentence_call: e.target.value };
+                                                                        newEdge.player_props = newProps;
+                                                                        handleFieldChange('heatchecksEdge', newEdge);
+                                                                    }}
+                                                                    style={{ width: '100%', padding: '0.5rem', background: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255, 255, 255, 0.2)', color: '#fff', borderRadius: '4px', minHeight: '60px', fontSize: '0.85rem', fontFamily: "'Courier New', monospace" }}
+                                                                />
+                                                            </div>
+                                                            
+                                                            <div style={{ marginBottom: '0.75rem' }}>
+                                                                <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.25rem', display: 'block' }}>Receipts:</label>
+                                                                {(prop.receipts || ['', '', '']).map((receipt: string, rIdx: number) => (
+                                                                    <textarea
+                                                                        key={rIdx}
+                                                                        value={receipt}
+                                                                        onChange={(e) => {
+                                                                            const newEdge = { ...edge };
+                                                                            const newProps = [...(newEdge.player_props || [])];
+                                                                            const newReceipts = [...(newProps[idx].receipts || ['', '', ''])];
+                                                                            newReceipts[rIdx] = e.target.value;
+                                                                            newProps[idx] = { ...newProps[idx], receipts: newReceipts as [string, string, string] };
+                                                                            newEdge.player_props = newProps;
+                                                                            handleFieldChange('heatchecksEdge', newEdge);
+                                                                        }}
+                                                                        style={{ width: '100%', marginBottom: '0.25rem', padding: '0.5rem', background: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255, 255, 255, 0.2)', color: '#fff', borderRadius: '4px', minHeight: '40px', fontSize: '0.85rem', fontFamily: "'Courier New', monospace" }}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                            
+                                                            <div>
+                                                                <label style={{ fontSize: '0.75rem', color: 'rgba(255, 152, 0, 0.9)', marginBottom: '0.25rem', display: 'block' }}>Risks:</label>
+                                                                {(prop.risks || ['', '']).map((risk: string, rIdx: number) => (
+                                                                    <textarea
+                                                                        key={rIdx}
+                                                                        value={risk}
+                                                                        onChange={(e) => {
+                                                                            const newEdge = { ...edge };
+                                                                            const newProps = [...(newEdge.player_props || [])];
+                                                                            const newRisks = [...(newProps[idx].risks || ['', ''])];
+                                                                            newRisks[rIdx] = e.target.value;
+                                                                            newProps[idx] = { ...newProps[idx], risks: newRisks as [string, string] };
+                                                                            newEdge.player_props = newProps;
+                                                                            handleFieldChange('heatchecksEdge', newEdge);
+                                                                        }}
+                                                                        style={{ width: '100%', marginBottom: '0.25rem', padding: '0.5rem', background: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255, 152, 0, 0.3)', color: 'rgba(255, 152, 0, 0.9)', borderRadius: '4px', minHeight: '40px', fontSize: '0.85rem', fontFamily: "'Courier New', monospace" }}
+                                                                    />
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                    
+                                                    {(!edge.player_props || edge.player_props.length === 0) && (
+                                                        <div style={{ padding: '1rem', background: 'rgba(255, 255, 255, 0.05)', borderRadius: '4px', color: 'rgba(255, 255, 255, 0.5)', textAlign: 'center', fontStyle: 'italic', fontSize: '0.85rem' }}>
+                                                            No player props selected
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                
+                                                {/* No Edge Reason */}
+                                                {edge.no_edge_reason && (
+                                                    <div style={{ padding: '1rem', background: 'rgba(255, 152, 0, 0.1)', borderRadius: '4px', border: '1px solid rgba(255, 152, 0, 0.3)' }}>
+                                                        <label style={{ fontSize: '0.75rem', color: 'rgba(255, 152, 0, 0.9)', marginBottom: '0.5rem', display: 'block', fontWeight: 'bold' }}>NO EDGE REASON:</label>
+                                                        <textarea
+                                                            value={edge.no_edge_reason}
+                                                            onChange={(e) => {
+                                                                const newEdge = { ...edge };
+                                                                newEdge.no_edge_reason = e.target.value;
+                                                                handleFieldChange('heatchecksEdge', newEdge);
+                                                            }}
+                                                            style={{ width: '100%', padding: '0.5rem', background: 'rgba(0, 0, 0, 0.3)', border: '1px solid rgba(255, 152, 0, 0.3)', color: 'rgba(255, 152, 0, 0.9)', borderRadius: '4px', minHeight: '60px', fontSize: '0.85rem', fontFamily: "'Courier New', monospace" }}
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
-                                        ))}
-                                        <button
-                                            onClick={() => {
-                                                const newBullets = [...(editedPost.heatchecksEdge.rationaleBullets || []), ''];
-                                                handleFieldChange('heatchecksEdge.rationaleBullets', newBullets);
-                                            }}
-                                            style={{
-                                                marginTop: '0.5rem',
-                                                padding: '0.5rem 1rem',
-                                                background: 'rgba(76, 175, 80, 0.2)',
-                                                border: '1px solid rgba(76, 175, 80, 0.5)',
+                                        );
+                                    } else {
+                                        // Old Schema Editor
+                                        return (
+                                            <div style={{
+                                                padding: '1.5rem',
+                                                background: 'rgba(255, 255, 255, 0.08)',
+                                                border: '2px solid rgba(255, 255, 255, 0.3)',
+                                                borderLeft: '4px solid rgba(248, 66, 66, 0.6)',
                                                 borderRadius: '4px',
-                                                color: '#4caf50',
-                                                cursor: 'pointer',
-                                                fontSize: '0.75rem',
-                                                fontFamily: "'Courier New', monospace"
-                                            }}
-                                        >
-                                            + Add Rationale Bullet
-                                        </button>
-                                    </div>
-                                    
-                                    {/* Final Call (Editable) */}
-                                    <div style={{ marginBottom: '1rem' }}>
-                                        <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace", display: 'block' }}>FINAL CALL:</label>
-                                        <textarea
-                                            value={editedPost.heatchecksEdge.finalCall || ''}
-                                            onChange={(e) => handleFieldChange('heatchecksEdge.finalCall', e.target.value)}
-                                            style={{
-                                                width: '100%',
-                                                minHeight: '200px',
-                                                padding: '1rem',
-                                                background: 'rgba(0, 0, 0, 0.3)',
-                                                border: '1px solid rgba(248, 66, 66, 0.4)',
-                                                borderRadius: '2px',
-                                                color: 'rgba(255, 255, 255, 0.95)',
-                                                fontSize: '1rem',
-                                                lineHeight: '1.8',
-                                                fontFamily: "'Courier New', monospace",
-                                                fontWeight: 'bold',
-                                                resize: 'vertical'
-                                            }}
-                                            placeholder="Enter the final call/recommendation..."
-                                        />
-                                    </div>
-                                    
-                                    {/* Risk Counterpoints (Editable) */}
-                                    <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
-                                        <label style={{ fontSize: '0.75rem', color: 'rgba(255, 152, 0, 0.8)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace", display: 'block' }}>RISKS:</label>
-                                        {(editedPost.heatchecksEdge.riskCounterpoints || []).map((risk: string, idx: number) => (
-                                            <div key={idx} style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                                                <span style={{ color: 'rgba(255, 152, 0, 0.9)', fontSize: '1.2rem', lineHeight: '1.5' }}>⚠</span>
-                                                <textarea
-                                                    value={risk}
-                                                    onChange={(e) => {
-                                                        const newRisks = [...(editedPost.heatchecksEdge.riskCounterpoints || [])];
-                                                        newRisks[idx] = e.target.value;
-                                                        handleFieldChange('heatchecksEdge.riskCounterpoints', newRisks);
-                                                    }}
-                                                    style={{
-                                                        flex: 1,
-                                                        padding: '0.5rem',
-                                                        background: 'rgba(0, 0, 0, 0.3)',
-                                                        border: '1px solid rgba(255, 152, 0, 0.3)',
-                                                        borderRadius: '4px',
-                                                        color: 'rgba(255, 152, 0, 0.9)',
-                                                        fontSize: '0.85rem',
-                                                        fontFamily: "'Courier New', monospace",
-                                                        resize: 'vertical',
-                                                        minHeight: '2rem'
-                                                    }}
-                                                    rows={2}
-                                                />
-                                                <button
-                                                    onClick={() => {
-                                                        const newRisks = [...(editedPost.heatchecksEdge.riskCounterpoints || [])];
-                                                        newRisks.splice(idx, 1);
-                                                        handleFieldChange('heatchecksEdge.riskCounterpoints', newRisks);
-                                                    }}
-                                                    style={{
-                                                        padding: '0.25rem 0.5rem',
-                                                        background: 'rgba(248, 66, 66, 0.2)',
-                                                        border: '1px solid rgba(248, 66, 66, 0.5)',
-                                                        borderRadius: '4px',
-                                                        color: '#f84242',
-                                                        cursor: 'pointer',
-                                                        fontSize: '0.75rem'
-                                                    }}
-                                                >
-                                                    ×
-                                                </button>
+                                                position: 'relative'
+                                            }}>
+                                                {/* Decorative dots */}
+                                                <div style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
+                                                <div style={{ position: 'absolute', bottom: '0.75rem', right: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
+                                                <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
+                                                
+                                                {/* Header with Lean and Confidence Selectors */}
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '2px solid rgba(255, 255, 255, 0.3)' }}>
+                                                    <div style={{ width: '4px', height: '30px', background: 'rgba(255, 255, 255, 0.5)', boxShadow: '0 0 10px rgba(255, 255, 255, 0.3)' }}></div>
+                                                    <div style={{ color: 'rgba(255, 255, 255, 0.95)', fontSize: '0.9rem', fontFamily: "'Courier New', monospace", fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.2em', textShadow: '0 0 10px rgba(255, 255, 255, 0.3), 0 0 20px rgba(255, 255, 255, 0.1)' }}>
+                                                        &gt; HEATCHECKS EDGE
+                                                    </div>
+                                                    <div style={{ flex: 1, height: '1px', background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.3) 0%, transparent 100%)' }}></div>
+                                                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                                                        {/* Lean Dropdown */}
+                                                        <select
+                                                            value={edge.lean || 'NO_EDGE'}
+                                                            onChange={(e) => handleFieldChange('heatchecksEdge.lean', e.target.value as "FAVOR" | "FADE" | "NO_EDGE")}
+                                                            style={{
+                                                                padding: '0.25rem 0.75rem',
+                                                                background: edge.lean === 'FAVOR' ? 'rgba(76, 175, 80, 0.2)' : edge.lean === 'FADE' ? 'rgba(248, 66, 66, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+                                                                border: `1px solid ${edge.lean === 'FAVOR' ? 'rgba(76, 175, 80, 0.5)' : edge.lean === 'FADE' ? 'rgba(248, 66, 66, 0.5)' : 'rgba(255, 255, 255, 0.3)'}`,
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: 'bold',
+                                                                color: edge.lean === 'FAVOR' ? '#4caf50' : edge.lean === 'FADE' ? '#f84242' : 'rgba(255, 255, 255, 0.7)',
+                                                                textTransform: 'uppercase',
+                                                                cursor: 'pointer',
+                                                                fontFamily: "'Courier New', monospace"
+                                                            }}
+                                                        >
+                                                            <option value="NO_EDGE">NO EDGE</option>
+                                                            <option value="FAVOR">FAVOR</option>
+                                                            <option value="FADE">FADE</option>
+                                                        </select>
+                                                        {/* Confidence Dropdown */}
+                                                        <select
+                                                            value={edge.confidence || 'medium'}
+                                                            onChange={(e) => handleFieldChange('heatchecksEdge.confidence', e.target.value as "low" | "medium" | "high")}
+                                                            style={{
+                                                                padding: '0.25rem 0.75rem',
+                                                                background: 'rgba(255, 255, 255, 0.1)',
+                                                                border: '1px solid rgba(255, 255, 255, 0.3)',
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.75rem',
+                                                                fontWeight: 'bold',
+                                                                color: edge.confidence === 'high' ? '#4caf50' : edge.confidence === 'medium' ? '#ffc107' : '#ff9800',
+                                                                textTransform: 'uppercase',
+                                                                cursor: 'pointer',
+                                                                fontFamily: "'Courier New', monospace"
+                                                            }}
+                                                        >
+                                                            <option value="low">LOW</option>
+                                                            <option value="medium">MEDIUM</option>
+                                                            <option value="high">HIGH</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                
+                                                {/* Betting Lines (Read-only - from API) */}
+                                                {edge.lines && edge.lines.length > 0 && (
+                                                    <div style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                                                        <div style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace" }}>BETTING LINES:</div>
+                                                        {edge.lines.map((line: any, idx: number) => (
+                                                            <div key={idx} style={{ fontSize: '0.85rem', color: 'rgba(255, 255, 255, 0.9)', marginBottom: '0.25rem', fontFamily: "'Courier New', monospace" }}>
+                                                                {line.marketType}: {line.label} {line.line} ({line.price}) - {line.book}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                
+                                                {/* Rationale Bullets (Editable) */}
+                                                <div style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                                                    <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace", display: 'block' }}>RATIONALE:</label>
+                                                    {(edge.rationaleBullets || []).map((bullet: string, idx: number) => (
+                                                        <div key={idx} style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                                                            <span style={{ color: '#f84242', fontSize: '1.2rem', lineHeight: '1.5' }}>•</span>
+                                                            <textarea
+                                                                value={bullet}
+                                                                onChange={(e) => {
+                                                                    const newBullets = [...(edge.rationaleBullets || [])];
+                                                                    newBullets[idx] = e.target.value;
+                                                                    handleFieldChange('heatchecksEdge.rationaleBullets', newBullets);
+                                                                }}
+                                                                style={{
+                                                                    flex: 1,
+                                                                    padding: '0.5rem',
+                                                                    background: 'rgba(0, 0, 0, 0.3)',
+                                                                    border: '1px solid rgba(255, 255, 255, 0.2)',
+                                                                    borderRadius: '4px',
+                                                                    color: 'rgba(255, 255, 255, 0.9)',
+                                                                    fontSize: '0.85rem',
+                                                                    fontFamily: "'Courier New', monospace",
+                                                                    resize: 'vertical',
+                                                                    minHeight: '2rem'
+                                                                }}
+                                                                rows={2}
+                                                            />
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newBullets = [...(edge.rationaleBullets || [])];
+                                                                    newBullets.splice(idx, 1);
+                                                                    handleFieldChange('heatchecksEdge.rationaleBullets', newBullets);
+                                                                }}
+                                                                style={{
+                                                                    padding: '0.25rem 0.5rem',
+                                                                    background: 'rgba(248, 66, 66, 0.2)',
+                                                                    border: '1px solid rgba(248, 66, 66, 0.5)',
+                                                                    borderRadius: '4px',
+                                                                    color: '#f84242',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '0.75rem'
+                                                                }}
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    <button
+                                                        onClick={() => {
+                                                            const newBullets = [...(edge.rationaleBullets || []), ''];
+                                                            handleFieldChange('heatchecksEdge.rationaleBullets', newBullets);
+                                                        }}
+                                                        style={{
+                                                            marginTop: '0.5rem',
+                                                            padding: '0.5rem 1rem',
+                                                            background: 'rgba(76, 175, 80, 0.2)',
+                                                            border: '1px solid rgba(76, 175, 80, 0.5)',
+                                                            borderRadius: '4px',
+                                                            color: '#4caf50',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.75rem',
+                                                            fontFamily: "'Courier New', monospace"
+                                                        }}
+                                                    >
+                                                        + Add Rationale Bullet
+                                                    </button>
+                                                </div>
+                                                
+                                                {/* Final Call (Editable) */}
+                                                <div style={{ marginBottom: '1rem' }}>
+                                                    <label style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.7)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace", display: 'block' }}>FINAL CALL:</label>
+                                                    <textarea
+                                                        value={edge.finalCall || ''}
+                                                        onChange={(e) => handleFieldChange('heatchecksEdge.finalCall', e.target.value)}
+                                                        style={{
+                                                            width: '100%',
+                                                            minHeight: '200px',
+                                                            padding: '1rem',
+                                                            background: 'rgba(0, 0, 0, 0.3)',
+                                                            border: '1px solid rgba(248, 66, 66, 0.4)',
+                                                            borderRadius: '2px',
+                                                            color: 'rgba(255, 255, 255, 0.95)',
+                                                            fontSize: '1rem',
+                                                            lineHeight: '1.8',
+                                                            fontFamily: "'Courier New', monospace",
+                                                            fontWeight: 'bold',
+                                                            resize: 'vertical'
+                                                        }}
+                                                        placeholder="Enter the final call/recommendation..."
+                                                    />
+                                                </div>
+                                                
+                                                {/* Risk Counterpoints (Editable) */}
+                                                <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                                                    <label style={{ fontSize: '0.75rem', color: 'rgba(255, 152, 0, 0.8)', marginBottom: '0.5rem', fontFamily: "'Courier New', monospace", display: 'block' }}>RISKS:</label>
+                                                    {(edge.riskCounterpoints || []).map((risk: string, idx: number) => (
+                                                        <div key={idx} style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
+                                                            <span style={{ color: 'rgba(255, 152, 0, 0.9)', fontSize: '1.2rem', lineHeight: '1.5' }}>⚠</span>
+                                                            <textarea
+                                                                value={risk}
+                                                                onChange={(e) => {
+                                                                    const newRisks = [...(edge.riskCounterpoints || [])];
+                                                                    newRisks[idx] = e.target.value;
+                                                                    handleFieldChange('heatchecksEdge.riskCounterpoints', newRisks);
+                                                                }}
+                                                                style={{
+                                                                    flex: 1,
+                                                                    padding: '0.5rem',
+                                                                    background: 'rgba(0, 0, 0, 0.3)',
+                                                                    border: '1px solid rgba(255, 152, 0, 0.3)',
+                                                                    borderRadius: '4px',
+                                                                    color: 'rgba(255, 152, 0, 0.9)',
+                                                                    fontSize: '0.85rem',
+                                                                    fontFamily: "'Courier New', monospace",
+                                                                    resize: 'vertical',
+                                                                    minHeight: '2rem'
+                                                                }}
+                                                                rows={2}
+                                                            />
+                                                            <button
+                                                                onClick={() => {
+                                                                    const newRisks = [...(edge.riskCounterpoints || [])];
+                                                                    newRisks.splice(idx, 1);
+                                                                    handleFieldChange('heatchecksEdge.riskCounterpoints', newRisks);
+                                                                }}
+                                                                style={{
+                                                                    padding: '0.25rem 0.5rem',
+                                                                    background: 'rgba(248, 66, 66, 0.2)',
+                                                                    border: '1px solid rgba(248, 66, 66, 0.5)',
+                                                                    borderRadius: '4px',
+                                                                    color: '#f84242',
+                                                                    cursor: 'pointer',
+                                                                    fontSize: '0.75rem'
+                                                                }}
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    ))}
+                                                    <button
+                                                        onClick={() => {
+                                                            const newRisks = [...(edge.riskCounterpoints || []), ''];
+                                                            handleFieldChange('heatchecksEdge.riskCounterpoints', newRisks);
+                                                        }}
+                                                        style={{
+                                                            marginTop: '0.5rem',
+                                                            padding: '0.5rem 1rem',
+                                                            background: 'rgba(255, 152, 0, 0.2)',
+                                                            border: '1px solid rgba(255, 152, 0, 0.5)',
+                                                            borderRadius: '4px',
+                                                            color: 'rgba(255, 152, 0, 0.9)',
+                                                            cursor: 'pointer',
+                                                            fontSize: '0.75rem',
+                                                            fontFamily: "'Courier New', monospace"
+                                                        }}
+                                                    >
+                                                        + Add Risk Counterpoint
+                                                    </button>
+                                                </div>
                                             </div>
-                                        ))}
-                                        <button
-                                            onClick={() => {
-                                                const newRisks = [...(editedPost.heatchecksEdge.riskCounterpoints || []), ''];
-                                                handleFieldChange('heatchecksEdge.riskCounterpoints', newRisks);
-                                            }}
-                                            style={{
-                                                marginTop: '0.5rem',
-                                                padding: '0.5rem 1rem',
-                                                background: 'rgba(255, 152, 0, 0.2)',
-                                                border: '1px solid rgba(255, 152, 0, 0.5)',
-                                                borderRadius: '4px',
-                                                color: 'rgba(255, 152, 0, 0.9)',
-                                                cursor: 'pointer',
-                                                fontSize: '0.75rem',
-                                                fontFamily: "'Courier New', monospace"
-                                            }}
-                                        >
-                                            + Add Risk Counterpoint
-                                        </button>
-                                    </div>
-                                </div>
+                                        );
+                                    }
+                                })()}
                             </div>
                         )}
                     </div>
@@ -5631,7 +6091,10 @@ async function findEdgeCandidates(
                             if (!playerName) continue;
 
                             const playerData = playerDataMap.get(playerName.toLowerCase());
-                            if (!playerData) continue; // Skip if player not in form leaders
+                            if (!playerData) {
+                                console.log(`[Edge Finder] Skipping prop for ${playerName}: not in form leaders (formLeaders count: ${formLeaders.length})`);
+                                continue; // Skip if player not in form leaders
+                            }
 
                             // Get signals
                             const minutesDelta = playerData.deltaMIN10vsSeason || 0;
@@ -5688,6 +6151,13 @@ async function findEdgeCandidates(
         .sort((a, b) => b.score - a.score)
         .slice(0, 2);
 
+    console.log(`[Edge Finder] Found ${candidates.filter(c => c.type === 'prop').length} prop candidates, selected top ${propCandidates.length}`);
+    if (propCandidates.length > 0) {
+        propCandidates.forEach((prop, idx) => {
+            console.log(`[Edge Finder] Prop candidate ${idx + 1}: ${prop.player_name} ${prop.prop_market} ${prop.prop_selection} ${prop.line} (score: ${prop.score})`);
+        });
+    }
+
     return { gameCandidate, propCandidates };
 }
 
@@ -5736,7 +6206,10 @@ async function validateEdgeCandidates(
     }
 
     for (const prop of candidates.propCandidates) {
-        if (!prop.player_name) continue;
+        if (!prop.player_name) {
+            console.log(`[Edge Validator] Skipping prop: missing player_name`);
+            continue;
+        }
 
         // Find player data
         const playerData = formLeaders.find((l: any) => 
@@ -5744,6 +6217,7 @@ async function validateEdgeCandidates(
         );
         
         if (!playerData) {
+            console.log(`[Edge Validator] Skipping prop for ${prop.player_name}: player not found in form leaders`);
             continue; // Skip if player not found
         }
 
@@ -5754,23 +6228,29 @@ async function validateEdgeCandidates(
 
         // Check eligibility
         if (minutesAvg3 < 24) {
+            console.log(`[Edge Validator] Skipping prop for ${prop.player_name}: minutesAvg3 (${minutesAvg3}) < 24`);
             continue; // Skip if not enough minutes
         }
         if (gamesCount10 < 6) {
+            console.log(`[Edge Validator] Skipping prop for ${prop.player_name}: gamesCount10 (${gamesCount10}) < 6`);
             continue; // Skip if not enough games
         }
         if (playerStatus.toUpperCase().includes('OUT')) {
+            console.log(`[Edge Validator] Skipping prop for ${prop.player_name}: player status is OUT`);
             continue; // Block OUT players
         }
 
         // Verify prop data
         if (prop.line === undefined || prop.line === null) {
+            console.log(`[Edge Validator] Skipping prop for ${prop.player_name}: missing line`);
             continue;
         }
         if (prop.price_american === undefined || prop.price_american === null) {
+            console.log(`[Edge Validator] Skipping prop for ${prop.player_name}: missing price_american`);
             continue;
         }
         if (!prop.book) {
+            console.log(`[Edge Validator] Skipping prop for ${prop.player_name}: missing book`);
             continue;
         }
 
@@ -5779,8 +6259,11 @@ async function validateEdgeCandidates(
             prop.signals = { ...prop.signals, confidenceDowngrade: true };
         }
 
+        console.log(`[Edge Validator] Validated prop for ${prop.player_name}: ${prop.prop_market} ${prop.prop_selection} ${prop.line} (${prop.price_american > 0 ? '+' : ''}${prop.price_american}) @${prop.book}`);
         validatedProps.push(prop);
     }
+    
+    console.log(`[Edge Validator] Total validated props: ${validatedProps.length} out of ${candidates.propCandidates.length} candidates`);
 
     return { validatedGame, validatedProps };
 }

@@ -35,11 +35,10 @@ const staticHtmlPlugin = () => {
           return next();
         }
         
-        // React app routes - rewrite /app to / so Vite can process it
-        // This allows Vite's React plugin to work correctly
+        // React app routes - rewrite /app to root so Vite can process it
         if (urlPath === '/app' || urlPath === '/app/') {
-          // Rewrite the request internally so Vite processes it as root
-          // The browser URL stays as /app but Vite sees it as /
+          // Rewrite to root so Vite serves and processes the root index.html
+          // This allows Vite's React plugin to transform the code properly
           req.url = '/';
           return next();
         }
@@ -51,13 +50,18 @@ const staticHtmlPlugin = () => {
         }
         
         // Root route - check if static HTML exists first, otherwise let React app handle it
-        if (!urlPath || urlPath === '/' || urlPath === '/index.html') {
+        if (!urlPath || urlPath === '/') {
+          // Check if this is coming from /app (we can't easily detect this, so we'll prioritize Vite)
+          // Only serve public/index.html if explicitly requested and not from /app
+          // For now, let Vite handle root to support /app -> / rewrite
           const staticIndexPath = path.join(process.cwd(), 'public', 'index.html');
-          if (fs.existsSync(staticIndexPath)) {
-            res.setHeader('Content-Type', 'text/html');
-            res.end(fs.readFileSync(staticIndexPath));
-            return;
-          }
+          // Skip serving static HTML for root to allow /app to work
+          // Users should access static site via direct paths, not root
+          return next();
+        }
+        
+        // For /index.html specifically, let Vite handle it (this is the React app)
+        if (urlPath === '/index.html') {
           return next();
         }
         
@@ -101,7 +105,16 @@ export default defineConfig(() => {
           strict: false,
         },
       },
-      plugins: [react(), staticHtmlPlugin()],
+      plugins: [
+        react({
+          include: /\.(jsx|tsx)$/,
+          jsxRuntime: 'automatic',
+          babel: {
+            plugins: []
+          }
+        }),
+        staticHtmlPlugin()
+      ],
       publicDir: 'public',
       // REMOVED: define block that was baking API keys into the build
       // The code correctly uses import.meta.env.VITE_GEMINI_API_KEY which Vite handles safely

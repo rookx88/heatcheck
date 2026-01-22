@@ -2,62 +2,68 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://heatchecks.io/</loc>
-    <lastmod>2026-01-21</lastmod>
+    <lastmod>2026-01-22</lastmod>
     <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/about/</loc>
-    <lastmod>2026-01-21</lastmod>
+    <lastmod>2026-01-22</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/dfs/</loc>
-    <lastmod>2026-01-21</lastmod>
+    <lastmod>2026-01-22</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/archive/</loc>
-    <lastmod>2026-01-21</lastmod>
+    <lastmod>2026-01-22</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/</loc>
-    <lastmod>2026-01-21</lastmod>
+    <lastmod>2026-01-22</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/dfs/nba/</loc>
-    <lastmod>2026-01-21</lastmod>
+    <lastmod>2026-01-22</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/epl/</loc>
-    <lastmod>2026-01-21</lastmod>
+    <lastmod>2026-01-22</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/dfs/epl/</loc>
-    <lastmod>2026-01-21</lastmod>
+    <lastmod>2026-01-22</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nfl/</loc>
-    <lastmod>2026-01-21</lastmod>
+    <lastmod>2026-01-22</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/dfs/nfl/</loc>
-    <lastmod>2026-01-21</lastmod>
+    <lastmod>2026-01-22</lastmod>
     <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-01-22/</loc>
+    <lastmod>2026-01-22</lastmod>
+    <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
@@ -191,6 +197,54 @@
     <lastmod>2026-01-08</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-01-22/spurs-vs-jazz/spurs-vs-jazz-blueprint/</loc>
+    <lastmod>2026-01-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-01-22/lakers-vs-clippers/lakers-vs-clippers-code/</loc>
+    <lastmod>2026-01-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-01-22/heat-vs-blazers/heat-vs-blazers-crossroads/</loc>
+    <lastmod>2026-01-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-01-22/hornets-vs-magic/hornets-vs-magic-two/</loc>
+    <lastmod>2026-01-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-01-22/rockets-vs-76ers/rockets-vs-76ers-breaking/</loc>
+    <lastmod>2026-01-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-01-22/nuggets-vs-wizards/nuggets-vs-wizards-contender/</loc>
+    <lastmod>2026-01-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-01-22/warriors-vs-mavericks/warriors-vs-mavericks-return/</loc>
+    <lastmod>2026-01-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-01-22/bulls-vs-timberwolves/bulls-vs-timberwolves-divergent/</loc>
+    <lastmod>2026-01-22</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/2026-01-21/raptors-vs-kings/raptors-vs-kings-system/</loc>
@@ -489,26 +543,26 @@
   <url>
     <loc>https://heatchecks.io/epl/2026-01-17/manchester-united-vs-manchester-city/united-vs-city-pressure/</loc>
     <lastmod>2026-01-15</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/2026-01-15/warriors-vs-knicks/warriors-vs-knicks-dynasty/</loc>
     <lastmod>2026-01-15</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/2026-01-15/lakers-vs-hornets/lakers-vs-hornets-king/</loc>
     <lastmod>2026-01-15</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/2026-01-15/mavericks-vs-jazz/mavericks-vs-jazz-redemption/</loc>
     <lastmod>2026-01-15</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/dfs/nba/2026-01-15/dfs-value-narratives-2026-01-15/</loc>
@@ -519,32 +573,32 @@
   <url>
     <loc>https://heatchecks.io/nba/2026-01-15/pistons-vs-suns/pistons-vs-suns-redemption/</loc>
     <lastmod>2026-01-15</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/2026-01-15/spurs-vs-bucks/spurs-vs-bucks-collapse/</loc>
     <lastmod>2026-01-15</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/2026-01-15/heat-vs-celtics/heat-vs-celtics-revenge/</loc>
     <lastmod>2026-01-15</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/2026-01-15/rockets-vs-thunder/rockets-vs-thunder-pressure/</loc>
     <lastmod>2026-01-15</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/2026-01-15/magic-vs-grizzlies/magic-vs-grizzlies-pressure/</loc>
     <lastmod>2026-01-15</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/epl/2026-01-17/chelsea-vs-brentford/chelsea-vs-brentford-pressure/</loc>
