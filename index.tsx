@@ -8,6 +8,7 @@ import { parseExcelFile } from './scripts/utils/excelParser';
 import { analyzeDFSSlate } from './scripts/services/dfsAnalysisService';
 import { generateDFSContent } from './scripts/services/dfsTweetService';
 import { generateHeatArticleContent } from './scripts/services/heatArticleContentService';
+import { generateViralContentFromNarrative } from './scripts/services/viralContentGeneratorService';
 import { markdownToHtml } from './scripts/utils/markdown-converter';
 
 // ===================================================================================
@@ -229,14 +230,15 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
 
   const formatDateYmdForDisplay = (ymd: string) => {
     // Treat YYYY-MM-DD as a calendar date (no timezone shifting).
-    // new Date('YYYY-MM-DD') is parsed as UTC and can display as the prior day in US timezones.
+    // Format directly from the date string to avoid timezone issues with toLocaleDateString()
     const parts = (ymd || '').split('-');
     if (parts.length !== 3) return ymd;
     const y = Number(parts[0]);
     const m = Number(parts[1]);
     const d = Number(parts[2]);
     if (!y || !m || !d) return ymd;
-    return new Date(y, m - 1, d).toLocaleDateString();
+    // Format as M/D/YYYY directly from the date parts to avoid timezone shifting
+    return `${m}/${d}/${y}`;
   };
 
   const fetchNarratives = useCallback(async () => {
@@ -2249,6 +2251,21 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
     const [generatedHeatReddit, setGeneratedHeatReddit] = useState<{ title: string; body: string } | null>(null);
     const [isGeneratingHeatContent, setIsGeneratingHeatContent] = useState(false);
     const [activeHeatTab, setActiveHeatTab] = useState<'tweet' | 'reddit'>('tweet');
+    
+    // Viral content generation state
+    const [showNarrativeSelectionModal, setShowNarrativeSelectionModal] = useState(false);
+    const [showContentPreviewModal, setShowContentPreviewModal] = useState(false);
+    const [selectedPostForViral, setSelectedPostForViral] = useState<HeatcheckPost | null>(null);
+    const [selectedNarrativeCard, setSelectedNarrativeCard] = useState<any>(null);
+    const [generatedViralContent, setGeneratedViralContent] = useState<{
+        longFormTweet: string;
+        twitterThread: string[];
+        redditPost: { title: string; body: string };
+        heatSheetSegment: string;
+        validationNotes: string;
+    } | null>(null);
+    const [isGeneratingViralContent, setIsGeneratingViralContent] = useState(false);
+    const [activeViralTab, setActiveViralTab] = useState<'tweet' | 'thread' | 'reddit' | 'heatsheet'>('tweet');
 
     useEffect(() => {
         setLoading(true);
@@ -2536,6 +2553,39 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
                                 >
                                     {post.status}
                                 </span>
+                                {/* Generate Content Button */}
+                                {narrativeCards.length > 0 && (
+                                    <button
+                                        className="generate-content-button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedPostForViral(post);
+                                            setShowNarrativeSelectionModal(true);
+                                        }}
+                                        style={{
+                                            background: 'rgba(76, 175, 80, 0.8)',
+                                            color: '#fff',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '0.5rem 0.75rem',
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 'bold',
+                                            transition: 'all 0.2s',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.background = 'rgba(76, 175, 80, 1)';
+                                            e.currentTarget.style.transform = 'scale(1.05)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.background = 'rgba(76, 175, 80, 0.8)';
+                                            e.currentTarget.style.transform = 'scale(1)';
+                                        }}
+                                    >
+                                        Generate Content
+                                    </button>
+                                )}
                                 {/* Delete Button - Only for published posts */}
                                 {post.status === 'published' && (
                                     <button
@@ -3639,6 +3689,760 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
                     </div>
                 </div>
             )}
+
+            {/* Narrative Selection Modal for Viral Content */}
+            {showNarrativeSelectionModal && selectedPostForViral && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10000,
+                        padding: '2rem'
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setShowNarrativeSelectionModal(false);
+                        }
+                    }}
+                >
+                    <div
+                        style={{
+                            background: '#1a1a1a',
+                            border: '2px solid #4caf50',
+                            borderRadius: '8px',
+                            padding: '2rem',
+                            maxWidth: '700px',
+                            width: '100%',
+                            maxHeight: '90vh',
+                            overflow: 'auto',
+                            position: 'relative'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            onClick={() => setShowNarrativeSelectionModal(false)}
+                            style={{
+                                position: 'absolute',
+                                top: '1rem',
+                                right: '1rem',
+                                background: '#dc3545',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '0.5rem 0.75rem',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold'
+                            }}
+                        >
+                            ✕ Close
+                        </button>
+
+                        <h2 style={{ color: '#4caf50', marginTop: 0, marginBottom: '1.5rem' }}>
+                            Select Narrative for Content Generation
+                        </h2>
+
+                        <div style={{ marginBottom: '1.5rem' }}>
+                            <p style={{ color: '#ccc', fontSize: '0.9rem', marginBottom: '1rem' }}>
+                                Choose a narrative card to generate viral content using the 5-state framework:
+                            </p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                {(selectedPostForViral.heatCheckData?.narratives?.candidate_cards || []).map((card: any, index: number) => {
+                                    const isPrimary = card.narrative_id === (selectedPostForViral.heatCheckData?.narratives?.selected?.primary_narrative_id || '');
+                                    return (
+                                        <div
+                                            key={index}
+                                            onClick={() => {
+                                                setSelectedNarrativeCard(card);
+                                            }}
+                                            style={{
+                                                padding: '1rem',
+                                                background: selectedNarrativeCard?.narrative_id === card.narrative_id ? 'rgba(76, 175, 80, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                                                border: selectedNarrativeCard?.narrative_id === card.narrative_id ? '2px solid #4caf50' : '1px solid #333',
+                                                borderRadius: '4px',
+                                                cursor: 'pointer',
+                                                transition: 'all 0.2s'
+                                            }}
+                                            onMouseEnter={(e) => {
+                                                if (selectedNarrativeCard?.narrative_id !== card.narrative_id) {
+                                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                                                }
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                if (selectedNarrativeCard?.narrative_id !== card.narrative_id) {
+                                                    e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                                                }
+                                            }}
+                                        >
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                                                {isPrimary && <span style={{ color: '#4caf50', fontWeight: 'bold' }}>⭐ PRIMARY</span>}
+                                                <strong style={{ color: '#fff', fontSize: '1rem' }}>{card.title}</strong>
+                                            </div>
+                                            <p style={{ color: '#ccc', fontSize: '0.85rem', marginBottom: '0.5rem', lineHeight: '1.5' }}>
+                                                {card.claim}
+                                            </p>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.75rem', color: '#999' }}>
+                                                <span>Score: <strong style={{ color: '#f84242' }}>{card.total_score || 0}/35</strong></span>
+                                                <span>{card.emotion_tags?.slice(0, 3).join(', ') || ''}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={async () => {
+                                if (!selectedNarrativeCard) {
+                                    alert('Please select a narrative card');
+                                    return;
+                                }
+                                setShowNarrativeSelectionModal(false);
+                                setShowContentPreviewModal(true);
+                                setIsGeneratingViralContent(true);
+                                setGeneratedViralContent(null);
+                                
+                                try {
+                                    const heatCheckData = selectedPostForViral.heatCheckData || {};
+                                    const evidenceBundle = heatCheckData.evidenceBundle || heatCheckData.evidence_bundle || {};
+                                    
+                                    // For V3 articles, use matchPackV3 data (from stats DB) - it has richer stats
+                                    const matchPackV3 = heatCheckData.matchPackV3;
+                                    let factPack = heatCheckData.factPack || {};
+                                    
+                                    // Extract ALL available stats from matchPackV3
+                                    if (matchPackV3?.factDrop) {
+                                        const factDrop = matchPackV3.factDrop;
+                                        const bullets = Array.isArray(factDrop.bullets) ? factDrop.bullets : [];
+                                        const comparisons = Array.isArray(factDrop.comparisons) ? factDrop.comparisons : [];
+                                        const sections = Array.isArray(factDrop.sections) ? factDrop.sections : [];
+                                        
+                                        // Build comprehensive key_stats from ALL sources
+                                        const keyStats = [
+                                            ...bullets.map((b: any) => ({
+                                                label: b.label || '',
+                                                value: b.display || '',
+                                                why_it_matters: b.context || b.note || '',
+                                                key: b.key || ''
+                                            })),
+                                            ...comparisons.map((c: any) => ({
+                                                label: c.label || '',
+                                                value: c.display || '',
+                                                why_it_matters: c.context || c.note || '',
+                                                key: c.key || ''
+                                            }))
+                                        ];
+                                        
+                                        // Extract form leaders with detailed stats
+                                        const formLeadersSection = sections.find((s: any) => s.key === 'formLeaders');
+                                        const formLeaders = formLeadersSection?.priorityPlayers || formLeadersSection?.itemsDetailed || [];
+                                        
+                                        // Extract team form with detailed metrics
+                                        const teamFormA = factDrop.raw?.teamForm?.A || {};
+                                        const teamFormB = factDrop.raw?.teamForm?.B || {};
+                                        const recentForm = {
+                                            home: teamFormA.winLoss10 || teamFormA.record || '',
+                                            away: teamFormB.winLoss10 || teamFormB.record || '',
+                                            // Add detailed metrics
+                                            margin10: {
+                                                A: teamFormA.margin10 || 0,
+                                                B: teamFormB.margin10 || 0
+                                            },
+                                            margin3: {
+                                                A: teamFormA.margin3 || 0,
+                                                B: teamFormB.margin3 || 0
+                                            },
+                                            offensiveRating: {
+                                                A: teamFormA.offensiveRating10 || 0,
+                                                B: teamFormB.offensiveRating10 || 0
+                                            },
+                                            defensiveRating: {
+                                                A: teamFormA.defensiveRating10 || 0,
+                                                B: teamFormB.defensiveRating10 || 0
+                                            }
+                                        };
+                                        
+                                        // Extract injuries/availability with more detail
+                                        const availability = factDrop.raw?.availability || {};
+                                        const majorAbsences = availability.majorAbsences || {};
+                                        const injuries: Array<{ name: string; team: string; status: string; reason?: string }> = [];
+                                        
+                                        if (majorAbsences.A?.players) {
+                                            majorAbsences.A.players.forEach((p: any) => {
+                                                injuries.push({
+                                                    name: p.player_name || p.name || '',
+                                                    team: selectedPostForViral.teamA,
+                                                    status: p.status || p.availability_status || 'OUT',
+                                                    reason: p.reason || ''
+                                                });
+                                            });
+                                        }
+                                        if (majorAbsences.B?.players) {
+                                            majorAbsences.B.players.forEach((p: any) => {
+                                                injuries.push({
+                                                    name: p.player_name || p.name || '',
+                                                    team: selectedPostForViral.teamB,
+                                                    status: p.status || p.availability_status || 'OUT',
+                                                    reason: p.reason || ''
+                                                });
+                                            });
+                                        }
+                                        
+                                        // Build comprehensive factPack with ALL available data
+                                        factPack = {
+                                            key_stats: keyStats,
+                                            context: {
+                                                recent_form: recentForm,
+                                                injuries: injuries,
+                                                standings: matchPackV3.standings || {},
+                                                venue: matchPackV3.matchup?.venue || {}
+                                            },
+                                            odds: matchPackV3.odds || {},
+                                            // Include ALL sections for rich context
+                                            formLeaders: formLeaders,
+                                            comparisons: comparisons,
+                                            sections: sections,
+                                            bullets: bullets,
+                                            // Include raw data for deep stats
+                                            raw: {
+                                                teamForm: factDrop.raw?.teamForm || {},
+                                                availability: availability,
+                                                headToHead: factDrop.raw?.headToHead || {}
+                                            }
+                                        };
+                                    }
+                                    
+                                    // Extract narrative strengtheners from the narrative card
+                                    const narrativeStrengtheners = {
+                                        scoreBreakdown: selectedNarrativeCard.score_breakdown || {},
+                                        totalScore: selectedNarrativeCard.total_score || 0,
+                                        riskNotes: selectedNarrativeCard.risk_notes || [],
+                                        evidenceRequirementsMet: selectedNarrativeCard.evidence_requirements_met || false,
+                                        mustCiteSourceIds: selectedNarrativeCard.must_cite_source_ids || []
+                                    };
+                                    
+                                    const context = {
+                                        teamA: selectedPostForViral.teamA,
+                                        teamB: selectedPostForViral.teamB,
+                                        league: selectedPostForViral.league,
+                                        matchupDate: selectedPostForViral.matchupScheduledDate || new Date().toISOString().split('T')[0],
+                                        evidenceBundle: {
+                                            quotes: evidenceBundle.quotes || [],
+                                            timeline_events: evidenceBundle.timeline_events || [],
+                                            sources: evidenceBundle.sources || []
+                                        },
+                                        factPack: factPack,
+                                        narrativeStrengtheners: narrativeStrengtheners, // NEW: Add narrative strengtheners
+                                        articleMarkdown: heatCheckData.article?.long_form_markdown
+                                    };
+                                    
+                                    const content = await generateViralContentFromNarrative(selectedNarrativeCard, context);
+                                    setGeneratedViralContent(content);
+                                } catch (error: any) {
+                                    console.error('Error generating viral content:', error);
+                                    alert(`Failed to generate content: ${error.message}`);
+                                } finally {
+                                    setIsGeneratingViralContent(false);
+                                }
+                            }}
+                            disabled={!selectedNarrativeCard || isGeneratingViralContent}
+                            style={{
+                                width: '100%',
+                                padding: '0.75rem',
+                                background: (!selectedNarrativeCard || isGeneratingViralContent) ? '#666' : '#4caf50',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                fontSize: '1rem',
+                                fontWeight: 'bold',
+                                cursor: (!selectedNarrativeCard || isGeneratingViralContent) ? 'not-allowed' : 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            {isGeneratingViralContent ? 'Generating...' : 'Generate Content'}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Content Preview Modal */}
+            {showContentPreviewModal && selectedPostForViral && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10001,
+                        padding: '2rem'
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setShowContentPreviewModal(false);
+                        }
+                    }}
+                >
+                    <div
+                        style={{
+                            background: '#1a1a1a',
+                            border: '2px solid #4caf50',
+                            borderRadius: '8px',
+                            padding: '2rem',
+                            maxWidth: '900px',
+                            width: '100%',
+                            maxHeight: '90vh',
+                            overflow: 'auto',
+                            position: 'relative'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            onClick={() => setShowContentPreviewModal(false)}
+                            style={{
+                                position: 'absolute',
+                                top: '1rem',
+                                right: '1rem',
+                                background: '#dc3545',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '0.5rem 0.75rem',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold'
+                            }}
+                        >
+                            ✕ Close
+                        </button>
+
+                        <h2 style={{ color: '#4caf50', marginTop: 0, marginBottom: '1.5rem' }}>
+                            Generated Viral Content
+                        </h2>
+
+                        {isGeneratingViralContent ? (
+                            <div style={{ textAlign: 'center', padding: '3rem' }}>
+                                <div className="loader">Generating viral content...</div>
+                                <p style={{ color: '#ccc', marginTop: '1rem' }}>
+                                    This may take 30-60 seconds. Please wait...
+                                </p>
+                            </div>
+                        ) : generatedViralContent ? (
+                            <>
+                                {/* Tab Headers */}
+                                <div style={{ 
+                                    display: 'flex', 
+                                    gap: '0.5rem', 
+                                    marginBottom: '1rem',
+                                    borderBottom: '2px solid #333',
+                                    flexWrap: 'wrap'
+                                }}>
+                                    <button
+                                        onClick={() => setActiveViralTab('tweet')}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            background: activeViralTab === 'tweet' ? '#1da1f2' : 'transparent',
+                                            color: activeViralTab === 'tweet' ? '#fff' : '#1da1f2',
+                                            border: 'none',
+                                            borderBottom: activeViralTab === 'tweet' ? '2px solid #1da1f2' : '2px solid transparent',
+                                            borderRadius: '4px 4px 0 0',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            marginBottom: '-2px'
+                                        }}
+                                    >
+                                        🐦 Long-form Tweet
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveViralTab('thread')}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            background: activeViralTab === 'thread' ? '#1da1f2' : 'transparent',
+                                            color: activeViralTab === 'thread' ? '#fff' : '#1da1f2',
+                                            border: 'none',
+                                            borderBottom: activeViralTab === 'thread' ? '2px solid #1da1f2' : '2px solid transparent',
+                                            borderRadius: '4px 4px 0 0',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            marginBottom: '-2px'
+                                        }}
+                                    >
+                                        🧵 Twitter Thread
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveViralTab('reddit')}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            background: activeViralTab === 'reddit' ? '#ff4500' : 'transparent',
+                                            color: activeViralTab === 'reddit' ? '#fff' : '#ff4500',
+                                            border: 'none',
+                                            borderBottom: activeViralTab === 'reddit' ? '2px solid #ff4500' : '2px solid transparent',
+                                            borderRadius: '4px 4px 0 0',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            marginBottom: '-2px'
+                                        }}
+                                    >
+                                        🔴 Reddit Post
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveViralTab('heatsheet')}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            background: activeViralTab === 'heatsheet' ? '#f84242' : 'transparent',
+                                            color: activeViralTab === 'heatsheet' ? '#fff' : '#f84242',
+                                            border: 'none',
+                                            borderBottom: activeViralTab === 'heatsheet' ? '2px solid #f84242' : '2px solid transparent',
+                                            borderRadius: '4px 4px 0 0',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s',
+                                            marginBottom: '-2px'
+                                        }}
+                                    >
+                                        📊 Heat Sheet
+                                    </button>
+                                </div>
+
+                                {/* Tab Content */}
+                                <div style={{ 
+                                    padding: '1.5rem',
+                                    background: '#000',
+                                    borderRadius: '0 0 4px 4px',
+                                    border: '1px solid #333',
+                                    borderTop: 'none'
+                                }}>
+                                    {activeViralTab === 'tweet' && (
+                                        <div>
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center',
+                                                marginBottom: '1rem'
+                                            }}>
+                                                <label style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Long-form Tweet:
+                                                </label>
+                                                <button
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(generatedViralContent.longFormTweet).then(() => {
+                                                            alert('Copied to clipboard!');
+                                                        }).catch(err => {
+                                                            console.error('Failed to copy:', err);
+                                                            alert('Failed to copy. Please select and copy manually.');
+                                                        });
+                                                    }}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        background: '#1da1f2',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: 'bold',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    📋 Copy
+                                                </button>
+                                            </div>
+                                            <textarea
+                                                value={generatedViralContent.longFormTweet}
+                                                readOnly
+                                                style={{
+                                                    width: '100%',
+                                                    minHeight: '300px',
+                                                    padding: '1rem',
+                                                    background: '#000',
+                                                    border: '1px solid #1da1f2',
+                                                    color: '#fff',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.9rem',
+                                                    fontFamily: 'monospace',
+                                                    lineHeight: '1.6',
+                                                    resize: 'vertical'
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {activeViralTab === 'thread' && (
+                                        <div>
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center',
+                                                marginBottom: '1rem'
+                                            }}>
+                                                <label style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Twitter Thread ({generatedViralContent.twitterThread.length} tweets):
+                                                </label>
+                                                <button
+                                                    onClick={() => {
+                                                        const threadText = generatedViralContent.twitterThread.join('\n\n');
+                                                        navigator.clipboard.writeText(threadText).then(() => {
+                                                            alert('Copied to clipboard!');
+                                                        }).catch(err => {
+                                                            console.error('Failed to copy:', err);
+                                                            alert('Failed to copy. Please select and copy manually.');
+                                                        });
+                                                    }}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        background: '#1da1f2',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: 'bold',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    📋 Copy All
+                                                </button>
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                                {generatedViralContent.twitterThread.map((tweet, index) => (
+                                                    <div key={index} style={{
+                                                        padding: '1rem',
+                                                        background: 'rgba(29, 161, 242, 0.1)',
+                                                        border: '1px solid #1da1f2',
+                                                        borderRadius: '4px'
+                                                    }}>
+                                                        <div style={{ 
+                                                            display: 'flex', 
+                                                            justifyContent: 'space-between', 
+                                                            alignItems: 'center',
+                                                            marginBottom: '0.5rem'
+                                                        }}>
+                                                            <span style={{ color: '#1da1f2', fontSize: '0.75rem', fontWeight: 'bold' }}>
+                                                                Tweet {index + 1}/{generatedViralContent.twitterThread.length}
+                                                            </span>
+                                                            <button
+                                                                onClick={() => {
+                                                                    navigator.clipboard.writeText(tweet).then(() => {
+                                                                        alert('Copied to clipboard!');
+                                                                    }).catch(err => {
+                                                                        console.error('Failed to copy:', err);
+                                                                        alert('Failed to copy. Please select and copy manually.');
+                                                                    });
+                                                                }}
+                                                                style={{
+                                                                    padding: '0.25rem 0.5rem',
+                                                                    background: '#1da1f2',
+                                                                    color: '#fff',
+                                                                    border: 'none',
+                                                                    borderRadius: '4px',
+                                                                    fontSize: '0.75rem',
+                                                                    cursor: 'pointer'
+                                                                }}
+                                                            >
+                                                                Copy
+                                                            </button>
+                                                        </div>
+                                                        <textarea
+                                                            value={tweet}
+                                                            readOnly
+                                                            style={{
+                                                                width: '100%',
+                                                                minHeight: '80px',
+                                                                padding: '0.75rem',
+                                                                background: '#000',
+                                                                border: '1px solid #1da1f2',
+                                                                color: '#fff',
+                                                                borderRadius: '4px',
+                                                                fontSize: '0.85rem',
+                                                                fontFamily: 'monospace',
+                                                                lineHeight: '1.5',
+                                                                resize: 'vertical'
+                                                            }}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeViralTab === 'reddit' && (
+                                        <div>
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center',
+                                                marginBottom: '1rem'
+                                            }}>
+                                                <label style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Reddit Post:
+                                                </label>
+                                                <button
+                                                    onClick={() => {
+                                                        const redditText = `${generatedViralContent.redditPost.title}\n\n${generatedViralContent.redditPost.body}`;
+                                                        navigator.clipboard.writeText(redditText).then(() => {
+                                                            alert('Copied to clipboard!');
+                                                        }).catch(err => {
+                                                            console.error('Failed to copy:', err);
+                                                            alert('Failed to copy. Please select and copy manually.');
+                                                        });
+                                                    }}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        background: '#ff4500',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: 'bold',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    📋 Copy All
+                                                </button>
+                                            </div>
+                                            <div style={{ marginBottom: '1rem' }}>
+                                                <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Title:
+                                                </label>
+                                                <textarea
+                                                    value={generatedViralContent.redditPost.title}
+                                                    readOnly
+                                                    style={{
+                                                        width: '100%',
+                                                        minHeight: '60px',
+                                                        padding: '0.75rem',
+                                                        background: '#000',
+                                                        border: '1px solid #ff4500',
+                                                        color: '#fff',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.9rem',
+                                                        fontFamily: 'monospace',
+                                                        resize: 'vertical'
+                                                    }}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Body:
+                                                </label>
+                                                <textarea
+                                                    value={generatedViralContent.redditPost.body}
+                                                    readOnly
+                                                    style={{
+                                                        width: '100%',
+                                                        minHeight: '400px',
+                                                        padding: '1rem',
+                                                        background: '#000',
+                                                        border: '1px solid #ff4500',
+                                                        color: '#fff',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.9rem',
+                                                        fontFamily: 'monospace',
+                                                        lineHeight: '1.6',
+                                                        resize: 'vertical'
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {activeViralTab === 'heatsheet' && (
+                                        <div>
+                                            <div style={{ 
+                                                display: 'flex', 
+                                                justifyContent: 'space-between', 
+                                                alignItems: 'center',
+                                                marginBottom: '1rem'
+                                            }}>
+                                                <label style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                                    Heat Sheet Segment:
+                                                </label>
+                                                <button
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(generatedViralContent.heatSheetSegment).then(() => {
+                                                            alert('Copied to clipboard!');
+                                                        }).catch(err => {
+                                                            console.error('Failed to copy:', err);
+                                                            alert('Failed to copy. Please select and copy manually.');
+                                                        });
+                                                    }}
+                                                    style={{
+                                                        padding: '0.5rem 1rem',
+                                                        background: '#f84242',
+                                                        color: '#fff',
+                                                        border: 'none',
+                                                        borderRadius: '4px',
+                                                        fontSize: '0.85rem',
+                                                        fontWeight: 'bold',
+                                                        cursor: 'pointer'
+                                                    }}
+                                                >
+                                                    📋 Copy
+                                                </button>
+                                            </div>
+                                            <textarea
+                                                value={generatedViralContent.heatSheetSegment}
+                                                readOnly
+                                                style={{
+                                                    width: '100%',
+                                                    minHeight: '300px',
+                                                    padding: '1rem',
+                                                    background: '#000',
+                                                    border: '1px solid #f84242',
+                                                    color: '#fff',
+                                                    borderRadius: '4px',
+                                                    fontSize: '0.9rem',
+                                                    fontFamily: 'monospace',
+                                                    lineHeight: '1.6',
+                                                    resize: 'vertical'
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Validation Notes */}
+                                    {generatedViralContent.validationNotes && (
+                                        <div style={{
+                                            marginTop: '1.5rem',
+                                            padding: '1rem',
+                                            background: 'rgba(255, 255, 255, 0.05)',
+                                            border: '1px solid #333',
+                                            borderRadius: '4px'
+                                        }}>
+                                            <div style={{ color: '#999', fontSize: '0.75rem', fontWeight: 'bold', marginBottom: '0.5rem' }}>
+                                                VALIDATION NOTES:
+                                            </div>
+                                            <div style={{ color: '#ccc', fontSize: '0.85rem', lineHeight: '1.5' }}>
+                                                {generatedViralContent.validationNotes}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </>
+                        ) : (
+                            <div style={{ textAlign: 'center', padding: '2rem', color: '#999' }}>
+                                No content generated yet. Please select a narrative and generate content.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
@@ -3663,6 +4467,8 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
     const [v3EvidenceJson, setV3EvidenceJson] = useState<string>('');
     const [showV3Advanced, setShowV3Advanced] = useState<boolean>(false);
     const v3ChartInstancesRef = useRef<any[]>([]);
+    const [isRegeneratingEdge, setIsRegeneratingEdge] = useState(false);
+    const [edgeApiSource, setEdgeApiSource] = useState<'theoddsapi' | 'gemini'>('theoddsapi');
 
     const v3ChartsPayload: any = (editedPost as any)?.storyType === 'heat_article_v3'
         ? (editedPost as any)?.heatCheckData?.matchPackV3?.factDrop?.charts
@@ -3966,6 +4772,103 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
 
     const handleArrayChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         handleFieldChange(e.target.name, e.target.value.split('\n'));
+    };
+
+    const handleRegenerateEdge = async () => {
+        if (!editedPost) return;
+        
+        setIsRegeneratingEdge(true);
+        try {
+            const teamA = editedPost.teamA;
+            const teamB = editedPost.teamB;
+            const league = editedPost.league;
+            
+            // Get matchPackV3 from heatCheckData
+            const heatCheckData = (editedPost as any).heatCheckData || {};
+            const matchPackV3 = heatCheckData.matchPackV3;
+            
+            if (!matchPackV3) {
+                alert('MatchPackV3 data not found. Cannot regenerate edge without match data.');
+                setIsRegeneratingEdge(false);
+                return;
+            }
+
+            let oddsData: { gameMarkets: any; playerProps: any };
+
+            if (edgeApiSource === 'gemini') {
+                // Use Gemini to search for odds
+                const scheduledDate = editedPost.matchupScheduledDate || matchPackV3?.matchup?.gameDateEst || null;
+                oddsData = await searchOddsWithGemini(matchPackV3, teamA, teamB, league, scheduledDate);
+                console.log('[Editor] Fetched odds using Gemini');
+            } else {
+                // Use TheOddsAPI
+                // Try to get event ID from factPack or find it
+                let eventId: string | null = null;
+                const factPack = heatCheckData.factPack || {};
+                if (factPack.odds?.event_id) {
+                    eventId = factPack.odds.event_id;
+                } else {
+                    // Try to find event ID by querying OddsAPI
+                    try {
+                        const scheduledDate = editedPost.matchupScheduledDate || matchPackV3?.matchup?.gameDateEst || null;
+                        const eventInfo = await apiClient.findOddsEventId(
+                            teamA,
+                            teamB,
+                            scheduledDate,
+                            'basketball_nba'
+                        );
+                        eventId = eventInfo.eventId;
+                        console.log(`[Editor] Found event ID: ${eventId} for ${teamA} vs ${teamB}`);
+                    } catch (findError: any) {
+                        console.warn(`[Editor] Could not find event ID:`, findError.message || findError);
+                        alert(`Could not find OddsAPI event ID for ${teamA} vs ${teamB}. Team names may not match OddsAPI format, or game may not be available yet.`);
+                        setIsRegeneratingEdge(false);
+                        return;
+                    }
+                }
+
+                if (!eventId) {
+                    alert('Could not find OddsAPI event ID. Cannot regenerate edge.');
+                    setIsRegeneratingEdge(false);
+                    return;
+                }
+
+                // Fetch odds from OddsAPI
+                oddsData = await apiClient.getOddsForGame(eventId, 'basketball_nba');
+                console.log('[Editor] Fetched odds using TheOddsAPI');
+            }
+            
+            // Layer 1: Edge Finder
+            const candidates = await findEdgeCandidates(
+                matchPackV3,
+                oddsData.gameMarkets,
+                oddsData.playerProps,
+                teamA,
+                teamB
+            );
+
+            // Layer 2: Edge Validator
+            const validated = await validateEdgeCandidates(candidates, matchPackV3);
+
+            // Layer 3: Edge Writer
+            const newEdge = await generateHeatChecksEdgeV3(
+                validated,
+                matchPackV3,
+                teamA,
+                teamB,
+                league
+            );
+
+            // Update the edited post with the new edge
+            handleFieldChange('heatchecksEdge', newEdge);
+            
+            console.log('[Editor] Edge regenerated successfully');
+        } catch (error: any) {
+            console.error('[Editor] Error regenerating edge:', error);
+            alert(`Failed to regenerate edge: ${error.message || 'Unknown error'}`);
+        } finally {
+            setIsRegeneratingEdge(false);
+        }
     };
     
     const handleSave = async (newStatus: "draft" | "published") => {
@@ -5075,10 +5978,72 @@ Return ONLY the new player section in markdown format, exactly matching the stru
                                                 <div style={{ position: 'absolute', top: '0.75rem', left: '0.75rem', width: '12px', height: '12px', background: 'rgba(255, 255, 255, 0.6)', borderRadius: '50%', boxShadow: '0 0 15px rgba(255, 255, 255, 0.4), 0 0 25px rgba(255, 255, 255, 0.2)' }}></div>
                                                 
                                                 {/* Header */}
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '2px solid rgba(255, 255, 255, 0.3)' }}>
-                                                    <div style={{ width: '4px', height: '30px', background: 'rgba(255, 255, 255, 0.5)', boxShadow: '0 0 10px rgba(255, 255, 255, 0.3)' }}></div>
-                                                    <div style={{ color: 'rgba(255, 255, 255, 0.95)', fontSize: '0.9rem', fontFamily: "'Courier New', monospace", fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.2em', textShadow: '0 0 10px rgba(255, 255, 255, 0.3), 0 0 20px rgba(255, 255, 255, 0.1)' }}>
-                                                        &gt; HEATCHECKS EDGE (V2)
+                                                <div style={{ marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '2px solid rgba(255, 255, 255, 0.3)' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                                                            <div style={{ width: '4px', height: '30px', background: 'rgba(255, 255, 255, 0.5)', boxShadow: '0 0 10px rgba(255, 255, 255, 0.3)' }}></div>
+                                                            <div style={{ color: 'rgba(255, 255, 255, 0.95)', fontSize: '0.9rem', fontFamily: "'Courier New', monospace", fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.2em', textShadow: '0 0 10px rgba(255, 255, 255, 0.3), 0 0 20px rgba(255, 255, 255, 0.1)' }}>
+                                                                &gt; HEATCHECKS EDGE (V2)
+                                                            </div>
+                                                        </div>
+                                                        <button
+                                                            onClick={handleRegenerateEdge}
+                                                            disabled={isRegeneratingEdge}
+                                                            style={{
+                                                                padding: '0.5rem 1rem',
+                                                                background: isRegeneratingEdge ? 'rgba(255, 255, 255, 0.2)' : 'rgba(248, 66, 66, 0.8)',
+                                                                border: '1px solid rgba(248, 66, 66, 0.6)',
+                                                                borderRadius: '4px',
+                                                                color: '#fff',
+                                                                fontSize: '0.75rem',
+                                                                fontFamily: "'Courier New', monospace",
+                                                                fontWeight: 'bold',
+                                                                cursor: isRegeneratingEdge ? 'not-allowed' : 'pointer',
+                                                                opacity: isRegeneratingEdge ? 0.6 : 1,
+                                                                transition: 'all 0.2s',
+                                                                textTransform: 'uppercase',
+                                                                letterSpacing: '0.1em'
+                                                            }}
+                                                            onMouseEnter={(e) => {
+                                                                if (!isRegeneratingEdge) {
+                                                                    e.currentTarget.style.background = 'rgba(248, 66, 66, 1)';
+                                                                    e.currentTarget.style.boxShadow = '0 0 10px rgba(248, 66, 66, 0.5)';
+                                                                }
+                                                            }}
+                                                            onMouseLeave={(e) => {
+                                                                if (!isRegeneratingEdge) {
+                                                                    e.currentTarget.style.background = 'rgba(248, 66, 66, 0.8)';
+                                                                    e.currentTarget.style.boxShadow = 'none';
+                                                                }
+                                                            }}
+                                                        >
+                                                            {isRegeneratingEdge ? 'Regenerating...' : 'Regenerate Edge'}
+                                                        </button>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.7)' }}>
+                                                        <label style={{ fontFamily: "'Courier New', monospace", fontWeight: 'bold' }}>Odds Source:</label>
+                                                        <select
+                                                            value={edgeApiSource}
+                                                            onChange={(e) => setEdgeApiSource(e.target.value as 'theoddsapi' | 'gemini')}
+                                                            disabled={isRegeneratingEdge}
+                                                            style={{
+                                                                padding: '0.35rem 0.75rem',
+                                                                background: 'rgba(0, 0, 0, 0.3)',
+                                                                border: '1px solid rgba(255, 255, 255, 0.3)',
+                                                                borderRadius: '4px',
+                                                                color: '#fff',
+                                                                fontSize: '0.8rem',
+                                                                fontFamily: "'Courier New', monospace",
+                                                                cursor: isRegeneratingEdge ? 'not-allowed' : 'pointer',
+                                                                opacity: isRegeneratingEdge ? 0.5 : 1
+                                                            }}
+                                                        >
+                                                            <option value="theoddsapi">TheOddsAPI</option>
+                                                            <option value="gemini">Gemini (AI Search)</option>
+                                                        </select>
+                                                        <span style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic' }}>
+                                                            {edgeApiSource === 'gemini' ? 'Searches for odds using AI' : 'Uses TheOddsAPI service'}
+                                                        </span>
                                                     </div>
                                                 </div>
                                                 
@@ -5339,6 +6304,39 @@ Return ONLY the new player section in markdown format, exactly matching the stru
                                                         &gt; HEATCHECKS EDGE
                                                     </div>
                                                     <div style={{ flex: 1, height: '1px', background: 'linear-gradient(90deg, rgba(255, 255, 255, 0.3) 0%, transparent 100%)' }}></div>
+                                                    <button
+                                                        onClick={handleRegenerateEdge}
+                                                        disabled={isRegeneratingEdge}
+                                                        style={{
+                                                            padding: '0.5rem 1rem',
+                                                            background: isRegeneratingEdge ? 'rgba(255, 255, 255, 0.2)' : 'rgba(248, 66, 66, 0.8)',
+                                                            border: '1px solid rgba(248, 66, 66, 0.6)',
+                                                            borderRadius: '4px',
+                                                            color: '#fff',
+                                                            fontSize: '0.75rem',
+                                                            fontFamily: "'Courier New', monospace",
+                                                            fontWeight: 'bold',
+                                                            cursor: isRegeneratingEdge ? 'not-allowed' : 'pointer',
+                                                            opacity: isRegeneratingEdge ? 0.6 : 1,
+                                                            transition: 'all 0.2s',
+                                                            textTransform: 'uppercase',
+                                                            letterSpacing: '0.1em'
+                                                        }}
+                                                        onMouseEnter={(e) => {
+                                                            if (!isRegeneratingEdge) {
+                                                                e.currentTarget.style.background = 'rgba(248, 66, 66, 1)';
+                                                                e.currentTarget.style.boxShadow = '0 0 10px rgba(248, 66, 66, 0.5)';
+                                                            }
+                                                        }}
+                                                        onMouseLeave={(e) => {
+                                                            if (!isRegeneratingEdge) {
+                                                                e.currentTarget.style.background = 'rgba(248, 66, 66, 0.8)';
+                                                                e.currentTarget.style.boxShadow = 'none';
+                                                            }
+                                                        }}
+                                                    >
+                                                        {isRegeneratingEdge ? 'Regenerating...' : 'Regenerate Edge'}
+                                                    </button>
                                                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                                                         {/* Lean Dropdown */}
                                                         <select
@@ -5382,6 +6380,31 @@ Return ONLY the new player section in markdown format, exactly matching the stru
                                                             <option value="medium">MEDIUM</option>
                                                             <option value="high">HIGH</option>
                                                         </select>
+                                                    </div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.8rem', color: 'rgba(255, 255, 255, 0.7)', marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(255, 255, 255, 0.2)' }}>
+                                                        <label style={{ fontFamily: "'Courier New', monospace", fontWeight: 'bold' }}>Odds Source:</label>
+                                                        <select
+                                                            value={edgeApiSource}
+                                                            onChange={(e) => setEdgeApiSource(e.target.value as 'theoddsapi' | 'gemini')}
+                                                            disabled={isRegeneratingEdge}
+                                                            style={{
+                                                                padding: '0.35rem 0.75rem',
+                                                                background: 'rgba(0, 0, 0, 0.3)',
+                                                                border: '1px solid rgba(255, 255, 255, 0.3)',
+                                                                borderRadius: '4px',
+                                                                color: '#fff',
+                                                                fontSize: '0.8rem',
+                                                                fontFamily: "'Courier New', monospace",
+                                                                cursor: isRegeneratingEdge ? 'not-allowed' : 'pointer',
+                                                                opacity: isRegeneratingEdge ? 0.5 : 1
+                                                            }}
+                                                        >
+                                                            <option value="theoddsapi">TheOddsAPI</option>
+                                                            <option value="gemini">Gemini (AI Search)</option>
+                                                        </select>
+                                                        <span style={{ fontSize: '0.75rem', color: 'rgba(255, 255, 255, 0.5)', fontStyle: 'italic' }}>
+                                                            {edgeApiSource === 'gemini' ? 'Searches for odds using AI' : 'Uses TheOddsAPI service'}
+                                                        </span>
                                                     </div>
                                                 </div>
                                                 
@@ -5929,6 +6952,179 @@ interface EdgeCandidate {
     signals?: any;
 }
 
+// Search for odds using Gemini AI
+async function searchOddsWithGemini(
+    matchPackV3: any,
+    teamA: string,
+    teamB: string,
+    league: string,
+    scheduledDate: string | null
+): Promise<{ gameMarkets: any; playerProps: any }> {
+    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+    if (!apiKey) {
+        throw new Error('Gemini API key not available');
+    }
+
+    const ai = new GoogleGenAI({ apiKey });
+
+    // Extract form leaders (top 4)
+    const factDrop = matchPackV3?.factDrop || {};
+    const formLeadersSection = factDrop.sections?.find((s: any) => 
+        s.key === 'formLeaders' || s.title === 'FORM_LEADERS' || s.title === 'formLeaders'
+    );
+    const formLeaders = formLeadersSection?.priorityPlayers || 
+                        formLeadersSection?.itemsDetailed || 
+                        formLeadersSection?.items || 
+                        [];
+    
+    // Get top 4 form leaders
+    const top4Players = formLeaders.slice(0, 4).map((p: any) => p.playerName || '').filter(Boolean);
+    
+    const gameDate = scheduledDate || matchPackV3?.matchup?.gameDateEst || new Date().toISOString().split('T')[0];
+    
+    const prompt = `
+You are a sports betting odds researcher. Use Google Search to find current betting odds for the following NBA game and player props.
+
+MATCHUP: ${teamA} vs ${teamB}
+LEAGUE: ${league}
+GAME DATE: ${gameDate}
+
+TASKS:
+1. Search for and find current betting lines for this game:
+   - Moneyline odds for both teams
+   - Point spread (if available)
+   - Total points over/under (if available)
+   - Include the sportsbook name and American odds format (+100, -110, etc.)
+
+2. Search for player prop bets for these 4 players:
+${top4Players.map((name: string, idx: number) => `   ${idx + 1}. ${name} - Find points, rebounds, assists, and points+rebounds+assists props if available`).join('\n')}
+   - Include the line (e.g., OVER 25.5 points), American odds, and sportsbook name
+   - Only include OVER props (not UNDER)
+
+3. Return your findings as a JSON object with this exact structure:
+{
+  "gameMarkets": {
+    "bookmakers": [
+      {
+        "title": "Sportsbook Name",
+        "markets": [
+          {
+            "key": "h2h",
+            "outcomes": [
+              {"name": "Team Name", "price": -110},
+              {"name": "Team Name", "price": -110}
+            ]
+          },
+          {
+            "key": "spreads",
+            "outcomes": [
+              {"name": "Team Name", "point": -5.5, "price": -110},
+              {"name": "Team Name", "point": 5.5, "price": -110}
+            ]
+          },
+          {
+            "key": "totals",
+            "outcomes": [
+              {"name": "Over", "point": 220.5, "price": -110},
+              {"name": "Under", "point": 220.5, "price": -110}
+            ]
+          }
+        ]
+      }
+    ],
+    "home_team": "${teamA}",
+    "away_team": "${teamB}"
+  },
+  "playerProps": {
+    "bookmakers": [
+      {
+        "title": "Sportsbook Name",
+        "markets": [
+          {
+            "key": "player_points",
+            "outcomes": [
+              {"description": "Player Name", "name": "Over", "point": 25.5, "price": -110}
+            ]
+          },
+          {
+            "key": "player_rebounds",
+            "outcomes": [
+              {"description": "Player Name", "name": "Over", "point": 8.5, "price": -110}
+            ]
+          },
+          {
+            "key": "player_assists",
+            "outcomes": [
+              {"description": "Player Name", "name": "Over", "point": 6.5, "price": -110}
+            ]
+          },
+          {
+            "key": "player_points_rebounds_assists",
+            "outcomes": [
+              {"description": "Player Name", "name": "Over", "point": 35.5, "price": -110}
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
+
+CRITICAL REQUIREMENTS:
+- Use Google Search to find REAL, CURRENT betting odds from reputable sportsbooks
+- Only include odds that actually exist - do not invent or estimate
+- If you cannot find odds for a specific market, omit it from the response
+- For player props, only include the 4 players listed above
+- Only include OVER props (not UNDER)
+- Return ONLY valid JSON, no markdown, no explanations
+`;
+
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-2.5-pro',
+            contents: prompt,
+            config: {
+                tools: [{ googleSearch: {} }],
+            }
+        });
+
+        const text = response.text;
+        if (!text) throw new Error("No response from Gemini for odds search");
+
+        // Parse JSON from response
+        let oddsData: any;
+        try {
+            // Try to extract JSON from markdown code blocks
+            const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+            if (jsonMatch) {
+                oddsData = JSON.parse(jsonMatch[1].trim());
+            } else {
+                // Try to find JSON object directly
+                const firstBrace = text.indexOf('{');
+                const lastBrace = text.lastIndexOf('}');
+                if (firstBrace !== -1 && lastBrace !== -1) {
+                    oddsData = JSON.parse(text.substring(firstBrace, lastBrace + 1));
+                } else {
+                    throw new Error("No JSON found in response");
+                }
+            }
+        } catch (parseError: any) {
+            console.error('[searchOddsWithGemini] Failed to parse JSON:', parseError);
+            console.error('[searchOddsWithGemini] Response text:', text.substring(0, 500));
+            throw new Error(`Failed to parse odds data from Gemini: ${parseError.message}`);
+        }
+
+        // Ensure structure matches expected format
+        return {
+            gameMarkets: oddsData.gameMarkets || { bookmakers: [] },
+            playerProps: oddsData.playerProps || { bookmakers: [] }
+        };
+    } catch (error: any) {
+        console.error('[searchOddsWithGemini] Error:', error);
+        throw new Error(`Failed to search odds with Gemini: ${error.message || 'Unknown error'}`);
+    }
+}
+
 async function findEdgeCandidates(
     matchPackV3: any,
     gameMarkets: any,
@@ -5943,7 +7139,16 @@ async function findEdgeCandidates(
     const teamFormA = factDrop.raw?.teamForm?.A || {};
     const teamFormB = factDrop.raw?.teamForm?.B || {};
     const availability = factDrop.raw?.availability || {};
-    const formLeaders = factDrop.sections?.find((s: any) => s.title === 'FORM_LEADERS')?.itemsDetailed || [];
+    
+    // Extract formLeaders - try multiple possible locations and field names
+    const formLeadersSection = factDrop.sections?.find((s: any) => 
+        s.key === 'formLeaders' || s.title === 'FORM_LEADERS' || s.title === 'formLeaders'
+    );
+    const formLeaders = formLeadersSection?.priorityPlayers || 
+                        formLeadersSection?.itemsDetailed || 
+                        formLeadersSection?.items || 
+                        matchPackV3?.formLeaders || 
+                        [];
 
     // Score game markets
     // Extract team names from gameMarkets (could be in different places depending on OddsAPI response)
@@ -6141,15 +7346,15 @@ async function findEdgeCandidates(
         }
     }
 
-    // Select top game candidate
+    // Select top game candidate (exactly one)
     const gameCandidates = candidates.filter(c => c.type === 'game').sort((a, b) => b.score - a.score);
     const gameCandidate = gameCandidates.length > 0 ? gameCandidates[0] : null;
 
-    // Select top 2 prop candidates
+    // Select top 1 prop candidate (exactly one)
     const propCandidates = candidates
         .filter(c => c.type === 'prop')
         .sort((a, b) => b.score - a.score)
-        .slice(0, 2);
+        .slice(0, 1);
 
     console.log(`[Edge Finder] Found ${candidates.filter(c => c.type === 'prop').length} prop candidates, selected top ${propCandidates.length}`);
     if (propCandidates.length > 0) {
@@ -6221,9 +7426,17 @@ async function validateEdgeCandidates(
             continue; // Skip if player not found
         }
 
-        // Eligibility rules
-        const minutesAvg3 = playerData.minutesAvg3 || 0;
-        const gamesCount10 = playerData.gamesCount10 || 0;
+        // Eligibility rules - try multiple field name variations
+        const minutesAvg3 = Number(playerData.minutesAvg3) || 
+                            Number(playerData.min3) || 
+                            Number(playerData.MIN3) || 
+                            Number(playerData.minutes_avg_3) || 
+                            0;
+        const gamesCount10 = Number(playerData.gamesCount10) || 
+                             Number(playerData.games10) || 
+                             Number(playerData.GAMES10) || 
+                             Number(playerData.games_count_10) || 
+                             0;
         const playerStatus = availabilityMap.get(prop.player_name.toLowerCase()) || 'ACTIVE';
 
         // Check eligibility
@@ -6305,25 +7518,60 @@ async function generateHeatChecksEdgeV3(
             must_win: false // Can be enhanced
         };
 
-        // Build prop shortlist
-        const propShortlist = validatedCandidates.validatedProps.map(prop => ({
-            player_name: prop.player_name || '',
-            market_key: prop.prop_market || '',
-            selection: prop.prop_selection || 'OVER',
-            line: prop.line || 0,
-            price_american: prop.price_american || 0,
-            book: prop.book || '',
-            supporting_signals: {
-                minutes_avg_3: prop.signals?.minutesAvg3 || 0,
-                minutes_delta_3_vs_season: prop.signals?.minutesDelta || 0,
-                usage_proxy_avg_3: 0, // Not in current data
-                usage_delta_3_vs_season: prop.signals?.usageDelta || 0,
-                injury_context: '',
-                rest_flags: { back_to_back: false, three_in_four: false }
+        // Build prop shortlist - ensure we have exactly one prop (use first validated or create fallback)
+        let propShortlist: any[] = [];
+        if (validatedCandidates.validatedProps.length > 0) {
+            // Use the first (and only) validated prop
+            const prop = validatedCandidates.validatedProps[0];
+            propShortlist = [{
+                player_name: prop.player_name || '',
+                market_key: prop.prop_market || '',
+                selection: prop.prop_selection || 'OVER',
+                line: prop.line || 0,
+                price_american: prop.price_american || 0,
+                book: prop.book || '',
+                supporting_signals: {
+                    minutes_avg_3: prop.signals?.minutesAvg3 || 0,
+                    minutes_delta_3_vs_season: prop.signals?.minutesDelta || 0,
+                    usage_proxy_avg_3: 0, // Not in current data
+                    usage_delta_3_vs_season: prop.signals?.usageDelta || 0,
+                    injury_context: '',
+                    rest_flags: { back_to_back: false, three_in_four: false }
+                }
+            }];
+        } else {
+            // Fallback: Create a generic prop if none were validated
+            // Try to get a form leader to suggest a prop
+            const formLeadersSection = factDrop.sections?.find((s: any) => 
+                s.key === 'formLeaders' || s.title === 'FORM_LEADERS' || s.title === 'formLeaders'
+            );
+            const formLeaders = formLeadersSection?.priorityPlayers || 
+                                formLeadersSection?.itemsDetailed || 
+                                formLeadersSection?.items || 
+                                [];
+            
+            if (formLeaders.length > 0) {
+                const topPlayer = formLeaders[0];
+                propShortlist = [{
+                    player_name: topPlayer.playerName || 'Unknown Player',
+                    market_key: 'player_points',
+                    selection: 'OVER',
+                    line: 20, // Generic fallback line
+                    price_american: -110, // Generic fallback price
+                    book: 'OddsAPI',
+                    supporting_signals: {
+                        minutes_avg_3: topPlayer.minutesAvg3 || topPlayer.min3 || 0,
+                        minutes_delta_3_vs_season: topPlayer.deltaMIN10vsSeason || 0,
+                        usage_proxy_avg_3: 0,
+                        usage_delta_3_vs_season: topPlayer.deltaUSG10vsSeason || 0,
+                        injury_context: 'No validated props available from API',
+                        rest_flags: { back_to_back: false, three_in_four: false }
+                    }
+                }];
             }
-        }));
+        }
 
-        // Build game markets
+        // Build game markets - ensure we have exactly one game edge (use validated or create fallback)
         const gameMarkets: any = {};
         if (validatedCandidates.validatedGame) {
             const game = validatedCandidates.validatedGame;
@@ -6332,6 +7580,21 @@ async function generateHeatChecksEdgeV3(
                 line: game.line,
                 price_american: game.price_american,
                 book: game.book
+            };
+        } else {
+            // Fallback: Create a generic game edge if none were validated
+            // Use moneyline as default fallback
+            const marginA = teamFormA.margin10 || 0;
+            const marginB = teamFormB.margin10 || 0;
+            const isHomeA = matchup.homeAway?.A === 'HOME';
+            const homeAdvantage = isHomeA ? 3 : -3;
+            const projectedWinner = (marginA + homeAdvantage) > marginB ? 'TEAM_A' : 'TEAM_B';
+            
+            gameMarkets.moneyline = {
+                selection: projectedWinner,
+                line: null,
+                price_american: -110, // Generic fallback price
+                book: 'OddsAPI'
             };
         }
 
@@ -6404,13 +7667,13 @@ Output STRICT JSON matching this schema:
 }
 
 Rules:
-- If there is not enough evidence, set game.market="none" and/or return an empty player_props array.
+- You MUST return exactly ONE game edge and exactly ONE player prop.
+- If the provided game_markets or prop_shortlist are fallbacks (indicated by generic values), acknowledge this in the receipts/risks.
 - Receipts must reference the provided signals (minutes_delta, usage_delta, injuries, rest), not vague claims.
 - Keep receipts short, punchy, and measurable.
-- Never exceed 2 props.
 - TEAM_A refers to ${teamA}, TEAM_B refers to ${teamB}.
-- If no validated game candidate, set game.market="none".
-- If no validated props, return empty player_props array.
+- Always return exactly one prop in player_props array (even if it's a fallback).
+- Always return a game edge (even if market="none" for fallback cases, still provide one_sentence_call).
 `;
 
         console.log(`[generateHeatChecksEdgeV3] Generating Edge V3 for ${teamA} vs ${teamB}...`);
@@ -6442,20 +7705,89 @@ Rules:
             }
         }
 
-        // Validate and ensure required fields
+        // Validate and ensure required fields - ensure exactly one game and one prop
+        const playerProps = Array.isArray(edgeData.player_props) ? edgeData.player_props : [];
+        
+        // Ensure we have exactly one prop
+        let finalProps: any[] = [];
+        if (playerProps.length > 0) {
+            // Use the first prop
+            finalProps = [playerProps[0]];
+        } else {
+            // Fallback prop if AI didn't return one
+            const formLeadersSection = factDrop.sections?.find((s: any) => 
+                s.key === 'formLeaders' || s.title === 'FORM_LEADERS' || s.title === 'formLeaders'
+            );
+            const formLeaders = formLeadersSection?.priorityPlayers || 
+                                formLeadersSection?.itemsDetailed || 
+                                formLeadersSection?.items || 
+                                [];
+            
+            if (formLeaders.length > 0) {
+                const topPlayer = formLeaders[0];
+                finalProps = [{
+                    player_name: topPlayer.playerName || 'Unknown Player',
+                    market: 'player_points',
+                    selection: 'OVER',
+                    line: 20,
+                    price_american: -110,
+                    book: 'OddsAPI',
+                    confidence: 'low',
+                    receipts: ['Fallback prop - API did not provide validated prop', 'Based on form leader data', ''],
+                    risks: ['No validated prop data available from API', '']
+                }];
+            } else {
+                // Ultimate fallback
+                finalProps = [{
+                    player_name: 'Unknown Player',
+                    market: 'player_points',
+                    selection: 'OVER',
+                    line: 20,
+                    price_american: -110,
+                    book: 'OddsAPI',
+                    confidence: 'low',
+                    receipts: ['No prop data available', '', ''],
+                    risks: ['No validated prop data available', '']
+                }];
+            }
+        }
+
+        // Ensure we have a game edge (even if it's a fallback)
+        let finalGame = edgeData.game;
+        if (!finalGame || finalGame.market === 'none') {
+            // Fallback game edge
+            const marginA = teamFormA.margin10 || 0;
+            const marginB = teamFormB.margin10 || 0;
+            const isHomeA = matchup.homeAway?.A === 'HOME';
+            const homeAdvantage = isHomeA ? 3 : -3;
+            const projectedWinner = (marginA + homeAdvantage) > marginB ? 'TEAM_A' : 'TEAM_B';
+            
+            finalGame = {
+                market: 'moneyline',
+                selection: projectedWinner,
+                line: null,
+                price_american: -110,
+                book: 'OddsAPI',
+                confidence: 'low',
+                receipts: ['Fallback game edge - API did not provide validated game market', 'Based on team form and home advantage', ''],
+                risks: ['No validated game market data available from API', ''],
+                one_sentence_call: `Fallback recommendation: ${projectedWinner === 'TEAM_A' ? teamA : teamB} based on recent form.`
+            };
+        }
+
         return {
             game: {
-                market: edgeData.game?.market || 'none',
-                selection: edgeData.game?.selection || 'none',
-                line: edgeData.game?.line ?? null,
-                price_american: edgeData.game?.price_american ?? null,
-                book: edgeData.game?.book || null,
-                confidence: edgeData.game?.confidence || 'low',
-                receipts: edgeData.game?.receipts || ['', '', ''],
-                risks: edgeData.game?.risks || ['', ''],
-                one_sentence_call: edgeData.game?.one_sentence_call || ''
+                market: finalGame.market || 'none',
+                selection: finalGame.selection || 'none',
+                line: finalGame.line ?? null,
+                price_american: finalGame.price_american ?? null,
+                book: finalGame.book || null,
+                confidence: finalGame.confidence || 'low',
+                receipts: finalGame.receipts || ['', '', ''],
+                risks: finalGame.risks || ['', ''],
+                one_sentence_call: finalGame.one_sentence_call || ''
             },
-            player_props: Array.isArray(edgeData.player_props) ? edgeData.player_props.slice(0, 2) : [],
+            player_props: finalProps,
             no_edge_reason: edgeData.no_edge_reason || null
         };
 
@@ -7609,8 +8941,53 @@ const parseHeatCheckJSON = (text: string) => {
     }
 
     const jsonString = text.substring(firstBrace, lastBrace + 1);
-    const parsed = JSON.parse(jsonString);
-    return parsed;
+    try {
+        const parsed = JSON.parse(jsonString);
+        return parsed;
+    } catch (e) {
+        // If parsing fails, try to find the actual JSON end more carefully
+        // Look for the last complete JSON object by counting braces
+        let braceCount = 0;
+        let actualEnd = firstBrace;
+        for (let i = firstBrace; i < text.length; i++) {
+            if (text[i] === '{') braceCount++;
+            if (text[i] === '}') {
+                braceCount--;
+                if (braceCount === 0 && i > firstBrace) {
+                    actualEnd = i;
+                    break;
+                }
+            }
+        }
+        // If we found a complete JSON object, try parsing it
+        if (actualEnd > firstBrace) {
+            const correctedJsonString = text.substring(firstBrace, actualEnd + 1);
+            try {
+                return JSON.parse(correctedJsonString);
+            } catch (e2) {
+                // If still fails, try to extract just the first valid JSON object
+                // by finding where the first complete object ends
+                let balance = 0;
+                let endPos = firstBrace;
+                for (let i = firstBrace; i < Math.min(firstBrace + 50000, text.length); i++) {
+                    if (text[i] === '{') balance++;
+                    if (text[i] === '}') {
+                        balance--;
+                        if (balance === 0) {
+                            endPos = i;
+                            break;
+                        }
+                    }
+                }
+                if (endPos > firstBrace) {
+                    const finalJsonString = text.substring(firstBrace, endPos + 1);
+                    return JSON.parse(finalJsonString);
+                }
+                throw e2;
+            }
+        }
+        throw e;
+    }
   } catch (e: any) {
     console.error("Failed to parse JSON", e);
     console.error("Response text (first 1000 chars):", text.substring(0, 1000));
