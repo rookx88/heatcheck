@@ -211,6 +211,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nba/2026-01-23/pelicans-vs-grizzlies/pelicans-vs-grizzlies-battle/</loc>
+    <lastmod>2026-01-23</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/nba/2026-01-23/kings-vs-cavaliers/kings-vs-cavaliers-execution/</loc>
     <lastmod>2026-01-23</lastmod>
     <changefreq>daily</changefreq>
@@ -224,12 +230,6 @@
   </url>
   <url>
     <loc>https://heatchecks.io/nba/2026-01-23/nuggets-vs-bucks/nuggets-vs-bucks-crisis/</loc>
-    <lastmod>2026-01-23</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/2026-01-23/pelicans-vs-grizzlies/pelicans-vs-grizzlies-breaking/</loc>
     <lastmod>2026-01-23</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>

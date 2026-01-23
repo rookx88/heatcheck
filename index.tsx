@@ -5335,12 +5335,25 @@ Return ONLY the new player section in markdown format, exactly matching the stru
                         <p style={{ margin: '0.25rem 0 0 0', color: '#999', fontSize: '0.9rem' }}>This is your content creation and management dashboard.</p>
                     </div>
                     <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button className="save-draft" onClick={() => handleSave("draft")} disabled={isSaving} style={{ background: '#2196f3', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
-                            {isSaving ? 'Saving...' : 'Save Draft'}
-                        </button>
-                        <button className="publish" onClick={() => handleSave("published")} disabled={isSaving} style={{ background: '#4caf50', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
-                            {isSaving ? 'Publishing...' : 'Publish'}
-                        </button>
+                        {editedPost.status === 'published' ? (
+                            <>
+                                <button className="save-draft" onClick={() => handleSave("draft")} disabled={isSaving} style={{ background: '#ff9800', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
+                                    {isSaving ? 'Saving...' : 'Unpublish'}
+                                </button>
+                                <button className="publish" onClick={() => handleSave("published")} disabled={isSaving} style={{ background: '#4caf50', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
+                                    {isSaving ? 'Updating...' : 'Update Published'}
+                                </button>
+                            </>
+                        ) : (
+                            <>
+                                <button className="save-draft" onClick={() => handleSave("draft")} disabled={isSaving} style={{ background: '#2196f3', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
+                                    {isSaving ? 'Saving...' : 'Save Draft'}
+                                </button>
+                                <button className="publish" onClick={() => handleSave("published")} disabled={isSaving} style={{ background: '#4caf50', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
+                                    {isSaving ? 'Publishing...' : 'Publish'}
+                                </button>
+                            </>
+                        )}
                         <button
                             className="delete"
                             onClick={async () => {

@@ -809,13 +809,20 @@ app.put('/api/posts/:id', apiKeyAuth, async (req: express.Request, res: express.
             return res.status(404).json({ message: 'Post not found' });
         }
 
-        // Check if status changed to "published" (trigger static site regeneration)
+        // Check if status changed to "published" or if a published post was updated (trigger static site regeneration)
         const isNowPublished = updatedPost.status === 'published';
+        const wasPublished = previousStatus === 'published';
         const statusChangedToPublished = isNowPublished && previousStatus !== 'published';
+        const publishedPostWasUpdated = isNowPublished && wasPublished;
         
-        // Trigger static site generation if post was just published
-        if (statusChangedToPublished) {
-            console.log(`[Static Site] Post ${id} was just published (status changed from "${previousStatus}" to "published"). Regenerating static site...`);
+        // Trigger static site generation if:
+        // 1. Post was just published (status changed to published), OR
+        // 2. A published post was updated (to reflect changes on the static site)
+        if (statusChangedToPublished || publishedPostWasUpdated) {
+            const reason = statusChangedToPublished 
+                ? `just published (status changed from "${previousStatus}" to "published")`
+                : `published post was updated`;
+            console.log(`[Static Site] Post ${id} was ${reason}. Regenerating static site...`);
             
             // Run static site generation asynchronously (don't block the API response)
             // Use npm run to use the configured script, which handles cross-platform compatibility
