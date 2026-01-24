@@ -52,9 +52,14 @@ export async function rewriteArticleForSEO(
     post: HeatcheckPost,
     factPack?: FactPack
 ): Promise<SEORewriteOutput> {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY || (window as any).process?.env?.API_KEY || '';
+    // Support both Vite (import.meta.env) and Node.js (process.env) environments
+    const apiKey = (typeof process !== 'undefined' && process.env?.VITE_GEMINI_API_KEY) 
+        || (typeof process !== 'undefined' && process.env?.GEMINI_API_KEY)
+        || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY)
+        || (typeof window !== 'undefined' && (window as any).process?.env?.API_KEY)
+        || '';
     if (!apiKey) {
-        throw new Error('API key not available');
+        throw new Error('API key not available. Please set VITE_GEMINI_API_KEY or GEMINI_API_KEY environment variable.');
     }
 
     const ai = new GoogleGenAI({ apiKey });
