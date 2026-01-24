@@ -388,8 +388,15 @@ async function generateAllPages(): Promise<void> {
             if (!post.websiteStory.seo) {
                 post.websiteStory.seo = { slug: '', metaTitle: '', metaDescription: '' };
             }
-            // Store matchup slug and narrative slug separately for easy reference
-            post.websiteStory.seo.slug = `${matchupSlug}/${uniqueNarrativeSlug}`;
+            // Only generate old-format slug if SEO slug is not already set or not in new prediction format
+            // Don't overwrite the new SEO-optimized slugs from migration
+            const existingSlug = post.websiteStory.seo.slug || '';
+            const isAlreadyPredictionFormat = existingSlug.includes('-prediction-preview-') && existingSlug.match(/\d{4}-\d{2}-\d{2}$/);
+            
+            if (!existingSlug || !isAlreadyPredictionFormat) {
+                // Store matchup slug and narrative slug separately for easy reference (old format)
+                post.websiteStory.seo.slug = `${matchupSlug}/${uniqueNarrativeSlug}`;
+            }
         });
         
         // Copy assets first (before generating pages that reference them)
@@ -413,8 +420,8 @@ async function generateAllPages(): Promise<void> {
                 : formatDateISO(post.createdAt);
             
             // Extract slug from stored SEO slug
-            const storedSlug = post.websiteStory.seo?.slug || '';
-            const isPredictionFormat = storedSlug.includes('-prediction-preview-') && storedSlug.match(/\d{4}-\d{2}-\d{2}$/);
+            const storedSlug = post.websiteStory?.seo?.slug || '';
+            const isPredictionFormat = storedSlug && storedSlug.includes('-prediction-preview-') && storedSlug.match(/\d{4}-\d{2}-\d{2}$/);
             
             let articlePath: string;
             
