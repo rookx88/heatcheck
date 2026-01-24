@@ -2646,6 +2646,13 @@ async function init() {
                 console.log(`[Homepage] Using ${posts.length} embedded posts from static site generation`);
             }
             
+            // Sort posts by date (latest first) - use updatedAt or createdAt, whichever is more recent
+            posts.sort((a, b) => {
+                const dateA = new Date(a.updatedAt || a.createdAt || a.matchupScheduledDate || 0).getTime();
+                const dateB = new Date(b.updatedAt || b.createdAt || b.matchupScheduledDate || 0).getTime();
+                return dateB - dateA; // Descending order (latest first)
+            });
+            
             // Store posts globally so static pages can access them
             window.publishedPosts = posts;
             

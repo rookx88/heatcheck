@@ -580,13 +580,21 @@ async function generateAllPages(): Promise<void> {
             </div>
         `;
         
+        // Sort posts by date (latest first) before filtering
+        // Use updatedAt or createdAt, whichever is more recent
+        const sortedPosts = [...posts].sort((a, b) => {
+            const dateA = new Date(a.updatedAt || a.createdAt || a.matchupScheduledDate || 0).getTime();
+            const dateB = new Date(b.updatedAt || b.createdAt || b.matchupScheduledDate || 0).getTime();
+            return dateB - dateA; // Descending order (latest first)
+        });
+        
         // Filter posts to only include fields needed by homepage JavaScript
         // This significantly reduces JSON size by excluding:
         // - Full markdown content (theBackstory, long_form_markdown, etc.)
         // - Detailed evidence bundle content (full quote objects, source objects, timeline events)
         // - heatchecksEdge objects
         // - Other unused websiteStory fields
-        const filteredPosts = posts.map(post => ({
+        const filteredPosts = sortedPosts.map(post => ({
             id: post.id,
             league: post.league,
             teamA: post.teamA,
