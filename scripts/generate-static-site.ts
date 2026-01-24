@@ -632,10 +632,15 @@ async function generateAllPages(): Promise<void> {
             storyType: post.storyType,
             status: post.status, // Include status for radar modal filtering
             websiteStory: {
-                slug: post.websiteStory?.seo?.slug || '',
+                slug: post.websiteStory?.seo?.slug || '', // Keep for backward compatibility
                 headline: post.websiteStory?.headline || '',
                 imageUrl: post.websiteStory?.imageUrl,
-                image: post.websiteStory?.image
+                image: post.websiteStory?.image,
+                seo: {
+                    slug: post.websiteStory?.seo?.slug || '', // Include full SEO object for URL generation
+                    metaTitle: post.websiteStory?.seo?.metaTitle || '',
+                    metaDescription: post.websiteStory?.seo?.metaDescription || ''
+                }
             },
             // Only include heatCheckData fields needed for heat score calculation
             heatCheckData: post.heatCheckData ? {
@@ -703,19 +708,29 @@ async function generateAllPages(): Promise<void> {
                 if (post.storyType === 'dfs_article') {
                     articleUrl = `${baseUrl}/dfs/${league}/${date}/dfs-value-narratives-${date}/`;
                 } else {
-                    const matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
-                    const narratives = post.heatCheckData?.narratives || {};
-                    const candidateCards = narratives.candidate_cards || [];
-                    const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
-                    const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
-                    const emotionTags = activeCard?.emotion_tags || [];
-                    const narrativeSlug = generateNarrativeSlug(
-                        post.websiteStory?.headline || '',
-                        post.teamA || '',
-                        post.teamB || '',
-                        emotionTags
-                    );
-                    articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
+                    // Check if SEO slug is in prediction format (new SEO-optimized format)
+                    const storedSlug = post.websiteStory?.seo?.slug || post.websiteStory?.slug || '';
+                    const isPredictionFormat = storedSlug && storedSlug.includes('-prediction-preview-') && storedSlug.match(/\d{4}-\d{2}-\d{2}$/);
+                    
+                    if (isPredictionFormat) {
+                        // Use prediction format: /{league}/{prediction-slug}/
+                        articleUrl = `${baseUrl}/${league}/${storedSlug}/`;
+                    } else {
+                        // Fallback to old format: /{league}/{date}/{matchup}/{narrative-slug}/
+                        const matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
+                        const narratives = post.heatCheckData?.narratives || {};
+                        const candidateCards = narratives.candidate_cards || [];
+                        const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
+                        const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
+                        const emotionTags = activeCard?.emotion_tags || [];
+                        const narrativeSlug = generateNarrativeSlug(
+                            post.websiteStory?.headline || '',
+                            post.teamA || '',
+                            post.teamB || '',
+                            emotionTags
+                        );
+                        articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
+                    }
                 }
                 
                 return {
