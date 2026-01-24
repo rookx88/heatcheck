@@ -12,6 +12,7 @@ import { formatDateISO, normalizeLeague } from './utils/date-formatter';
 import { generateSlug, ensureUniqueSlug, generateNarrativeSlug, generateMatchupSlug } from './utils/slug-generator';
 import { getShortTeamName } from './utils/date-formatter';
 import { generateSitemap } from './sitemap';
+import { generateRedirectsFile } from './generate-redirects';
 import dotenv from 'dotenv';
 
 // Load environment variables from .env.local only in local development
@@ -405,37 +406,45 @@ async function generateAllPages(): Promise<void> {
                 ? formatDateISO(post.matchupScheduledDate)
                 : formatDateISO(post.createdAt);
             
-            // Extract matchup and narrative slug from stored SEO slug (set in loop above)
-            const storedSlug = post.websiteStory.seo.slug || '';
-            let matchupSlug: string;
-            let narrativeSlug: string;
+            // Extract slug from stored SEO slug
+            const storedSlug = post.websiteStory.seo?.slug || '';
+            const isPredictionFormat = storedSlug.includes('-prediction-preview-') && storedSlug.match(/\d{4}-\d{2}-\d{2}$/);
             
-            if (storedSlug.includes('/') && storedSlug.split('/').length === 2) {
-                // Already in new format: matchup-slug/narrative-slug
-                [matchupSlug, narrativeSlug] = storedSlug.split('/');
+            let articlePath: string;
+            
+            if (isPredictionFormat) {
+                // Use prediction format: {league}/{prediction-slug}/index.html
+                articlePath = `${league}/${storedSlug}/index.html`;
             } else {
-                // Fallback: Regenerate if not set correctly
-                matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
-                const heatCheckData = post.heatCheckData || {};
-                const narratives = heatCheckData.narratives || {};
-                const candidateCards = narratives.candidate_cards || [];
-                const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
-                const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
-                const emotionTags = activeCard?.emotion_tags || [];
-                narrativeSlug = generateNarrativeSlug(
-                    post.websiteStory.headline,
-                    post.teamA || '',
-                    post.teamB || '',
-                    emotionTags
-                );
+                // Fallback to old format: {league}/{date}/{matchup}/{narrative-slug}/index.html
+                let matchupSlug: string;
+                let narrativeSlug: string;
+                
+                if (storedSlug.includes('/') && storedSlug.split('/').length === 2) {
+                    // Already in old format: matchup-slug/narrative-slug
+                    [matchupSlug, narrativeSlug] = storedSlug.split('/');
+                } else {
+                    // Regenerate if not set correctly
+                    matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
+                    const heatCheckData = post.heatCheckData || {};
+                    const narratives = heatCheckData.narratives || {};
+                    const candidateCards = narratives.candidate_cards || [];
+                    const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
+                    const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
+                    const emotionTags = activeCard?.emotion_tags || [];
+                    narrativeSlug = generateNarrativeSlug(
+                        post.websiteStory.headline,
+                        post.teamA || '',
+                        post.teamB || '',
+                        emotionTags
+                    );
+                }
+                articlePath = `${league}/${date}/${matchupSlug}/${narrativeSlug}/index.html`;
             }
             
             const relatedPosts = getRelatedPosts(post, posts, 3);
             const html = generateArticlePage(post, relatedPosts, baseUrl);
             
-            // New URL structure: {league}/{date}/{matchup}/{narrative-slug}/index.html
-            // This creates clean URLs without .html extension
-            const articlePath = `${league}/${date}/${matchupSlug}/${narrativeSlug}/index.html`;
             writeHtmlFile(articlePath, html);
         }
         console.log(`✓ Generated ${regularPosts.length} article pages\n`);
@@ -1013,6 +1022,22 @@ async function generateAllPages(): Promise<void> {
         const aboutPath = 'about/index.html';
         writeHtmlFile(aboutPath, aboutHtml);
         console.log('✓ Generated about page\n');
+        
+        // Generate redirects file (for Cloudflare Pages)
+        console.log('Generating redirects...');
+        try {
+            await generateRedirectsFile('public/_redirects');
+            // Also copy to dist/ for Cloudflare Pages deployment
+            const distRedirectsPath = path.join('dist', '_redirects');
+            if (fs.existsSync('public/_redirects')) {
+                fs.mkdirSync(path.dirname(distRedirectsPath), { recursive: true });
+                fs.copyFileSync('public/_redirects', distRedirectsPath);
+            }
+            console.log('✓ Redirects generated\n');
+        } catch (error: any) {
+            console.warn('⚠ Warning: Failed to generate redirects:', error.message);
+            // Continue - redirects are not critical for site generation
+        }
         
         // Generate sitemap.xml (write to dist/ for Cloudflare Pages)
         console.log('Generating sitemap...');

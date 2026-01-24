@@ -535,10 +535,23 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
         }
     }
     
-    // URL structure differs for DFS articles
-    const articleUrl = isDFSArticle 
-        ? `/dfs/${leagueLower}/${date}/dfs-value-narratives-${date}/`
-        : `/${leagueLower}/${date}/${matchupSlug}/${finalNarrativeSlug}/`;
+    // URL structure differs for DFS articles and prediction format
+    let articleUrl: string;
+    if (isDFSArticle) {
+        articleUrl = `/dfs/${leagueLower}/${date}/dfs-value-narratives-${date}/`;
+    } else {
+        // Check if SEO slug is in prediction format (new SEO-optimized format)
+        const storedSlug = post.websiteStory?.seo?.slug || '';
+        const isPredictionFormat = storedSlug.includes('-prediction-preview-') && storedSlug.match(/\d{4}-\d{2}-\d{2}$/);
+        
+        if (isPredictionFormat) {
+            // Use prediction format: /{league}/{prediction-slug}/
+            articleUrl = `/${leagueLower}/${storedSlug}/`;
+        } else {
+            // Fallback to old format: /{league}/{date}/{matchup}/{narrative-slug}/
+            articleUrl = `/${leagueLower}/${date}/${matchupSlug}/${finalNarrativeSlug}/`;
+        }
+    }
     const isHeatHigh = heatScore >= 71; // ~71 on 100 scale = ~25 on 35 scale
     
     // For DFS articles, use special quote text

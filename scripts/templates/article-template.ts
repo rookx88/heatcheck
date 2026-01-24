@@ -2,7 +2,7 @@ import { generateBaseHtml, BaseTemplateOptions } from './base-template';
 import { markdownToHtml } from '../utils/markdown-converter';
 import { escapeHtml } from '../utils/html-escape';
 import { formatDateISO, normalizeLeague, getShortTeamName } from '../utils/date-formatter';
-import { generateSlug, generateNarrativeSlug, generateMatchupSlug, extractNarrativeKeywords } from '../utils/slug-generator';
+import { generateSlug, generateNarrativeSlug, generateMatchupSlug, generatePredictionSlug, extractNarrativeKeywords } from '../utils/slug-generator';
 
 export interface HeatcheckPost {
     id: string;
@@ -21,6 +21,7 @@ export interface HeatcheckPost {
             slug: string;
             metaTitle: string;
             metaDescription: string;
+            previousSlugs?: string[];
         };
         image?: string;
         imageUrl?: string;
@@ -116,20 +117,33 @@ export function generateArticlePage(
         ? emotionTags[0].toLowerCase().replace(/\s+/g, '-')
         : extractNarrativeKeywords(post.websiteStory.headline, emotionTags);
     
-    // Generate matchup slug: teamA-vs-teamB
-    const matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
+    // Check if SEO slug is in prediction format (new SEO-optimized format)
+    const storedSlug = post.websiteStory.seo?.slug || '';
+    const isPredictionFormat = storedSlug.includes('-prediction-preview-') && storedSlug.match(/\d{4}-\d{2}-\d{2}$/);
     
-    // Generate narrative-based slug
-    const narrativeSlug = generateNarrativeSlug(
-        post.websiteStory.headline,
-        post.teamA || '',
-        post.teamB || '',
-        emotionTags
-    );
+    let articleUrl: string;
+    let canonicalUrl: string;
     
-    // New URL structure: /{league}/{date}/{matchup}/{narrative-slug}/
-    // Note: Trailing slash for clean URLs, will be served as index.html in directory
-    const articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
+    if (isPredictionFormat) {
+        // Use prediction format: /{league}/{prediction-slug}/
+        articleUrl = `${baseUrl}/${league}/${storedSlug}/`;
+        canonicalUrl = `${baseUrl}/${league}/${storedSlug}/`;
+    } else {
+        // Fallback to old format: /{league}/{date}/{matchup}/{narrative-slug}/
+        // Generate matchup slug: teamA-vs-teamB
+        const matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
+        
+        // Generate narrative-based slug
+        const narrativeSlug = generateNarrativeSlug(
+            post.websiteStory.headline,
+            post.teamA || '',
+            post.teamB || '',
+            emotionTags
+        );
+        
+        articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
+        canonicalUrl = articleUrl; // Use same URL as canonical for old format
+    }
     const evidenceBundle = heatCheckData.evidenceBundle || heatCheckData.evidence_bundle || {};
     const quotes = evidenceBundle.quotes || [];
     const timelineEvents = evidenceBundle.timeline_events || [];
@@ -790,22 +804,32 @@ export function generateArticlePage(
             ? formatDateISO(relatedPost.matchupScheduledDate)
             : formatDateISO(relatedPost.createdAt);
         
-        // Generate new URL structure for related articles
-        const relatedHeatCheckData = relatedPost.heatCheckData || {};
-        const relatedNarratives = relatedHeatCheckData.narratives || {};
-        const relatedCandidateCards = relatedNarratives.candidate_cards || [];
-        const relatedPrimaryNarrativeId = relatedNarratives.selected?.primary_narrative_id || '';
-        const relatedActiveCard = relatedCandidateCards.find(card => card.narrative_id === relatedPrimaryNarrativeId);
-        const relatedEmotionTags = relatedActiveCard?.emotion_tags || [];
+        // Check if related post has prediction format slug
+        const relatedStoredSlug = relatedPost.websiteStory.seo?.slug || '';
+        const relatedIsPredictionFormat = relatedStoredSlug.includes('-prediction-') && relatedStoredSlug.match(/\d{4}-\d{2}-\d{2}$/);
         
-        const relatedMatchupSlug = generateMatchupSlug(relatedPost.teamA || '', relatedPost.teamB || '', getShortTeamName);
-        const relatedNarrativeSlug = generateNarrativeSlug(
-            relatedPost.websiteStory.headline,
-            relatedPost.teamA || '',
-            relatedPost.teamB || '',
-            relatedEmotionTags
-        );
-        const relatedUrl = `/${relatedLeague}/${relatedDate}/${relatedMatchupSlug}/${relatedNarrativeSlug}/`;
+        let relatedUrl: string;
+        if (relatedIsPredictionFormat) {
+            // Use prediction format: /{league}/{prediction-slug}/
+            relatedUrl = `/${relatedLeague}/${relatedStoredSlug}/`;
+        } else {
+            // Fallback to old format
+            const relatedHeatCheckData = relatedPost.heatCheckData || {};
+            const relatedNarratives = relatedHeatCheckData.narratives || {};
+            const relatedCandidateCards = relatedNarratives.candidate_cards || [];
+            const relatedPrimaryNarrativeId = relatedNarratives.selected?.primary_narrative_id || '';
+            const relatedActiveCard = relatedCandidateCards.find(card => card.narrative_id === relatedPrimaryNarrativeId);
+            const relatedEmotionTags = relatedActiveCard?.emotion_tags || [];
+            
+            const relatedMatchupSlug = generateMatchupSlug(relatedPost.teamA || '', relatedPost.teamB || '', getShortTeamName);
+            const relatedNarrativeSlug = generateNarrativeSlug(
+                relatedPost.websiteStory.headline,
+                relatedPost.teamA || '',
+                relatedPost.teamB || '',
+                relatedEmotionTags
+            );
+            relatedUrl = `/${relatedLeague}/${relatedDate}/${relatedMatchupSlug}/${relatedNarrativeSlug}/`;
+        }
         
         // Generate descriptive anchor text with matchup info
         const relatedTeamAShort = getShortTeamName(relatedPost.teamA || '');
@@ -1391,7 +1415,7 @@ export function generateArticlePage(
     const options: BaseTemplateOptions = {
         title: title,
         description: metaDescription,
-        url: articleUrl,
+        url: canonicalUrl, // Use canonical URL for meta tags
         baseUrl,
         ogImage: imagePath ? (imagePath.startsWith('http') ? imagePath : `${baseUrl}${imagePath}`) : `${baseUrl}/images/default-og-image.jpg`,
         ogType: 'article',

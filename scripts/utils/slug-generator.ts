@@ -141,6 +141,55 @@ export function generateMatchupSlug(teamA: string, teamB: string, getShortTeamNa
     return matchupSlug;
 }
 
+/**
+ * Generate prediction-based slug for SEO-optimized URLs
+ * Format: {team-a}-vs-{team-b}-prediction-preview-{yyyy-mm-dd}
+ * This is used for SEO-optimized article URLs
+ */
+export function generatePredictionSlug(teamA: string, teamB: string, date: string): string {
+    // Normalize team names to short names (take last word)
+    const normalizeTeam = (team: string): string => {
+        return team
+            .toLowerCase()
+            .replace(/[^a-z0-9\s-]/g, '')
+            .replace(/\s+/g, '-')
+            .replace(/^-|-$/g, '')
+            .split('-')
+            .slice(-1)[0]; // Take last word (team name)
+    };
+    
+    const teamASlug = normalizeTeam(teamA);
+    const teamBSlug = normalizeTeam(teamB);
+    
+    // Format date as YYYY-MM-DD (ensure it's in the right format)
+    let dateStr = date;
+    if (dateStr.includes('T')) {
+        dateStr = dateStr.split('T')[0];
+    }
+    // Ensure it's YYYY-MM-DD format
+    const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!dateMatch) {
+        // Try to parse and reformat
+        const parsedDate = new Date(dateStr);
+        if (!isNaN(parsedDate.getTime())) {
+            const year = parsedDate.getFullYear();
+            const month = String(parsedDate.getMonth() + 1).padStart(2, '0');
+            const day = String(parsedDate.getDate()).padStart(2, '0');
+            dateStr = `${year}-${month}-${day}`;
+        } else {
+            dateStr = new Date().toISOString().split('T')[0]; // Fallback to today
+        }
+    } else {
+        dateStr = dateMatch[0];
+    }
+    
+    const slug = `${teamASlug}-vs-${teamBSlug}-prediction-preview-${dateStr}`
+        .replace(/-+/g, '-') // Replace multiple hyphens
+        .replace(/^-|-$/g, ''); // Remove leading/trailing hyphens
+    
+    return slug;
+}
+
 
 
 

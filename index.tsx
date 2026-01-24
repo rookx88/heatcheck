@@ -9,6 +9,7 @@ import { analyzeDFSSlate } from './scripts/services/dfsAnalysisService';
 import { generateDFSContent } from './scripts/services/dfsTweetService';
 import { generateHeatArticleContent } from './scripts/services/heatArticleContentService';
 import { generateViralContentFromNarrative } from './scripts/services/viralContentGeneratorService';
+import { rewriteArticleForSEO, SEORewriteOutput } from './scripts/services/seoRewriteService';
 import { markdownToHtml } from './scripts/utils/markdown-converter';
 
 // ===================================================================================
@@ -2347,6 +2348,13 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
     } | null>(null);
     const [isGeneratingViralContent, setIsGeneratingViralContent] = useState(false);
     const [activeViralTab, setActiveViralTab] = useState<'tweet' | 'thread' | 'reddit' | 'heatsheet'>('tweet');
+    
+    // SEO Rewrite state
+    const [showSEORewriteModal, setShowSEORewriteModal] = useState(false);
+    const [selectedPostForSEORewrite, setSelectedPostForSEORewrite] = useState<HeatcheckPost | null>(null);
+    const [seoRewritePreview, setSeoRewritePreview] = useState<SEORewriteOutput | null>(null);
+    const [isGeneratingSEORewrite, setIsGeneratingSEORewrite] = useState(false);
+    const [seoRewriteEditable, setSeoRewriteEditable] = useState<SEORewriteOutput | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -2495,6 +2503,84 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
                 console.error('Failed to copy:', err);
                 alert('Failed to copy tweet. Please select and copy manually.');
             });
+        }
+    };
+
+    // SEO Rewrite handlers
+    const handleGenerateSEORewrite = async () => {
+        if (!selectedPostForSEORewrite) return;
+        
+        setIsGeneratingSEORewrite(true);
+        setSeoRewritePreview(null);
+        setSeoRewriteEditable(null);
+        
+        try {
+            const factPack = selectedPostForSEORewrite.heatCheckData?.factPack;
+            const rewrite = await rewriteArticleForSEO(selectedPostForSEORewrite, factPack);
+            setSeoRewritePreview(rewrite);
+            setSeoRewriteEditable({ ...rewrite });
+        } catch (error: any) {
+            console.error("Failed to generate SEO rewrite:", error);
+            alert(`Failed to generate SEO rewrite: ${error.message || 'Unknown error'}`);
+        } finally {
+            setIsGeneratingSEORewrite(false);
+        }
+    };
+
+    const handleSaveSEORewrite = async () => {
+        if (!selectedPostForSEORewrite || !seoRewriteEditable) return;
+        
+        try {
+            // Get current slug to track as previous
+            const currentSlug = selectedPostForSEORewrite.websiteStory.seo.slug || '';
+            const newSlug = seoRewriteEditable.seoSlug;
+            
+            // Build previousSlugs array
+            const previousSlugs = selectedPostForSEORewrite.websiteStory.seo.previousSlugs || [];
+            if (currentSlug && currentSlug !== newSlug && !previousSlugs.includes(currentSlug)) {
+                previousSlugs.push(currentSlug);
+            }
+            
+            // Update the post
+            const updatedPost = {
+                ...selectedPostForSEORewrite,
+                websiteStory: {
+                    ...selectedPostForSEORewrite.websiteStory,
+                    headline: seoRewriteEditable.h1Header,
+                    theBackstory: seoRewriteEditable.rewrittenBody,
+                    seo: {
+                        slug: newSlug,
+                        metaTitle: seoRewriteEditable.seoTitle,
+                        metaDescription: seoRewriteEditable.metaDescription,
+                        previousSlugs: previousSlugs
+                    }
+                },
+                heatCheckData: {
+                    ...selectedPostForSEORewrite.heatCheckData,
+                    article: {
+                        ...selectedPostForSEORewrite.heatCheckData?.article,
+                        long_form_markdown: seoRewriteEditable.rewrittenBody // Sync from theBackstory
+                    }
+                }
+            };
+            
+            await apiClient.updatePost(selectedPostForSEORewrite.id, updatedPost);
+            alert('SEO rewrite saved successfully! Static site will regenerate.');
+            setShowSEORewriteModal(false);
+            setSeoRewritePreview(null);
+            setSeoRewriteEditable(null);
+            setSelectedPostForSEORewrite(null);
+            
+            // Refresh the feed
+            const refreshedPosts = await apiClient.listPosts();
+            setPosts(refreshedPosts.sort((a, b) => {
+                const dateA = new Date(a.updatedAt || a.createdAt).getTime();
+                const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+                return dateB - dateA;
+            }));
+        } catch (error: any) {
+            console.error("Failed to save SEO rewrite:", error);
+            alert(`Failed to save SEO rewrite: ${error.message || 'Unknown error'}`);
         }
     };
 
@@ -2665,6 +2751,41 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
                                         }}
                                     >
                                         Generate Content
+                                    </button>
+                                )}
+                                {/* SEO Rewrite Button - Only for published posts */}
+                                {post.status === 'published' && post.storyType !== 'dfs_article' && (
+                                    <button
+                                        className="seo-rewrite-button"
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setSelectedPostForSEORewrite(post);
+                                            setSeoRewritePreview(null);
+                                            setSeoRewriteEditable(null);
+                                            setShowSEORewriteModal(true);
+                                        }}
+                                        style={{
+                                            background: 'rgba(33, 150, 243, 0.8)',
+                                            color: '#fff',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            padding: '0.5rem 0.75rem',
+                                            cursor: 'pointer',
+                                            fontSize: '0.75rem',
+                                            fontWeight: 'bold',
+                                            transition: 'all 0.2s',
+                                            whiteSpace: 'nowrap'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.background = 'rgba(33, 150, 243, 1)';
+                                            e.currentTarget.style.transform = 'scale(1.05)';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.background = 'rgba(33, 150, 243, 0.8)';
+                                            e.currentTarget.style.transform = 'scale(1)';
+                                        }}
+                                    >
+                                        SEO Rewrite
                                     </button>
                                 )}
                                 {/* Delete Button - Only for published posts */}
@@ -2896,19 +3017,35 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
                             };
                             const league = leagueMap[post.league] || post.league.toLowerCase().replace(/\s+/g, '-');
                             
-                            // Format date consistently - extract YYYY-MM-DD from date string
-                            const dateStr = post.matchupScheduledDate || post.createdAt || '';
-                            const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
-                            const date = dateMatch ? dateMatch[0] : new Date(dateStr).toISOString().split('T')[0];
+                            // Check if SEO slug is in prediction format (new SEO-optimized format)
+                            const storedSlug = post.websiteStory.seo?.slug || '';
+                            const isPredictionFormat = storedSlug.includes('-prediction-preview-') && storedSlug.match(/\d{4}-\d{2}-\d{2}$/);
                             
-                            const slug = post.websiteStory.seo?.slug || post.websiteStory.headline
-                                .toLowerCase()
-                                .trim()
-                                .replace(/[^a-z0-9\s-]/g, '')
-                                .replace(/\s+/g, '-')
-                                .replace(/-+/g, '-')
-                                .replace(/^-|-$/g, '') || 'article';
-                            const articleUrl = `/${league}/${date}/${slug}.html`;
+                            let articleUrl: string;
+                            if (isPredictionFormat) {
+                                // Use prediction format: /{league}/{prediction-slug}/
+                                articleUrl = `/${league}/${storedSlug}/`;
+                            } else {
+                                // Fallback to old format
+                                const dateStr = post.matchupScheduledDate || post.createdAt || '';
+                                const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                const date = dateMatch ? dateMatch[0] : new Date(dateStr).toISOString().split('T')[0];
+                                
+                                if (storedSlug.includes('/') && storedSlug.split('/').length === 2) {
+                                    // Old format: matchup-slug/narrative-slug
+                                    articleUrl = `/${league}/${date}/${storedSlug}/`;
+                                } else {
+                                    // Fallback: Generate slug from headline
+                                    const slug = post.websiteStory.headline
+                                        .toLowerCase()
+                                        .trim()
+                                        .replace(/[^a-z0-9\s-]/g, '')
+                                        .replace(/\s+/g, '-')
+                                        .replace(/-+/g, '-')
+                                        .replace(/^-|-$/g, '') || 'article';
+                                    articleUrl = `/${league}/${date}/${slug}/`;
+                                }
+                            }
                             
                             return (
                                 <a
@@ -4519,6 +4656,298 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
                         ) : (
                             <div style={{ textAlign: 'center', padding: '2rem', color: '#999' }}>
                                 No content generated yet. Please select a narrative and generate content.
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* SEO Rewrite Modal */}
+            {showSEORewriteModal && selectedPostForSEORewrite && (
+                <div
+                    style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        zIndex: 10000,
+                        padding: '2rem'
+                    }}
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget) {
+                            setShowSEORewriteModal(false);
+                        }
+                    }}
+                >
+                    <div
+                        style={{
+                            background: '#1a1a1a',
+                            border: '2px solid #2196f3',
+                            borderRadius: '8px',
+                            padding: '2rem',
+                            maxWidth: '900px',
+                            width: '100%',
+                            maxHeight: '90vh',
+                            overflow: 'auto',
+                            position: 'relative'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            onClick={() => {
+                                setShowSEORewriteModal(false);
+                                setSeoRewritePreview(null);
+                                setSeoRewriteEditable(null);
+                                setSelectedPostForSEORewrite(null);
+                            }}
+                            style={{
+                                position: 'absolute',
+                                top: '1rem',
+                                right: '1rem',
+                                background: '#dc3545',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                padding: '0.5rem 0.75rem',
+                                cursor: 'pointer',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold'
+                            }}
+                        >
+                            ✕ Close
+                        </button>
+
+                        <h2 style={{ color: '#2196f3', marginTop: 0, marginBottom: '1.5rem' }}>
+                            SEO Rewrite: {selectedPostForSEORewrite.teamA} vs {selectedPostForSEORewrite.teamB}
+                        </h2>
+
+                        {!seoRewriteEditable ? (
+                            <div style={{ textAlign: 'center', padding: '3rem' }}>
+                                <p style={{ color: '#ccc', marginBottom: '1.5rem' }}>
+                                    Generate an SEO-optimized rewrite of this article to rank for "{selectedPostForSEORewrite.teamA} vs {selectedPostForSEORewrite.teamB} prediction" searches.
+                                </p>
+                                <button
+                                    onClick={handleGenerateSEORewrite}
+                                    disabled={isGeneratingSEORewrite}
+                                    style={{
+                                        padding: '1rem 2rem',
+                                        background: isGeneratingSEORewrite ? '#666' : '#2196f3',
+                                        color: '#fff',
+                                        border: 'none',
+                                        borderRadius: '4px',
+                                        fontSize: '1rem',
+                                        fontWeight: 'bold',
+                                        cursor: isGeneratingSEORewrite ? 'not-allowed' : 'pointer',
+                                        transition: 'all 0.2s'
+                                    }}
+                                    onMouseEnter={(e) => {
+                                        if (!isGeneratingSEORewrite) {
+                                            e.currentTarget.style.background = '#1976d2';
+                                        }
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        if (!isGeneratingSEORewrite) {
+                                            e.currentTarget.style.background = '#2196f3';
+                                        }
+                                    }}
+                                >
+                                    {isGeneratingSEORewrite ? 'Generating...' : 'Generate SEO Rewrite'}
+                                </button>
+                            </div>
+                        ) : (
+                            <div>
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                        SEO URL Slug:
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={seoRewriteEditable.seoSlug}
+                                        onChange={(e) => setSeoRewriteEditable({ ...seoRewriteEditable, seoSlug: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.75rem',
+                                            background: '#000',
+                                            border: '1px solid #2196f3',
+                                            color: '#fff',
+                                            borderRadius: '4px',
+                                            fontSize: '0.9rem',
+                                            fontFamily: 'monospace'
+                                        }}
+                                    />
+                                    <div style={{ fontSize: '0.75rem', color: '#999', marginTop: '0.25rem' }}>
+                                        Format: {selectedPostForSEORewrite.league.toLowerCase()}/{seoRewriteEditable.seoSlug}/
+                                    </div>
+                                </div>
+
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                        SEO Title ({seoRewriteEditable.seoTitle.length}/60 characters):
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={seoRewriteEditable.seoTitle}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val.length <= 60) {
+                                                setSeoRewriteEditable({ ...seoRewriteEditable, seoTitle: val });
+                                            }
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.75rem',
+                                            background: '#000',
+                                            border: '1px solid #2196f3',
+                                            color: '#fff',
+                                            borderRadius: '4px',
+                                            fontSize: '0.9rem'
+                                        }}
+                                    />
+                                </div>
+
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                        Meta Description ({seoRewriteEditable.metaDescription.length}/155 characters):
+                                    </label>
+                                    <textarea
+                                        value={seoRewriteEditable.metaDescription}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val.length <= 155) {
+                                                setSeoRewriteEditable({ ...seoRewriteEditable, metaDescription: val });
+                                            }
+                                        }}
+                                        style={{
+                                            width: '100%',
+                                            minHeight: '80px',
+                                            padding: '0.75rem',
+                                            background: '#000',
+                                            border: '1px solid #2196f3',
+                                            color: '#fff',
+                                            borderRadius: '4px',
+                                            fontSize: '0.9rem',
+                                            fontFamily: 'monospace',
+                                            resize: 'vertical'
+                                        }}
+                                    />
+                                </div>
+
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                        H1 Header:
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={seoRewriteEditable.h1Header}
+                                        onChange={(e) => setSeoRewriteEditable({ ...seoRewriteEditable, h1Header: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            padding: '0.75rem',
+                                            background: '#000',
+                                            border: '1px solid #2196f3',
+                                            color: '#fff',
+                                            borderRadius: '4px',
+                                            fontSize: '0.9rem'
+                                        }}
+                                    />
+                                </div>
+
+                                <div style={{ marginBottom: '1.5rem' }}>
+                                    <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                        Rewritten Article Body:
+                                    </label>
+                                    <textarea
+                                        value={seoRewriteEditable.rewrittenBody}
+                                        onChange={(e) => setSeoRewriteEditable({ ...seoRewriteEditable, rewrittenBody: e.target.value })}
+                                        style={{
+                                            width: '100%',
+                                            minHeight: '400px',
+                                            padding: '1rem',
+                                            background: '#000',
+                                            border: '1px solid #2196f3',
+                                            color: '#fff',
+                                            borderRadius: '4px',
+                                            fontSize: '0.9rem',
+                                            fontFamily: 'monospace',
+                                            lineHeight: '1.6',
+                                            resize: 'vertical'
+                                        }}
+                                    />
+                                </div>
+
+                                {seoRewriteEditable.heatchecksEdge && (
+                                    <div style={{ marginBottom: '1.5rem' }}>
+                                        <label style={{ display: 'block', color: '#fff', marginBottom: '0.5rem', fontWeight: 'bold' }}>
+                                            HeatChecks Edge (Optional):
+                                        </label>
+                                        <textarea
+                                            value={seoRewriteEditable.heatchecksEdge}
+                                            onChange={(e) => setSeoRewriteEditable({ ...seoRewriteEditable, heatchecksEdge: e.target.value })}
+                                            style={{
+                                                width: '100%',
+                                                minHeight: '100px',
+                                                padding: '0.75rem',
+                                                background: '#000',
+                                                border: '1px solid #2196f3',
+                                                color: '#fff',
+                                                borderRadius: '4px',
+                                                fontSize: '0.9rem',
+                                                fontFamily: 'monospace',
+                                                resize: 'vertical'
+                                            }}
+                                        />
+                                    </div>
+                                )}
+
+                                <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '2rem' }}>
+                                    <button
+                                        onClick={() => {
+                                            setShowSEORewriteModal(false);
+                                            setSeoRewritePreview(null);
+                                            setSeoRewriteEditable(null);
+                                            setSelectedPostForSEORewrite(null);
+                                        }}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            background: '#666',
+                                            color: '#fff',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer'
+                                        }}
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleSaveSEORewrite}
+                                        style={{
+                                            padding: '0.75rem 1.5rem',
+                                            background: '#2196f3',
+                                            color: '#fff',
+                                            border: 'none',
+                                            borderRadius: '4px',
+                                            fontSize: '0.9rem',
+                                            fontWeight: 'bold',
+                                            cursor: 'pointer',
+                                            transition: 'all 0.2s'
+                                        }}
+                                        onMouseEnter={(e) => {
+                                            e.currentTarget.style.background = '#1976d2';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            e.currentTarget.style.background = '#2196f3';
+                                        }}
+                                    >
+                                        Save Changes
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>

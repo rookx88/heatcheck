@@ -8,6 +8,8 @@
     "build": "vite build",
     "build:static": "tsx scripts/generate-static-site.ts",
     "build:full": "vite build && npm run build:static",
+    "migrate:seo": "tsx scripts/migrate-to-seo-urls.ts",
+    "migrate:seo:dry-run": "tsx scripts/migrate-to-seo-urls.ts --dry-run",
     "preview": "vite preview",
     "preview:static": "npm run build:full && vite preview",
     "backend": "tsx backend.ts",

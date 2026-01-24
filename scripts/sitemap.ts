@@ -18,6 +18,7 @@ export interface HeatcheckPost {
         headline: string;
         seo?: {
             slug: string;
+            previousSlugs?: string[];
         };
     };
     heatCheckData?: {
@@ -140,9 +141,13 @@ export function generateSitemap(posts: HeatcheckPost[], baseUrl: string = 'https
         } else {
             // Regular articles
             const storedSlug = post.websiteStory?.seo?.slug || '';
+            const isPredictionFormat = storedSlug.includes('-prediction-preview-') && storedSlug.match(/\d{4}-\d{2}-\d{2}$/);
             
-            if (storedSlug.includes('/') && storedSlug.split('/').length === 2) {
-                // New format: matchup-slug/narrative-slug
+            if (isPredictionFormat) {
+                // Use prediction format: /{league}/{prediction-slug}/
+                articleUrl = `${baseUrl}/${league}/${storedSlug}/`;
+            } else if (storedSlug.includes('/') && storedSlug.split('/').length === 2) {
+                // Old format: matchup-slug/narrative-slug
                 const [matchupSlug, narrativeSlug] = storedSlug.split('/');
                 articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
             } else {

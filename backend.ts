@@ -49,7 +49,7 @@ interface HeatcheckStory {
     edgeAngle: string;
     tags: string[];
     sources: {title: string, url: string, publisher?: string, publishedAt?: string}[];
-    seo: {slug: string, metaTitle: string, metaDescription: string};
+    seo: {slug: string, metaTitle: string, metaDescription: string, previousSlugs?: string[]};
     image?: string;        // Add this field for image path
     imageUrl?: string;     // Add this field for backward compatibility
 }
@@ -793,8 +793,43 @@ app.put('/api/posts/:id', apiKeyAuth, async (req: express.Request, res: express.
         // Continue anyway - this is not critical
     }
     
+    // Handle previousSlugs tracking when slug changes
+    let updatedPostDataWithSlugs = { ...updatedPostData };
+    if (updatedPostData.websiteStory?.seo?.slug) {
+        try {
+            const previousResult = await pool.query('SELECT data->\'websiteStory\'->\'seo\'->>\'slug\' as slug, data->\'websiteStory\'->\'seo\'->\'previousSlugs\' as previousSlugs FROM posts WHERE id = $1', [id]);
+            if (previousResult.rows.length > 0) {
+                const oldSlug = previousResult.rows[0].slug;
+                const oldPreviousSlugs = previousResult.rows[0].previousSlugs || [];
+                const newSlug = updatedPostData.websiteStory.seo.slug;
+                
+                // If slug changed and old slug exists, add it to previousSlugs
+                if (oldSlug && oldSlug !== newSlug && !oldPreviousSlugs.includes(oldSlug)) {
+                    updatedPostDataWithSlugs.websiteStory.seo.previousSlugs = [...(Array.isArray(oldPreviousSlugs) ? oldPreviousSlugs : []), oldSlug];
+                } else if (oldPreviousSlugs && Array.isArray(oldPreviousSlugs)) {
+                    // Preserve existing previousSlugs if slug didn't change
+                    updatedPostDataWithSlugs.websiteStory.seo.previousSlugs = oldPreviousSlugs;
+                }
+            }
+        } catch (err) {
+            console.error('Error fetching previous slug:', err);
+            // Continue anyway - this is not critical
+        }
+    }
+    
+    // Sync long_form_markdown from theBackstory (canonical source)
+    if (updatedPostDataWithSlugs.websiteStory?.theBackstory) {
+        if (!updatedPostDataWithSlugs.heatCheckData) {
+            updatedPostDataWithSlugs.heatCheckData = {};
+        }
+        if (!updatedPostDataWithSlugs.heatCheckData.article) {
+            updatedPostDataWithSlugs.heatCheckData.article = {};
+        }
+        updatedPostDataWithSlugs.heatCheckData.article.long_form_markdown = updatedPostDataWithSlugs.websiteStory.theBackstory;
+    }
+    
     const updatedPost: HeatcheckPost = {
-        ...updatedPostData,
+        ...updatedPostDataWithSlugs,
         id,
         updatedAt: new Date().toISOString(),
     };

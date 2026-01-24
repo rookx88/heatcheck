@@ -788,13 +788,21 @@ function generateArticleUrl(post) {
         return `/dfs/${league}/${date}/dfs-value-narratives-${date}/`;
     }
     
-    // Check if stored slug is in new format (matchup/narrative)
+    // Check if stored slug is in prediction format (new SEO-optimized format)
     const storedSlug = post.websiteStory?.seo?.slug || '';
+    const isPredictionFormat = storedSlug.includes('-prediction-preview-') && storedSlug.match(/\d{4}-\d{2}-\d{2}$/);
+    
+    if (isPredictionFormat) {
+        // Use prediction format: /{league}/{prediction-slug}/
+        return `/${league}/${storedSlug}/`;
+    }
+    
+    // Fallback to old format
     let matchupSlug;
     let narrativeSlug;
     
     if (storedSlug.includes('/') && storedSlug.split('/').length === 2) {
-        // Already in new format: matchup-slug/narrative-slug
+        // Already in old format: matchup-slug/narrative-slug
         [matchupSlug, narrativeSlug] = storedSlug.split('/');
     } else {
         // Fallback: Generate from post data
@@ -816,7 +824,7 @@ function generateArticleUrl(post) {
         );
     }
     
-    // New URL structure without .html extension
+    // Old URL structure without .html extension
     return `/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
 }
 
