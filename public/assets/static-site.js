@@ -2646,10 +2646,24 @@ async function init() {
                 console.log(`[Homepage] Using ${posts.length} embedded posts from static site generation`);
             }
             
-            // Sort posts by date (latest first) - use updatedAt or createdAt, whichever is more recent
+            // Sort posts by date (latest first) - Priority: matchupScheduledDate > updatedAt > createdAt
+            // This ensures articles about upcoming/recent games appear first
             posts.sort((a, b) => {
-                const dateA = new Date(a.updatedAt || a.createdAt || a.matchupScheduledDate || 0).getTime();
-                const dateB = new Date(b.updatedAt || b.createdAt || b.matchupScheduledDate || 0).getTime();
+                const getSortDate = (post) => {
+                    if (post.matchupScheduledDate) {
+                        return new Date(post.matchupScheduledDate).getTime();
+                    }
+                    if (post.updatedAt) {
+                        return new Date(post.updatedAt).getTime();
+                    }
+                    if (post.createdAt) {
+                        return new Date(post.createdAt).getTime();
+                    }
+                    return 0;
+                };
+                
+                const dateA = getSortDate(a);
+                const dateB = getSortDate(b);
                 return dateB - dateA; // Descending order (latest first)
             });
             

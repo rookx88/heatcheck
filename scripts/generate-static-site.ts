@@ -300,9 +300,14 @@ async function generateAllPages(): Promise<void> {
     
     try {
         // Fetch all published posts
+        // Order by matchupScheduledDate (game date) first, then updatedAt, then createdAt
+        // This ensures articles about upcoming/recent games appear first
         console.log('Fetching published posts from database...');
         const result = await pool.query(
-            `SELECT data FROM posts WHERE (data->>'status') = 'published' ORDER BY "updatedAt" DESC`
+            `SELECT data FROM posts 
+             WHERE (data->>'status') = 'published' 
+             ORDER BY 
+                 COALESCE((data->>'matchupScheduledDate')::timestamp, (data->>'updatedAt')::timestamp, (data->>'createdAt')::timestamp) DESC`
         );
         const posts: HeatcheckPost[] = result.rows.map(row => row.data);
         console.log(`Found ${posts.length} published posts\n`);
@@ -581,10 +586,25 @@ async function generateAllPages(): Promise<void> {
         `;
         
         // Sort posts by date (latest first) before filtering
-        // Use updatedAt or createdAt, whichever is more recent
+        // Priority: matchupScheduledDate (game date) > updatedAt > createdAt
+        // This ensures articles about upcoming/recent games appear first
         const sortedPosts = [...posts].sort((a, b) => {
-            const dateA = new Date(a.updatedAt || a.createdAt || a.matchupScheduledDate || 0).getTime();
-            const dateB = new Date(b.updatedAt || b.createdAt || b.matchupScheduledDate || 0).getTime();
+            // Get the most relevant date for each post (game date takes priority)
+            const getSortDate = (post: HeatcheckPost): number => {
+                if (post.matchupScheduledDate) {
+                    return new Date(post.matchupScheduledDate).getTime();
+                }
+                if (post.updatedAt) {
+                    return new Date(post.updatedAt).getTime();
+                }
+                if (post.createdAt) {
+                    return new Date(post.createdAt).getTime();
+                }
+                return 0;
+            };
+            
+            const dateA = getSortDate(a);
+            const dateB = getSortDate(b);
             return dateB - dateA; // Descending order (latest first)
         });
         
