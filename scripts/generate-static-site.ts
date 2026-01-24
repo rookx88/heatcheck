@@ -13,6 +13,7 @@ import { generateSlug, ensureUniqueSlug, generateNarrativeSlug, generateMatchupS
 import { getShortTeamName } from './utils/date-formatter';
 import { generateSitemap } from './sitemap';
 import { generateRedirectsFile } from './generate-redirects';
+import { migrateToSEOUrls } from './migrate-to-seo-urls';
 import dotenv from 'dotenv';
 
 // Load environment variables from .env.local only in local development
