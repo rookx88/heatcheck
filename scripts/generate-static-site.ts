@@ -388,15 +388,17 @@ async function generateAllPages(): Promise<void> {
             if (!post.websiteStory.seo) {
                 post.websiteStory.seo = { slug: '', metaTitle: '', metaDescription: '' };
             }
-            // Only generate old-format slug if SEO slug is not already set or not in new prediction format
-            // Don't overwrite the new SEO-optimized slugs from migration
+            // Only generate old-format slug if SEO slug is completely missing
+            // Don't overwrite existing slugs - they may be in transition or already migrated
             const existingSlug = post.websiteStory.seo.slug || '';
-            const isAlreadyPredictionFormat = existingSlug.includes('-prediction-preview-') && existingSlug.match(/\d{4}-\d{2}-\d{2}$/);
             
-            if (!existingSlug || !isAlreadyPredictionFormat) {
+            if (!existingSlug) {
+                // Only set slug if it's completely missing - don't overwrite existing slugs
                 // Store matchup slug and narrative slug separately for easy reference (old format)
                 post.websiteStory.seo.slug = `${matchupSlug}/${uniqueNarrativeSlug}`;
             }
+            // If slug exists (even if not in prediction format), leave it alone
+            // The migration script will handle converting old format slugs to new format
         });
         
         // Copy assets first (before generating pages that reference them)

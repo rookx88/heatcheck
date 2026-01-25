@@ -235,7 +235,19 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/2026-01-25/palace-vs-chelsea/palace-vs-chelsea-collapse/</loc>
+    <loc>https://heatchecks.io/epl/crystal-palace-vs-chelsea-prediction-preview-2026-01-25/</loc>
+    <lastmod>2026-01-25</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/epl/arsenal-vs-manchester-united-prediction-preview-2026-01-25/</loc>
+    <lastmod>2026-01-25</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/epl/brentford-vs-nottingham-forest-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -253,55 +265,43 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/2026-01-25/brentford-vs-forest/brentford-vs-forest-collapse/</loc>
+    <loc>https://heatchecks.io/nba/heat-vs-suns-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/2026-01-25/arsenal-vs-manchester-united/arsenal-vs-united-pressure/</loc>
+    <loc>https://heatchecks.io/nba/sacramento-kings-vs-detroit-pistons-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/2026-01-25/mavericks-vs-bucks/mavericks-vs-bucks-aftershock/</loc>
+    <loc>https://heatchecks.io/nba/denver-nuggets-vs-memphis-grizzlies-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/2026-01-25/nuggets-vs-grizzlies/nuggets-vs-grizzlies-execution/</loc>
+    <loc>https://heatchecks.io/nba/dallas-mavericks-vs-milwaukee-bucks-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/2026-01-25/kings-vs-pistons/kings-vs-pistons-collapse/</loc>
+    <loc>https://heatchecks.io/nba/toronto-raptors-vs-oklahoma-city-thunder-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/2026-01-25/nets-vs-clippers/nets-vs-clippers-breaking/</loc>
+    <loc>https://heatchecks.io/nba/nets-vs-clippers-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/2026-01-25/heat-vs-suns/heat-vs-suns-grind/</loc>
-    <lastmod>2026-01-25</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/2026-01-25/pelicans-vs-spurs/pelicans-vs-spurs-weight/</loc>
-    <lastmod>2026-01-25</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/2026-01-25/raptors-vs-thunder/raptors-vs-thunder-collision/</loc>
+    <loc>https://heatchecks.io/nba/pelicans-vs-spurs-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-25</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -579,8 +579,8 @@
   <url>
     <loc>https://heatchecks.io/nba/lakers-vs-raptors-prediction-preview-2026-01-18/</loc>
     <lastmod>2026-01-24</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/sacramento-kings-vs-portland-trail-blazers-prediction-preview-2026-01-18/</loc>
