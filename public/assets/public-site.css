@@ -1566,18 +1566,17 @@ body {
             background: 
             linear-gradient(90deg, rgba(0, 255, 65, 0.08) 0%, transparent 100%),
             rgba(0, 0, 0, 0.95) !important;
-        border: 1px solid rgba(0, 255, 65, 0.4) !important;
-        border-left: 4px solid rgba(0, 255, 65, 0.5) !important;
+        border: 2px solid rgba(0, 255, 65, 0.3) !important;
+        border-left: 4px solid rgba(0, 255, 65, 0.3) !important;
         border-radius: 12px !important;
-        /* Brighter text shadow for visibility */
-        text-shadow: 
-            0 0 8px rgba(255, 255, 255, 0.5),
-            0 0 15px rgba(255, 255, 255, 0.3),
-            0 0 25px rgba(255, 255, 255, 0.2) !important;
-        /* Brighter green box shadow */
+        /* Remove text glow but keep glitch animation */
+        text-shadow: none !important;
+        /* Dimmed box shadow to match reduced intensity */
         box-shadow: 
-            inset 0 0 30px rgba(0, 255, 65, 0.05),
-            0 0 15px rgba(0, 255, 65, 0.15) !important;
+            0 0 8px rgba(0, 255, 65, 0.1),
+            0 4px 30px rgba(0, 0, 0, 0.5),
+            inset 0 0 30px rgba(0, 255, 65, 0.03),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
         /* Ensure glitch effects work on mobile */
         -webkit-text-stroke: 1px #000000;
         text-stroke: 1px #000000;

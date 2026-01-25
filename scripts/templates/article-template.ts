@@ -806,7 +806,7 @@ export function generateArticlePage(
         
         // Check if related post has prediction format slug
         const relatedStoredSlug = relatedPost.websiteStory.seo?.slug || '';
-        const relatedIsPredictionFormat = relatedStoredSlug.includes('-prediction-') && relatedStoredSlug.match(/\d{4}-\d{2}-\d{2}$/);
+        const relatedIsPredictionFormat = relatedStoredSlug.includes('-prediction-preview-') && relatedStoredSlug.match(/\d{4}-\d{2}-\d{2}$/);
         
         let relatedUrl: string;
         if (relatedIsPredictionFormat) {
