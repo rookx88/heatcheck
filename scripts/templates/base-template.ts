@@ -139,7 +139,7 @@ export function generateBaseHtml(
         
         <div style="margin-top: auto; padding: 2rem 1rem 1rem 1rem; border-top: 1px solid rgba(0, 255, 65, 0.2); display: flex; justify-content: center; align-items: center;">
             <a href="/" style="display: block;">
-                <img src="/images/HeatChecksMainLogo.svg" alt="HeatChecks" style="height: 60px; width: auto; opacity: 0.9;" onmouseover="this.style.opacity='1';" onmouseout="this.style.opacity='0.9';">
+                <img src="/assets/images/HeatchecksMobileLogo.png" alt="HeatChecks" style="height: 60px; width: auto; opacity: 0.9;" onmouseover="this.style.opacity='1';" onmouseout="this.style.opacity='0.9';">
             </a>
         </div>
     </nav>
@@ -182,10 +182,14 @@ export function generateBaseHtml(
         </div>
     </div>
     
+    <!-- Glass Display Overlay (Mobile Only) -->
+    <div class="glass-display-overlay" id="glass-display-overlay"></div>
+    
     <div class="public-container">
         <div class="top-left">
             <a href="/">
-                <img src="/images/HeatChecksMainLogo.svg" alt="HeatChecks" class="header-logo">
+                <img src="/images/HeatChecksMainLogo.svg" alt="HeatChecks" class="header-logo desktop-logo">
+                <img src="/assets/images/HeatchecksMobileLogo.png" alt="HeatChecks" class="header-logo mobile-logo">
             </a>
         </div>
         

@@ -46,6 +46,8 @@ body {
     grid-row: 1;
     box-sizing: border-box;
     overflow: hidden;
+    position: relative;
+    z-index: 200;
 }
 
 .top-right {
@@ -70,9 +72,24 @@ body {
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+    position: relative;
+    z-index: 200;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+    transform: translateZ(0);
     transition: all 0.3s ease;
-    transform: translateY(-17px);
+    transform: translateY(-17px) translateZ(0);
     filter: drop-shadow(0 8.5px 17px rgba(0, 0, 0, 0.5));
+    position: relative;
+    z-index: 200;
+}
+
+/* Hide mobile logo on desktop, show desktop logo */
+.mobile-logo {
+    display: none;
+}
+
+.desktop-logo {
+    display: block;
 }
 
 .bottom-left {
@@ -146,21 +163,230 @@ body {
 }
 
 .content-area-title {
-    color: rgba(0, 255, 65, 0.9);
-    font-size: 1rem;
+    color: rgba(255, 255, 255, 0.95);
+    font-size: 1.5rem;
     font-weight: 900;
     text-transform: uppercase;
-    font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif;
-    letter-spacing: 0.2em;
+    font-family: 'Courier New', 'Monaco', 'Consolas', monospace;
+    letter-spacing: 0.1em;
     margin: 0;
     padding: 0.75rem 1rem;
-    background: rgba(0, 255, 65, 0.05);
-    border-bottom: 2px solid rgba(0, 255, 65, 0.3);
+    background: 
+        linear-gradient(90deg, rgba(255, 255, 255, 0.08) 0%, transparent 100%),
+        rgba(0, 0, 0, 0.95);
+    border: 2px solid rgba(255, 255, 255, 0.2);
+    border-left: 4px solid rgba(255, 255, 255, 0.4);
     text-align: left;
+    position: relative;
+    z-index: 150;
+    overflow: hidden;
+    text-shadow: 
+        0 0 5px rgba(255, 255, 255, 0.3),
+        0 0 10px rgba(255, 255, 255, 0.2);
+    box-shadow: 
+        inset 0 0 20px rgba(255, 255, 255, 0.03),
+        0 0 10px rgba(255, 255, 255, 0.2),
+        0 0 20px rgba(255, 255, 255, 0.1);
     -webkit-text-stroke: 1px #000000;
     text-stroke: 1px #000000;
 }
 
+/* Terminal prompt with pulse and glitch - only for terminal-style titles */
+.content-area-title.terminal-style::before,
+.content-area-title:has(.glitch-text)::before {
+    content: '$ ';
+    color: rgba(255, 255, 255, 0.5);
+    margin-right: 0.5rem;
+    position: relative;
+    z-index: 2;
+    animation: 
+        promptGlitch 5s infinite,
+        promptPulse 2s infinite;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.4);
+}
+
+/* Blinking cursor with glitch - only for terminal-style titles */
+.content-area-title.terminal-style::after,
+.content-area-title:has(.glitch-text)::after {
+    content: '_';
+    animation: 
+        blink 1s infinite,
+        cursorGlitch 4s infinite,
+        cursorGlow 2s infinite;
+    color: rgba(255, 255, 255, 0.9);
+    margin-left: 0.25rem;
+    position: relative;
+    z-index: 2;
+}
+
+/* Glitch text wrapper - requires span with data-text */
+.content-area-title .glitch-text {
+    position: relative;
+    display: inline-block;
+}
+
+.content-area-title .glitch-text::before,
+.content-area-title .glitch-text::after {
+    content: attr(data-text);
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: transparent;
+    pointer-events: none;
+}
+
+.content-area-title .glitch-text::before {
+    color: rgba(255, 0, 100, 0.8);
+    clip-path: polygon(0 0, 100% 0, 100% 45%, 0 45%);
+    animation: glitchTop 4s infinite;
+    text-shadow: 
+        2px 0 0 rgba(255, 0, 100, 0.8),
+        0 0 10px rgba(255, 0, 100, 0.5);
+    z-index: 1;
+    -webkit-text-stroke: 1px #000000;
+    text-stroke: 1px #000000;
+}
+
+.content-area-title .glitch-text::after {
+    color: rgba(0, 200, 255, 0.8);
+    clip-path: polygon(0 55%, 100% 55%, 100% 100%, 0 100%);
+    animation: glitchBottom 4s infinite;
+    text-shadow: 
+        -2px 0 0 rgba(0, 200, 255, 0.8),
+        0 0 10px rgba(0, 200, 255, 0.5);
+    z-index: 1;
+    -webkit-text-stroke: 1px #000000;
+    text-stroke: 1px #000000;
+}
+
+/* Animations */
+@keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+}
+
+@keyframes promptPulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+@keyframes promptGlitch {
+    0%, 95%, 100% { transform: translateX(0); }
+    96% { transform: translateX(-1px); }
+    97% { transform: translateX(1px); }
+    98% { transform: translateX(0); }
+}
+
+@keyframes cursorGlitch {
+    0%, 90%, 100% { 
+        transform: translateX(0) scaleX(1);
+        opacity: 1;
+    }
+    91% { 
+        transform: translateX(-3px) scaleX(1.2);
+        opacity: 0.7;
+    }
+    92% { 
+        transform: translateX(3px) scaleX(0.8);
+        opacity: 0.7;
+    }
+    93% { 
+        transform: translateX(0) scaleX(1);
+        opacity: 1;
+    }
+}
+
+@keyframes cursorGlow {
+    0%, 100% { 
+        text-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+    }
+    50% { 
+        text-shadow: 
+            0 0 10px rgba(255, 255, 255, 0.6),
+            0 0 20px rgba(255, 255, 255, 0.4),
+            0 0 30px rgba(255, 255, 255, 0.3);
+    }
+}
+
+@keyframes glitchTop {
+    0%, 90%, 100% { 
+        opacity: 0; 
+        transform: translateX(0); 
+    }
+    91% { 
+        opacity: 0.8; 
+        transform: translateX(-3px); 
+    }
+    92% { 
+        opacity: 0.8; 
+        transform: translateX(3px); 
+    }
+    93% { 
+        opacity: 0; 
+        transform: translateX(0); 
+    }
+}
+
+@keyframes glitchBottom {
+    0%, 90%, 100% { 
+        opacity: 0; 
+        transform: translateX(0); 
+    }
+    91% { 
+        opacity: 0.8; 
+        transform: translateX(3px); 
+    }
+    92% { 
+        opacity: 0.8; 
+        transform: translateX(-3px);
+    }
+    93% { 
+        opacity: 0; 
+        transform: translateX(0); 
+    }
+}
+
+/* Main Document Header - Keep original styling, only add terminal animations (mobile only) */
+@media (max-width: 768px) {
+    .main-document-header {
+        /* Keep original inline styles - don't override */
+        /* Only ensure terminal animations work */
+    }
+}
+
+/* Terminal prompt and cursor for main document header */
+.main-document-header.terminal-style::before {
+    content: '$ ' !important;
+    color: rgba(255, 255, 255, 0.5) !important;
+    margin-right: 0.5rem !important;
+    position: relative !important;
+    z-index: 2 !important;
+    animation: 
+        promptGlitch 5s infinite,
+        promptPulse 2s infinite !important;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.4) !important;
+}
+
+.main-document-header.terminal-style::after {
+    content: '_' !important;
+    animation: 
+        blink 1s infinite,
+        cursorGlitch 4s infinite,
+        cursorGlow 2s infinite !important;
+    color: rgba(255, 255, 255, 0.9) !important;
+    margin-left: 0.25rem !important;
+    position: relative !important;
+    z-index: 2 !important; 
+    }
+    93% { 
+        opacity: 0; 
+        transform: translateX(0); 
+    }
+}
+
+/* Post list - Grid layout */
 .post-list { 
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -208,6 +434,8 @@ body {
 
 .post-card > * {
     box-sizing: border-box;
+    position: relative;
+    z-index: 151;
 }
 
 /* Radar Modal Styles */
@@ -909,26 +1137,182 @@ body {
     .post-list {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+    
+    .reel-wrapper .post-list .post-card {
+        flex: 0 0 calc(50% - 1rem);
+        min-width: 300px;
+    }
+}
+
+
+/* Glass Display Overlay - Mobile Only */
+.glass-display-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100vw;
+    height: 100vh;
+    pointer-events: none;
+    z-index: 100;
+    /* Glass polymorphism - very subtle, almost invisible, no blur */
+    background: rgba(255, 255, 255, 0.005);
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    will-change: transform;
+    /* Subtle blue edge reflection - bottom and right only */
+}
+
+/* Subtle blue edge glow - bottom edge */
+.glass-display-overlay::before {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, rgba(135, 206, 250, 0.3) 30%, rgba(135, 206, 250, 0.4) 70%, transparent 100%);
+    pointer-events: none;
+}
+
+/* Subtle blue edge glow - right edge */
+.glass-display-overlay::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: 0;
+    top: 0;
+    width: 1px;
+    background: linear-gradient(180deg, transparent 0%, rgba(135, 206, 250, 0.3) 50%, rgba(135, 206, 250, 0.4) 70%, transparent 100%);
+    pointer-events: none;
 }
 
 /* Mobile: max-width 768px */
 @media (max-width: 768px) {
+    /* Show glass display overlay on mobile */
+    .glass-display-overlay {
+        display: block !important;
+        z-index: 100;
+    }
+    
+    /* Ensure the overlay sits above content but below modals/menus */
+    /* The overlay has pointer-events: none, so all elements are still clickable */
+    .public-container {
+        position: relative;
+        z-index: 1;
+    }
+    
+    /* Lift post cards and all their text above the glass overlay */
+    .post-card {
+        z-index: 150 !important;
+    }
+    
+    .post-card > * {
+        position: relative;
+        z-index: 151 !important;
+    }
+    
+    /* Keep interactive elements above overlay */
+    .mobile-menu-toggle {
+        z-index: 1000;
+    }
+    
+    .mobile-nav-drawer {
+        z-index: 1001;
+    }
+    
+    .mobile-radar-modal {
+        z-index: 1002;
+    }
+    
+    /* Show mobile matchup acronyms, hide full names */
+    .matchup-card-full {
+        display: none !important;
+    }
+    .matchup-card-mobile {
+        display: inline !important;
+    }
+    
     /* Main Container - Single Column Layout */
     .public-container {
         grid-template-columns: 1fr;
         grid-template-rows: auto 1fr; /* Removed middle row to eliminate gap */
     }
 
-    /* Header - Stack Vertically */
+    /* Header - Glass Greenish Panel Effect */
     .top-left {
         grid-column: 1;
         grid-row: 1;
-        padding: 0.4rem 0.5rem 0.1rem 0.5rem; /* Reduced bottom padding */
+        padding: 0.6rem 0.75rem 0.3rem 0.75rem;
         justify-content: center;
-        align-items: flex-start; /* Override desktop align-items: center */
-        overflow: hidden; /* Clip bottom portion of container */
-        max-height: calc(220px * 0.8 + 0.4rem + 0.1rem); /* 80% of logo + padding */
+        align-items: flex-start;
+        overflow: visible;
+        max-height: calc(220px * 0.8 + 0.6rem + 0.3rem);
+        height: calc(220px * 0.8 + 0.6rem + 0.3rem);
         position: relative;
+        /* Glass greenish panel effect */
+        background: 
+            linear-gradient(135deg, rgba(0, 255, 65, 0.05) 0%, rgba(0, 20, 10, 0.75) 50%, rgba(0, 255, 65, 0.03) 100%),
+            radial-gradient(circle at 50% 50%, rgba(0, 255, 65, 0.08) 0%, transparent 70%);
+        border: 2px solid rgba(0, 255, 65, 0.4);
+        border-radius: 12px;
+        box-shadow: 
+            0 0 12px rgba(0, 255, 65, 0.15),
+            0 4px 30px rgba(0, 0, 0, 0.5),
+            inset 0 0 30px rgba(0, 255, 65, 0.05),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        margin: 0.5rem;
+        z-index: 10;
+    }
+    
+    /* Inner glow effect */
+    .top-left > a {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+    }
+    
+    /* Diagonal corner accent lines - Top Right */
+    .top-left::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 24px;
+        height: 24px;
+        border-top: 2px solid rgba(0, 255, 65, 0.5);
+        border-right: 2px solid rgba(0, 255, 65, 0.5);
+        border-top-right-radius: 12px;
+        box-shadow: 
+            0 0 6px rgba(0, 255, 65, 0.25),
+            -2px -2px 0 rgba(0, 255, 65, 0.2);
+        z-index: 1;
+        pointer-events: none;
+    }
+    
+    /* Diagonal corner accent lines - Bottom Left */
+    .top-left::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 18px;
+        height: 18px;
+        border-bottom: 2px solid rgba(0, 255, 65, 0.4);
+        border-left: 2px solid rgba(0, 255, 65, 0.4);
+        border-bottom-left-radius: 12px;
+        box-shadow: 
+            0 0 4px rgba(0, 255, 65, 0.2),
+            2px 2px 0 rgba(0, 255, 65, 0.15);
+        z-index: 1;
+        pointer-events: none;
     }
 
     .top-right {
@@ -946,13 +1330,25 @@ body {
         display: none !important;
     }
 
-    /* Logo - size to fit header space */
+    /* Logo - size to fit header space with glow effect */
     .header-logo {
-        height: 190px; /* Enlarged to fit header space */
+        height: 240px;
         width: auto;
-        max-height: 100%; /* Fit within container */
-        object-fit: contain; /* Maintain aspect ratio */
-        transform: translateY(0); /* Remove desktop offset */
+        max-height: none;
+        object-fit: contain;
+        transform: translateY(0) translateZ(0);
+        filter: drop-shadow(0 0 8px rgba(0, 255, 65, 0.2)) drop-shadow(0 0 15px rgba(0, 255, 65, 0.1));
+        position: relative;
+        z-index: 200;
+    }
+    
+    /* Show mobile logo, hide desktop logo on mobile */
+    .mobile-logo {
+        display: block !important;
+    }
+    
+    .desktop-logo {
+        display: none !important;
     }
 
     /* Hide Desktop Sidebar Navigation */
@@ -965,8 +1361,9 @@ body {
         grid-column: 1;
         grid-row: 2; /* Moved to row 2 to eliminate gap from row 3 */
         margin-left: 0;
-        margin-top: -0.1rem; /* Negative margin to pull up closer to header */
-        padding: 0.1rem 0.5rem 0.5rem 0.5rem; /* Further reduced top padding */
+        margin-top: 0; /* No margin to touch header */
+        padding: 0 0.5rem 0.5rem 0.5rem; /* No top padding */
+        gap: 0 !important; /* Remove gap between children on mobile */
     }
 
     /* Article Page Layout - Stack Columns on Mobile */
@@ -975,7 +1372,8 @@ body {
         grid-template-columns: 1fr !important;
         grid-template-rows: auto auto !important;
         gap: 1rem !important;
-        padding: 0.5rem !important;
+        padding: 0.1rem 0.5rem 0.5rem 0.5rem !important;
+        margin-top: 0 !important;
     }
 
     /* Article Page Left Column (Main Content) */
@@ -992,7 +1390,26 @@ body {
         max-height: 500px !important;
     }
 
-    /* HeatChecks Edge - Reduce font size on mobile */
+    /* HeatChecks Edge - Dark green/black border and reduce font size on mobile */
+    #heatchecks-edge-section {
+        border: 2px solid rgba(0, 100, 0, 0.4) !important;
+        border-left: 4px solid rgba(0, 100, 0, 0.5) !important;
+        border-right: 4px solid rgba(0, 100, 0, 0.5) !important;
+        box-shadow: 
+            0 0 40px rgba(0, 0, 0, 0.4), 
+            inset 0 0 30px rgba(0, 100, 0, 0.05), 
+            0 4px 20px rgba(0, 0, 0, 0.5) !important;
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
+    /* Remove backdrop-filter from article sections on mobile */
+    .article-main-column,
+    .article-main-column section[aria-label] {
+        backdrop-filter: none !important;
+        -webkit-backdrop-filter: none !important;
+    }
+
     .article-main-column div[style*="margin-top: 3rem"] {
         padding: 1rem !important;
     }
@@ -1009,23 +1426,33 @@ body {
 
     /* Breadcrumb Navigation - Adjust for Mobile */
     nav[aria-label="Breadcrumb"] {
-        padding: 0.5rem !important;
+        padding: 0.5rem 0.5rem 0.1rem 0.5rem !important;
+        margin-bottom: 0.5rem !important;
         font-size: 0.7rem !important;
+        /* Green border to match top-left header */
+        border: 2px solid rgba(0, 255, 65, 0.4) !important;
+        border-radius: 12px !important;
+        box-shadow: 
+            0 0 12px rgba(0, 255, 65, 0.15),
+            0 4px 30px rgba(0, 0, 0, 0.5),
+            inset 0 0 30px rgba(0, 255, 65, 0.05),
+            inset 0 1px 0 rgba(255, 255, 255, 0.1) !important;
+        margin: 0 0.5rem 0.5rem 0.5rem !important;
     }
 
     nav[aria-label="Breadcrumb"] ol {
         flex-wrap: wrap;
         gap: 0.25rem !important;
+        margin: 0 !important;
     }
 
-    /* Article Back Button - Larger Touch Target */
+    /* Article Back Button - Match height with prediction button */
     .article-back-btn {
-        min-height: 44px !important;
-        padding: 0.75rem 1rem !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        font-size: 0.85rem !important;
+        padding: 0.4rem 0.8rem !important;
+        font-size: 0.9rem !important;
+        line-height: 1 !important;
+        display: inline-block !important;
+        vertical-align: middle !important;
     }
 
     .article-back-btn:active {
@@ -1037,12 +1464,45 @@ body {
     .post-list {
         grid-template-columns: 1fr;
         gap: 1rem;
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        margin-top: 0 !important;
+        padding: 0;
+        padding-top: 0;
+        box-sizing: border-box;
     }
 
     /* Post Card Adjustments */
     .post-card {
         padding: 1rem;
         min-height: auto;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        /* Green borders to match home color scheme */
+        border: 1px solid rgba(0, 255, 65, 0.4) !important;
+        border-left: 3px solid rgba(0, 255, 65, 0.5) !important;
+        box-shadow: 
+            0 4px 15px rgba(0, 0, 0, 0.4),
+            inset 0 0 30px rgba(0, 255, 65, 0.04),
+            0 0 6px rgba(0, 255, 65, 0.15) !important;
+    }
+    
+    .post-card:hover {
+        border-color: rgba(0, 255, 65, 0.6) !important;
+        box-shadow: 
+            0 8px 30px rgba(0, 255, 65, 0.2),
+            inset 0 0 60px rgba(0, 255, 65, 0.08),
+            0 0 12px rgba(0, 255, 65, 0.25) !important;
+    }
+    
+    /* Matchup header inside post cards - green border on mobile */
+    .post-card > div > div:first-child {
+        border: 1px solid rgba(0, 255, 65, 0.4) !important;
+        box-shadow: 
+            0 0 6px rgba(0, 255, 65, 0.15),
+            inset 0 0 10px rgba(0, 255, 65, 0.05) !important;
     }
 
     /* Ensure post card images scale properly on mobile */
@@ -1073,11 +1533,81 @@ body {
         transform: scale(0.98);
     }
 
+    /* Heat Indicator - White circles on mobile */
+    .heat-indicator-container {
+        border: 2px solid rgba(255, 255, 255, 0.6) !important;
+        box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.2), 0 0 15px rgba(255, 255, 255, 0.3) !important;
+    }
+    
+    .heat-indicator-container > div[style*="border"] {
+        border-color: rgba(255, 255, 255, 0.5) !important;
+    }
+    
+    .heat-indicator-container > div[style*="#ffe66d"] {
+        border-color: rgba(255, 255, 255, 0.4) !important;
+    }
+    
+    .heat-indicator-container > div[style*="#ff0040"] {
+        border-color: rgba(255, 255, 255, 0.5) !important;
+    }
+    
+    .heat-number {
+        color: rgba(255, 255, 255, 0.9) !important;
+    }
+
     /* Content Title */
     .content-area-title {
-        font-size: 0.85rem;
-        padding: 0.15rem 0.75rem; /* Further reduced top/bottom padding */
-        margin-top: 0; /* Remove any default margin */
+        font-size: 1.4rem !important;
+        padding: 0.75rem 1rem;
+        margin-top: 0;
+        margin-bottom: 0.5rem !important;
+        /* White text color with green borders to match header */
+        color: rgba(255, 255, 255, 1) !important;
+            background: 
+            linear-gradient(90deg, rgba(0, 255, 65, 0.08) 0%, transparent 100%),
+            rgba(0, 0, 0, 0.95) !important;
+        border: 1px solid rgba(0, 255, 65, 0.4) !important;
+        border-left: 4px solid rgba(0, 255, 65, 0.5) !important;
+        border-radius: 12px !important;
+        /* Brighter text shadow for visibility */
+        text-shadow: 
+            0 0 8px rgba(255, 255, 255, 0.5),
+            0 0 15px rgba(255, 255, 255, 0.3),
+            0 0 25px rgba(255, 255, 255, 0.2) !important;
+        /* Brighter green box shadow */
+        box-shadow: 
+            inset 0 0 30px rgba(0, 255, 65, 0.05),
+            0 0 15px rgba(0, 255, 65, 0.15) !important;
+        /* Ensure glitch effects work on mobile */
+        -webkit-text-stroke: 1px #000000;
+        text-stroke: 1px #000000;
+    }
+    
+    /* Brighter glitch text colors for mobile */
+    .content-area-title .glitch-text::before {
+        color: rgba(255, 0, 150, 1) !important;
+        text-shadow: 
+            2px 0 0 rgba(255, 0, 150, 1),
+            0 0 15px rgba(255, 0, 150, 0.8) !important;
+    }
+    
+    .content-area-title .glitch-text::after {
+        color: rgba(0, 255, 255, 1) !important;
+        text-shadow: 
+            -2px 0 0 rgba(0, 255, 255, 1),
+            0 0 15px rgba(0, 255, 255, 0.8) !important;
+    }
+    
+    /* Brighter prompt and cursor on mobile */
+    .content-area-title.terminal-style::before,
+    .content-area-title:has(.glitch-text)::before {
+        color: rgba(255, 255, 255, 0.8) !important;
+        text-shadow: 0 0 12px rgba(255, 255, 255, 0.6) !important;
+    }
+    
+    .content-area-title.terminal-style::after,
+    .content-area-title:has(.glitch-text)::after {
+        color: rgba(255, 255, 255, 1) !important;
     }
 
     /* Radar Modal - Hidden on mobile */
@@ -1119,13 +1649,15 @@ body {
 
 /* Small Mobile: max-width 480px */
 @media (max-width: 480px) {
-    /* Further Reduce Padding */
+    /* Further Reduce Padding - Small Mobile */
     .top-left {
-        padding: 0.3rem 0.4rem 0.05rem 0.4rem; /* Further reduced bottom padding */
-        align-items: flex-start; /* Override desktop align-items: center */
-        overflow: hidden; /* Clip bottom portion of container */
-        max-height: calc(200px * 0.8 + 0.3rem + 0.05rem); /* 80% of logo + padding */
+        padding: 0.5rem 0.6rem 0.25rem 0.6rem;
+        align-items: flex-start;
+        overflow: hidden;
+        max-height: calc(200px * 0.8 + 0.5rem + 0.25rem);
         position: relative;
+        margin: 0.4rem;
+        border-radius: 10px;
     }
 
     .top-right {
@@ -1145,11 +1677,24 @@ body {
 
     /* Logo - size to fit header space */
     .header-logo {
-        height: 175px; /* Enlarged to fit header space */
+        height: 220px; /* Enlarged to fit header space */
         width: auto;
         max-width: 100%; /* Ensure it doesn't overflow */
-        max-height: 100%; /* Fit within container */
+        max-height: none; /* Allow logo to be bigger than container */
         object-fit: contain; /* Maintain aspect ratio */
+        position: relative;
+        z-index: 200;
+        filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5)) drop-shadow(0 0 20px rgba(0, 255, 65, 0.3));
+        transform: translateZ(0);
+    }
+    
+    /* Ensure mobile logo is shown on small mobile */
+    .mobile-logo {
+        display: block !important;
+    }
+    
+    .desktop-logo {
+        display: none !important;
     }
 
     .bottom-right {
@@ -1170,6 +1715,11 @@ body {
         font-size: 0.75rem;
         padding: 0.1rem 0.75rem; /* Further reduced padding */
         margin-top: 0; /* Remove any default margin */
+        /* White text with green borders and rounded corners */
+        color: rgba(255, 255, 255, 1) !important;
+        border: 1px solid #00ff41 !important;
+        border-left: 4px solid #00ff41 !important;
+        border-radius: 12px !important;
     }
 
     .nav-link, .crawler-nav a {
@@ -1200,6 +1750,112 @@ body {
     }
 }
 
+/* Desktop: min-width 1025px - 3 columns and original styling */
+@media (min-width: 1025px) {
+    .post-list {
+        display: grid !important;
+        grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+        gap: 0.75rem !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        align-items: start !important;
+    }
+    
+    .post-card {
+        background: rgba(20, 20, 20, 0.6) !important;
+        backdrop-filter: blur(15px) !important;
+        -webkit-backdrop-filter: blur(15px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.35) !important;
+        border-left: 2px solid rgba(255, 255, 255, 0.4) !important;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4),
+                    inset 0 0 30px rgba(255, 255, 255, 0.08),
+                    0 0 2px rgba(255, 255, 255, 0.25) !important;
+        padding: 1.2rem 1.2rem 1.5rem 1.2rem !important;
+        min-height: 360px !important;
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    
+    .post-card:hover {
+        background: rgba(20, 20, 20, 0.7) !important;
+        border-color: rgba(255, 255, 255, 0.5) !important;
+        box-shadow: 0 8px 30px rgba(255, 255, 255, 0.3),
+                    inset 0 0 60px rgba(255, 255, 255, 0.2),
+                    0 0 20px rgba(255, 255, 255, 0.4),
+                    0 0 40px rgba(255, 255, 255, 0.2) !important;
+    }
+    
+    /* Remove green borders from matchup header on desktop */
+    .post-card > div > div:first-child {
+        border: 1px solid rgba(255, 255, 255, 0.35) !important;
+        box-shadow: none !important;
+    }
+    
+    /* Close gap between breadcrumbs and article content on desktop */
+    nav[aria-label="Breadcrumb"] {
+        margin-bottom: 0 !important;
+        padding-bottom: 0.25rem !important;
+    }
+    
+    .article-content-grid {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
+    }
+    
+    /* Restore original article page border colors on desktop */
+    .article-main-column {
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3) !important;
+    }
+    
+    .article-main-column header {
+        border-bottom: 1px dashed rgba(255, 255, 255, 0.3) !important;
+    }
+    
+    /* Restore original HeatChecks Edge section borders on desktop */
+    #heatchecks-edge-section {
+        border: 2px solid rgba(255, 255, 255, 0.3) !important;
+        border-left: 4px solid rgba(255, 255, 255, 0.5) !important;
+        border-right: 4px solid rgba(255, 255, 255, 0.5) !important;
+        box-shadow: 0 0 40px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(255, 255, 255, 0.05), 0 4px 20px rgba(0, 0, 0, 0.5) !important;
+    }
+    
+    /* Restore original article sidebar borders on desktop */
+    .article-sidebar-column,
+    .article-sidebar-column section[aria-label] {
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3) !important;
+    }
+    
+    /* Restore original image asset area borders on desktop */
+    /* Target divs with green borders that contain image assets */
+    .article-main-column div[style*="rgba(0, 255, 65, 0.4)"][style*="rgba(0, 255, 65, 0.05)"] {
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        background: rgba(255, 255, 255, 0.02) !important;
+    }
+    
+    /* Target image with green dashed border */
+    .article-main-column .heatcheck-header-image,
+    .article-main-column img.heatcheck-header-image,
+    .article-main-column img[class="heatcheck-header-image"] {
+        border: 1px dashed rgba(255, 255, 255, 0.2) !important;
+    }
+    
+    /* Restore original narrative rack and evidence board header borders on desktop */
+    .article-sidebar-column section[aria-label] > div:first-child {
+        background: rgba(255, 255, 255, 0.05) !important;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.2) !important;
+    }
+    
+    /* Restore original quote log and timeline log borders on desktop */
+    .article-sidebar-column div[style*="QUOTE_LOG"],
+    .article-sidebar-column div[style*="TIMELINE_LOG"] {
+        color: rgba(255, 255, 255, 0.7) !important;
+        border-bottom: 1px dashed rgba(255, 255, 255, 0.2) !important;
+    }
+}
+
 /* Hamburger Menu Styles */
 .mobile-menu-toggle {
     display: none;
@@ -1224,6 +1880,9 @@ body {
     justify-content: center;
     align-items: center;
     gap: 5px;
+    /* Ensure it's visible on mobile */
+    visibility: visible;
+    opacity: 1;
 }
 
 .mobile-menu-toggle:hover {
@@ -1261,8 +1920,6 @@ body {
     bottom: 0;
     background: rgba(0, 0, 0, 0.8);
     z-index: 1400;
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
 }
 
 .mobile-nav-overlay.active {
@@ -1290,6 +1947,13 @@ body {
     visibility: hidden; /* Hide from screen readers and layout when not in use */
     opacity: 0; /* Additional hiding for desktop */
     flex-direction: column; /* Use flexbox layout for logo positioning */
+    /* Hide scrollbar */
+    scrollbar-width: none; /* Firefox */
+    -ms-overflow-style: none; /* IE and Edge */
+}
+
+.mobile-nav-drawer::-webkit-scrollbar {
+    display: none; /* Chrome, Safari, Opera */
 }
 
 .mobile-nav-drawer.active {
@@ -1358,7 +2022,6 @@ body {
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.85);
-    backdrop-filter: blur(5px);
 }
 
 .mobile-radar-content {
@@ -1638,7 +2301,10 @@ body {
 /* Show Hamburger Menu on Mobile */
 @media (max-width: 768px) {
     .mobile-menu-toggle {
-        display: flex;
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        z-index: 1500 !important;
     }
 
     .mobile-nav-drawer {

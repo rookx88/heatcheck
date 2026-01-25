@@ -1,6 +1,6 @@
 import { generateBaseHtml, BaseTemplateOptions } from './base-template';
 import { escapeHtml } from '../utils/html-escape';
-import { formatDateForCard, formatDateISO, normalizeLeague, formatDateForNav, getShortTeamName } from '../utils/date-formatter';
+import { formatDateForCard, formatDateISO, normalizeLeague, formatDateForNav, getShortTeamName, getTeamAcronym } from '../utils/date-formatter';
 import { generateSlug, generateNarrativeSlug, generateMatchupSlug } from '../utils/slug-generator';
 
 export interface HeatcheckPost {
@@ -523,6 +523,7 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
     
     // For DFS articles, generate matchup text with day of week + "DFS Football"
     let displayMatchup = matchup;
+    let displayMatchupMobile = `${getTeamAcronym(post.teamA || '', post.league)} VS ${getTeamAcronym(post.teamB || '', post.league)}`.toUpperCase();
     if (isDFSArticle) {
         const articleDate = post.matchupScheduledDate || post.createdAt;
         try {
@@ -530,8 +531,10 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
             const dayOfWeek = dateForDayOfWeek.toLocaleDateString('en-US', { weekday: 'long' });
             const sportLabel = league === 'NBA' ? 'Basketball' : league === 'NFL' ? 'Football' : league;
             displayMatchup = `${dayOfWeek} DFS ${sportLabel}`.toUpperCase();
+            displayMatchupMobile = displayMatchup; // DFS articles don't need mobile variant
         } catch {
             displayMatchup = 'DFS VALUE';
+            displayMatchupMobile = displayMatchup;
         }
     }
     
@@ -594,7 +597,10 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
                     <div style="width: 50px; height: 50px; min-width: 50px; border-radius: 50%; border: 2px solid #fff; background: #fff; box-shadow: 0 2px 8px rgba(255, 255, 255, 0.5), 0 0 12px rgba(255, 255, 255, 0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${dateStr}</div>
                     </div>
-                    <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${displayMatchup}</div>
+                    <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
+                        <span class="matchup-card-full">${displayMatchup}</span>
+                        <span class="matchup-card-mobile" style="display: none;">${displayMatchupMobile}</span>
+                    </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
                         <div style="color: #fff; font-size: 0.75rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${league}</div>
                     </div>
@@ -619,7 +625,7 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
                 </div>
                 <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 1rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2.2em; max-height: 3.2em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${escapeHtml(headline)}</h2>
                 ${quoteHtml}
-                <a href="${articleUrl}" style="margin-top: 0; margin-bottom: 0; font-size: 0.7rem; padding: 0.4rem 0.8rem; background: #000; border: 2px solid #f84242; color: #fff; cursor: pointer; text-transform: uppercase; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; letter-spacing: 0.08em; transition: all 0.3s ease; width: 100%; box-sizing: border-box; text-decoration: none; display: block; text-align: center;">VIEW STORY</a>
+                <a href="${articleUrl}" style="margin-top: 0; margin-bottom: 0; font-size: 0.7rem; padding: 0.4rem 0.8rem; background: #000; border: 2px solid rgba(0, 255, 65, 0.6); color: #fff; cursor: pointer; text-transform: uppercase; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; letter-spacing: 0.08em; transition: all 0.3s ease; width: 100%; box-sizing: border-box; text-decoration: none; display: block; text-align: center; box-shadow: 0 0 10px rgba(0, 255, 65, 0.3), 0 0 20px rgba(0, 255, 65, 0.1);" onmouseover="this.style.borderColor='rgba(0, 255, 65, 0.8)'; this.style.boxShadow='0 0 15px rgba(0, 255, 65, 0.5), 0 0 30px rgba(0, 255, 65, 0.2)';" onmouseout="this.style.borderColor='rgba(0, 255, 65, 0.6)'; this.style.boxShadow='0 0 10px rgba(0, 255, 65, 0.3), 0 0 20px rgba(0, 255, 65, 0.1)';">VIEW STORY</a>
             </div>
         </div>
     `;
@@ -651,7 +657,19 @@ export function generateDatePage(
     
     const dateDisplay = formatDateForNav(date);
     
-    let content = `<div class="content-area-title">▶ ${leagueUpper} ${dateDisplay}</div>`;
+    let content = `
+        <style>
+            @media (max-width: 768px) {
+                .matchup-card-full {
+                    display: none !important;
+                }
+                .matchup-card-mobile {
+                    display: inline !important;
+                }
+            }
+        </style>
+        <div class="content-area-title">▶ ${leagueUpper} ${dateDisplay}</div>
+    `;
     content += '<div class="post-list" id="date-posts-list">';
     
     if (datePosts.length === 0) {

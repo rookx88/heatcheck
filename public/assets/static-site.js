@@ -869,6 +869,139 @@ function getShortTeamName(fullName) {
 }
 
 /**
+ * Get 3-letter acronym for a team name
+ * Returns the standard abbreviation used in sports (e.g., "LAL" for "Los Angeles Lakers")
+ */
+function getTeamAcronym(fullName, league) {
+    if (!fullName) return '';
+    
+    const trimmed = fullName.trim();
+    if (!trimmed) return '';
+    
+    // Normalize for matching (case-insensitive)
+    const normalized = trimmed.toLowerCase();
+    
+    // NBA abbreviations
+    const nbaAbbrev = {
+        'atlanta hawks': 'ATL',
+        'brooklyn nets': 'BKN',
+        'boston celtics': 'BOS',
+        'charlotte hornets': 'CHA',
+        'chicago bulls': 'CHI',
+        'cleveland cavaliers': 'CLE',
+        'dallas mavericks': 'DAL',
+        'denver nuggets': 'DEN',
+        'detroit pistons': 'DET',
+        'golden state warriors': 'GSW',
+        'houston rockets': 'HOU',
+        'indiana pacers': 'IND',
+        'los angeles clippers': 'LAC',
+        'los angeles lakers': 'LAL',
+        'memphis grizzlies': 'MEM',
+        'miami heat': 'MIA',
+        'milwaukee bucks': 'MIL',
+        'minnesota timberwolves': 'MIN',
+        'new orleans pelicans': 'NOP',
+        'new york knicks': 'NYK',
+        'oklahoma city thunder': 'OKC',
+        'orlando magic': 'ORL',
+        'philadelphia 76ers': 'PHI',
+        'phoenix suns': 'PHX',
+        'portland trail blazers': 'POR',
+        'sacramento kings': 'SAC',
+        'san antonio spurs': 'SAS',
+        'toronto raptors': 'TOR',
+        'utah jazz': 'UTA',
+        'washington wizards': 'WAS',
+    };
+    
+    // NFL abbreviations
+    const nflAbbrev = {
+        'arizona cardinals': 'ARI',
+        'atlanta falcons': 'ATL',
+        'baltimore ravens': 'BAL',
+        'buffalo bills': 'BUF',
+        'carolina panthers': 'CAR',
+        'chicago bears': 'CHI',
+        'cincinnati bengals': 'CIN',
+        'cleveland browns': 'CLE',
+        'dallas cowboys': 'DAL',
+        'denver broncos': 'DEN',
+        'detroit lions': 'DET',
+        'green bay packers': 'GB',
+        'houston texans': 'HOU',
+        'indianapolis colts': 'IND',
+        'jacksonville jaguars': 'JAX',
+        'kansas city chiefs': 'KC',
+        'las vegas raiders': 'LV',
+        'los angeles chargers': 'LAC',
+        'los angeles rams': 'LAR',
+        'miami dolphins': 'MIA',
+        'minnesota vikings': 'MIN',
+        'new england patriots': 'NE',
+        'new orleans saints': 'NO',
+        'new york giants': 'NYG',
+        'new york jets': 'NYJ',
+        'philadelphia eagles': 'PHI',
+        'pittsburgh steelers': 'PIT',
+        'san francisco 49ers': 'SF',
+        'seattle seahawks': 'SEA',
+        'tampa bay buccaneers': 'TB',
+        'tennessee titans': 'TEN',
+        'washington commanders': 'WAS',
+    };
+    
+    // EPL abbreviations (common teams)
+    const eplAbbrev = {
+        'arsenal': 'ARS',
+        'aston villa': 'AVL',
+        'bournemouth': 'BOU',
+        'brentford': 'BRE',
+        'brighton & hove albion': 'BHA',
+        'brighton': 'BHA',
+        'burnley': 'BUR',
+        'chelsea': 'CHE',
+        'crystal palace': 'CRY',
+        'everton': 'EVE',
+        'fulham': 'FUL',
+        'liverpool': 'LIV',
+        'luton town': 'LUT',
+        'manchester city': 'MCI',
+        'manchester united': 'MUN',
+        'newcastle united': 'NEW',
+        'nottingham forest': 'NFO',
+        'sheffield united': 'SHU',
+        'tottenham hotspur': 'TOT',
+        'west ham united': 'WHU',
+        'wolverhampton wanderers': 'WOL',
+    };
+    
+    // Try exact match first
+    if (nbaAbbrev[normalized]) return nbaAbbrev[normalized];
+    if (nflAbbrev[normalized]) return nflAbbrev[normalized];
+    if (eplAbbrev[normalized]) return eplAbbrev[normalized];
+    
+    // Try league-specific lookup
+    if (league) {
+        const leagueUpper = (league || '').toUpperCase();
+        if (leagueUpper === 'NBA' && nbaAbbrev[normalized]) return nbaAbbrev[normalized];
+        if (leagueUpper === 'NFL' && nflAbbrev[normalized]) return nflAbbrev[normalized];
+        if ((leagueUpper === 'EPL' || leagueUpper === 'PREMIER LEAGUE') && eplAbbrev[normalized]) return eplAbbrev[normalized];
+    }
+    
+    // Fallback: generate from first letters of words (up to 3)
+    const words = trimmed.split(/\s+/).filter(function(w) { return w.length > 0; });
+    if (words.length === 1) {
+        // Single word: take first 3 letters, uppercase
+        return words[0].substring(0, 3).toUpperCase();
+    }
+    
+    // Multiple words: take first letter of first 3 words
+    const acronym = words.slice(0, 3).map(function(w) { return w[0]; }).join('').toUpperCase();
+    return acronym.length >= 3 ? acronym.substring(0, 3) : acronym + 'X'.repeat(3 - acronym.length);
+}
+
+/**
  * Generate post card HTML
  */
 function generatePostCard(post) {
@@ -903,6 +1036,7 @@ function generatePostCard(post) {
     
     // For DFS articles, generate matchup text with day of week + "[League] DFS"
     let displayMatchup = matchup;
+    let displayMatchupMobile = (getTeamAcronym(post.teamA || '', post.league) + ' VS ' + getTeamAcronym(post.teamB || '', post.league)).toUpperCase();
     if (isDFSArticle) {
         const articleDate = post.matchupScheduledDate || post.createdAt;
         try {
@@ -911,8 +1045,10 @@ function generatePostCard(post) {
             // Ensure league is in correct format (NBA, NFL, etc. not "Basketball")
             const normalizedLeague = league.toUpperCase();
             displayMatchup = (dayOfWeek + ' ' + normalizedLeague + ' DFS').toUpperCase();
+            displayMatchupMobile = displayMatchup; // DFS articles don't need mobile variant
         } catch (e) {
             displayMatchup = 'DFS VALUE';
+            displayMatchupMobile = displayMatchup;
         }
     }
     
@@ -955,7 +1091,10 @@ function generatePostCard(post) {
                     <div style="width: 50px; height: 50px; min-width: 50px; border-radius: 50%; border: 2px solid #fff; background: #fff; box-shadow: 0 2px 8px rgba(255, 255, 255, 0.5), 0 0 12px rgba(255, 255, 255, 0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${dateStr}</div>
                     </div>
-                    <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${displayMatchup}</div>
+                    <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
+                        <span class="matchup-card-full">${displayMatchup}</span>
+                        <span class="matchup-card-mobile" style="display: none;">${displayMatchupMobile}</span>
+                    </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
                         <div style="color: #fff; font-size: 0.75rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${league}</div>
                     </div>
@@ -980,7 +1119,7 @@ function generatePostCard(post) {
                 </div>
                 <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 1rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2.2em; max-height: 3.2em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${headline}</h2>
                 ${quoteHtml}
-                <a href="${articleUrl}" style="margin-top: 0; margin-bottom: 0; font-size: 0.7rem; padding: 0.4rem 0.8rem; background: #000; border: 2px solid #f84242; color: #fff; cursor: pointer; text-transform: uppercase; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; letter-spacing: 0.08em; transition: all 0.3s ease; width: 100%; box-sizing: border-box; text-decoration: none; display: block; text-align: center;">VIEW STORY</a>
+                <a href="${articleUrl}" style="margin-top: 0; margin-bottom: 0; font-size: 0.7rem; padding: 0.4rem 0.8rem; background: #000; border: 2px solid rgba(0, 255, 65, 0.6); color: #fff; cursor: pointer; text-transform: uppercase; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; letter-spacing: 0.08em; transition: all 0.3s ease; width: 100%; box-sizing: border-box; text-decoration: none; display: block; text-align: center; box-shadow: 0 0 10px rgba(0, 255, 65, 0.3), 0 0 20px rgba(0, 255, 65, 0.1);" onmouseover="this.style.borderColor='rgba(0, 255, 65, 0.8)'; this.style.boxShadow='0 0 15px rgba(0, 255, 65, 0.5), 0 0 30px rgba(0, 255, 65, 0.2)';" onmouseout="this.style.borderColor='rgba(0, 255, 65, 0.6)'; this.style.boxShadow='0 0 10px rgba(0, 255, 65, 0.3), 0 0 20px rgba(0, 255, 65, 0.1)';">VIEW STORY</a>
             </div>
         </div>
     `;
@@ -2695,6 +2834,9 @@ async function init() {
     }
 }
 
+/**
+ * Initialize 3D reel navigation with position tracking
+ */
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

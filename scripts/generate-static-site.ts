@@ -582,7 +582,7 @@ async function generateAllPages(): Promise<void> {
         // Generate homepage (index.html)
         console.log('Generating homepage...');
         const homepageContent = `
-            <div class="content-area-title">▶ RECENT.LOGS</div>
+            <div class="content-area-title terminal-style"><span class="glitch-text" data-text="RECENT.LOGS">RECENT.LOGS</span></div>
             <div class="post-list" id="recent-logs-list">
                 <!-- Post cards will be inserted here by static-site.js -->
             </div>

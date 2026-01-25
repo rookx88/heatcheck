@@ -108,6 +108,139 @@ export function getShortTeamName(fullName: string): string {
     return lastWord;
 }
 
+/**
+ * Get 3-letter acronym for a team name
+ * Returns the standard abbreviation used in sports (e.g., "LAL" for "Los Angeles Lakers")
+ */
+export function getTeamAcronym(fullName: string, league?: string): string {
+    if (!fullName) return '';
+    
+    const trimmed = fullName.trim();
+    if (!trimmed) return '';
+    
+    // Normalize for matching (case-insensitive)
+    const normalized = trimmed.toLowerCase();
+    
+    // NBA abbreviations
+    const nbaAbbrev: Record<string, string> = {
+        'atlanta hawks': 'ATL',
+        'brooklyn nets': 'BKN',
+        'boston celtics': 'BOS',
+        'charlotte hornets': 'CHA',
+        'chicago bulls': 'CHI',
+        'cleveland cavaliers': 'CLE',
+        'dallas mavericks': 'DAL',
+        'denver nuggets': 'DEN',
+        'detroit pistons': 'DET',
+        'golden state warriors': 'GSW',
+        'houston rockets': 'HOU',
+        'indiana pacers': 'IND',
+        'los angeles clippers': 'LAC',
+        'los angeles lakers': 'LAL',
+        'memphis grizzlies': 'MEM',
+        'miami heat': 'MIA',
+        'milwaukee bucks': 'MIL',
+        'minnesota timberwolves': 'MIN',
+        'new orleans pelicans': 'NOP',
+        'new york knicks': 'NYK',
+        'oklahoma city thunder': 'OKC',
+        'orlando magic': 'ORL',
+        'philadelphia 76ers': 'PHI',
+        'phoenix suns': 'PHX',
+        'portland trail blazers': 'POR',
+        'sacramento kings': 'SAC',
+        'san antonio spurs': 'SAS',
+        'toronto raptors': 'TOR',
+        'utah jazz': 'UTA',
+        'washington wizards': 'WAS',
+    };
+    
+    // NFL abbreviations
+    const nflAbbrev: Record<string, string> = {
+        'arizona cardinals': 'ARI',
+        'atlanta falcons': 'ATL',
+        'baltimore ravens': 'BAL',
+        'buffalo bills': 'BUF',
+        'carolina panthers': 'CAR',
+        'chicago bears': 'CHI',
+        'cincinnati bengals': 'CIN',
+        'cleveland browns': 'CLE',
+        'dallas cowboys': 'DAL',
+        'denver broncos': 'DEN',
+        'detroit lions': 'DET',
+        'green bay packers': 'GB',
+        'houston texans': 'HOU',
+        'indianapolis colts': 'IND',
+        'jacksonville jaguars': 'JAX',
+        'kansas city chiefs': 'KC',
+        'las vegas raiders': 'LV',
+        'los angeles chargers': 'LAC',
+        'los angeles rams': 'LAR',
+        'miami dolphins': 'MIA',
+        'minnesota vikings': 'MIN',
+        'new england patriots': 'NE',
+        'new orleans saints': 'NO',
+        'new york giants': 'NYG',
+        'new york jets': 'NYJ',
+        'philadelphia eagles': 'PHI',
+        'pittsburgh steelers': 'PIT',
+        'san francisco 49ers': 'SF',
+        'seattle seahawks': 'SEA',
+        'tampa bay buccaneers': 'TB',
+        'tennessee titans': 'TEN',
+        'washington commanders': 'WAS',
+    };
+    
+    // EPL abbreviations (common teams)
+    const eplAbbrev: Record<string, string> = {
+        'arsenal': 'ARS',
+        'aston villa': 'AVL',
+        'bournemouth': 'BOU',
+        'brentford': 'BRE',
+        'brighton & hove albion': 'BHA',
+        'brighton': 'BHA',
+        'burnley': 'BUR',
+        'chelsea': 'CHE',
+        'crystal palace': 'CRY',
+        'everton': 'EVE',
+        'fulham': 'FUL',
+        'liverpool': 'LIV',
+        'luton town': 'LUT',
+        'manchester city': 'MCI',
+        'manchester united': 'MUN',
+        'newcastle united': 'NEW',
+        'nottingham forest': 'NFO',
+        'sheffield united': 'SHU',
+        'tottenham hotspur': 'TOT',
+        'west ham united': 'WHU',
+        'wolverhampton wanderers': 'WOL',
+    };
+    
+    // Try exact match first
+    if (nbaAbbrev[normalized]) return nbaAbbrev[normalized];
+    if (nflAbbrev[normalized]) return nflAbbrev[normalized];
+    if (eplAbbrev[normalized]) return eplAbbrev[normalized];
+    
+    // Try league-specific lookup
+    if (league) {
+        const leagueUpper = league.toUpperCase();
+        if (leagueUpper === 'NBA' && nbaAbbrev[normalized]) return nbaAbbrev[normalized];
+        if (leagueUpper === 'NFL' && nflAbbrev[normalized]) return nflAbbrev[normalized];
+        if ((leagueUpper === 'EPL' || leagueUpper === 'PREMIER LEAGUE') && eplAbbrev[normalized]) return eplAbbrev[normalized];
+    }
+    
+    // Fallback: generate from first letters of words (up to 3)
+    const words = trimmed.split(/\s+/).filter(w => w.length > 0);
+    if (words.length === 1) {
+        // Single word: take first 3 letters, uppercase
+        return words[0].substring(0, 3).toUpperCase();
+    }
+    
+    // Multiple words: take first letter of first 3 words
+    const acronym = words.slice(0, 3).map(w => w[0]).join('').toUpperCase();
+    return acronym.length >= 3 ? acronym.substring(0, 3) : acronym.padEnd(3, 'X');
+}
+
 
 
 

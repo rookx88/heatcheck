@@ -1,7 +1,7 @@
 import { generateBaseHtml, BaseTemplateOptions } from './base-template';
 import { markdownToHtml } from '../utils/markdown-converter';
 import { escapeHtml } from '../utils/html-escape';
-import { formatDateISO, normalizeLeague, getShortTeamName } from '../utils/date-formatter';
+import { formatDateISO, normalizeLeague, getShortTeamName, getTeamAcronym } from '../utils/date-formatter';
 import { generateSlug, generateNarrativeSlug, generateMatchupSlug, generatePredictionSlug, extractNarrativeKeywords } from '../utils/slug-generator';
 
 export interface HeatcheckPost {
@@ -216,7 +216,7 @@ export function generateArticlePage(
         ).join('');
         
         return `
-            <div style="padding: 0.75rem; background: ${isActive ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.3)'}; border: 1px solid ${isActive ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.1)'}; border-left: 3px solid ${isActive ? 'rgba(248, 66, 66, 0.6)' : 'rgba(255, 255, 255, 0.15)'}; font-family: 'Courier New', monospace; font-size: 0.8rem;">
+            <div style="padding: 0.75rem; background: ${isActive ? 'rgba(0, 255, 65, 0.1)' : 'rgba(0, 20, 10, 0.3)'}; border: 1px solid ${isActive ? 'rgba(0, 255, 65, 0.5)' : 'rgba(0, 255, 65, 0.2)'}; border-left: 3px solid ${isActive ? 'rgba(0, 255, 65, 0.8)' : 'rgba(0, 255, 65, 0.3)'}; font-family: 'Courier New', monospace; font-size: 0.8rem;">
                 <div style="margin-bottom: 0.5rem; color: ${isActive ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.7)'}; font-size: 0.85rem; font-weight: bold; text-transform: uppercase;">
                     ${isActive ? '&gt; [ACTIVE]' : '&gt;'} ${escapeHtml(card.title)}
                 </div>
@@ -331,10 +331,10 @@ export function generateArticlePage(
             const left = escapeHtml(parts[0]);
             const right = escapeHtml(parts.slice(1).join(' | '));
 
-            const base = 'padding:0.22rem 0.35rem; border-radius:8px; border:1px solid rgba(255,255,255,0.10);';
+            const base = 'padding:0.22rem 0.35rem; border-radius:8px; border:1px solid rgba(0,255,65,0.20);';
             const win = 'background:rgba(0,255,65,0.10); border:1px solid rgba(0,255,65,0.28); color:rgba(255,255,255,0.92); font-weight:900; box-shadow:0 0 12px rgba(0,255,65,0.10);';
-            const lose = 'background:transparent; border:1px solid rgba(255,255,255,0.08); color:rgba(255,255,255,0.72); font-weight:700;';
-            const even = 'background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.10); color:rgba(255,255,255,0.80); font-weight:800;';
+            const lose = 'background:transparent; border:1px solid rgba(0,255,65,0.15); color:rgba(255,255,255,0.72); font-weight:700;';
+            const even = 'background:rgba(0,255,65,0.05); border:1px solid rgba(0,255,65,0.20); color:rgba(255,255,255,0.80); font-weight:800;';
 
             const leftStyle = base + (winner === 'A' ? win : winner === 'B' ? lose : even);
             const rightStyle = base + (winner === 'B' ? win : winner === 'A' ? lose : even);
@@ -1033,13 +1033,26 @@ export function generateArticlePage(
                 section[aria-label="Temperature Check"] button {
                     display: none !important;
                 }
+                /* Show mobile matchup titles with acronyms, hide full names */
+                .matchup-title-full {
+                    display: none !important;
+                }
+                .matchup-title-mobile {
+                    display: inline !important;
+                }
+                .matchup-info-full {
+                    display: none !important;
+                }
+                .matchup-info-mobile {
+                    display: inline !important;
+                }
             }
         </style>
         ${breadcrumbHtml}
         <article class="article-content-grid" style="display: grid; grid-template-columns: 2fr 1fr; grid-template-rows: auto 1fr; gap: 0.5rem; padding: 0.5rem;">
             <!-- Left Column: Main Article -->
-            <section class="article-main-column" style="grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden;">
-                <div style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+            <section class="article-main-column" style="grid-column: 1; grid-row: 1 / -1; display: flex; flex-direction: column; background: rgba(0, 20, 10, 0.4); border: 1px solid rgba(0, 255, 65, 0.4); box-shadow: inset 0 0 20px rgba(0, 255, 65, 0.08), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden;">
+                <div class="main-document-header terminal-style" style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(255, 255, 255, 0.15); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
                     <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.5); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);"></div>
                     <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.5); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.3);"></div>
                     <div style="width: 8px; height: 8px; background: rgba(255, 255, 255, 0.6); border-radius: 50%; box-shadow: 0 0 8px rgba(255, 255, 255, 0.4);"></div>
@@ -1047,19 +1060,25 @@ export function generateArticlePage(
                 </div>
                 <div style="flex: 1; overflow-y: auto; padding: 1.5rem; font-family: 'Courier New', monospace; color: rgba(255, 255, 255, 0.85); font-size: 0.95rem; line-height: 1.8; scrollbar-width: none; -ms-overflow-style: none;">
                     <style>.main-article-content::-webkit-scrollbar { display: none; }</style>
-                    <header style="margin-bottom: 2rem; border-bottom: 1px dashed rgba(255, 255, 255, 0.3); padding-bottom: 1rem;">
-                        <h1 style="color: rgba(255, 255, 255, 0.95); font-size: 1.3rem; margin-bottom: 0.5rem; font-weight: bold; line-height: 1.3;">${escapeHtml(post.storyType === 'heat_article_v3' ? `${matchupMeta} Preview` : post.websiteStory.headline)}</h1>
-                        ${hasEdge ? `<div style="margin-bottom: 0.75rem;"><button onclick="document.getElementById('heatchecks-edge-section')?.scrollIntoView({behavior: 'smooth', block: 'start'}); return false;" style="display: inline-block; padding: 0.4rem 0.8rem; background: #000; border: 1px solid #00ff41; color: #00ff41; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.9rem; cursor: pointer; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(0,255,65,0.1)'; this.style.borderColor='#00ff41';" onmouseout="this.style.background='#000'; this.style.borderColor='#00ff41';">See Prediction/Stats</button></div>` : ''}
+                    <header style="margin-bottom: 2rem; border-bottom: 1px dashed rgba(0, 255, 65, 0.4); padding-bottom: 1rem;">
+                        <h1 style="color: rgba(255, 255, 255, 0.95); font-size: 1.3rem; margin-bottom: 0.5rem; font-weight: bold; line-height: 1.3;">
+                            <span class="matchup-title-full">${escapeHtml(post.storyType === 'heat_article_v3' ? `${matchupMeta} Preview` : post.websiteStory.headline)}</span>
+                            <span class="matchup-title-mobile" style="display: none;">${escapeHtml(post.storyType === 'heat_article_v3' ? `${getTeamAcronym(post.teamA || '', post.league)} vs ${getTeamAcronym(post.teamB || '', post.league)} Preview` : post.websiteStory.headline)}</span>
+                        </h1>
+                        <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.75rem; flex-wrap: wrap;">
+                            ${hasEdge ? `<button onclick="document.getElementById('heatchecks-edge-section')?.scrollIntoView({behavior: 'smooth', block: 'start'}); return false;" style="display: inline-block; padding: 0.4rem 0.8rem; background: #000; border: 1px solid #00ff41; color: #00ff41; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.9rem; cursor: pointer; transition: all 0.3s ease; white-space: nowrap;" onmouseover="this.style.background='rgba(0,255,65,0.1)'; this.style.borderColor='#00ff41';" onmouseout="this.style.background='#000'; this.style.borderColor='#00ff41';">See Prediction/Stats</button>` : ''}
+                            <a href="/" class="article-back-btn" style="display: inline-block; padding: 0.4rem 0.8rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(248, 66, 66, 0.5); color: rgba(248, 66, 66, 0.9); text-decoration: none; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.9rem; transition: all 0.3s ease; white-space: nowrap; line-height: 1;" onmouseover="this.style.background='rgba(248,66,66,0.1)'; this.style.borderColor='rgba(248,66,66,0.7)'; this.style.color='#f84242';" onmouseout="this.style.background='rgba(0,0,0,0.3)'; this.style.borderColor='rgba(248,66,66,0.5)'; this.style.color='rgba(248,66,66,0.9)';">← BACK</a>
+                        </div>
                         <p style="color: rgba(255, 255, 255, 0.6); font-size: 0.85rem; margin-bottom: 0.5rem;">// ${escapeHtml(post.websiteStory.dek)}</p>
-                        <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.8rem; font-family: 'Courier New', monospace;">&gt; MATCHUP: ${escapeHtml(post.league.toUpperCase())} | ${escapeHtml(post.teamA)} vs ${escapeHtml(post.teamB)} | DATE: <time datetime="${post.matchupScheduledDate || post.createdAt}">${escapeHtml(date)}</time></div>
-                        <nav aria-label="Article navigation" style="margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px dashed rgba(255, 255, 255, 0.15);">
-                            <a href="/" class="article-back-btn" style="display: inline-block; padding: 0.3rem 0.6rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(248, 66, 66, 0.5); color: rgba(248, 66, 66, 0.9); text-decoration: none; font-family: 'Courier New', monospace; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; font-size: 0.75rem; transition: all 0.3s ease;" onmouseover="this.style.background='rgba(248,66,66,0.1)'; this.style.borderColor='rgba(248,66,66,0.7)'; this.style.color='#f84242';" onmouseout="this.style.background='rgba(0,0,0,0.3)'; this.style.borderColor='rgba(248,66,66,0.5)'; this.style.color='rgba(248,66,66,0.9)';">← BACK</a>
-                        </nav>
+                        <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.8rem; font-family: 'Courier New', monospace;">
+                            <span class="matchup-info-full">&gt; MATCHUP: ${escapeHtml(post.league.toUpperCase())} | ${escapeHtml(post.teamA)} vs ${escapeHtml(post.teamB)} | DATE: <time datetime="${post.matchupScheduledDate || post.createdAt}">${escapeHtml(date)}</time></span>
+                            <span class="matchup-info-mobile" style="display: none;">&gt; MATCHUP: ${escapeHtml(post.league.toUpperCase())} | ${escapeHtml(getTeamAcronym(post.teamA || '', post.league))} vs ${escapeHtml(getTeamAcronym(post.teamB || '', post.league))} | DATE: <time datetime="${post.matchupScheduledDate || post.createdAt}">${escapeHtml(date)}</time></span>
+                        </div>
                     </header>
                     ${imagePath ? `
-                    <div style="margin-bottom: 2rem; border: 1px solid rgba(255, 255, 255, 0.2); padding: 0.5rem; background: rgba(255, 255, 255, 0.03);">
+                    <div style="margin-bottom: 2rem; border: 1px solid rgba(0, 255, 65, 0.4); padding: 0.5rem; background: rgba(0, 255, 65, 0.05);">
                         <div style="color: rgba(255, 255, 255, 0.7); font-size: 0.75rem; margin-bottom: 0.5rem; font-family: 'Courier New', monospace; font-weight: bold;">&gt; IMAGE_ASSET [LOADED]</div>
-                        <img src="${imagePath}" alt="${escapeHtml(`${matchupMeta} ${post.league} ${narrativeKeyword} - ${post.websiteStory.headline} - HeatChecks Analysis`)}" class="heatcheck-header-image" style="width: 100%; max-height: 400px; object-fit: contain; display: block; border: 1px dashed rgba(255, 255, 255, 0.2);">
+                        <img src="${imagePath}" alt="${escapeHtml(`${matchupMeta} ${post.league} ${narrativeKeyword} - ${post.websiteStory.headline} - HeatChecks Analysis`)}" class="heatcheck-header-image" style="width: 100%; max-height: 400px; object-fit: contain; display: block; border: 1px dashed rgba(0, 255, 65, 0.3);">
                     </div>
                     ` : ''}
                     <div style="color: rgba(255, 255, 255, 0.7); white-space: normal; overflow-wrap: anywhere; word-break: break-word;">
@@ -1077,8 +1096,8 @@ export function generateArticlePage(
             <aside class="article-sidebar-column" style="grid-column: 2; grid-row: 1 / -1; display: flex; flex-direction: column; gap: 0.5rem; overflow-y: auto; overflow-x: hidden;">
                 ${temperatureCheckHtml}
                 <!-- Narrative Rack -->
-                <section aria-label="Narrative Analysis" style="flex: 1 1 50%; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden; min-height: 0;">
-                    <div style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(248, 66, 66, 0.3); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                <section aria-label="Narrative Analysis" style="flex: 1 1 50%; display: flex; flex-direction: column; background: rgba(0, 20, 10, 0.4); border: 1px solid rgba(0, 255, 65, 0.4); box-shadow: inset 0 0 20px rgba(0, 255, 65, 0.08), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden; min-height: 0;">
+                    <div style="padding: 0.5rem 0.75rem; background: rgba(0, 255, 65, 0.08); border-bottom: 1px solid rgba(0, 255, 65, 0.4); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
                         <div style="width: 6px; height: 6px; background: rgba(248, 66, 66, 0.8); border-radius: 50%; box-shadow: 0 0 6px rgba(248, 66, 66, 0.5);"></div>
                         <div style="color: rgba(255, 255, 255, 0.9); font-size: 0.75rem; font-family: 'Courier New', monospace; letter-spacing: 0.1em; font-weight: bold;">NARRATIVE_RACK [SLOT_ACTIVE]</div>
                     </div>
@@ -1089,8 +1108,8 @@ export function generateArticlePage(
                 </section>
                 
                 <!-- Evidence Board -->
-                <section aria-label="Evidence and Quotes" style="flex: 1 1 50%; display: flex; flex-direction: column; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(255, 255, 255, 0.2); box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden; min-height: 0;">
-                    <div style="padding: 0.5rem 0.75rem; background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(248, 66, 66, 0.3); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                <section aria-label="Evidence and Quotes" style="flex: 1 1 50%; display: flex; flex-direction: column; background: rgba(0, 20, 10, 0.4); border: 1px solid rgba(0, 255, 65, 0.4); box-shadow: inset 0 0 20px rgba(0, 255, 65, 0.08), 0 0 30px rgba(0, 0, 0, 0.3); -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); overflow: hidden; min-height: 0;">
+                    <div style="padding: 0.5rem 0.75rem; background: rgba(0, 255, 65, 0.08); border-bottom: 1px solid rgba(0, 255, 65, 0.4); display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
                         <div style="width: 6px; height: 6px; background: rgba(248, 66, 66, 0.8); border-radius: 50%; box-shadow: 0 0 6px rgba(248, 66, 66, 0.5);"></div>
                         <div style="color: rgba(255, 255, 255, 0.9); font-size: 0.75rem; font-family: 'Courier New', monospace; letter-spacing: 0.1em; font-weight: bold;">EVIDENCE_RACK [DATA_STREAM]</div>
                     </div>
@@ -1098,13 +1117,13 @@ export function generateArticlePage(
                         <style>div[style*="overflow-y"]::-webkit-scrollbar { display: none; }</style>
                         ${displayQuotes.length > 0 ? `
                         <div>
-                            <div style="color: rgba(248, 66, 66, 0.9); font-size: 0.75rem; margin-bottom: 0.5rem; font-weight: bold; border-bottom: 1px dashed rgba(248, 66, 66, 0.3); padding-bottom: 0.25rem;">&gt; QUOTE_LOG [ENTRIES: ${displayQuotes.length}]</div>
+                            <div style="color: rgba(0, 255, 65, 0.9); font-size: 0.75rem; margin-bottom: 0.5rem; font-weight: bold; border-bottom: 1px dashed rgba(0, 255, 65, 0.4); padding-bottom: 0.25rem;">&gt; QUOTE_LOG [ENTRIES: ${displayQuotes.length}]</div>
                             ${quotesHtml}
                         </div>
                         ` : ''}
                         ${timelineEvents.length > 0 ? `
                         <div style="margin-top: ${displayQuotes.length > 0 ? '0.5rem' : '0'};">
-                            <div style="color: rgba(248, 66, 66, 0.9); font-size: 0.75rem; margin-bottom: 0.5rem; font-weight: bold; border-bottom: 1px dashed rgba(248, 66, 66, 0.3); padding-bottom: 0.25rem;">&gt; TIMELINE_LOG [ENTRIES: ${timelineEvents.length}]</div>
+                            <div style="color: rgba(0, 255, 65, 0.9); font-size: 0.75rem; margin-bottom: 0.5rem; font-weight: bold; border-bottom: 1px dashed rgba(0, 255, 65, 0.4); padding-bottom: 0.25rem;">&gt; TIMELINE_LOG [ENTRIES: ${timelineEvents.length}]</div>
                             ${timelineHtml}
                         </div>
                         ` : ''}
@@ -1117,9 +1136,9 @@ export function generateArticlePage(
         <!-- Internal Navigation & Related Articles -->
         <nav aria-label="Internal navigation" style="margin-top: 2rem; padding: 1rem; background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.2);">
             <div style="color: rgba(255, 255, 255, 0.7); font-size: 0.85rem; font-family: 'Courier New', monospace; margin-bottom: 0.5rem;">&gt; INTERNAL_NAVIGATION</div>
-            <a href="/${league}/" style="color: rgba(255, 255, 255, 0.85); text-decoration: none; margin-right: 1rem; padding: 0.3rem 0.6rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.2); font-family: 'Courier New', monospace; font-size: 0.8rem; transition: all 0.2s ease; display: inline-block; margin-bottom: 0.5rem;" onmouseover="this.style.background='rgba(248, 66, 66, 0.2)'; this.style.borderColor='rgba(248, 66, 66, 0.5)'; this.style.color='#f84242';" onmouseout="this.style.background='rgba(0, 0, 0, 0.3)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.color='rgba(255, 255, 255, 0.85)';">${post.league.toUpperCase()} Hub</a>
-            <a href="/${league}/${date}/" style="color: rgba(255, 255, 255, 0.85); text-decoration: none; margin-right: 1rem; padding: 0.3rem 0.6rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.2); font-family: 'Courier New', monospace; font-size: 0.8rem; transition: all 0.2s ease; display: inline-block; margin-bottom: 0.5rem;" onmouseover="this.style.background='rgba(248, 66, 66, 0.2)'; this.style.borderColor='rgba(248, 66, 66, 0.5)'; this.style.color='#f84242';" onmouseout="this.style.background='rgba(0, 0, 0, 0.3)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.color='rgba(255, 255, 255, 0.85)';">${date}</a>
-            <a href="/archive/" style="color: rgba(255, 255, 255, 0.85); text-decoration: none; padding: 0.3rem 0.6rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.2); font-family: 'Courier New', monospace; font-size: 0.8rem; transition: all 0.2s ease; display: inline-block; margin-bottom: 0.5rem;" onmouseover="this.style.background='rgba(248, 66, 66, 0.2)'; this.style.borderColor='rgba(248, 66, 66, 0.5)'; this.style.color='#f84242';" onmouseout="this.style.background='rgba(0, 0, 0, 0.3)'; this.style.borderColor='rgba(255, 255, 255, 0.2)'; this.style.color='rgba(255, 255, 255, 0.85)';">Archive</a>
+            <a href="/${league}/" style="color: rgba(255, 255, 255, 0.85); text-decoration: none; margin-right: 1rem; padding: 0.3rem 0.6rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(0, 255, 65, 0.4); font-family: 'Courier New', monospace; font-size: 0.8rem; transition: all 0.2s ease; display: inline-block; margin-bottom: 0.5rem;" onmouseover="this.style.background='rgba(0, 255, 65, 0.15)'; this.style.borderColor='rgba(0, 255, 65, 0.7)'; this.style.color='#00ff41';" onmouseout="this.style.background='rgba(0, 0, 0, 0.3)'; this.style.borderColor='rgba(0, 255, 65, 0.4)'; this.style.color='rgba(255, 255, 255, 0.85)';">${post.league.toUpperCase()} Hub</a>
+            <a href="/${league}/${date}/" style="color: rgba(255, 255, 255, 0.85); text-decoration: none; margin-right: 1rem; padding: 0.3rem 0.6rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(0, 255, 65, 0.4); font-family: 'Courier New', monospace; font-size: 0.8rem; transition: all 0.2s ease; display: inline-block; margin-bottom: 0.5rem;" onmouseover="this.style.background='rgba(0, 255, 65, 0.15)'; this.style.borderColor='rgba(0, 255, 65, 0.7)'; this.style.color='#00ff41';" onmouseout="this.style.background='rgba(0, 0, 0, 0.3)'; this.style.borderColor='rgba(0, 255, 65, 0.4)'; this.style.color='rgba(255, 255, 255, 0.85)';">${date}</a>
+            <a href="/archive/" style="color: rgba(255, 255, 255, 0.85); text-decoration: none; padding: 0.3rem 0.6rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(0, 255, 65, 0.4); font-family: 'Courier New', monospace; font-size: 0.8rem; transition: all 0.2s ease; display: inline-block; margin-bottom: 0.5rem;" onmouseover="this.style.background='rgba(0, 255, 65, 0.15)'; this.style.borderColor='rgba(0, 255, 65, 0.7)'; this.style.color='#00ff41';" onmouseout="this.style.background='rgba(0, 0, 0, 0.3)'; this.style.borderColor='rgba(0, 255, 65, 0.4)'; this.style.color='rgba(255, 255, 255, 0.85)';">Archive</a>
         </nav>
         ${relatedPosts.length > 0 ? `
         <aside aria-label="Related articles" style="margin-top: 2rem; padding: 1rem; background: rgba(0, 0, 0, 0.3); border: 1px solid rgba(255, 255, 255, 0.1);">

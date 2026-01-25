@@ -44,7 +44,7 @@ export function generateAboutPage(
     const endIdx = startIdx + postsPerPage;
     const latestPosts = posts.slice(startIdx, endIdx);
     
-    let bodyContent = `<div class="content-area-title">▶ RECENT.LOGS</div>`;
+    let bodyContent = `<div class="content-area-title terminal-style"><span class="glitch-text" data-text="RECENT.LOGS">RECENT.LOGS</span></div>`;
     bodyContent += `<div class="post-list" id="recent-logs-list">`;
     
     if (latestPosts.length === 0) {
@@ -55,7 +55,7 @@ export function generateAboutPage(
         }
     }
     
-    bodyContent += `</div>`;
+    bodyContent += `</div></div>`;
     
     // Embed posts data for JavaScript (same format as homepage)
     const postsJson = JSON.stringify(posts.map(post => ({
