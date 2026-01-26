@@ -189,6 +189,37 @@ body {
         0 0 20px rgba(255, 255, 255, 0.1);
     -webkit-text-stroke: 1px #000000;
     text-stroke: 1px #000000;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Twitter/X icon link styling */
+.content-area-title .twitter-icon-link {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(255, 255, 255, 0.7);
+    text-decoration: none;
+    transition: all 0.2s ease;
+    margin-left: auto;
+    padding: 0.25rem;
+    border-radius: 4px;
+    flex-shrink: 0;
+    z-index: 10;
+}
+
+.content-area-title .twitter-icon-link:hover,
+.content-area-title .twitter-icon-link:focus {
+    color: rgba(255, 255, 255, 1);
+    background: rgba(255, 255, 255, 0.1);
+    outline: none;
+}
+
+.content-area-title .twitter-icon-link svg {
+    width: 20px;
+    height: 20px;
+    display: block;
 }
 
 /* Terminal prompt with pulse and glitch - only for terminal-style titles */
@@ -1629,6 +1660,25 @@ body {
         /* Ensure glitch effects work on mobile */
         -webkit-text-stroke: 1px #000000;
         text-stroke: 1px #000000;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+    }
+
+    /* Twitter icon on mobile */
+    .content-area-title .twitter-icon-link {
+        margin-left: auto !important;
+        padding: 0.3rem !important;
+        min-width: 44px !important;
+        min-height: 44px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    .content-area-title .twitter-icon-link svg {
+        width: 22px !important;
+        height: 22px !important;
     }
     
     /* Brighter glitch text colors for mobile */
@@ -1768,6 +1818,20 @@ body {
         border: 1px solid #00ff41 !important;
         border-left: 4px solid #00ff41 !important;
         border-radius: 12px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+    }
+
+    .content-area-title .twitter-icon-link {
+        padding: 0.2rem !important;
+        min-width: 36px !important;
+        min-height: 36px !important;
+    }
+
+    .content-area-title .twitter-icon-link svg {
+        width: 18px !important;
+        height: 18px !important;
     }
 
     .nav-link, .crawler-nav a {
