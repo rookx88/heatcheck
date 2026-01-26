@@ -29,6 +29,7 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { generatePredictionSlug } from './scripts/utils/slug-generator';
 
 const execAsync = promisify(exec);
 
@@ -826,6 +827,53 @@ app.put('/api/posts/:id', apiKeyAuth, async (req: express.Request, res: express.
             updatedPostDataWithSlugs.heatCheckData.article = {};
         }
         updatedPostDataWithSlugs.heatCheckData.article.long_form_markdown = updatedPostDataWithSlugs.websiteStory.theBackstory;
+    }
+    
+    // Auto-generate SEO slug in prediction format when publishing (if not already in that format)
+    const isNowPublished = updatedPostDataWithSlugs.status === 'published';
+    const statusChangedToPublished = isNowPublished && previousStatus !== 'published';
+    
+    if (statusChangedToPublished) {
+        // Ensure websiteStory.seo exists
+        if (!updatedPostDataWithSlugs.websiteStory) {
+            updatedPostDataWithSlugs.websiteStory = {} as any;
+        }
+        if (!updatedPostDataWithSlugs.websiteStory.seo) {
+            updatedPostDataWithSlugs.websiteStory.seo = { slug: '', metaTitle: '', metaDescription: '' };
+        }
+        
+        const currentSlug = updatedPostDataWithSlugs.websiteStory.seo.slug || '';
+        const isAlreadyPredictionFormat = currentSlug.includes('-prediction-preview-') && currentSlug.match(/\d{4}-\d{2}-\d{2}$/);
+        
+        // Only generate if slug is missing or not in prediction format
+        if (!currentSlug || !isAlreadyPredictionFormat) {
+            const teamA = updatedPostDataWithSlugs.teamA || '';
+            const teamB = updatedPostDataWithSlugs.teamB || '';
+            const gameDate = updatedPostDataWithSlugs.matchupScheduledDate || updatedPostDataWithSlugs.createdAt || new Date().toISOString();
+            
+            if (teamA && teamB) {
+                const newSlug = generatePredictionSlug(teamA, teamB, gameDate);
+                console.log(`[SEO Slug] Auto-generating prediction slug for published post: ${newSlug}`);
+                
+                // Track old slug if it exists
+                if (currentSlug && currentSlug !== newSlug) {
+                    const previousSlugs = updatedPostDataWithSlugs.websiteStory.seo.previousSlugs || [];
+                    if (!previousSlugs.includes(currentSlug)) {
+                        updatedPostDataWithSlugs.websiteStory.seo.previousSlugs = [...previousSlugs, currentSlug];
+                    }
+                }
+                
+                updatedPostDataWithSlugs.websiteStory.seo.slug = newSlug;
+                
+                // Generate basic meta title and description if missing
+                if (!updatedPostDataWithSlugs.websiteStory.seo.metaTitle) {
+                    updatedPostDataWithSlugs.websiteStory.seo.metaTitle = updatedPostDataWithSlugs.websiteStory.headline || '';
+                }
+                if (!updatedPostDataWithSlugs.websiteStory.seo.metaDescription) {
+                    updatedPostDataWithSlugs.websiteStory.seo.metaDescription = updatedPostDataWithSlugs.websiteStory.dek || '';
+                }
+            }
+        }
     }
     
     const updatedPost: HeatcheckPost = {
