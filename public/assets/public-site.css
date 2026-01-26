@@ -179,7 +179,7 @@ body {
     text-align: left;
     position: relative;
     z-index: 150;
-    overflow: hidden;
+    overflow: visible;
     text-shadow: 
         0 0 5px rgba(255, 255, 255, 0.3),
         0 0 10px rgba(255, 255, 255, 0.2);
@@ -194,37 +194,47 @@ body {
     justify-content: space-between;
 }
 
+/* Text wrapper for terminal-style pseudo-elements */
+.content-area-title .content-title-text {
+    flex: 1;
+    position: relative;
+}
+
 /* Twitter/X icon link styling */
 .content-area-title .twitter-icon-link {
     display: flex;
     align-items: center;
     justify-content: center;
-    color: rgba(255, 255, 255, 0.7);
+    color: rgba(255, 255, 255, 0.8);
     text-decoration: none;
     transition: all 0.2s ease;
     margin-left: auto;
-    padding: 0.25rem;
+    padding: 0.25rem 0.5rem;
     border-radius: 4px;
     flex-shrink: 0;
     z-index: 10;
+    position: relative;
+    background: transparent;
 }
 
 .content-area-title .twitter-icon-link:hover,
 .content-area-title .twitter-icon-link:focus {
     color: rgba(255, 255, 255, 1);
-    background: rgba(255, 255, 255, 0.1);
-    outline: none;
+    background: rgba(255, 255, 255, 0.15);
+    outline: 2px solid rgba(255, 255, 255, 0.3);
+    outline-offset: 2px;
 }
 
 .content-area-title .twitter-icon-link svg {
     width: 20px;
     height: 20px;
     display: block;
+    fill: currentColor;
 }
 
 /* Terminal prompt with pulse and glitch - only for terminal-style titles */
-.content-area-title.terminal-style::before,
-.content-area-title:has(.glitch-text)::before {
+.content-area-title.terminal-style .content-title-text::before,
+.content-area-title:has(.glitch-text) .content-title-text::before {
     content: '$ ';
     color: rgba(255, 255, 255, 0.5);
     margin-right: 0.5rem;
@@ -237,8 +247,8 @@ body {
 }
 
 /* Blinking cursor with glitch - only for terminal-style titles */
-.content-area-title.terminal-style::after,
-.content-area-title:has(.glitch-text)::after {
+.content-area-title.terminal-style .content-title-text::after,
+.content-area-title:has(.glitch-text) .content-title-text::after {
     content: '_';
     animation: 
         blink 1s infinite,
@@ -1697,14 +1707,14 @@ body {
     }
     
     /* Brighter prompt and cursor on mobile */
-    .content-area-title.terminal-style::before,
-    .content-area-title:has(.glitch-text)::before {
+    .content-area-title.terminal-style .content-title-text::before,
+    .content-area-title:has(.glitch-text) .content-title-text::before {
         color: rgba(255, 255, 255, 0.8) !important;
         text-shadow: 0 0 12px rgba(255, 255, 255, 0.6) !important;
     }
     
-    .content-area-title.terminal-style::after,
-    .content-area-title:has(.glitch-text)::after {
+    .content-area-title.terminal-style .content-title-text::after,
+    .content-area-title:has(.glitch-text) .content-title-text::after {
         color: rgba(255, 255, 255, 1) !important;
     }
 
