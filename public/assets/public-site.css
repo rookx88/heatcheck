@@ -179,7 +179,7 @@ body {
     text-align: left;
     position: relative;
     z-index: 150;
-    overflow: visible;
+    overflow: hidden;
     text-shadow: 
         0 0 5px rgba(255, 255, 255, 0.3),
         0 0 10px rgba(255, 255, 255, 0.2);
@@ -189,52 +189,74 @@ body {
         0 0 20px rgba(255, 255, 255, 0.1);
     -webkit-text-stroke: 1px #000000;
     text-stroke: 1px #000000;
+}
+
+/* Twitter/X icon in navigation crawler (desktop) */
+.crawler-nav .twitter-icon-link {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 0.5rem;
+    color: #fff;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    text-shadow: 1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+    -webkit-text-stroke: 1px #000;
 }
 
-/* Text wrapper for terminal-style pseudo-elements */
-.content-area-title .content-title-text {
-    flex: 1;
-    position: relative;
+.crawler-nav .twitter-icon-link:hover,
+.crawler-nav .twitter-icon-link:focus {
+    color: #f84242;
+    transform: translateY(-3px);
+    text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000;
+    outline: none;
 }
 
-/* Twitter/X icon link styling */
-.content-area-title .twitter-icon-link {
-    display: flex;
+.crawler-nav .twitter-icon-link svg {
+    width: 18px;
+    height: 18px;
+    fill: currentColor;
+    flex-shrink: 0;
+}
+
+/* Mobile Twitter icon - fixed under hamburger menu */
+.mobile-twitter-icon {
+    display: none; /* Hidden by default, shown on mobile via media query */
+    position: fixed;
+    top: 60px;
+    left: 1rem;
+    z-index: 1501;
+    width: 44px;
+    height: 44px;
     align-items: center;
     justify-content: center;
-    color: rgba(255, 255, 255, 0.8);
+    background: rgba(0, 0, 0, 0.8);
+    border: 2px solid rgba(255, 255, 255, 0.3);
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.9);
     text-decoration: none;
     transition: all 0.2s ease;
-    margin-left: auto;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    flex-shrink: 0;
-    z-index: 10;
-    position: relative;
-    background: transparent;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
 }
 
-.content-area-title .twitter-icon-link:hover,
-.content-area-title .twitter-icon-link:focus {
+.mobile-twitter-icon:hover,
+.mobile-twitter-icon:focus {
     color: rgba(255, 255, 255, 1);
-    background: rgba(255, 255, 255, 0.15);
-    outline: 2px solid rgba(255, 255, 255, 0.3);
-    outline-offset: 2px;
+    background: rgba(0, 0, 0, 0.95);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: scale(1.05);
+    outline: none;
 }
 
-.content-area-title .twitter-icon-link svg {
+.mobile-twitter-icon svg {
     width: 20px;
     height: 20px;
-    display: block;
     fill: currentColor;
 }
 
 /* Terminal prompt with pulse and glitch - only for terminal-style titles */
-.content-area-title.terminal-style .content-title-text::before,
-.content-area-title:has(.glitch-text) .content-title-text::before {
+.content-area-title.terminal-style::before,
+.content-area-title:has(.glitch-text)::before {
     content: '$ ';
     color: rgba(255, 255, 255, 0.5);
     margin-right: 0.5rem;
@@ -247,8 +269,8 @@ body {
 }
 
 /* Blinking cursor with glitch - only for terminal-style titles */
-.content-area-title.terminal-style .content-title-text::after,
-.content-area-title:has(.glitch-text) .content-title-text::after {
+.content-area-title.terminal-style::after,
+.content-area-title:has(.glitch-text)::after {
     content: '_';
     animation: 
         blink 1s infinite,
@@ -1675,21 +1697,6 @@ body {
         justify-content: space-between !important;
     }
 
-    /* Twitter icon on mobile */
-    .content-area-title .twitter-icon-link {
-        margin-left: auto !important;
-        padding: 0.3rem !important;
-        min-width: 44px !important;
-        min-height: 44px !important;
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-    }
-
-    .content-area-title .twitter-icon-link svg {
-        width: 22px !important;
-        height: 22px !important;
-    }
     
     /* Brighter glitch text colors for mobile */
     .content-area-title .glitch-text::before {
@@ -1707,15 +1714,20 @@ body {
     }
     
     /* Brighter prompt and cursor on mobile */
-    .content-area-title.terminal-style .content-title-text::before,
-    .content-area-title:has(.glitch-text) .content-title-text::before {
+    .content-area-title.terminal-style::before,
+    .content-area-title:has(.glitch-text)::before {
         color: rgba(255, 255, 255, 0.8) !important;
         text-shadow: 0 0 12px rgba(255, 255, 255, 0.6) !important;
     }
     
-    .content-area-title.terminal-style .content-title-text::after,
-    .content-area-title:has(.glitch-text) .content-title-text::after {
+    .content-area-title.terminal-style::after,
+    .content-area-title:has(.glitch-text)::after {
         color: rgba(255, 255, 255, 1) !important;
+    }
+
+    /* Show mobile Twitter icon */
+    .mobile-twitter-icon {
+        display: flex !important;
     }
 
     /* Radar Modal - Hidden on mobile */
@@ -1833,16 +1845,6 @@ body {
         justify-content: space-between !important;
     }
 
-    .content-area-title .twitter-icon-link {
-        padding: 0.2rem !important;
-        min-width: 36px !important;
-        min-height: 36px !important;
-    }
-
-    .content-area-title .twitter-icon-link svg {
-        width: 18px !important;
-        height: 18px !important;
-    }
 
     .nav-link, .crawler-nav a {
         font-size: 0.9rem;
@@ -2421,6 +2423,10 @@ body {
     }
     
     .mobile-heatscan-button {
+        display: none !important;
+    }
+
+    .mobile-twitter-icon {
         display: none !important;
     }
 
