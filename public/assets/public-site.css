@@ -1387,11 +1387,41 @@ body {
     .article-sidebar-column {
         grid-column: 1 !important;
         grid-row: 2 !important;
-        max-height: 500px !important;
+        max-height: none !important;
+        display: flex !important;
+        flex-direction: column !important;
+        gap: 0.5rem !important;
+    }
+
+    /* Hide HeatChecks Edge in main column on mobile */
+    .article-main-column #heatchecks-edge-section {
+        display: none !important;
+    }
+
+    /* Show HeatChecks Edge in sidebar on mobile (after Temperature Check) */
+    .heatchecks-edge-mobile {
+        display: block !important;
+        order: 2 !important;
+    }
+
+    /* Temperature Check should appear first */
+    section[aria-label="Temperature Check"] {
+        order: 1 !important;
+    }
+
+    /* Narrative Rack */
+    section[aria-label="Narrative Analysis"] {
+        order: 3 !important;
+    }
+
+    /* Evidence Board */
+    section[aria-label="Evidence and Quotes"] {
+        order: 4 !important;
     }
 
     /* HeatChecks Edge - Dark green/black border and reduce font size on mobile */
-    #heatchecks-edge-section {
+    #heatchecks-edge-section,
+    .heatchecks-edge-mobile #heatchecks-edge-section {
         border: 2px solid rgba(0, 100, 0, 0.4) !important;
         border-left: 4px solid rgba(0, 100, 0, 0.5) !important;
         border-right: 4px solid rgba(0, 100, 0, 0.5) !important;
@@ -1401,6 +1431,25 @@ body {
             0 4px 20px rgba(0, 0, 0, 0.5) !important;
         backdrop-filter: none !important;
         -webkit-backdrop-filter: none !important;
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+    }
+
+    /* Reorder sidebar components on mobile: Temperature Check first, then Edge, then Narrative Rack, then Evidence Board */
+    .article-sidebar-column section[aria-label="Temperature Check"] {
+        order: 1 !important;
+    }
+
+    .article-sidebar-column .heatchecks-edge-mobile {
+        order: 2 !important;
+    }
+
+    .article-sidebar-column section[aria-label="Narrative Analysis"] {
+        order: 3 !important;
+    }
+
+    .article-sidebar-column section[aria-label="Evidence and Quotes"] {
+        order: 4 !important;
     }
 
     /* Remove backdrop-filter from article sections on mobile */
@@ -1812,6 +1861,16 @@ body {
         border-bottom: 1px dashed rgba(255, 255, 255, 0.3) !important;
     }
     
+    /* Hide mobile edge section on desktop */
+    .heatchecks-edge-mobile {
+        display: none !important;
+    }
+
+    /* Show edge section in main column on desktop */
+    .article-main-column #heatchecks-edge-section {
+        display: block !important;
+    }
+
     /* Restore original HeatChecks Edge section borders on desktop */
     #heatchecks-edge-section {
         border: 2px solid rgba(255, 255, 255, 0.3) !important;
