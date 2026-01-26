@@ -195,7 +195,7 @@ body {
 .crawler-nav .twitter-icon-link {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    justify-content: center;
     color: #fff;
     text-decoration: none;
     transition: all 0.3s ease;
@@ -222,7 +222,7 @@ body {
 .mobile-twitter-icon {
     display: none; /* Hidden by default, shown on mobile via media query */
     position: fixed;
-    top: 60px;
+    top: 90px;
     left: 1rem;
     z-index: 1501;
     width: 44px;
