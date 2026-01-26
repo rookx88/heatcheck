@@ -1978,17 +1978,12 @@ function initMobileRadarModal() {
             return;
         }
         
-        // Check for stored results
-        const storedResults = getStoredRadarResults();
-        
-        if (storedResults && storedResults.todayPosts.length > 0) {
-            showMobileRadarResults(storedResults.todayPosts, false);
-        } else {
-            resetMobileRadarModal();
-        }
-        
+        // Open modal and immediately start scanning (skip initial state)
         mobileModal.classList.add('active');
         document.body.style.overflow = 'hidden'; // Prevent body scroll
+        
+        // Immediately start the scan process (skip initial state)
+        handleMobileScanGames();
     };
     
     const closeMobileModal = () => {
