@@ -964,6 +964,8 @@ function getTeamAcronym(fullName, league) {
         'crystal palace': 'CRY',
         'everton': 'EVE',
         'fulham': 'FUL',
+        'leeds': 'LEE',
+        'leeds united': 'LEE',
         'liverpool': 'LIV',
         'luton town': 'LUT',
         'manchester city': 'MCI',
