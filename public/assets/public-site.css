@@ -1506,6 +1506,11 @@ body {
     .article-sidebar-column .heatchecks-edge-mobile {
         order: 2 !important;
     }
+    
+    /* For v2 articles (no temperature check), make edge section first */
+    .article-sidebar-column:not(:has(section[aria-label="Temperature Check"])) .heatchecks-edge-mobile {
+        order: 1 !important;
+    }
 
     .article-sidebar-column section[aria-label="Narrative Analysis"] {
         order: 3 !important;
