@@ -116,7 +116,7 @@ body {
 
 .nav-link, .crawler-nav a {
     color: #fff;
-    font-size: 0.95rem;
+    font-size: 0.85rem;
     font-weight: 900;
     text-transform: uppercase;
     text-decoration: none;
@@ -134,7 +134,7 @@ body {
 .nav-link[data-league="Bundesliga"],
 .crawler-nav a[data-league="Bundesliga"],
 .league-link[data-league="Bundesliga"] {
-    font-size: 0.8rem;
+    font-size: 0.65rem;
 }
 
 .nav-link:hover, .crawler-nav a:hover {
@@ -1892,7 +1892,7 @@ body {
 @media (min-width: 1025px) {
     /* Ensure navigation links fit on one line in desktop view */
     .nav-link, .crawler-nav a {
-        font-size: 0.95rem !important;
+        font-size: 0.85rem !important;
         white-space: nowrap !important;
     }
     
@@ -1900,7 +1900,7 @@ body {
     .nav-link[data-league="Bundesliga"],
     .crawler-nav a[data-league="Bundesliga"],
     .league-link[data-league="Bundesliga"] {
-        font-size: 0.8rem !important;
+        font-size: 0.65rem !important;
     }
     
     .post-list {

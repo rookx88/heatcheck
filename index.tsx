@@ -3466,16 +3466,70 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
     const [seoRewritePreview, setSeoRewritePreview] = useState<SEORewriteOutput | null>(null);
     const [isGeneratingSEORewrite, setIsGeneratingSEORewrite] = useState(false);
     const [seoRewriteEditable, setSeoRewriteEditable] = useState<SEORewriteOutput | null>(null);
+    
+    // Search/filter state
+    const [searchFilter, setSearchFilter] = useState<string>('');
+    const [leagueFilter, setLeagueFilter] = useState<string>('');
+    const [dateFilter, setDateFilter] = useState<string>('');
 
     useEffect(() => {
         setLoading(true);
         apiClient.listPosts().then(data => {
+            console.log(`[Content Feed] Loaded ${data.length} total posts from API`);
+            
+            // Debug: Log NBA posts from 1-27
+            const nbaPosts127 = data.filter(post => {
+                const league = (post.league || '').toUpperCase();
+                const date = post.matchupScheduledDate || post.createdAt;
+                const dateStr = date ? new Date(date).toISOString().split('T')[0] : '';
+                return league === 'NBA' && dateStr === '2026-01-27';
+            });
+            console.log(`[Content Feed] Found ${nbaPosts127.length} NBA posts from 2026-01-27:`, nbaPosts127.map(p => ({
+                id: p.id,
+                headline: p.websiteStory?.headline?.substring(0, 40),
+                league: p.league,
+                matchupScheduledDate: p.matchupScheduledDate,
+                createdAt: p.createdAt,
+                updatedAt: p.updatedAt,
+                status: p.status
+            })));
+            
+            // Debug: Log Bundesliga posts from 1-27 for comparison
+            const bundesligaPosts127 = data.filter(post => {
+                const league = (post.league || '').toUpperCase();
+                const date = post.matchupScheduledDate || post.createdAt;
+                const dateStr = date ? new Date(date).toISOString().split('T')[0] : '';
+                return league === 'BUNDESLIGA' && dateStr === '2026-01-27';
+            });
+            console.log(`[Content Feed] Found ${bundesligaPosts127.length} Bundesliga posts from 2026-01-27:`, bundesligaPosts127.map(p => ({
+                id: p.id,
+                headline: p.websiteStory?.headline?.substring(0, 40),
+                league: p.league,
+                matchupScheduledDate: p.matchupScheduledDate,
+                createdAt: p.createdAt,
+                updatedAt: p.updatedAt,
+                status: p.status
+            })));
+            
             // Sort by latest first (by updatedAt, then createdAt)
             const sorted = [...data].sort((a, b) => {
                 const dateA = new Date(a.updatedAt || a.createdAt).getTime();
                 const dateB = new Date(b.updatedAt || b.createdAt).getTime();
                 return dateB - dateA; // Descending order (newest first)
             });
+            
+            // Debug: Check where NBA posts from 1-27 end up in sorted array
+            const sortedNba127 = sorted.map((post, index) => {
+                const league = (post.league || '').toUpperCase();
+                const date = post.matchupScheduledDate || post.createdAt;
+                const dateStr = date ? new Date(date).toISOString().split('T')[0] : '';
+                if (league === 'NBA' && dateStr === '2026-01-27') {
+                    return { index, post: { id: post.id, headline: post.websiteStory?.headline?.substring(0, 40), updatedAt: post.updatedAt } };
+                }
+                return null;
+            }).filter(Boolean);
+            console.log(`[Content Feed] NBA posts from 1-27 positions in sorted array:`, sortedNba127);
+            
             setPosts(sorted);
             setLoading(false);
             // Reset to page 1 when data changes
@@ -3814,7 +3868,23 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
                                 </h2>
                                 <div style={{ fontSize: '0.85rem', color: '#999' }}>
                                     {post.teamA} vs {post.teamB} • {post.league}
-                                    {post.matchupScheduledDate && ` • ${new Date(post.matchupScheduledDate).toLocaleDateString()}`}
+                                    {(() => {
+                                        const dateStr = post.matchupScheduledDate || post.createdAt;
+                                        if (!dateStr) return '';
+                                        // Extract YYYY-MM-DD from the date string to avoid timezone issues
+                                        const dateMatch = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                        if (dateMatch) {
+                                            const [, year, month, day] = dateMatch;
+                                            return ` • ${month}/${day}/${year}`;
+                                        }
+                                        // Fallback to original method if format is unexpected
+                                        try {
+                                            const date = new Date(dateStr);
+                                            return ` • ${date.toLocaleDateString()}`;
+                                        } catch {
+                                            return '';
+                                        }
+                                    })()}
                                 </div>
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>

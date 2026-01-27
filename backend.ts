@@ -380,6 +380,35 @@ app.get('/api/posts', async (req: express.Request, res: express.Response) => {
         const result = await pool.query('SELECT data FROM posts ORDER BY "updatedAt" DESC');
         // The `data` column contains the full JSONB object for each post.
         const posts = result.rows.map(row => row.data);
+        
+        // Debug: Log NBA posts from 2026-01-27
+        const nbaPosts127 = posts.filter(post => {
+            const league = (post.league || '').toUpperCase();
+            const date = post.matchupScheduledDate || post.createdAt;
+            const dateStr = date ? new Date(date).toISOString().split('T')[0] : '';
+            return league === 'NBA' && dateStr === '2026-01-27';
+        });
+        console.log(`[GET /api/posts] Found ${nbaPosts127.length} NBA posts from 2026-01-27`);
+        nbaPosts127.forEach((post, idx) => {
+            console.log(`  [${idx + 1}] ${post.websiteStory?.headline?.substring(0, 50)}`, {
+                id: post.id,
+                league: post.league,
+                matchupScheduledDate: post.matchupScheduledDate,
+                createdAt: post.createdAt,
+                updatedAt: post.updatedAt,
+                status: post.status
+            });
+        });
+        
+        // Debug: Log Bundesliga posts from 2026-01-27 for comparison
+        const bundesligaPosts127 = posts.filter(post => {
+            const league = (post.league || '').toUpperCase();
+            const date = post.matchupScheduledDate || post.createdAt;
+            const dateStr = date ? new Date(date).toISOString().split('T')[0] : '';
+            return league === 'BUNDESLIGA' && dateStr === '2026-01-27';
+        });
+        console.log(`[GET /api/posts] Found ${bundesligaPosts127.length} Bundesliga posts from 2026-01-27`);
+        
         res.json(posts);
     } catch (err) {
         console.error('Error fetching posts:', err);

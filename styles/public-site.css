@@ -99,7 +99,7 @@ body {
 
 .nav-link, .crawler-nav a {
     color: #fff;
-    font-size: 1.2rem;
+    font-size: 0.85rem;
     font-weight: 900;
     text-transform: uppercase;
     text-decoration: none;
@@ -110,6 +110,14 @@ body {
     -webkit-text-stroke: 1px #000;
     letter-spacing: 0.05em;
     display: block;
+    white-space: nowrap;
+}
+
+/* Make Bundesliga link smaller since it's the longest */
+.nav-link[data-league="Bundesliga"],
+.crawler-nav a[data-league="Bundesliga"],
+.league-link[data-league="Bundesliga"] {
+    font-size: 0.65rem;
 }
 
 .nav-link:hover, .crawler-nav a:hover {
