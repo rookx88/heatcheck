@@ -128,6 +128,12 @@ const nbaHeatSheetPool: Pool | null = process.env.NBA_HEAT_SHEET_DATABASE_URL
   ? new Pool({ connectionString: process.env.NBA_HEAT_SHEET_DATABASE_URL })
   : null;
 
+// --- SOCCER DATA DATABASE CONNECTION (separate DB for Soccer MatchPack V3) ---
+// Uses SOCCER_DATA_DATABASE_URL for soccer match data and stats.
+const soccerDataPool: Pool | null = process.env.SOCCER_DATA_DATABASE_URL
+  ? new Pool({ connectionString: process.env.SOCCER_DATA_DATABASE_URL })
+  : null;
+
 const SECRET_API_KEY = process.env.API_KEY || 'your-secret-api-key';
 const ODDS_API_KEY = process.env.THE_ODDS_API_KEY;
 
@@ -407,6 +413,41 @@ app.get('/api/posts/published', async (req: express.Request, res: express.Respon
     }
 });
 
+// GET /api/posts/published-by-date-league - Get published posts by date and league (for Heat Picks)
+app.get('/api/posts/published-by-date-league', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const date = String(req.query.date || '').trim();
+        const league = String(req.query.league || '').trim();
+        
+        if (!date || !league) {
+            return res.status(400).json({ message: 'Missing required query params: date and league' });
+        }
+        
+        // Query posts matching date and league
+        // Check both matchupScheduledDate and createdAt fields
+        const query = `
+            SELECT data FROM posts 
+            WHERE (data->>'status') = 'published' 
+            AND (data->>'league') = $1
+            AND (
+                (data->>'matchupScheduledDate')::date = $2::date 
+                OR (data->>'matchupScheduledDate') IS NULL AND (data->>'createdAt')::date = $2::date
+            )
+            ORDER BY "updatedAt" DESC
+        `;
+        
+        const result = await pool.query(query, [league, date]);
+        const posts = result.rows.map(row => row.data);
+        
+        console.log(`[GET /api/posts/published-by-date-league] Returning ${posts.length} published posts for ${league} on ${date}`);
+        
+        res.json(posts);
+    } catch (err) {
+        console.error('Error fetching published posts by date/league:', err);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 // GET /api/posts/slug/:slug - Get a single published post by its slug
 app.get('/api/posts/slug/:slug', async (req: express.Request, res: express.Response) => {
     const { slug } = req.params;
@@ -477,6 +518,55 @@ app.get('/api/match-pack-v3', apiKeyAuth, async (req: express.Request, res: expr
     }
 });
 
+// GET /api/match-pack-v3/soccer - Get Soccer MatchPackV3 JSON from soccerdata DB (auth required)
+app.get('/api/match-pack-v3/soccer', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        if (!soccerDataPool) {
+            return res.status(500).json({ message: 'SOCCER_DATA_DATABASE_URL is not configured on the server.' });
+        }
+
+        const teamA = String(req.query.teamA || '').trim();
+        const teamB = String(req.query.teamB || '').trim();
+        const gameDateRaw = req.query.gameDate ? String(req.query.gameDate).trim() : '';
+        const seasonRaw = req.query.season ? String(req.query.season).trim() : '';
+
+        const closeXgDiff = req.query.closeXgDiff ? Number(req.query.closeXgDiff) : 0.5;
+        const formLeaders = req.query.formLeaders ? Number(req.query.formLeaders) : 3;
+
+        if (!teamA || !teamB) {
+            return res.status(400).json({ message: 'Missing required query params: teamA and teamB' });
+        }
+        if (!Number.isFinite(closeXgDiff) || closeXgDiff <= 0 || closeXgDiff > 5) {
+            return res.status(400).json({ message: 'Invalid closeXgDiff; expected 0.1-5.0' });
+        }
+        if (!Number.isFinite(formLeaders) || formLeaders <= 0 || formLeaders > 10) {
+            return res.status(400).json({ message: 'Invalid formLeaders; expected 1-10' });
+        }
+
+        // Validate optional date format (YYYY-MM-DD) if provided
+        let gameDate: string | null = null;
+        if (gameDateRaw) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(gameDateRaw)) {
+                return res.status(400).json({ message: 'Invalid gameDate; expected YYYY-MM-DD' });
+            }
+            gameDate = gameDateRaw;
+        }
+
+        const season: string | null = seasonRaw || null;
+
+        const result = await soccerDataPool.query(
+            'select public.get_match_pack_v3_soccer($1::text,$2::text,$3::date,$4::varchar,$5::numeric,$6::int) as pack',
+            [teamA, teamB, gameDate, season, closeXgDiff, formLeaders]
+        );
+
+        const pack = result.rows?.[0]?.pack ?? null;
+        res.json({ pack });
+    } catch (err: any) {
+        console.error('Error fetching Soccer MatchPackV3:', err);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 // GET /api/odds/game/:eventId - Fetch game odds and player props from OddsAPI (auth required)
 app.get('/api/odds/game/:eventId', apiKeyAuth, async (req: express.Request, res: express.Response) => {
     try {
@@ -530,16 +620,64 @@ app.get('/api/odds/game/:eventId', apiKeyAuth, async (req: express.Request, res:
         if (!gameResponse.ok) {
             const errorText = await gameResponse.text();
             console.error(`[GET /api/odds/game/:eventId] Game odds error (${gameResponse.status}):`, errorText);
+            
+            // Check for quota/usage errors
+            let errorData: any = {};
+            try {
+                errorData = JSON.parse(errorText);
+            } catch {
+                errorData = { message: errorText };
+            }
+            
+            // Detect quota issues
+            const isQuotaError = gameResponse.status === 401 || 
+                                errorData.error_code === 'OUT_OF_USAGE_CREDITS' ||
+                                errorText.includes('quota') ||
+                                errorText.includes('usage');
+            
+            const errorMessage = isQuotaError 
+                ? 'TheOddsAPI usage quota has been reached. Please upgrade your plan or wait for quota reset.'
+                : 'Failed to fetch game odds from OddsAPI';
+            
             return res.status(gameResponse.status).json({ 
-                message: 'Failed to fetch game odds from OddsAPI',
-                error: errorText.substring(0, 500)
+                message: errorMessage,
+                error: errorText.substring(0, 500),
+                errorCode: errorData.error_code || null,
+                isQuotaError: isQuotaError
             });
         }
 
+        let propErrorText: string | null = null;
         if (!propResponse.ok) {
-            const errorText = await propResponse.text();
-            console.error(`[GET /api/odds/game/:eventId] Prop odds error (${propResponse.status}):`, errorText);
-            // Don't fail completely if props fail - return game odds only
+            propErrorText = await propResponse.text();
+            console.error(`[GET /api/odds/game/:eventId] Prop odds error (${propResponse.status}):`, propErrorText);
+            
+            // Check for quota/usage errors - if quota error, fail the whole request
+            let errorData: any = {};
+            try {
+                errorData = JSON.parse(propErrorText);
+            } catch {
+                errorData = { message: propErrorText };
+            }
+            
+            const isQuotaError = propResponse.status === 401 || 
+                                errorData.error_code === 'OUT_OF_USAGE_CREDITS' ||
+                                propErrorText.includes('quota') ||
+                                propErrorText.includes('usage');
+            
+            if (isQuotaError) {
+                // If quota error, fail the whole request
+                return res.status(propResponse.status).json({ 
+                    message: 'TheOddsAPI usage quota has been reached. Please upgrade your plan or wait for quota reset.',
+                    error: propErrorText.substring(0, 500),
+                    errorCode: errorData.error_code || null,
+                    isQuotaError: true
+                });
+            }
+            
+            // Log non-quota prop errors for debugging
+            console.warn(`[GET /api/odds/game/:eventId] Props request failed (non-quota): ${propResponse.status} - ${propErrorText.substring(0, 200)}`);
+            // Don't fail completely if props fail for other reasons - return game odds only
         }
 
         const gameData = await gameResponse.json();
@@ -547,8 +685,9 @@ app.get('/api/odds/game/:eventId', apiKeyAuth, async (req: express.Request, res:
         if (propResponse.ok) {
             try {
                 propData = await propResponse.json();
+                console.log(`[GET /api/odds/game/:eventId] Successfully fetched props. Prop data type: ${Array.isArray(propData) ? 'array' : typeof propData}, length: ${Array.isArray(propData) ? propData.length : 'object'}`);
             } catch (e) {
-                console.warn('[GET /api/odds/game/:eventId] Failed to parse prop response as JSON');
+                console.warn('[GET /api/odds/game/:eventId] Failed to parse prop response as JSON:', e);
             }
         }
 
@@ -565,6 +704,7 @@ app.get('/api/odds/game/:eventId', apiKeyAuth, async (req: express.Request, res:
             retrievedAt: new Date().toISOString()
         };
 
+        console.log(`[GET /api/odds/game/:eventId] Returning odds data. Game markets: ${Array.isArray(gameData) ? gameData.length : 'object'}, Player props: ${propData ? (Array.isArray(propData) ? propData.length : 'object') : 'null'}`);
         res.json(result);
     } catch (error: any) {
         console.error('[GET /api/odds/game/:eventId] Error:', error);
@@ -603,9 +743,30 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`[GET /api/odds/find-event] OddsAPI error (${response.status}):`, errorText);
+            
+            // Check for quota/usage errors
+            let errorData: any = {};
+            try {
+                errorData = JSON.parse(errorText);
+            } catch {
+                errorData = { message: errorText };
+            }
+            
+            // Detect quota issues
+            const isQuotaError = response.status === 401 || 
+                                errorData.error_code === 'OUT_OF_USAGE_CREDITS' ||
+                                errorText.includes('quota') ||
+                                errorText.includes('usage');
+            
+            const errorMessage = isQuotaError 
+                ? 'TheOddsAPI usage quota has been reached. Please upgrade your plan or wait for quota reset.'
+                : 'Failed to fetch games from OddsAPI';
+            
             return res.status(response.status).json({ 
-                message: 'Failed to fetch games from OddsAPI',
-                error: errorText.substring(0, 500)
+                message: errorMessage,
+                error: errorText.substring(0, 500),
+                errorCode: errorData.error_code || null,
+                isQuotaError: isQuotaError
             });
         }
 
@@ -636,6 +797,11 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
         const teamBNorm = normalizeTeamName(teamB);
         const teamANameOnly = getTeamNameOnly(teamA);
         const teamBNameOnly = getTeamNameOnly(teamB);
+
+        console.log(`[GET /api/odds/find-event] Searching for: "${teamA}" vs "${teamB}" on ${gameDate || 'any date'}`);
+        console.log(`[GET /api/odds/find-event] Normalized: "${teamANorm}" vs "${teamBNorm}"`);
+        console.log(`[GET /api/odds/find-event] Team names only: "${teamANameOnly}" vs "${teamBNameOnly}"`);
+        console.log(`[GET /api/odds/find-event] Total games available: ${games.length}`);
 
         // Helper to check if two team names match (exact or partial)
         const teamsMatch = (team1: string, team2: string, team1NameOnly: string, team2NameOnly: string) => {
@@ -732,13 +898,16 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
 
         if (!matchedGame) {
             console.warn(`[GET /api/odds/find-event] Game not found. Searched: ${teamA} vs ${teamB} on ${gameDate || 'any'}`);
-            console.warn(`[GET /api/odds/find-event] Available games (sample):`, availableGames);
+            console.warn(`[GET /api/odds/find-event] Normalized search: ${teamANorm} vs ${teamBNorm}`);
+            console.warn(`[GET /api/odds/find-event] Available games (first 10):`, availableGames);
             return res.status(404).json({ 
                 message: 'Event not found in OddsAPI',
-                searched: { teamA, teamB, gameDate: gameDate || 'any' },
-                availableGamesSample: availableGames.slice(0, 5) // Return sample for debugging
+                searched: { teamA, teamB, gameDate: gameDate || 'any', normalized: { teamA: teamANorm, teamB: teamBNorm } },
+                availableGamesSample: availableGames.slice(0, 10) // Return sample for debugging
             });
         }
+        
+        console.log(`[GET /api/odds/find-event] ✅ Match found: ${matchedGame.home_team} vs ${matchedGame.away_team} (ID: ${matchedGame.id})`);
 
         res.json({
             eventId: matchedGame.id,
@@ -1066,6 +1235,79 @@ app.get('/api/matchups/v3', async (req: express.Request, res: express.Response) 
         res.json(result.rows);
     } catch (err) {
         console.error('Error fetching V3 matchups:', err);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
+// GET /api/matchups/v3/soccer - List upcoming soccer games from soccerdata DB for HeatArticleV3 picker
+// Returns the same general shape as /api/matchups/v3 so the existing modal can be reused.
+app.get('/api/matchups/v3/soccer', async (req: express.Request, res: express.Response) => {
+    try {
+        if (!soccerDataPool) {
+            return res.status(500).json({ message: 'SOCCER_DATA_DATABASE_URL is not configured on the server.' });
+        }
+
+        const league = req.query.league ? String(req.query.league).trim() : '';
+        const startDate = req.query.startDate ? String(req.query.startDate).trim() : '';
+        const endDate = req.query.endDate ? String(req.query.endDate).trim() : '';
+
+        const params: any[] = [];
+        let where = `m.date_utc >= now() - interval '6 hours'`;
+
+        // Filter by league if provided
+        // Map common league names to database format
+        const leagueMap: Record<string, string> = {
+            'EPL': 'ENG-Premier League',
+            'Premier League': 'ENG-Premier League',
+            'La Liga': 'ESP-La Liga',
+            'Serie A': 'ITA-Serie A',
+            'Bundesliga': 'GER-Bundesliga',
+            'Ligue 1': 'FRA-Ligue 1'
+        };
+        const dbLeague = league ? (leagueMap[league] || league) : '';
+
+        if (dbLeague) {
+            params.push(dbLeague);
+            where += ` AND m.league = $${params.length}`;
+        }
+
+        if (startDate) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+                return res.status(400).json({ message: 'Invalid startDate; expected YYYY-MM-DD' });
+            }
+            params.push(startDate);
+            where += ` AND m.date_utc::date >= $${params.length}::date`;
+        }
+        if (endDate) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+                return res.status(400).json({ message: 'Invalid endDate; expected YYYY-MM-DD' });
+            }
+            params.push(endDate);
+            where += ` AND m.date_utc::date <= $${params.length}::date`;
+        }
+
+        const sql = `
+            select
+                m.match_id as id,
+                coalesce(m.league, 'ENG-Premier League') as league,
+                at.team_name_std as "teamA",
+                ht.team_name_std as "teamB",
+                to_char(m.date_utc::date, 'YYYY-MM-DD') as "scheduledDate",
+                to_char(m.date_utc, 'HH24:MI') as "scheduledTime",
+                m.venue as venue,
+                coalesce(m.status, 'scheduled') as status
+            from public.matches m
+            join public.dim_team at on at.team_id = m.away_team_id
+            join public.dim_team ht on ht.team_id = m.home_team_id
+            where ${where}
+            order by m.date_utc asc
+            limit 300;
+        `;
+
+        const result = await soccerDataPool.query(sql, params);
+        res.json(result.rows);
+    } catch (err) {
+        console.error('Error fetching V3 soccer matchups:', err);
         res.status(500).json({ message: 'Internal server error' });
     }
 });
@@ -1467,6 +1709,171 @@ app.post('/api/matchups/import-upcoming-week-games', apiKeyAuth, async (req: exp
     }
 });
 
+// POST /api/matchups/import-soccer - Import soccer matchups from soccerdata DB
+app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    if (!soccerDataPool) {
+        return res.status(500).json({ message: 'SOCCER_DATA_DATABASE_URL is not configured on the server.' });
+    }
+
+    const startDate = req.body?.startDate ? String(req.body.startDate).trim() : '';
+    const endDate = req.body?.endDate ? String(req.body.endDate).trim() : '';
+    const leagues = Array.isArray(req.body?.leagues) ? req.body.leagues.map((l: any) => String(l).trim()) : [];
+
+    if (!startDate || !endDate) {
+        return res.status(400).json({ message: 'Missing required fields: startDate and endDate' });
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate) || !/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
+        return res.status(400).json({ message: 'Invalid date format. Expected YYYY-MM-DD' });
+    }
+
+    // Map frontend league names to database format
+    const leagueMap: Record<string, string> = {
+        'EPL': 'ENG-Premier League',
+        'Premier League': 'ENG-Premier League',
+        'La Liga': 'ESP-La Liga',
+        'Serie A': 'ITA-Serie A',
+        'Bundesliga': 'GER-Bundesliga',
+        'Ligue 1': 'FRA-Ligue 1'
+    };
+
+    // Map database format back to frontend format for storage
+    const reverseLeagueMap: Record<string, string> = {
+        'ENG-Premier League': 'EPL',
+        'ESP-La Liga': 'La Liga',
+        'ITA-Serie A': 'Serie A',
+        'GER-Bundesliga': 'Bundesliga',
+        'FRA-Ligue 1': 'Ligue 1'
+    };
+
+    const importedGames: Array<{ league: string; teamA: string; teamB: string; date: string }> = [];
+    let totalImported = 0;
+    let totalSkipped = 0;
+
+    try {
+        // Determine which leagues to import
+        const leaguesToImport = leagues.length > 0 
+            ? leagues.map(l => leagueMap[l] || l)
+            : Object.values(leagueMap); // Import all if none specified
+
+        console.log(`=== IMPORT SOCCER MATCHUPS ===`);
+        console.log(`Date Range: ${startDate} to ${endDate}`);
+        console.log(`Leagues: ${leaguesToImport.join(', ')}`);
+
+        for (const dbLeague of leaguesToImport) {
+            const frontendLeague = reverseLeagueMap[dbLeague] || dbLeague;
+            console.log(`\n[${frontendLeague}] Processing league: ${dbLeague}`);
+
+            // Query soccer database for matches in date range
+            const sql = `
+                SELECT 
+                    m.match_id,
+                    m.league,
+                    m.season,
+                    m.date_utc,
+                    m.date_utc::date as game_date,
+                    m.home_team_id,
+                    m.away_team_id,
+                    m.venue,
+                    m.status,
+                    ht.team_name_std as home_team_name,
+                    at.team_name_std as away_team_name
+                FROM public.matches m
+                JOIN public.dim_team ht ON ht.team_id = m.home_team_id
+                JOIN public.dim_team at ON at.team_id = m.away_team_id
+                WHERE m.league = $1
+                    AND m.date_utc::date >= $2::date
+                    AND m.date_utc::date <= $3::date
+                    AND (m.status IS NULL OR m.status = 'scheduled' OR m.status = 'not_started')
+                ORDER BY m.date_utc ASC
+            `;
+
+            const matches = await soccerDataPool.query(sql, [dbLeague, startDate, endDate]);
+            console.log(`[${frontendLeague}] Found ${matches.rows.length} match(es) in date range`);
+
+            for (const match of matches.rows) {
+                try {
+                    const homeTeam = match.home_team_name;
+                    const awayTeam = match.away_team_name;
+                    const gameDate = match.game_date;
+                    
+                    // Convert UTC date_utc to local time for scheduled_time
+                    // For soccer, we'll use the UTC time directly but convert to HH:MM format
+                    const dateUtc = new Date(match.date_utc);
+                    const gameTime = dateUtc.toISOString().substring(11, 16); // Extract HH:MM from ISO string
+
+                    // Find or create teams in main database
+                    const teamAId = await findOrCreateTeam(homeTeam, frontendLeague, pool);
+                    const teamBId = await findOrCreateTeam(awayTeam, frontendLeague, pool);
+
+                    // Check if matchup already exists
+                    const existingCheck = await pool.query(
+                        `SELECT id FROM matchups 
+                         WHERE team_a_id = $1 AND team_b_id = $2 AND scheduled_date = $3 AND league = $4`,
+                        [teamAId, teamBId, gameDate, frontendLeague]
+                    );
+
+                    if (existingCheck.rows.length > 0) {
+                        console.log(`[${frontendLeague}] ⚠ Skipping duplicate: ${homeTeam} vs ${awayTeam} on ${gameDate}`);
+                        totalSkipped++;
+                        continue;
+                    }
+
+                    // Store metadata
+                    const metadata = {
+                        source: 'soccerdata_db',
+                        matchId: match.match_id,
+                        season: match.season,
+                        dateUtc: match.date_utc,
+                        venue: match.venue || null
+                    };
+
+                    // Insert matchup
+                    await pool.query(
+                        `INSERT INTO matchups 
+                         (id, league, team_a_id, team_b_id, scheduled_date, scheduled_time, game_status, venue, metadata, created_at, updated_at)
+                         VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, 'scheduled', $6, $7, NOW(), NOW())`,
+                        [frontendLeague, teamAId, teamBId, gameDate, gameTime, match.venue || null, JSON.stringify(metadata)]
+                    );
+
+                    importedGames.push({
+                        league: frontendLeague,
+                        teamA: homeTeam,
+                        teamB: awayTeam,
+                        date: gameDate
+                    });
+
+                    totalImported++;
+                    console.log(`[${frontendLeague}] ✅ Imported: ${homeTeam} vs ${awayTeam} on ${gameDate} at ${gameTime}`);
+                } catch (matchError: any) {
+                    console.error(`[${frontendLeague}] ❌ Error importing match:`, matchError.message);
+                    totalSkipped++;
+                }
+            }
+        }
+
+        console.log(`\n=== IMPORT SUMMARY ===`);
+        console.log(`Total imported: ${totalImported}`);
+        console.log(`Total skipped: ${totalSkipped}`);
+
+        return res.json({
+            success: true,
+            imported: totalImported,
+            skipped: totalSkipped,
+            games: importedGames
+        });
+    } catch (err: any) {
+        console.error('Error importing soccer matchups:', err);
+        return res.status(500).json({
+            message: 'Internal server error',
+            error: err.message,
+            imported: totalImported,
+            skipped: totalSkipped,
+            games: importedGames
+        });
+    }
+});
+
 // --- STATIC FILE ROUTES (XML/TXT) ---
 // Serve sitemap.xml with correct content-type
 app.get('/sitemap.xml', (req: express.Request, res: express.Response) => {
@@ -1506,10 +1913,14 @@ app.listen(port, () => {
     console.log('  DELETE /api/posts/:id (auth required)');
     console.log('  GET    /api/matchups');
     console.log('  GET    /api/matchups/v3');
+    console.log('  GET    /api/matchups/v3/soccer');
+    console.log('  GET    /api/match-pack-v3/soccer (auth required)');
     console.log('  PUT    /api/matchups/:id (auth required)');
     console.log('  POST   /api/matchups/import (auth required)');
+    console.log('  POST   /api/matchups/import-soccer (auth required)');
     console.log('  GET    /sitemap.xml');
     console.log('  GET    /robots.txt');
     console.log(`API Key configured: ${SECRET_API_KEY ? 'YES (***' + SECRET_API_KEY.slice(-4) + ')' : 'NO (using default)'}`);
     console.log(`NBA Heat Sheet DB configured: ${nbaHeatSheetPool ? 'YES' : 'NO (set NBA_HEAT_SHEET_DATABASE_URL)'}`);
+    console.log(`Soccer Data DB configured: ${soccerDataPool ? 'YES' : 'NO (set SOCCER_DATA_DATABASE_URL)'}`);
 });

@@ -58,7 +58,7 @@ interface FiveStateContent {
         supportingStats: string[];
     };
     generalization: string; // The "Oh Sh*t" moment
-    marketFailure: string; // Why everyone misses this
+    narrativePrimitive: string; // Unobservable Impact - real contextual factors that affect how a game feels but don't appear in box scores
     actionableClose: string; // Perspective + soft CTA
 }
 
@@ -146,7 +146,7 @@ Research and compile additional context for the 5-state framework:
 2. **Tension Escalation Context**: Schedule compression, contract years, public quotes, media noise, fan pressure - why THIS moment is different
 3. **Data/Stats**: Historical performance splits, before/after deltas, comparable cases, head-to-head records
 4. **Generalization Cases**: Similar historical cases, mechanisms (loss of role clarity, ego threat, uncertainty stress, etc.)
-5. **Market Failure Evidence**: Why models/odds/DFS pricing lag behind psychology
+5. **Narrative Primitive Evidence**: Unobservable Impact factors - real contextual elements that affect how the game feels but don't appear in box scores (absence, anticlimax, unresolved tension, etc.)
 
 Return a comprehensive research summary in JSON format:
 {
@@ -176,10 +176,10 @@ Return a comprehensive research summary in JSON format:
     "mechanisms": ["mechanism 1", "mechanism 2"],
     "transferableInsight": "insight that applies beyond this game"
   },
-  "marketFailure": {
-    "modelLag": "why models lag",
-    "psychologyVsEfficiency": "psychology vs efficiency gap",
-    "heatchecksLens": "what Heatchecks sees that others miss"
+  "narrativePrimitive": {
+    "unobservableImpact": "the specific, concrete contextual factor that affects how this game feels but doesn't appear in box scores",
+    "examples": ["absence of a player", "anticlimax of a missed reunion", "pressure without confrontation", "unresolved rivalry"],
+    "expression": "express WITHOUT abstraction - be concrete and specific about what's missing or invisible"
   },
   "backstory": "Detailed backstory context",
   "transactionHistory": "Relevant transaction details",
@@ -356,11 +356,13 @@ ${JSON.stringify({
    - Now the reader learns something TRANSFERABLE
    - This is the "I need to send this to someone" point
 
-5️⃣ **Market Failure (Why Everyone Misses This)**
-   - Explain why models, odds, DFS pricing LAG
-   - Show what markets see vs what they MISS
-   - Frame Heatchecks as LENS, not predictor
-   - Example: "Markets price efficiency. They struggle with psychology."
+5️⃣ **Narrative Primitive: Unobservable Impact**
+   - Identify the REAL contextual factor that affects how this game feels or unfolds, but does NOT appear directly in box scores
+   - This is NOT an abstraction like "psychology" or "models lag"
+   - This is a SPECIFIC, CONCRETE factor that exists but is invisible to stats
+   - Examples: absence of a player (even if not injured), anticlimax of a missed reunion, pressure without confrontation, unresolved rivalry
+   - Express it WITHOUT abstraction - be concrete and specific
+   - Example: "The reunion that never happened. [Player] was traded before they could face [Team]. The game feels different because of what's missing, not what's there."
 
 6️⃣ **Actionable Close (Without Killing the Story)**
    - Do NOT end with "here's the pick"
@@ -378,7 +380,7 @@ Return ONLY a JSON object with this exact structure:
     "supportingStats": ["supporting stat 1 from formLeaders", "supporting stat 2 from comparisons", "supporting stat 3 from sections", "supporting stat 4", "supporting stat 5"]
   },
   "generalization": "The 'Oh Sh*t' moment - historical cases, mechanisms, transferable insight",
-  "marketFailure": "Why everyone misses this - models lag, psychology vs efficiency, Heatchecks lens",
+  "narrativePrimitive": "Unobservable Impact - the specific, concrete contextual factor that affects how this game feels but doesn't appear in box scores (e.g., absence of a player, anticlimax of missed reunion, pressure without confrontation, unresolved rivalry). Express WITHOUT abstraction - be concrete.",
   "actionableClose": "Perspective + soft CTA, no picks"
 }
 
@@ -487,7 +489,7 @@ ${JSON.stringify(fiveStateContent, null, 2)}
    - Key bullets from each state
    - Stats highlighted
    - Mechanism identified
-   - Market failure point
+   - Narrative primitive (unobservable impact) identified
 
 Return ONLY a JSON object:
 {

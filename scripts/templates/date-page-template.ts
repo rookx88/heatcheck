@@ -24,8 +24,10 @@ export interface HeatcheckPost {
 }
 
 /**
- * Calculate heat score from matchup data (fact_pack, evidence_bundle)
- * Returns score breakdown with 5 categories, each 0-20 points = total 0-100
+ * Unified Heat Score Calculation (0-100)
+ * Combines Heat Picks signals (momentum, availability, close games, comparisons) 
+ * + Narrative strength + Evidence quality
+ * Matches the Heat Picks scoring system for consistency
  */
 function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number; breakdown: { stakes: number; recency: number; payback: number; history: number; emotion: number } } {
     // Special handling for DFS articles
@@ -119,313 +121,178 @@ function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number
     }
     
     const heatCheckData = post.heatCheckData as any;
+    const matchPackV3 = heatCheckData.matchPackV3;
     const factPack = heatCheckData.fact_pack || heatCheckData.factPack || {};
     const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
     const narratives = heatCheckData.narratives || {};
     
-    // Helper to get date difference in days (more recent = higher score)
-    const getDaysAgo = (dateString: string | undefined): number => {
-        if (!dateString) return 365;
-        try {
-            const date = new Date(dateString);
-            const now = new Date();
-            const diffTime = Math.abs(now.getTime() - date.getTime());
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return diffDays;
-        } catch {
-            return 365;
-        }
-    };
+    // Base score from statistical signals (0-60 points) - matches Heat Picks
+    let baseScore = 0;
+    let momentumScore = 0;
+    let availabilityScore = 0;
+    let closeGamesScore = 0;
+    let comparisonsScore = 0;
     
-    // 1. STAKES (0-20 points) - Prioritizes playoff games and high-stakes scenarios
-    let stakesScore = 0;
-    
-    // Helper to check if date is in playoff season for a league
-    const isPlayoffSeason = (dateString: string | undefined, league: string): boolean => {
-        if (!dateString) return false;
-        try {
-            const date = new Date(dateString);
-            const month = date.getMonth() + 1; // 1-12
-            const leagueLower = (league || '').toLowerCase();
-            
-            // NFL: January-February (months 1-2)
-            if (leagueLower.includes('nfl') || leagueLower === 'football') {
-                return month === 1 || month === 2;
-            }
-            // NBA: April-June (months 4-6)
-            if (leagueLower.includes('nba') || leagueLower === 'basketball') {
-                return month >= 4 && month <= 6;
-            }
-            // MLB: October-November (months 10-11)
-            if (leagueLower.includes('mlb') || leagueLower === 'baseball') {
-                return month === 10 || month === 11;
-            }
-            // NHL: April-June (months 4-6)
-            if (leagueLower.includes('nhl') || leagueLower === 'hockey') {
-                return month >= 4 && month <= 6;
-            }
-            return false;
-        } catch {
-            return false;
-        }
-    };
-    
-    // Helper to check for playoff keywords
-    const hasPlayoffKeywords = (): boolean => {
-        const playoffKeywords = ['playoff', 'postseason', 'super bowl', 'conference final', 'semifinal', 
-                                'championship', 'wild card', 'divisional', 'world series', 'finals', 
-                                'elimination', 'must-win', 'do-or-die', 'win or go home'];
+    // If matchPackV3 exists, use Heat Picks signals (preferred method)
+    if (matchPackV3?.factDrop) {
+        const factDrop = matchPackV3.factDrop;
+        const teamForm = factDrop.raw?.teamForm || {};
+        const comparisons = factDrop.comparisons || [];
+        const availability = factDrop.raw?.availability;
         
-        // Check headline/title
-        const headline = ((post.websiteStory?.headline || '') as string).toLowerCase();
-        if (playoffKeywords.some(keyword => headline.includes(keyword))) return true;
+        // 1. MOMENTUM (0-20 points) - 30% weight in Heat Picks
+        const aMargin10 = teamForm.A?.margin10 || teamForm.A?.xgDiff10 || 0;
+        const aMargin3 = teamForm.A?.margin3 || teamForm.A?.xgDiff3 || 0;
+        const bMargin10 = teamForm.B?.margin10 || teamForm.B?.xgDiff10 || 0;
+        const bMargin3 = teamForm.B?.margin3 || teamForm.B?.xgDiff3 || 0;
+        const momentumDivergence = Math.abs((aMargin3 - aMargin10) - (bMargin3 - bMargin10));
+        momentumScore = Math.min(20, momentumDivergence * 2); // Scale to 0-20
         
-        // Check key_stats
-        const keyStats = factPack.key_stats || [];
-        const statsText = keyStats.map((s: any) => `${s.label} ${s.value} ${s.why_it_matters || ''}`).join(' ').toLowerCase();
-        if (playoffKeywords.some(keyword => statsText.includes(keyword))) return true;
+        // 2. AVAILABILITY (0-15 points) - 25% weight in Heat Picks
+        const aAbsences = availability?.majorAbsences?.A?.count || 0;
+        const bAbsences = availability?.majorAbsences?.B?.count || 0;
+        const availabilityDiff = Math.abs(aAbsences - bAbsences);
+        availabilityScore = Math.min(15, availabilityDiff * 3); // Scale to 0-15
         
-        // Check standings_summary
-        const standings = (factPack.context?.standings_summary || '') as string;
-        if (playoffKeywords.some(keyword => standings.toLowerCase().includes(keyword))) return true;
-        
-        // Check narrative titles/claims
-        const narrativeCards = narratives.candidate_cards || [];
-        const narrativeText = narrativeCards.map((c: any) => `${c.title} ${c.claim || ''}`).join(' ').toLowerCase();
-        if (playoffKeywords.some(keyword => narrativeText.includes(keyword))) return true;
-        
-        return false;
-    };
-    
-    const matchupDate = post.matchupScheduledDate || post.createdAt;
-    const league = post.league || '';
-    const isPlayoff = isPlayoffSeason(matchupDate, league) || hasPlayoffKeywords();
-    
-    // Get recent form data (used in both playoff and regular season calculations)
-    const recentForm = factPack.context?.recent_form || {};
-    const homeForm = (recentForm.home || '') as string;
-    const awayForm = (recentForm.away || '') as string;
-    
-    // Playoff games get automatic high stakes (base score 15-18)
-    if (isPlayoff) {
-        stakesScore = 15; // Base playoff score
-        
-        // Close spread in playoffs = even higher stakes (+2-3 points)
-        const odds = factPack.odds || {};
-        const markets = odds.markets || [];
-        const spreadMarket = markets.find((m: any) => m.market === 'Spread');
-        
-        if (spreadMarket && typeof spreadMarket.point === 'number') {
-            const spread = Math.abs(spreadMarket.point);
-            if (spread <= 3) stakesScore += 3; // Very close playoff game
-            else if (spread <= 6) stakesScore += 2; // Close playoff game
-            else stakesScore += 1;
-        } else {
-            stakesScore += 2; // Default playoff boost if no spread
+        // 3. CLOSE GAMES (0-15 points) - 25% weight in Heat Picks
+        const closeMarginComp = comparisons.find((c: any) => c?.key === 'closeMargin');
+        if (closeMarginComp) {
+            const aCloseW = teamForm.A?.closeW10 || 0;
+            const aCloseL = teamForm.A?.closeL10 || 0;
+            const bCloseW = teamForm.B?.closeW10 || 0;
+            const bCloseL = teamForm.B?.closeL10 || 0;
+            const aCloseRate = aCloseW + aCloseL > 0 ? aCloseW / (aCloseW + aCloseL) : 0;
+            const bCloseRate = bCloseW + bCloseL > 0 ? bCloseW / (bCloseW + bCloseL) : 0;
+            const closeGameDiff = Math.abs(aCloseRate - bCloseRate);
+            closeGamesScore = Math.min(15, closeGameDiff * 30); // Scale to 0-15
         }
         
-        // Championship/Super Bowl level gets max (+2 points)
-        const headline = ((post.websiteStory?.headline || '') as string).toLowerCase();
-        const championshipKeywords = ['super bowl', 'championship', 'finals', 'world series', 'stanley cup'];
-        if (championshipKeywords.some(keyword => headline.includes(keyword))) {
-            stakesScore += 2;
-        }
+        // 4. COMPARISONS (0-10 points) - 20% weight in Heat Picks
+        let comparisonsTotal = 0;
+        comparisons.forEach((comp: any) => {
+            if (comp?.key && comp?.key !== 'closeMargin') {
+                const aVal = comp?.A || 0;
+                const bVal = comp?.B || 0;
+                const diff = Math.abs(aVal - bVal);
+                if (diff > 0.1) {
+                    comparisonsTotal += Math.min(2, diff); // Cap each comparison
+                }
+            }
+        });
+        comparisonsScore = Math.min(10, comparisonsTotal);
     } else {
-        // Regular season games - calculate based on multiple factors
-        
-        // Close spread = competitive game = higher stakes (0-7 points)
+        // Fallback: Use legacy factPack data if matchPackV3 not available
         const odds = factPack.odds || {};
         const markets = odds.markets || [];
         const spreadMarket = markets.find((m: any) => m.market === 'Spread');
         
+        // Use spread as proxy for competitiveness (0-20 points)
         if (spreadMarket && typeof spreadMarket.point === 'number') {
             const spread = Math.abs(spreadMarket.point);
-            if (spread <= 3) stakesScore += 7; // Very close
-            else if (spread <= 6) stakesScore += 5; // Close
-            else if (spread <= 10) stakesScore += 3; // Moderate
-            else stakesScore += 1; // Blowout potential
+            if (spread <= 3) momentumScore = 18;
+            else if (spread <= 6) momentumScore = 15;
+            else if (spread <= 10) momentumScore = 12;
+            else momentumScore = 8;
         } else {
-            stakesScore += 3; // Default if no spread
+            momentumScore = 10; // Default if no spread
         }
-        
-        // Late season implications (0-4 points)
-        try {
-            const gameDate = new Date(matchupDate);
-            const month = gameDate.getMonth() + 1;
-            const leagueLower = league.toLowerCase();
-            
-            // NFL: December-January (late season)
-            if ((leagueLower.includes('nfl') || leagueLower === 'football') && (month === 12 || month === 1)) {
-                stakesScore += 4;
-            }
-            // NBA: March-April (late season)
-            else if ((leagueLower.includes('nba') || leagueLower === 'basketball') && (month >= 3 && month <= 4)) {
-                stakesScore += 4;
-            }
-            // MLB: September-October (late season)
-            else if ((leagueLower.includes('mlb') || leagueLower === 'baseball') && (month >= 9 && month <= 10)) {
-                stakesScore += 4;
-            }
-            // NHL: March-April (late season)
-            else if ((leagueLower.includes('nhl') || leagueLower === 'hockey') && (month >= 3 && month <= 4)) {
-                stakesScore += 4;
-            }
-        } catch {
-            // Date parsing failed, skip
-        }
-        
-        // Standings/playoff race indicators (0-4 points)
-        const standings = (factPack.context?.standings_summary || '') as string;
-        const keyStats = factPack.key_stats || [];
-        const statsText = keyStats.map((s: any) => `${s.label} ${s.value} ${s.why_it_matters || ''}`).join(' ').toLowerCase();
-        
-        const playoffRaceKeywords = ['playoff race', 'wild card', 'division', 'conference', 'standings', 'clinched', 'eliminated'];
-        const hasPlayoffRaceContext = playoffRaceKeywords.some(keyword => 
-            standings.toLowerCase().includes(keyword) || statsText.includes(keyword)
+    }
+    
+    baseScore = momentumScore + availabilityScore + closeGamesScore + comparisonsScore;
+    
+    // NARRATIVE STRENGTH (0-25 points)
+    let narrativeScore = 0;
+    if (narratives?.candidate_cards && narratives.candidate_cards.length > 0) {
+        // Primary narrative score (0-15 points)
+        const primaryNarrativeId = narratives.selected?.primary_narrative_id;
+        const primaryCard = narratives.candidate_cards.find(
+            (c: any) => c.narrative_id === primaryNarrativeId
         );
         
-        if (hasPlayoffRaceContext) {
-            stakesScore += 4;
+        if (primaryCard) {
+            // Use total_score if available (0-35 scale), normalize to 0-15
+            if (primaryCard.total_score !== undefined) {
+                narrativeScore += Math.min(15, (primaryCard.total_score / 35) * 15);
+            } else {
+                // Fallback: use score_breakdown if available
+                const breakdown = primaryCard.score_breakdown || {};
+                const breakdownScore = (breakdown.factual_support || 0) + 
+                                      (breakdown.stakes || 0) + 
+                                      (breakdown.performance_alignment || 0);
+                narrativeScore += Math.min(15, (breakdownScore / 20) * 15);
+            }
         }
         
-        // Recent form indicators (0-3 points)
-        const homeWins = (homeForm.match(/W/g) || []).length;
-        const awayWins = (awayForm.match(/W/g) || []).length;
-        const totalWins = homeWins + awayWins;
-        if (totalWins >= 6) stakesScore += 3;
-        else if (totalWins >= 4) stakesScore += 2;
-        else if (totalWins >= 2) stakesScore += 1;
+        // Secondary narratives boost (0-5 points)
+        const secondaryIds = narratives.selected?.secondary_narrative_ids || [];
+        if (secondaryIds.length >= 2) narrativeScore += 5;
+        else if (secondaryIds.length === 1) narrativeScore += 2;
         
-        // Injury impact (0-1 point) - less important in stakes, more in game outcome
-        const injuries = factPack.context?.injuries || [];
-        const criticalInjuries = injuries.filter((i: any) => 
-            i.status && (i.status.toLowerCase().includes('out') || i.status.toLowerCase().includes('doubtful'))
-        ).length;
-        if (criticalInjuries >= 2) stakesScore += 1;
+        // Emotion tags diversity (0-5 points)
+        const allEmotionTags = narratives.candidate_cards
+            .flatMap((c: any) => c.emotion_tags || []);
+        const uniqueEmotionTags = [...new Set(allEmotionTags)];
+        if (uniqueEmotionTags.length >= 4) narrativeScore += 5;
+        else if (uniqueEmotionTags.length >= 3) narrativeScore += 3;
+        else if (uniqueEmotionTags.length >= 2) narrativeScore += 1;
     }
     
-    stakesScore = Math.min(20, stakesScore);
+    narrativeScore = Math.min(25, narrativeScore);
     
-    // 2. RECENCY (0-20 points)
-    let recencyScore = 0;
-    const timelineEvents = evidenceBundle.timeline_events || [];
+    // EVIDENCE QUALITY (0-15 points)
+    let evidenceScore = 0;
     const quotes = evidenceBundle.quotes || [];
+    const timelineEvents = evidenceBundle.timeline_events || [];
     
-    if (timelineEvents.length > 0) {
-        const sortedEvents = timelineEvents
-            .map((e: any) => ({ ...e, daysAgo: getDaysAgo(e.date_utc) }))
-            .sort((a: any, b: any) => a.daysAgo - b.daysAgo);
-        
-        const mostRecentDays = sortedEvents[0].daysAgo;
-        if (mostRecentDays <= 30) recencyScore += 10;
-        else if (mostRecentDays <= 90) recencyScore += 8;
-        else if (mostRecentDays <= 180) recencyScore += 6;
-        else if (mostRecentDays <= 365) recencyScore += 4;
-        else recencyScore += 2;
-    } else {
-        recencyScore += 2;
-    }
+    // Quotes quality (0-8 points)
+    if (quotes.length >= 5) evidenceScore += 8;
+    else if (quotes.length >= 3) evidenceScore += 6;
+    else if (quotes.length >= 2) evidenceScore += 4;
+    else if (quotes.length === 1) evidenceScore += 2;
     
-    if (quotes.length > 0) {
-        const sortedQuotes = quotes
-            .map((q: any) => ({ ...q, daysAgo: getDaysAgo(q.date_utc) }))
-            .sort((a: any, b: any) => a.daysAgo - b.daysAgo);
-        
-        const mostRecentQuoteDays = sortedQuotes[0].daysAgo;
-        if (mostRecentQuoteDays <= 90) recencyScore += 10;
-        else if (mostRecentQuoteDays <= 180) recencyScore += 8;
-        else if (mostRecentQuoteDays <= 365) recencyScore += 6;
-        else recencyScore += 4;
-    } else {
-        recencyScore += 2;
-    }
+    // Timeline events (0-4 points)
+    if (timelineEvents.length >= 5) evidenceScore += 4;
+    else if (timelineEvents.length >= 3) evidenceScore += 3;
+    else if (timelineEvents.length >= 2) evidenceScore += 2;
+    else if (timelineEvents.length === 1) evidenceScore += 1;
     
-    recencyScore = Math.min(20, recencyScore);
-    
-    // 3. PAYBACK (0-20 points)
-    let paybackScore = 0;
-    
-    const paybackEvents = timelineEvents.filter((e: any) => {
-        const eventType = (e.event_type || '').toLowerCase();
-        return eventType.includes('rivalry') || eventType.includes('trade') || 
-               eventType.includes('revenge') || eventType.includes('beef');
+    // Recent evidence bonus (0-3 points)
+    const now = new Date();
+    const recentQuotes = quotes.filter((q: any) => {
+        if (!q.date_utc) return false;
+        try {
+            const quoteDate = new Date(q.date_utc);
+            const daysAgo = Math.floor((now.getTime() - quoteDate.getTime()) / (1000 * 60 * 60 * 24));
+            return daysAgo <= 30;
+        } catch {
+            return false;
+        }
     });
+    if (recentQuotes.length >= 3) evidenceScore += 3;
+    else if (recentQuotes.length >= 2) evidenceScore += 2;
+    else if (recentQuotes.length >= 1) evidenceScore += 1;
     
-    if (paybackEvents.length >= 3) paybackScore += 12;
-    else if (paybackEvents.length === 2) paybackScore += 8;
-    else if (paybackEvents.length === 1) paybackScore += 5;
+    evidenceScore = Math.min(15, evidenceScore);
     
-    const primaryNarrativeId = narratives.selected?.primary_narrative_id;
-    const primaryCard = (narratives.candidate_cards || []).find(
-        (c: any) => c.narrative_id === primaryNarrativeId
-    );
-    const emotionTags = primaryCard?.emotion_tags || [];
-    const paybackKeywords = ['revenge', 'payback', 'rivalry', 'beef', 'grudge', 'vendetta'];
-    const matchingTags = emotionTags.filter((tag: string) => 
-        paybackKeywords.some(keyword => tag.toLowerCase().includes(keyword))
-    );
+    // Total score (0-100)
+    const total = Math.round(baseScore + narrativeScore + evidenceScore);
     
-    if (matchingTags.length >= 2) paybackScore += 8;
-    else if (matchingTags.length === 1) paybackScore += 4;
-    
-    paybackScore = Math.min(20, paybackScore);
-    
-    // 4. HISTORY (0-20 points)
-    let historyScore = 0;
-    
-    if (timelineEvents.length >= 5) historyScore += 8;
-    else if (timelineEvents.length >= 3) historyScore += 6;
-    else if (timelineEvents.length >= 2) historyScore += 4;
-    else if (timelineEvents.length >= 1) historyScore += 2;
-    
-    const keyStats = factPack.key_stats || [];
-    const h2hStats = keyStats.filter((s: any) => {
-        const label = (s.label || '').toLowerCase();
-        return label.includes('head') || label.includes('h2h') || 
-               label.includes('versus') || label.includes('vs');
-    });
-    if (h2hStats.length >= 2) historyScore += 6;
-    else if (h2hStats.length === 1) historyScore += 3;
-    
-    const formPattern = homeForm + awayForm;
-    if (formPattern.match(/WWWW|LLLL/)) historyScore += 6;
-    else if (formPattern.match(/WWW|LLL/)) historyScore += 4;
-    else if (formPattern.match(/WW|LL/)) historyScore += 2;
-    
-    historyScore = Math.min(20, historyScore);
-    
-    // 5. EMOTION (0-20 points)
-    let emotionScore = 0;
-    
-    if (quotes.length >= 5) emotionScore += 10;
-    else if (quotes.length >= 3) emotionScore += 8;
-    else if (quotes.length >= 2) emotionScore += 6;
-    else if (quotes.length === 1) emotionScore += 3;
-    
-    const allEmotionTags = (narratives.candidate_cards || [])
-        .flatMap((c: any) => c.emotion_tags || []);
-    const uniqueEmotionTags = [...new Set(allEmotionTags)];
-    if (uniqueEmotionTags.length >= 4) emotionScore += 6;
-    else if (uniqueEmotionTags.length >= 3) emotionScore += 4;
-    else if (uniqueEmotionTags.length >= 2) emotionScore += 2;
-    
-    const quotesWithSpeakers = quotes.filter((q: any) => q.speaker && q.team);
-    if (quotesWithSpeakers.length >= 3) emotionScore += 4;
-    else if (quotesWithSpeakers.length >= 2) emotionScore += 2;
-    else if (quotesWithSpeakers.length === 1) emotionScore += 1;
-    
-    emotionScore = Math.min(20, emotionScore);
-    
-    const total = stakesScore + recencyScore + paybackScore + historyScore + emotionScore;
+    // Map to legacy breakdown format for backward compatibility
+    // Distribute scores across the 5 categories
+    const stakes = Math.round((momentumScore + closeGamesScore) / 2);
+    const recency = Math.round(evidenceScore * 0.8); // Most of evidence is recency-based
+    const payback = Math.round(narrativeScore * 0.3); // Part of narrative is payback/rivalry
+    const history = Math.round(comparisonsScore + (narrativeScore * 0.2));
+    const emotion = Math.round((narrativeScore * 0.5) + (evidenceScore * 0.2));
     
     return {
         total: Math.min(100, Math.max(0, total)),
         breakdown: {
-            stakes: stakesScore,
-            recency: recencyScore,
-            payback: paybackScore,
-            history: historyScore,
-            emotion: emotionScore
+            stakes: Math.min(20, stakes),
+            recency: Math.min(20, recency),
+            payback: Math.min(20, payback),
+            history: Math.min(20, history),
+            emotion: Math.min(20, emotion)
         }
     };
 }
@@ -435,6 +302,16 @@ function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number
  */
 function calculateHeatScore(post: HeatcheckPost): number {
     return calculateHeatScoreFromMatchupData(post).total;
+}
+
+function getLeagueAbbreviation(league: string): string {
+    const upper = (league || '').toUpperCase();
+    if (upper === 'BUNDESLIGA') return 'GER';
+    if (upper === 'LIGUE 1') return 'FRA';
+    if (upper === 'SERIE A') return 'ITA';
+    if (upper === 'LA LIGA') return 'ESP';
+    if (upper === 'EPL' || upper === 'PREMIER LEAGUE') return 'EPL';
+    return league ? league.toUpperCase().substring(0, 3) : 'N/A';
 }
 
 /**
@@ -569,9 +446,20 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
         const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
         const quotes = evidenceBundle.quotes || [];
         const selectedQuote = quotes.length > 0 ? quotes[0] : null; // Use first quote
-        const quoteText = selectedQuote?.quote || '';
+        let quoteText = selectedQuote?.quote || '';
         quoteSpeaker = selectedQuote?.speaker || '';
         quoteTeam = selectedQuote?.team || '';
+        
+        // Fallback to matchup preview quote if no quotes found
+        if (!quoteText) {
+            const articleDate = post.matchupScheduledDate || post.createdAt;
+            const today = formatDateISO(new Date().toISOString());
+            const articleDateOnly = articleDate ? formatDateISO(articleDate) : '';
+            const isToday = articleDateOnly === today;
+            quoteText = `${post.teamA || ''} and ${post.teamB || ''} meet ${isToday ? 'tonight' : 'in a seasonal matchup'} in ${(post.league || '').toUpperCase()}.`;
+            quoteSpeaker = 'Matchup Preview';
+            quoteTeam = '';
+        }
         
         // Truncate quote if too long (max ~120 chars for card display)
         const maxQuoteLength = 120;
@@ -602,7 +490,7 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
                         <span class="matchup-card-mobile" style="display: none;">${displayMatchupMobile}</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
-                        <div style="color: #fff; font-size: 0.75rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${league}</div>
+                        <div style="color: #fff; font-size: 0.75rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${getLeagueAbbreviation(league)}</div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">

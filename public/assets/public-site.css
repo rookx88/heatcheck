@@ -101,7 +101,7 @@ body {
     justify-content: flex-start;
     width: fit-content;
     min-width: 84px;
-    max-width: 105px;
+    max-width: 120px;
     grid-column: 1;
     grid-row: 2;
     box-sizing: border-box;
@@ -116,7 +116,7 @@ body {
 
 .nav-link, .crawler-nav a {
     color: #fff;
-    font-size: 1.2rem;
+    font-size: 0.95rem;
     font-weight: 900;
     text-transform: uppercase;
     text-decoration: none;
@@ -127,6 +127,14 @@ body {
     -webkit-text-stroke: 1px #000;
     letter-spacing: 0.05em;
     display: block;
+    white-space: nowrap;
+}
+
+/* Make Bundesliga link smaller since it's the longest */
+.nav-link[data-league="Bundesliga"],
+.crawler-nav a[data-league="Bundesliga"],
+.league-link[data-league="Bundesliga"] {
+    font-size: 0.8rem;
 }
 
 .nav-link:hover, .crawler-nav a:hover {
@@ -1745,6 +1753,7 @@ body {
         min-height: 44px;
         display: flex;
         align-items: center;
+        white-space: normal;
     }
 
     /* Heat Radar elements are hidden on mobile (see above) */
@@ -1881,6 +1890,19 @@ body {
 
 /* Desktop: min-width 1025px - 3 columns and original styling */
 @media (min-width: 1025px) {
+    /* Ensure navigation links fit on one line in desktop view */
+    .nav-link, .crawler-nav a {
+        font-size: 0.95rem !important;
+        white-space: nowrap !important;
+    }
+    
+    /* Make Bundesliga link smaller since it's the longest */
+    .nav-link[data-league="Bundesliga"],
+    .crawler-nav a[data-league="Bundesliga"],
+    .league-link[data-league="Bundesliga"] {
+        font-size: 0.8rem !important;
+    }
+    
     .post-list {
         display: grid !important;
         grid-template-columns: repeat(3, minmax(0, 1fr)) !important;

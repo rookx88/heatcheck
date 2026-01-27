@@ -270,9 +270,11 @@ export function generateArticlePage(
                 const isFiniteNum = (v: any) => typeof v === 'number' && Number.isFinite(v);
 
                 if (k === 'last10') {
-                    const aM = num(raw?.A?.margin10);
-                    const bM = num(raw?.B?.margin10);
+                    // Check margin (basketball) or xgDiff (soccer) first
+                    const aM = num(raw?.A?.margin10) || num(raw?.A?.xgDiff10);
+                    const bM = num(raw?.B?.margin10) || num(raw?.B?.xgDiff10);
                     if (isFiniteNum(aM) && isFiniteNum(bM) && aM !== bM) return aM > bM ? 'A' : 'B';
+                    // Fall back to wins
                     const aW = num(raw?.A?.w10);
                     const bW = num(raw?.B?.w10);
                     if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
@@ -280,9 +282,11 @@ export function generateArticlePage(
                 }
 
                 if (k === 'last3') {
-                    const aM = num(raw?.A?.margin3);
-                    const bM = num(raw?.B?.margin3);
+                    // Check margin (basketball) or xgDiff (soccer) first
+                    const aM = num(raw?.A?.margin3) || num(raw?.A?.xgDiff3);
+                    const bM = num(raw?.B?.margin3) || num(raw?.B?.xgDiff3);
                     if (isFiniteNum(aM) && isFiniteNum(bM) && aM !== bM) return aM > bM ? 'A' : 'B';
+                    // Fall back to wins
                     const aW = num(raw?.A?.w3);
                     const bW = num(raw?.B?.w3);
                     if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
@@ -307,12 +311,14 @@ export function generateArticlePage(
                 }
 
                 if (k === 'standings') {
-                    const aR = num(raw?.A?.rank);
-                    const bR = num(raw?.B?.rank);
+                    // Check rank (basketball) or position (soccer) first
+                    const aR = num(raw?.A?.rank) || num(raw?.A?.position);
+                    const bR = num(raw?.B?.rank) || num(raw?.B?.position);
                     if (isFiniteNum(aR) && isFiniteNum(bR) && aR !== bR) return aR < bR ? 'A' : 'B';
-                    const aW = num(raw?.A?.wins);
-                    const bW = num(raw?.B?.wins);
-                    if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
+                    // Fall back to points (soccer) or wins (basketball)
+                    const aP = num(raw?.A?.points) || num(raw?.A?.wins);
+                    const bP = num(raw?.B?.points) || num(raw?.B?.wins);
+                    if (isFiniteNum(aP) && isFiniteNum(bP) && aP !== bP) return aP > bP ? 'A' : 'B';
                     return 'even';
                 }
 
@@ -601,14 +607,15 @@ export function generateArticlePage(
                       // 1) Momentum line
                       var m = payload.momentumLine || null;
                       if (m && m.series) {
-                        var a = (m.series.A && m.series.A.margins) || [];
-                        var b = (m.series.B && m.series.B.margins) || [];
+                        // Handle both NBA (margins) and soccer (xgDiff) data structures
+                        var a = (m.series.A && (m.series.A.margins || m.series.A.xgDiff)) || [];
+                        var b = (m.series.B && (m.series.B.margins || m.series.B.xgDiff)) || [];
                         var aLabel = (m.series.A && m.series.A.label) || 'A';
                         var bLabel = (m.series.B && m.series.B.label) || 'B';
                         var len = Math.max(a.length, b.length, 1);
                         var labels = buildLabels(len);
                         var ctx1 = document.getElementById('${momentumCanvasId}');
-                        if (ctx1) {
+                        if (ctx1 && (a.length > 0 || b.length > 0)) {
                           new Chart(ctx1, {
                             type: 'line',
                             data: {
@@ -623,26 +630,34 @@ export function generateArticlePage(
                         }
                       }
 
-                      // 2) Star load (USG10 vs MIN10)
+                      // 2) Star load (USG10 vs MIN10 for NBA, xG5 vs min5 for soccer)
                       var s = payload.starLoad || null;
                       var players = (s && Array.isArray(s.players)) ? s.players : [];
                       if (players.length > 0) {
+                        // Handle both NBA (teamAbbr) and soccer (teamName) structures
                         var labels2 = players.map(function(p){
-                          var ta = (p.teamAbbr || '').toString();
+                          var ta = (p.teamAbbr || p.teamName || '').toString();
                           var nm = (p.playerName || '').toString();
                           return (ta ? (ta + ' ') : '') + nm;
                         });
-                        var usg = players.map(function(p){ return (typeof p.USG10 === 'number' && isFinite(p.USG10)) ? p.USG10 : null; });
-                        var min = players.map(function(p){ return (typeof p.MIN10 === 'number' && isFinite(p.MIN10)) ? p.MIN10 : null; });
+                        // Handle both NBA (USG10/MIN10) and soccer (xG5/min5) field names
+                        var usg = players.map(function(p){ 
+                          var val = p.USG10 !== undefined ? p.USG10 : p.xG5;
+                          return (typeof val === 'number' && isFinite(val)) ? val : null; 
+                        });
+                        var min = players.map(function(p){ 
+                          var val = p.MIN10 !== undefined ? p.MIN10 : (p.MIN5 !== undefined ? p.MIN5 : p.min5);
+                          return (typeof val === 'number' && isFinite(val)) ? val : null; 
+                        });
                         var ctx2 = document.getElementById('${starLoadCanvasId}');
-                        if (ctx2) {
+                        if (ctx2 && (usg.some(function(v){ return v !== null; }) || min.some(function(v){ return v !== null; }))) {
                           new Chart(ctx2, {
                             type: 'bar',
                             data: {
                               labels: labels2,
                               datasets: [
-                                { label: 'USG10', data: usg, yAxisID: 'yUSG', backgroundColor: 'rgba(255,26,26,0.80)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 },
-                                { label: 'MIN10', data: min, yAxisID: 'yMIN', backgroundColor: 'rgba(255,230,109,0.78)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 }
+                                { label: 'USG10/xG5', data: usg, yAxisID: 'yUSG', backgroundColor: 'rgba(255,26,26,0.80)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 },
+                                { label: 'MIN10/MIN5', data: min, yAxisID: 'yMIN', backgroundColor: 'rgba(255,230,109,0.78)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 }
                               ]
                             },
                             options: {
@@ -692,32 +707,37 @@ export function generateArticlePage(
                         }
                       }
 
-                      // 4) Role volatility (ΔUSG3 vs season)
+                      // 4) Role volatility (ΔUSG3 vs season for NBA, xGChange for soccer)
                       var rv = payload.roleVolatility || null;
                       var rvPlayers = (rv && Array.isArray(rv.players)) ? rv.players : [];
                       if (rvPlayers.length > 0) {
+                        // Handle both NBA (teamAbbr) and soccer (teamName) structures
                         var labels4 = rvPlayers.map(function(p){
-                          var ta = (p.teamAbbr || '').toString();
+                          var ta = (p.teamAbbr || p.teamName || '').toString();
                           var nm = (p.playerName || '').toString();
                           return (ta ? (ta + ' ') : '') + nm;
                         });
+                        // Handle both NBA (deltaUSG3vsSeason) and soccer (xGChange) field names
                         var vals4 = rvPlayers.map(function(p){
-                          var v = p.deltaUSG3vsSeason;
+                          var v = p.deltaUSG3vsSeason !== undefined ? p.deltaUSG3vsSeason : p.xGChange;
                           return (typeof v === 'number' && isFinite(v)) ? v : 0;
                         });
                         var maxAbs = 1;
                         for (var i=0;i<vals4.length;i++) maxAbs = Math.max(maxAbs, Math.abs(vals4[i] || 0));
                         var ctx4 = document.getElementById('${volatilityCanvasId}');
-                        if (ctx4) {
+                        if (ctx4 && vals4.some(function(v){ return v !== 0; })) {
                           new Chart(ctx4, {
                             type: 'bar',
                             data: {
                               labels: labels4,
                               datasets: [
                                 {
-                                  label: 'ΔUSG3',
+                                  label: 'ΔUSG3/ΔxG',
                                   data: vals4,
-                                  backgroundColor: rvPlayers.map(function(p){ return colorForVol(p.deltaUSG3vsSeason); }),
+                                  backgroundColor: rvPlayers.map(function(p){ 
+                                    var val = p.deltaUSG3vsSeason !== undefined ? p.deltaUSG3vsSeason : (p.xGChange || 0);
+                                    return colorForVol(val); 
+                                  }),
                                   borderColor: 'rgba(0,0,0,0.65)',
                                   borderWidth: 1
                                 }

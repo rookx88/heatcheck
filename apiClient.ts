@@ -112,6 +112,13 @@ export const apiClient = {
         return response.json();
     },
 
+    async getPublishedPostsByDateLeague(date: string, league: string): Promise<HeatcheckPost[]> {
+        const response = await apiRequest(`/api/posts/published-by-date-league?date=${encodeURIComponent(date)}&league=${encodeURIComponent(league)}`, {
+            method: 'GET',
+        });
+        return response.json();
+    },
+
     async createDraft(postData: HeatcheckPostDraft): Promise<HeatcheckPost> {
         const response = await apiRequest('/api/posts', {
             method: 'POST',
@@ -157,6 +164,14 @@ export const apiClient = {
         });
         return response.json();
     },
+
+    async importSoccerMatchups(startDate: string, endDate: string, leagues?: string[]): Promise<{ success: boolean; imported: number; skipped: number; games: Array<{ league: string; teamA: string; teamB: string; date: string }> }> {
+        const response = await apiRequest('/api/matchups/import-soccer', {
+            method: 'POST',
+            body: JSON.stringify({ startDate, endDate, leagues: leagues || [] }),
+        });
+        return response.json();
+    },
     
     async getMatchups(): Promise<Array<{ id: string; league: string; teamA: string; teamB: string; scheduledDate: string; scheduledTime: string | null; venue: string | null; status: string }>> {
         const response = await apiRequest('/api/matchups');
@@ -169,6 +184,16 @@ export const apiClient = {
         if (endDate) params.set('endDate', endDate);
         const qs = params.toString();
         const response = await apiRequest(`/api/matchups/v3${qs ? `?${qs}` : ''}`);
+        return response.json();
+    },
+
+    async getMatchupsV3Soccer(league?: string, startDate?: string, endDate?: string): Promise<Array<{ id: string; league: string; teamA: string; teamB: string; scheduledDate: string; scheduledTime: string | null; venue: string | null; status: string }>> {
+        const params = new URLSearchParams();
+        if (league) params.set('league', league);
+        if (startDate) params.set('startDate', startDate);
+        if (endDate) params.set('endDate', endDate);
+        const qs = params.toString();
+        const response = await apiRequest(`/api/matchups/v3/soccer${qs ? `?${qs}` : ''}`);
         return response.json();
     },
     
@@ -203,16 +228,51 @@ export const apiClient = {
         return response.json();
     },
 
+    async getMatchPackV3Soccer(
+        teamA: string,
+        teamB: string,
+        gameDate?: string | null,
+        season?: string | null
+    ): Promise<{ pack: any }> {
+        const params = new URLSearchParams();
+        params.set('teamA', teamA);
+        params.set('teamB', teamB);
+        if (gameDate) params.set('gameDate', gameDate);
+        if (season) params.set('season', season);
+
+        const response = await apiRequest(`/api/match-pack-v3/soccer?${params.toString()}`, {
+            method: 'GET',
+        });
+        return response.json();
+    },
+
     async getOddsForGame(eventId: string, sport: string = 'basketball_nba'): Promise<{
         eventId: string;
         gameMarkets: any;
         playerProps: any;
         retrievedAt: string;
     }> {
-        const response = await apiRequest(`/api/odds/game/${eventId}?sport=${encodeURIComponent(sport)}`, {
-            method: 'GET',
-        });
-        return response.json();
+        try {
+            const response = await apiRequest(`/api/odds/game/${eventId}?sport=${encodeURIComponent(sport)}`, {
+                method: 'GET',
+            });
+            const result = await response.json();
+            
+            // Check if response indicates quota error
+            if (result.isQuotaError || result.errorCode === 'OUT_OF_USAGE_CREDITS') {
+                const error: any = new Error(result.message || 'TheOddsAPI quota exceeded');
+                error.isQuotaError = true;
+                throw error;
+            }
+            
+            return result;
+        } catch (error: any) {
+            // Preserve quota error information
+            if (error.message && (error.message.includes('quota') || error.message.includes('OUT_OF_USAGE_CREDITS'))) {
+                (error as any).isQuotaError = true;
+            }
+            throw error;
+        }
     },
 
     async findOddsEventId(teamA: string, teamB: string, gameDate?: string, sport: string = 'basketball_nba'): Promise<{
@@ -227,9 +287,26 @@ export const apiClient = {
         if (gameDate) params.set('gameDate', gameDate);
         params.set('sport', sport);
         
-        const response = await apiRequest(`/api/odds/find-event?${params.toString()}`, {
-            method: 'GET',
-        });
-        return response.json();
+        try {
+            const response = await apiRequest(`/api/odds/find-event?${params.toString()}`, {
+                method: 'GET',
+            });
+            const result = await response.json();
+            
+            // Check if response indicates quota error
+            if (result.isQuotaError || result.errorCode === 'OUT_OF_USAGE_CREDITS') {
+                const error: any = new Error(result.message || 'TheOddsAPI quota exceeded');
+                error.isQuotaError = true;
+                throw error;
+            }
+            
+            return result;
+        } catch (error: any) {
+            // Preserve quota error information
+            if (error.message && (error.message.includes('quota') || error.message.includes('OUT_OF_USAGE_CREDITS'))) {
+                (error as any).isQuotaError = true;
+            }
+            throw error;
+        }
     }
 };

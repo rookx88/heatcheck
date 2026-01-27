@@ -788,6 +788,19 @@ function generateArticleUrl(post) {
         return `/dfs/${league}/${date}/dfs-value-narratives-${date}/`;
     }
     
+    // Handle Heat Picks articles with special URL structure
+    if (post.storyType === 'heat_picks') {
+        const storedSlug = post.websiteStory?.seo?.slug || '';
+        if (storedSlug) {
+            return `/${league}/${storedSlug}/`;
+        } else {
+            // Fallback: generate from date
+            const dateParts = date.split('-');
+            const slugDate = `${dateParts[1]}-${dateParts[2]}-${dateParts[0]}`;
+            return `/${league}/heat-picks-today-${slugDate}/`;
+        }
+    }
+    
     // Check if stored slug is in prediction format (new SEO-optimized format)
     const storedSlug = post.websiteStory?.seo?.slug || '';
     const isPredictionFormat = storedSlug.includes('-prediction-preview-') && storedSlug.match(/\d{4}-\d{2}-\d{2}$/);
@@ -872,6 +885,16 @@ function getShortTeamName(fullName) {
  * Get 3-letter acronym for a team name
  * Returns the standard abbreviation used in sports (e.g., "LAL" for "Los Angeles Lakers")
  */
+function getLeagueAbbreviation(league) {
+    const upper = (league || '').toUpperCase();
+    if (upper === 'BUNDESLIGA') return 'GER';
+    if (upper === 'LIGUE 1') return 'FRA';
+    if (upper === 'SERIE A') return 'ITA';
+    if (upper === 'LA LIGA') return 'ESP';
+    if (upper === 'EPL' || upper === 'PREMIER LEAGUE') return 'EPL';
+    return league ? league.toUpperCase().substring(0, 3) : 'N/A';
+}
+
 function getTeamAcronym(fullName, league) {
     if (!fullName) return '';
     
@@ -1014,8 +1037,9 @@ function generatePostCard(post) {
     const matchup = `${teamAShort} VS ${teamBShort}`.toUpperCase();
     const league = (post.league || '').toUpperCase();
     
-    // Check if this is a DFS article
+    // Check if this is a DFS article or Heat Picks article
     const isDFSArticle = post.storyType === 'dfs_article';
+    const isHeatPicksArticle = post.storyType === 'heat_picks';
     
     // For DFS articles, recalculate headline based on matchupScheduledDate
     let headline = post.websiteStory?.headline || 'Untitled';
@@ -1037,6 +1061,7 @@ function generatePostCard(post) {
     const isHeatHigh = heatScore >= 71; // ~71 on 100 scale = ~25 on 35 scale
     
     // For DFS articles, generate matchup text with day of week + "[League] DFS"
+    // For Heat Picks articles, use "Heat Picks" label
     let displayMatchup = matchup;
     let displayMatchupMobile = (getTeamAcronym(post.teamA || '', post.league) + ' VS ' + getTeamAcronym(post.teamB || '', post.league)).toUpperCase();
     if (isDFSArticle) {
@@ -1052,6 +1077,9 @@ function generatePostCard(post) {
             displayMatchup = 'DFS VALUE';
             displayMatchupMobile = displayMatchup;
         }
+    } else if (isHeatPicksArticle) {
+        displayMatchup = 'HEAT PICKS';
+        displayMatchupMobile = displayMatchup;
     }
     
     // Extract quote from evidence bundle
@@ -1067,6 +1095,14 @@ function generatePostCard(post) {
     if (isDFSArticle) {
         quoteText = "Take a deeper look at narratives on key value players for today's slate";
         quoteSpeaker = '';
+        quoteTeam = '';
+    } else if (!quoteText) {
+        // Fallback to matchup preview quote if no quotes found
+        const articleDate = post.matchupScheduledDate || post.createdAt;
+        const today = new Date().toISOString().split('T')[0];
+        const isToday = articleDate && articleDate.split('T')[0] === today;
+        quoteText = `${post.teamA || ''} and ${post.teamB || ''} meet ${isToday ? 'tonight' : 'in a seasonal matchup'} in ${(post.league || '').toUpperCase()}.`;
+        quoteSpeaker = 'Matchup Preview';
         quoteTeam = '';
     }
     
@@ -1098,7 +1134,7 @@ function generatePostCard(post) {
                         <span class="matchup-card-mobile" style="display: none;">${displayMatchupMobile}</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
-                        <div style="color: #fff; font-size: 0.75rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${league}</div>
+                        <div style="color: #fff; font-size: 0.75rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${getLeagueAbbreviation(league)}</div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
@@ -1202,6 +1238,9 @@ function extractRecentDates(posts) {
             }));
             return;
         }
+        
+        // Heat Picks articles should appear in league hubs (not filtered out)
+        // They will use the normal league/date structure
         
         // Use uppercase for key matching with data-league attribute
         if (!dateMap.has(leagueUpper)) {
@@ -1810,10 +1849,10 @@ function initRadarModal() {
             console.log('=============================');
             
             // Filter posts by today and tomorrow - also check status is 'published'
-            // Exclude DFS articles (they're not matchups)
+            // Exclude DFS articles and Heat Picks articles (they're not matchups)
             const todayPosts = posts.filter(post => {
-                // Exclude DFS articles - they're not matchups
-                if (post.storyType === 'dfs_article') {
+                // Exclude DFS articles and Heat Picks articles - they're not matchups
+                if (post.storyType === 'dfs_article' || post.storyType === 'heat_picks') {
                     return false;
                 }
                 
@@ -1850,8 +1889,8 @@ function initRadarModal() {
             });
             
             const tomorrowPosts = posts.filter(post => {
-                // Exclude DFS articles - they're not matchups
-                if (post.storyType === 'dfs_article') {
+                // Exclude DFS articles and Heat Picks articles - they're not matchups
+                if (post.storyType === 'dfs_article' || post.storyType === 'heat_picks') {
                     return false;
                 }
                 
@@ -2029,9 +2068,9 @@ function initMobileRadarModal() {
             // Get today's date (in America/New_York timezone)
             const today = getTodayDate();
             
-            // Filter posts by today only - exclude DFS articles and only published posts
+            // Filter posts by today only - exclude DFS articles, Heat Picks articles and only published posts
             const todayPosts = posts.filter(post => {
-                if (post.storyType === 'dfs_article') {
+                if (post.storyType === 'dfs_article' || post.storyType === 'heat_picks') {
                     return false;
                 }
                 

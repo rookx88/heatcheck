@@ -195,6 +195,549 @@ function extractJson<T>(text: string): T {
 // REACT COMPONENTS
 // ===================================================================================
 
+// Helper function to detect if a league is a soccer league
+const isSoccerLeague = (league: string): boolean => {
+  const upper = league.toUpperCase();
+  return upper === 'EPL' || upper === 'LA LIGA' || upper === 'SERIE A' || upper === 'BUNDESLIGA' || upper === 'LIGUE 1' || upper === 'PREMIER LEAGUE';
+};
+
+// ===================================================================================
+// HEAT PICKS GENERATION FUNCTIONS
+// ===================================================================================
+
+/**
+ * Generate chartCatalog from matchPackV3 data
+ */
+function generateChartCatalog(matchPackV3: any): Array<{
+  chartId: string;
+  chartType: string;
+  dataSource: string;
+  teamsIncluded: string[];
+  description: string;
+  whatQuestionItAnswers: string;
+}> {
+  const catalog: Array<{
+    chartId: string;
+    chartType: string;
+    dataSource: string;
+    teamsIncluded: string[];
+    description: string;
+    whatQuestionItAnswers: string;
+  }> = [];
+
+  if (!matchPackV3 || !matchPackV3.factDrop) return catalog;
+
+  const factDrop = matchPackV3.factDrop;
+  const teamForm = factDrop.raw?.teamForm;
+  const comparisons = factDrop.comparisons || [];
+  const sections = factDrop.sections || [];
+  const availability = factDrop.raw?.availability;
+
+  // 1. Rolling margin trend (last 10/15 games)
+  if (teamForm?.A && teamForm?.B) {
+    catalog.push({
+      chartId: 'rolling_margin_last10',
+      chartType: 'line',
+      dataSource: 'teamForm',
+      teamsIncluded: ['A', 'B'],
+      description: 'Rolling margin trend over last 10 games',
+      whatQuestionItAnswers: 'Who is controlling games lately?'
+    });
+  }
+
+  // 2. Usage vs minutes stress (star load)
+  const formLeaders = sections.find((s: any) => s?.key === 'formLeaders');
+  if (formLeaders?.priorityPlayers && Array.isArray(formLeaders.priorityPlayers) && formLeaders.priorityPlayers.length > 0) {
+    catalog.push({
+      chartId: 'star_load',
+      chartType: 'scatter',
+      dataSource: 'formLeaders',
+      teamsIncluded: ['A', 'B'],
+      description: 'Usage vs minutes stress for key players',
+      whatQuestionItAnswers: 'Which stars are under the most load?'
+    });
+  }
+
+  // 3. Close-game execution split
+  const closeMargin = comparisons.find((c: any) => c?.key === 'closeMargin');
+  if (closeMargin) {
+    catalog.push({
+      chartId: 'close_game_execution',
+      chartType: 'bar',
+      dataSource: 'comparisons',
+      teamsIncluded: ['A', 'B'],
+      description: 'Close-game win rate differential',
+      whatQuestionItAnswers: 'Who executes better in tight games?'
+    });
+  }
+
+  // 4. Rotation availability timeline
+  if (availability?.majorAbsences) {
+    catalog.push({
+      chartId: 'rotation_availability',
+      chartType: 'timeline',
+      dataSource: 'availability',
+      teamsIncluded: ['A', 'B'],
+      description: 'Rotation availability and major absences',
+      whatQuestionItAnswers: 'Which team has more rotation strain?'
+    });
+  }
+
+  // 5. Pace vs efficiency mismatch
+  const paceComp = comparisons.find((c: any) => c?.key?.toLowerCase().includes('pace'));
+  if (paceComp) {
+    catalog.push({
+      chartId: 'pace_efficiency',
+      chartType: 'scatter',
+      dataSource: 'comparisons',
+      teamsIncluded: ['A', 'B'],
+      description: 'Pace vs efficiency mismatch',
+      whatQuestionItAnswers: 'Which team controls tempo better?'
+    });
+  }
+
+  // 6. Turnover pressure differential
+  const tovComp = comparisons.find((c: any) => c?.key?.toLowerCase().includes('turnover') || c?.key?.toLowerCase().includes('tov'));
+  if (tovComp) {
+    catalog.push({
+      chartId: 'turnover_pressure',
+      chartType: 'bar',
+      dataSource: 'comparisons',
+      teamsIncluded: ['A', 'B'],
+      description: 'Turnover pressure differential',
+      whatQuestionItAnswers: 'Which team forces more mistakes?'
+    });
+  }
+
+  // 7. Late-game usage concentration
+  if (formLeaders?.priorityPlayers && Array.isArray(formLeaders.priorityPlayers) && formLeaders.priorityPlayers.length > 0) {
+    catalog.push({
+      chartId: 'late_game_usage',
+      chartType: 'line',
+      dataSource: 'formLeaders',
+      teamsIncluded: ['A', 'B'],
+      description: 'Late-game usage concentration',
+      whatQuestionItAnswers: 'Who gets the ball in crunch time?'
+    });
+  }
+
+  return catalog;
+}
+
+/**
+ * Step 1: Deterministic Scoring + Classification (Algorithm Decides)
+ * NO LLM INVOLVED - This is the "truth layer" that is backtestable.
+ */
+interface ClassifiedMatchup {
+  classification: 'HEAT_PICK' | 'WARM_LEAN' | 'NO_HEAT';
+  heatScore: number;
+  signalsHit: Array<{ signalKey: string; evidence: string; score: number }>;
+  marketLag: number | null;
+  evidenceChart: { chartId: string; chartType: string; dataSource: string; questionAnswered: string } | null;
+  matchup: string;
+  teamA: string;
+  teamB: string;
+  matchPackV3: any;
+  pickType?: string;
+  pick?: string;
+}
+
+async function computeHeatPicksClassification(
+  post: HeatcheckPost,
+  oddsData?: any
+): Promise<ClassifiedMatchup | null> {
+  const matchPackV3 = post.heatCheckData?.matchPackV3;
+  if (!matchPackV3 || !matchPackV3.factDrop) {
+    return null;
+  }
+
+  const factDrop = matchPackV3.factDrop;
+  const teamForm = factDrop.raw?.teamForm || {};
+  const comparisons = factDrop.comparisons || [];
+  const availability = factDrop.raw?.availability;
+  const teamA = post.teamA || '';
+  const teamB = post.teamB || '';
+  const matchup = `${teamA} @ ${teamB}`;
+
+  // 1. Compute Signal Scores
+  const signalsHit: Array<{ signalKey: string; evidence: string; score: number }> = [];
+
+  // Momentum signal
+  const aLast10 = teamForm.A?.w10 || 0;
+  const aLast3 = teamForm.A?.w3 || 0;
+  const bLast10 = teamForm.B?.w10 || 0;
+  const bLast3 = teamForm.B?.w3 || 0;
+  
+  // For NBA: use margin data; for soccer: use xgDiff
+  const aMargin10 = teamForm.A?.margin10 || teamForm.A?.xgDiff10 || 0;
+  const aMargin3 = teamForm.A?.margin3 || teamForm.A?.xgDiff3 || 0;
+  const bMargin10 = teamForm.B?.margin10 || teamForm.B?.xgDiff10 || 0;
+  const bMargin3 = teamForm.B?.margin3 || teamForm.B?.xgDiff3 || 0;
+
+  const momentumDivergence = Math.abs((aMargin3 - aMargin10) - (bMargin3 - bMargin10));
+  const momentumScore = Math.min(100, momentumDivergence * 10);
+  if (momentumScore > 20) {
+    const direction = (aMargin3 - aMargin10) > (bMargin3 - bMargin10) ? teamA : teamB;
+    signalsHit.push({
+      signalKey: 'momentum',
+      evidence: `${direction} last3 margin ${direction === teamA ? (aMargin3 - aMargin10).toFixed(1) : (bMargin3 - bMargin10).toFixed(1)} vs ${direction === teamA ? teamB : teamA} ${(direction === teamA ? (bMargin3 - bMargin10) : (aMargin3 - aMargin10)).toFixed(1)}`,
+      score: momentumScore
+    });
+  }
+
+  // Availability signal
+  const aAbsences = availability?.majorAbsences?.A?.count || 0;
+  const bAbsences = availability?.majorAbsences?.B?.count || 0;
+  const availabilityDiff = Math.abs(aAbsences - bAbsences);
+  const availabilityScore = Math.min(100, availabilityDiff * 25);
+  if (availabilityScore > 20) {
+    const direction = aAbsences > bAbsences ? teamB : teamA;
+    signalsHit.push({
+      signalKey: 'availability',
+      evidence: `${direction === teamA ? teamB : teamA} missing ${availabilityDiff} more key player(s)`,
+      score: availabilityScore
+    });
+  }
+
+  // Close games signal
+  const closeMarginComp = comparisons.find((c: any) => c?.key === 'closeMargin');
+  if (closeMarginComp) {
+    const aCloseW = teamForm.A?.closeW10 || 0;
+    const aCloseL = teamForm.A?.closeL10 || 0;
+    const bCloseW = teamForm.B?.closeW10 || 0;
+    const bCloseL = teamForm.B?.closeL10 || 0;
+    const aCloseRate = aCloseW + aCloseL > 0 ? aCloseW / (aCloseW + aCloseL) : 0;
+    const bCloseRate = bCloseW + bCloseL > 0 ? bCloseW / (bCloseW + bCloseL) : 0;
+    const closeGameDiff = Math.abs(aCloseRate - bCloseRate);
+    const closeGameScore = Math.min(100, closeGameDiff * 200);
+    if (closeGameScore > 20) {
+      const direction = aCloseRate > bCloseRate ? teamA : teamB;
+      signalsHit.push({
+        signalKey: 'closeGames',
+        evidence: `${direction} close-game win rate ${(direction === teamA ? aCloseRate : bCloseRate).toFixed(1)} vs ${(direction === teamA ? bCloseRate : aCloseRate).toFixed(1)}`,
+        score: closeGameScore
+      });
+    }
+  }
+
+  // Comparisons signal (aggregate)
+  let comparisonsScore = 0;
+  const comparisonSignals: string[] = [];
+  comparisons.forEach((comp: any) => {
+    if (comp?.key && comp?.key !== 'closeMargin') {
+      const aVal = comp?.A || 0;
+      const bVal = comp?.B || 0;
+      const diff = Math.abs(aVal - bVal);
+      if (diff > 0.1) {
+        comparisonsScore += Math.min(20, diff * 10);
+        const direction = aVal > bVal ? teamA : teamB;
+        comparisonSignals.push(`${comp.key}: ${direction} +${diff.toFixed(2)}`);
+      }
+    }
+  });
+  if (comparisonsScore > 20) {
+    signalsHit.push({
+      signalKey: 'comparisons',
+      evidence: comparisonSignals.slice(0, 2).join('; '),
+      score: Math.min(100, comparisonsScore)
+    });
+  }
+
+  // 2. Calculate Base HeatScore from Statistical Signals (0-60 points)
+  const momentumWeight = 0.3;
+  const availabilityWeight = 0.25;
+  const closeGamesWeight = 0.25;
+  const comparisonsWeight = 0.2;
+
+  const momentumContrib = signalsHit.find(s => s.signalKey === 'momentum')?.score || 0;
+  const availabilityContrib = signalsHit.find(s => s.signalKey === 'availability')?.score || 0;
+  const closeGamesContrib = signalsHit.find(s => s.signalKey === 'closeGames')?.score || 0;
+  const comparisonsContrib = signalsHit.find(s => s.signalKey === 'comparisons')?.score || 0;
+
+  // Scale signal scores to 0-60 range (matching unified system)
+  const momentumScoreScaled = Math.min(20, (momentumContrib / 100) * 20);
+  const availabilityScoreScaled = Math.min(15, (availabilityContrib / 100) * 15);
+  const closeGamesScoreScaled = Math.min(15, (closeGamesContrib / 100) * 15);
+  const comparisonsScoreScaled = Math.min(10, (comparisonsContrib / 100) * 10);
+
+  const baseScore = Math.round(
+    momentumScoreScaled +
+    availabilityScoreScaled +
+    closeGamesScoreScaled +
+    comparisonsScoreScaled
+  );
+
+  // 3. Add Narrative Strength (0-25 points)
+  let narrativeScore = 0;
+  const narratives = post.heatCheckData?.narratives;
+  if (narratives?.candidate_cards && narratives.candidate_cards.length > 0) {
+    // Primary narrative score (0-15 points)
+    const primaryNarrativeId = narratives.selected?.primary_narrative_id;
+    const primaryCard = narratives.candidate_cards.find(
+      (c: any) => c.narrative_id === primaryNarrativeId
+    );
+    
+    if (primaryCard) {
+      // Use total_score if available (0-35 scale), normalize to 0-15
+      if (primaryCard.total_score !== undefined) {
+        narrativeScore += Math.min(15, (primaryCard.total_score / 35) * 15);
+      } else {
+        // Fallback: use score_breakdown if available
+        const breakdown = primaryCard.score_breakdown || {};
+        const breakdownScore = (breakdown.factual_support || 0) + 
+                              (breakdown.stakes || 0) + 
+                              (breakdown.performance_alignment || 0);
+        narrativeScore += Math.min(15, (breakdownScore / 20) * 15);
+      }
+    }
+    
+    // Secondary narratives boost (0-5 points)
+    const secondaryIds = narratives.selected?.secondary_narrative_ids || [];
+    if (secondaryIds.length >= 2) narrativeScore += 5;
+    else if (secondaryIds.length === 1) narrativeScore += 2;
+    
+    // Emotion tags diversity (0-5 points)
+    const allEmotionTags = narratives.candidate_cards
+      .flatMap((c: any) => c.emotion_tags || []);
+    const uniqueEmotionTags = [...new Set(allEmotionTags)];
+    if (uniqueEmotionTags.length >= 4) narrativeScore += 5;
+    else if (uniqueEmotionTags.length >= 3) narrativeScore += 3;
+    else if (uniqueEmotionTags.length >= 2) narrativeScore += 1;
+  }
+  
+  narrativeScore = Math.min(25, Math.round(narrativeScore));
+
+  // 4. Add Evidence Quality (0-15 points)
+  let evidenceScore = 0;
+  const evidenceBundle = post.heatCheckData?.evidence_bundle || post.heatCheckData?.evidenceBundle || {};
+  const quotes = evidenceBundle.quotes || [];
+  const timelineEvents = evidenceBundle.timeline_events || [];
+  
+  // Quotes quality (0-8 points)
+  if (quotes.length >= 5) evidenceScore += 8;
+  else if (quotes.length >= 3) evidenceScore += 6;
+  else if (quotes.length >= 2) evidenceScore += 4;
+  else if (quotes.length === 1) evidenceScore += 2;
+  
+  // Timeline events (0-4 points)
+  if (timelineEvents.length >= 5) evidenceScore += 4;
+  else if (timelineEvents.length >= 3) evidenceScore += 3;
+  else if (timelineEvents.length >= 2) evidenceScore += 2;
+  else if (timelineEvents.length === 1) evidenceScore += 1;
+  
+  // Recent evidence bonus (0-3 points)
+  const now = new Date();
+  const recentQuotes = quotes.filter((q: any) => {
+    if (!q.date_utc) return false;
+    try {
+      const quoteDate = new Date(q.date_utc);
+      const daysAgo = Math.floor((now.getTime() - quoteDate.getTime()) / (1000 * 60 * 60 * 24));
+      return daysAgo <= 30;
+    } catch {
+      return false;
+    }
+  });
+  if (recentQuotes.length >= 3) evidenceScore += 3;
+  else if (recentQuotes.length >= 2) evidenceScore += 2;
+  else if (recentQuotes.length >= 1) evidenceScore += 1;
+  
+  evidenceScore = Math.min(15, evidenceScore);
+
+  // 5. Calculate Unified HeatScore (0-100)
+  const heatScore = Math.round(baseScore + narrativeScore + evidenceScore);
+
+  // 6. Market Lag Numeric
+  let marketLag: number | null = null;
+  if (oddsData?.gameMarkets) {
+    // Simple heuristic: compare HeatScore to spread
+    // If HeatScore is high but spread is close, market lag exists
+    const spread = oddsData.gameMarkets?.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'spreads')?.outcomes?.[0]?.point;
+    if (spread !== undefined) {
+      // Higher heatScore with tighter spread = more lag
+      const spreadAbs = Math.abs(spread);
+      marketLag = Math.min(100, Math.max(0, heatScore - (spreadAbs * 5)));
+    }
+  }
+
+  // 7. Chart Selection
+  const chartCatalog = generateChartCatalog(matchPackV3);
+  let evidenceChart: { chartId: string; chartType: string; dataSource: string; questionAnswered: string } | null = null;
+  
+  // Select chart that supports the strongest signal
+  if (chartCatalog.length > 0 && signalsHit.length > 0) {
+    const strongestSignal = signalsHit.reduce((prev, curr) => curr.score > prev.score ? curr : prev);
+    const relevantChart = chartCatalog.find(c => {
+      if (strongestSignal.signalKey === 'momentum') return c.chartId === 'rolling_margin_last10';
+      if (strongestSignal.signalKey === 'availability') return c.chartId === 'rotation_availability';
+      if (strongestSignal.signalKey === 'closeGames') return c.chartId === 'close_game_execution';
+      return true;
+    }) || chartCatalog[0];
+    
+    evidenceChart = {
+      chartId: relevantChart.chartId,
+      chartType: relevantChart.chartType,
+      dataSource: relevantChart.dataSource,
+      questionAnswered: relevantChart.whatQuestionItAnswers
+    };
+  }
+
+  // 8. Classification (updated thresholds for unified scoring)
+  let classification: 'HEAT_PICK' | 'WARM_LEAN' | 'NO_HEAT' = 'NO_HEAT';
+  
+  // Check if at least 2 signals support the same side
+  const signalsBySide = signalsHit.reduce((acc, s) => {
+    const side = s.evidence.includes(teamA) ? 'A' : s.evidence.includes(teamB) ? 'B' : 'neutral';
+    if (!acc[side]) acc[side] = [];
+    acc[side].push(s);
+    return acc;
+  }, {} as Record<string, typeof signalsHit>);
+  
+  const hasTwoSignalsSameSide = Object.values(signalsBySide).some(signals => signals.length >= 2);
+
+  // Updated thresholds: Unified scoring (0-100) includes stats (0-60) + narratives (0-25) + evidence (0-15)
+  // HEAT_PICK: Requires strong overall score (70+) with good stats + narrative/evidence support
+  // WARM_LEAN: Requires decent score (60+) with some narrative/evidence
+  if (heatScore >= 70 && hasTwoSignalsSameSide && (marketLag === null || marketLag >= 50) && evidenceChart) {
+    classification = 'HEAT_PICK';
+  } else if (heatScore >= 60 && heatScore < 70 && signalsHit.length > 0 && (marketLag === null || marketLag < 50 || !evidenceChart)) {
+    classification = 'WARM_LEAN';
+  } else {
+    classification = 'NO_HEAT';
+  }
+
+  // Determine pick direction and type
+  let pickType: string | undefined;
+  let pick: string | undefined;
+  
+  if (classification === 'HEAT_PICK' || classification === 'WARM_LEAN') {
+    // Determine which side has the advantage
+    const aSignals = signalsBySide['A']?.length || 0;
+    const bSignals = signalsBySide['B']?.length || 0;
+    const favoredSide = aSignals > bSignals ? teamA : teamB;
+    
+    if (oddsData?.gameMarkets) {
+      const spread = oddsData.gameMarkets?.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'spreads')?.outcomes?.find((o: any) => o.name === favoredSide)?.point;
+      if (spread !== undefined) {
+        pickType = 'spread';
+        pick = `${favoredSide} ${spread > 0 ? '+' : ''}${spread}`;
+      } else {
+        pickType = 'moneyline';
+        pick = favoredSide;
+      }
+    } else {
+      pickType = 'moneyline';
+      pick = favoredSide;
+    }
+  }
+
+  return {
+    classification,
+    heatScore,
+    signalsHit,
+    marketLag,
+    evidenceChart,
+    matchup,
+    teamA,
+    teamB,
+    matchPackV3,
+    pickType,
+    pick
+  };
+}
+
+/**
+ * Step 2: LLM as Renderer (LLM Explains)
+ * LLM ONLY ADDS READABILITY - It does NOT control classification.
+ */
+async function renderHeatPicksWithLLM(
+  classified: ClassifiedMatchup,
+  narratives?: any[]
+): Promise<{
+  whyHot: string[];
+  narrativesUsed: Array<{ type: string; strength: number; direction: string; whyItFitsData: string }>;
+  marketLag: string;
+  riskNote: string;
+  chartCaption: string;
+}> {
+  const allowedNarratives = ['revenge/return', 'role_surge/star_load', 'fatigue/travel/schedule', 'coach_bounce', 'rivalry', 'bounceback'];
+  
+  const prompt = `You are the HeatChecks "Heat Picks" renderer. Your job is to explain what the algorithm decided, NOT to change it.
+
+CLASSIFICATION: ${classified.classification}
+HEAT SCORE: ${classified.heatScore}
+SIGNALS HIT: ${JSON.stringify(classified.signalsHit)}
+MARKET LAG (numeric): ${classified.marketLag ?? 'N/A'}
+EVIDENCE CHART: ${classified.evidenceChart ? JSON.stringify(classified.evidenceChart) : 'None'}
+MATCHUP: ${classified.matchup}
+${narratives && narratives.length > 0 ? `AVAILABLE NARRATIVES: ${JSON.stringify(narratives)}` : ''}
+
+Generate EXACTLY:
+1. Three "why hot" bullets (max 12 words each) - explain why this pick triggered
+2. 1-2 narrative alignments (ONLY from this allowed list: ${allowedNarratives.join(', ')}) - if narratives match the data
+3. Market lag explanation in plain English (1-2 sentences)
+4. Risk note (1 sentence)
+5. Chart caption explaining "what this proves" (1 sentence)
+
+Return ONLY valid JSON:
+{
+  "whyHot": ["bullet1", "bullet2", "bullet3"],
+  "narrativesUsed": [{"type": "revenge/return", "strength": 0.7, "direction": "TeamA", "whyItFitsData": "explanation"}],
+  "marketLag": "plain English explanation",
+  "riskNote": "one sentence risk",
+  "chartCaption": "what this chart proves"
+}`;
+
+  try {
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-pro',
+      contents: prompt,
+      config: {
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            whyHot: { type: Type.ARRAY, items: { type: Type.STRING } },
+            narrativesUsed: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  type: { type: Type.STRING },
+                  strength: { type: Type.NUMBER },
+                  direction: { type: Type.STRING },
+                  whyItFitsData: { type: Type.STRING }
+                },
+                required: ['type', 'strength', 'direction', 'whyItFitsData']
+              }
+            },
+            marketLag: { type: Type.STRING },
+            riskNote: { type: Type.STRING },
+            chartCaption: { type: Type.STRING }
+          },
+          required: ['whyHot', 'narrativesUsed', 'marketLag', 'riskNote', 'chartCaption']
+        }
+      }
+    });
+
+    const result = extractJson(response.text);
+    return {
+      whyHot: result.whyHot || [],
+      narrativesUsed: result.narrativesUsed || [],
+      marketLag: result.marketLag || 'Market lag unclear',
+      riskNote: result.riskNote || 'Standard game risk applies',
+      chartCaption: result.chartCaption || 'Chart supports the pressure signal'
+    };
+  } catch (error: any) {
+    console.error('[renderHeatPicksWithLLM] Error:', error);
+    return {
+      whyHot: ['Algorithm detected pressure signals', 'Multiple data points align', 'Market may not be fully priced'],
+      narrativesUsed: [],
+      marketLag: classified.marketLag !== null ? 'Market lag detected' : 'Market lag unclear',
+      riskNote: 'Standard game risk applies',
+      chartCaption: 'Chart supports the pressure signal'
+    };
+  }
+}
+
 const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }> = ({ setEditingPost }) => {
   const [narratives, setNarratives] = useState<Narrative[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -225,6 +768,10 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   const [showDFSModal, setShowDFSModal] = useState<boolean>(false);
   const [isGeneratingDFSArticle, setIsGeneratingDFSArticle] = useState<boolean>(false);
   const [dfsSport, setDfsSport] = useState<'NBA' | 'NFL'>('NBA');
+  const [showHeatPicksModal, setShowHeatPicksModal] = useState<boolean>(false);
+  const [isGeneratingHeatPicks, setIsGeneratingHeatPicks] = useState<boolean>(false);
+  const [heatPicksDate, setHeatPicksDate] = useState<string>('');
+  const [heatPicksLeague, setHeatPicksLeague] = useState<string>('NBA');
 
   const isGeneratingAnyHeatArticle = isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3;
   const [matchupModalSource, setMatchupModalSource] = useState<'oddsapi' | 'v3'>('oddsapi');
@@ -390,6 +937,45 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
     }
   };
 
+  const handleImportSoccerMatchups = async () => {
+    if (!importStartDate || !importEndDate) {
+      setError("Please select both start and end dates.");
+      return;
+    }
+
+    // Filter to only soccer leagues
+    const soccerLeagues = selectedLeagues.filter(l => 
+      ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'].includes(l)
+    );
+
+    if (soccerLeagues.length === 0) {
+      setError("Please select at least one soccer league (EPL, La Liga, Serie A, Bundesliga, or Ligue 1).");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setLoadingMessage('Importing soccer matchups from database...');
+
+    try {
+      const result = await apiClient.importSoccerMatchups(importStartDate, importEndDate, soccerLeagues);
+      
+      setImportResults(result.games);
+      setLoadingMessage(`Successfully imported ${result.imported} soccer matchup(s). ${result.skipped} skipped.`);
+      
+      // Close modal after a short delay to show results
+      setTimeout(() => {
+        setShowImportModal(false);
+        setIsLoading(false);
+        setImportResults(null);
+      }, 3000);
+    } catch (e: any) {
+      console.error(e);
+      setError(e.message || 'Failed to import soccer matchups from database.');
+      setIsLoading(false);
+    }
+  };
+
   const handleGenerateArticle = async () => {
     // Load available matchups and show selection modal
     try {
@@ -439,11 +1025,47 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   };
 
   const handleGenerateArticleV3 = async () => {
-    // Load available matchups and show selection modal (same as V2)
+    // Load available matchups and show selection modal
+    // Load both NBA and soccer matchups
     try {
       setError(null);
-      const matchups = await apiClient.getMatchupsV3();
-      setAvailableMatchups(matchups);
+      // Load NBA matchups from v3 endpoint (nba_heat_sheet DB)
+      const nbaMatchups = await apiClient.getMatchupsV3();
+      
+      // Load ALL matchups from main matchups table (includes imported soccer matchups)
+      const allMatchupsFromMain = await apiClient.getMatchups();
+      
+      // Filter for soccer leagues from main table
+      const soccerLeagues = ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
+      const soccerMatchupsFromMain = allMatchupsFromMain.filter(m => 
+        soccerLeagues.includes(m.league)
+      );
+      
+      // Also try to load from soccerdata DB as fallback (for matchups not yet imported)
+      const allSoccerMatchups: any[] = [...soccerMatchupsFromMain];
+      for (const league of soccerLeagues) {
+        try {
+          const soccerMatchups = await apiClient.getMatchupsV3Soccer(league);
+          // Only add if not already in main table (avoid duplicates)
+          for (const matchup of soccerMatchups) {
+            const exists = allSoccerMatchups.some(m => 
+              m.teamA === matchup.teamA && 
+              m.teamB === matchup.teamB && 
+              m.scheduledDate === matchup.scheduledDate
+            );
+            if (!exists) {
+              allSoccerMatchups.push(matchup);
+            }
+          }
+        } catch (e: any) {
+          console.warn(`Failed to load ${league} matchups from soccerdata DB:`, e.message || e);
+          // Continue loading other leagues even if one fails
+        }
+      }
+      
+      // Combine all matchups
+      const allMatchups = [...nbaMatchups, ...allSoccerMatchups];
+      setAvailableMatchups(allMatchups);
       setMatchupModalSource('v3');
       setSelectedMatchupIds([]);
       setEditingMatchupId(null);
@@ -543,9 +1165,15 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
 
   // Filter matchups based on filter criteria
   const filteredMatchups = availableMatchups.filter(matchup => {
-    // League filter
-    if (matchupFilterLeague.length > 0 && !matchupFilterLeague.includes(matchup.league.toUpperCase())) {
-      return false;
+    // League filter (case-insensitive comparison)
+    if (matchupFilterLeague.length > 0) {
+      const matchupLeagueUpper = matchup.league.toUpperCase();
+      const hasMatch = matchupFilterLeague.some(filterLeague => 
+        filterLeague.toUpperCase() === matchupLeagueUpper
+      );
+      if (!hasMatch) {
+        return false;
+      }
     }
 
     // Team name search filter
@@ -1226,12 +1854,42 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         });
 
         try {
-          const { pack } = await apiClient.getMatchPackV3(
-            matchup.teamA,
-            matchup.teamB,
-            matchup.scheduledDate || null,
-            null
-          );
+          // Normalize scheduledDate to YYYY-MM-DD format
+          let normalizedDate: string | null = null;
+          if (matchup.scheduledDate) {
+            // If it's already in YYYY-MM-DD format, use it
+            if (/^\d{4}-\d{2}-\d{2}$/.test(matchup.scheduledDate)) {
+              normalizedDate = matchup.scheduledDate;
+            } else {
+              // Try to parse and format it
+              try {
+                const date = new Date(matchup.scheduledDate);
+                if (!isNaN(date.getTime())) {
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                  const day = String(date.getDate()).padStart(2, '0');
+                  normalizedDate = `${year}-${month}-${day}`;
+                }
+              } catch (e) {
+                console.warn(`Could not parse scheduledDate: ${matchup.scheduledDate}`, e);
+              }
+            }
+          }
+          
+          // Route to correct endpoint based on league
+          const { pack } = isSoccerLeague(matchup.league || '')
+            ? await apiClient.getMatchPackV3Soccer(
+                matchup.teamA,
+                matchup.teamB,
+                normalizedDate,
+                null
+              )
+            : await apiClient.getMatchPackV3(
+                matchup.teamA,
+                matchup.teamB,
+                normalizedDate,
+                null
+              );
 
           if (!pack) throw new Error('MatchPackV3 returned null pack');
           if (pack.error) throw new Error(`${pack.error}: ${pack.message || 'MatchPack generation failed'}`);
@@ -1338,26 +1996,82 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                 // Try to find event ID by querying OddsAPI with team names and date
                 setGenerationProgress(prev => prev ? { ...prev, step: `Finding OddsAPI event ID for ${matchupLabel}...` } : null);
                 try {
+                  // Normalize date to YYYY-MM-DD format
+                  let gameDateForOdds: string | null = null;
+                  if (matchup.scheduledDate) {
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(matchup.scheduledDate)) {
+                      gameDateForOdds = matchup.scheduledDate;
+                    } else {
+                      try {
+                        const date = new Date(matchup.scheduledDate);
+                        if (!isNaN(date.getTime())) {
+                          gameDateForOdds = date.toISOString().split('T')[0];
+                        }
+                      } catch (e) {
+                        console.warn(`Could not parse scheduledDate for OddsAPI: ${matchup.scheduledDate}`, e);
+                      }
+                    }
+                  } else if (pack?.matchup?.gameDateEst) {
+                    // Normalize gameDateEst to YYYY-MM-DD
+                    try {
+                      const date = new Date(pack.matchup.gameDateEst);
+                      if (!isNaN(date.getTime())) {
+                        gameDateForOdds = date.toISOString().split('T')[0];
+                      }
+                    } catch (e) {
+                      console.warn(`Could not parse gameDateEst for OddsAPI: ${pack.matchup.gameDateEst}`, e);
+                    }
+                  }
+                  
+                  console.log(`[V3 Edge] Searching OddsAPI for: ${matchup.teamA} vs ${matchup.teamB} on ${gameDateForOdds || 'any date'}`);
                   const eventInfo = await apiClient.findOddsEventId(
                     matchup.teamA,
                     matchup.teamB,
-                    matchup.scheduledDate || pack?.matchup?.gameDateEst || null,
+                    gameDateForOdds,
                     'basketball_nba'
                   );
                   eventId = eventInfo.eventId;
                   console.log(`[V3 Edge] Found event ID: ${eventId} for ${matchupLabel}`);
                 } catch (findError: any) {
-                  console.warn(`[V3 Edge] Could not find event ID for ${matchupLabel}:`, findError.message || findError);
-                  // Continue without event ID - will set no_edge_reason below
+                  const errorMessage = findError.message || String(findError);
+                  const isQuotaError = errorMessage.includes('quota') || 
+                                      errorMessage.includes('OUT_OF_USAGE_CREDITS') ||
+                                      (findError as any)?.isQuotaError;
+                  
+                  if (isQuotaError) {
+                    console.warn(`[V3 Edge] TheOddsAPI quota exceeded for ${matchupLabel}. Article will be created without Edge recommendations.`);
+                    heatChecksEdge.no_edge_reason = `TheOddsAPI usage quota has been reached. Please upgrade your plan at https://the-odds-api.com or wait for quota reset.`;
+                  } else {
+                    console.warn(`[V3 Edge] Could not find event ID for ${matchupLabel}:`, errorMessage);
+                    heatChecksEdge.no_edge_reason = `Could not find OddsAPI event ID for ${matchupLabel}. Team names may not match OddsAPI format, or game may not be available yet.`;
+                  }
+                  // Continue without event ID - will set no_edge_reason above
                 }
               }
 
               if (eventId) {
                 setGenerationProgress(prev => prev ? { ...prev, step: `Fetching odds from TheOddsAPI for ${matchupLabel}...` } : null);
-                oddsData = await apiClient.getOddsForGame(eventId, 'basketball_nba');
-                console.log(`[V3 Edge] Fetched odds using TheOddsAPI for ${matchupLabel}`);
-              } else {
-                heatChecksEdge.no_edge_reason = `Could not find OddsAPI event ID for ${matchupLabel}. Team names may not match OddsAPI format, or game may not be available yet. Article will be created without Edge recommendations.`;
+                try {
+                  oddsData = await apiClient.getOddsForGame(eventId, 'basketball_nba');
+                  console.log(`[V3 Edge] Fetched odds using TheOddsAPI for ${matchupLabel}`);
+                } catch (oddsError: any) {
+                  const errorMessage = oddsError.message || String(oddsError);
+                  const isQuotaError = errorMessage.includes('quota') || 
+                                      errorMessage.includes('OUT_OF_USAGE_CREDITS') ||
+                                      (oddsError as any)?.isQuotaError;
+                  
+                  if (isQuotaError) {
+                    heatChecksEdge.no_edge_reason = `TheOddsAPI usage quota has been reached. Please upgrade your plan at https://the-odds-api.com or wait for quota reset.`;
+                    console.warn(`[V3 Edge] TheOddsAPI quota exceeded for ${matchupLabel}`);
+                  } else {
+                    heatChecksEdge.no_edge_reason = `Failed to fetch odds from TheOddsAPI for ${matchupLabel}: ${errorMessage}`;
+                    console.warn(`[V3 Edge] Failed to fetch odds:`, errorMessage);
+                  }
+                }
+              }
+              
+              // If no_edge_reason is set but oddsData is null, log it
+              if (heatChecksEdge.no_edge_reason && !oddsData) {
                 console.warn(`[V3 Edge] ${heatChecksEdge.no_edge_reason}`);
               }
             }
@@ -1643,6 +2357,233 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
       setIsGeneratingDFSArticle(false);
     }
   };
+
+  const handleGenerateHeatPicks = async () => {
+    setIsGeneratingHeatPicks(true);
+    setError(null);
+
+    try {
+      if (!heatPicksDate || !heatPicksLeague) {
+        throw new Error('Please select both date and league');
+      }
+
+      // Fetch published posts for the selected date and league
+      const posts = await apiClient.getPublishedPostsByDateLeague(heatPicksDate, heatPicksLeague);
+      
+      if (posts.length === 0) {
+        throw new Error(`No published articles found for ${heatPicksLeague} on ${heatPicksDate}`);
+      }
+
+      console.log(`[Heat Picks] Found ${posts.length} published posts for ${heatPicksLeague} on ${heatPicksDate}`);
+
+      // Step 1: Compute classifications for each matchup
+      const classifiedMatchups: ClassifiedMatchup[] = [];
+      const noHeatMatchups: Array<{ matchup: string; whyNot: string }> = [];
+
+      for (const post of posts) {
+        if (!post.heatCheckData?.matchPackV3) {
+          console.warn(`[Heat Picks] Post ${post.id} missing matchPackV3, skipping`);
+          continue;
+        }
+
+        // Try to fetch odds
+        let oddsData: any = null;
+        try {
+          const sport = isSoccerLeague(heatPicksLeague) 
+            ? (heatPicksLeague === 'EPL' || heatPicksLeague === 'PREMIER LEAGUE' ? 'soccer_epl' : 'soccer_bundesliga')
+            : (heatPicksLeague === 'NBA' ? 'basketball_nba' : 'americanfootball_nfl');
+          
+          const eventIdResult = await apiClient.findOddsEventId(
+            post.teamA || '',
+            post.teamB || '',
+            heatPicksDate,
+            sport
+          );
+          
+          if (eventIdResult?.eventId) {
+            oddsData = await apiClient.getOddsForGame(eventIdResult.eventId, sport);
+          }
+        } catch (oddsError: any) {
+          console.warn(`[Heat Picks] Could not fetch odds for ${post.teamA} vs ${post.teamB}:`, oddsError.message);
+          // Continue without odds
+        }
+
+        const classified = await computeHeatPicksClassification(post, oddsData);
+        
+        if (!classified) {
+          noHeatMatchups.push({
+            matchup: `${post.teamA} @ ${post.teamB}`,
+            whyNot: 'Missing matchPackV3 data'
+          });
+          continue;
+        }
+
+        if (classified.classification === 'NO_HEAT') {
+          noHeatMatchups.push({
+            matchup: classified.matchup,
+            whyNot: `HeatScore ${classified.heatScore} below threshold or market already priced in`
+          });
+        } else {
+          classifiedMatchups.push(classified);
+        }
+      }
+
+      // Sort by heatScore (highest first) and limit to max 5 picks
+      classifiedMatchups.sort((a, b) => b.heatScore - a.heatScore);
+      const heatPicks = classifiedMatchups.filter(c => c.classification === 'HEAT_PICK').slice(0, 5);
+      const warmLeans = classifiedMatchups.filter(c => c.classification === 'WARM_LEAN').slice(0, 3);
+
+      // Step 2: Render with LLM
+      const heatPicksRendered = await Promise.all(
+        heatPicks.map(async (classified) => {
+          const rendered = await renderHeatPicksWithLLM(classified, posts.find(p => p.teamA === classified.teamA && p.teamB === classified.teamB)?.heatCheckData?.narratives?.candidate_cards);
+          return {
+            matchup: classified.matchup,
+            pickType: classified.pickType || 'moneyline',
+            pick: classified.pick || classified.teamA,
+            heatScore: classified.heatScore,
+            signalsHit: classified.signalsHit.map(s => ({
+              signalKey: s.signalKey,
+              evidence: s.evidence
+            })),
+            narrativesUsed: rendered.narrativesUsed,
+            marketLag: rendered.marketLag,
+            evidenceChart: classified.evidenceChart,
+            whyHot: rendered.whyHot,
+            riskNote: rendered.riskNote,
+            chartCaption: rendered.chartCaption
+          };
+        })
+      );
+
+      const warmLeansRendered = await Promise.all(
+        warmLeans.map(async (classified) => {
+          const rendered = await renderHeatPicksWithLLM(classified, posts.find(p => p.teamA === classified.teamA && p.teamB === classified.teamB)?.heatCheckData?.narratives?.candidate_cards);
+          return {
+            matchup: classified.matchup,
+            pickType: classified.pickType || 'moneyline',
+            pick: classified.pick || classified.teamA,
+            heatScore: classified.heatScore,
+            signalsHit: classified.signalsHit.map(s => ({
+              signalKey: s.signalKey,
+              evidence: s.evidence
+            })),
+            narrativesUsed: rendered.narrativesUsed,
+            marketLag: rendered.marketLag,
+            evidenceChart: classified.evidenceChart,
+            whyHot: rendered.whyHot,
+            riskNote: rendered.riskNote,
+            chartCaption: rendered.chartCaption
+          };
+        })
+      );
+
+      const noHeatZoneRendered = await Promise.all(
+        noHeatMatchups.map(async (item) => {
+          // Simple LLM explanation for why not
+          try {
+            const response = await ai.models.generateContent({
+              model: 'gemini-2.5-pro',
+              contents: `Explain in one sentence why this matchup is in the No-Heat Zone: ${item.matchup}. Reason: ${item.whyNot}`,
+              config: {
+                responseSchema: {
+                  type: Type.OBJECT,
+                  properties: {
+                    whyNot: { type: Type.STRING }
+                  },
+                  required: ['whyNot']
+                }
+              }
+            });
+            const result = extractJson(response.text);
+            return {
+              matchup: item.matchup,
+              whyNot: result.whyNot || item.whyNot
+            };
+          } catch {
+            return item;
+          }
+        })
+      );
+
+      // Generate final JSON structure
+      const heatPicksJson = {
+        date: heatPicksDate,
+        sport: heatPicksLeague,
+        heatPicks: heatPicksRendered,
+        warmLeans: warmLeansRendered,
+        noHeatZone: noHeatZoneRendered
+      };
+
+      // Generate chart catalog for all matchups
+      const allChartCatalogs: Record<string, any[]> = {};
+      posts.forEach(post => {
+        if (post.heatCheckData?.matchPackV3) {
+          const key = `${post.teamA}-${post.teamB}`;
+          allChartCatalogs[key] = generateChartCatalog(post.heatCheckData.matchPackV3);
+        }
+      });
+
+      // Format date for slug (MM-DD-YYYY)
+      const dateParts = heatPicksDate.split('-');
+      const slugDate = `${dateParts[1]}-${dateParts[2]}-${dateParts[0]}`;
+      const leagueLower = heatPicksLeague.toLowerCase();
+      const slug = `${leagueLower}-heat-picks-today-${slugDate}`;
+
+      // Create draft post
+      const newDraftPost = await apiClient.createDraft({
+        league: heatPicksLeague,
+        teamA: 'Multiple',
+        teamB: '',
+        matchupScheduledDate: heatPicksDate,
+        storyType: 'heat_picks',
+        scanNarrative: `Heat Picks for ${heatPicksLeague} on ${heatPicksDate}`,
+        websiteStory: {
+          formatStyle: 'QUOTE_LEDE',
+          headline: `Heat Picks Today — Pressure-Based Picks Backed by Data`,
+          dek: `The games where momentum, narrative pressure, and market lag intersect — with one chart of proof per pick.`,
+          whyItMatters: [],
+          theBackstory: JSON.stringify(heatPicksJson, null, 2),
+          theData: [],
+          keyMomentsTimeline: [],
+          theReceipts: [],
+          pressurePoints: [],
+          whatToWatch: [],
+          edgeAngle: `Heat Picks for ${heatPicksLeague} on ${heatPicksDate}`,
+          tags: ['Heat Picks', heatPicksLeague],
+          sources: [],
+          seo: {
+            slug: slug,
+            metaTitle: `Heat Picks Today — ${heatPicksLeague} | HeatChecks`,
+            metaDescription: `Pressure-based picks backed by data for ${heatPicksLeague} on ${heatPicksDate}`
+          },
+          image: '',
+          imageUrl: undefined
+        },
+        heatchecksEdge: undefined,
+        heatCheckData: {
+          heatPicks: heatPicksJson,
+          chartCatalog: allChartCatalogs,
+          matchPacks: posts.map(p => ({
+            teamA: p.teamA,
+            teamB: p.teamB,
+            matchPackV3: p.heatCheckData?.matchPackV3
+          }))
+        }
+      });
+
+      console.log('[Heat Picks] Created draft post:', newDraftPost.id);
+      
+      // Open post in editor
+      setEditingPost(newDraftPost);
+      setShowHeatPicksModal(false);
+    } catch (e: any) {
+      console.error("Failed to generate Heat Picks:", e);
+      setError(e.message || "Heat Picks generation failed. Please check the console for details.");
+    } finally {
+      setIsGeneratingHeatPicks(false);
+    }
+  };
     
   const renderContent = () => {
     if (isLoading) return <div className="loader">{loadingMessage}</div>;
@@ -1702,6 +2643,9 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
             <button className="scan-button" onClick={() => setShowDFSModal(true)} disabled={isLoading || isGeneratingDFSArticle}>
                 DFS Article Generator
             </button>
+            <button className="scan-button" onClick={() => setShowHeatPicksModal(true)} disabled={isLoading || isGeneratingHeatPicks}>
+                Heat Picks Generation
+            </button>
         </div>
         <div className="content-area">{renderContent()}</div>
         
@@ -1739,7 +2683,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                     <div style={{ marginBottom: '1.5rem' }}>
                         <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Leagues</label>
                         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-                            {['NBA', 'NFL', 'EPL'].map(league => (
+                            {['NBA', 'NFL', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'].map(league => (
                                 <label key={league} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: isLoading ? 'not-allowed' : 'pointer' }}>
                                     <input
                                         type="checkbox"
@@ -1779,7 +2723,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                         </div>
                     )}
 
-                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
                         <button 
                             className="cancel" 
                             onClick={() => { 
@@ -1793,12 +2737,22 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                         >
                             {isLoading ? 'Importing...' : 'Cancel'}
                         </button>
+                        {selectedLeagues.some(l => ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'].includes(l)) && (
+                            <button 
+                                className="action-button" 
+                                onClick={handleImportSoccerMatchups}
+                                disabled={isLoading || !importStartDate || !importEndDate || selectedLeagues.filter(l => ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'].includes(l)).length === 0}
+                                style={{ background: '#00ff41', color: '#000' }}
+                            >
+                                {isLoading ? 'Importing...' : 'Import from Soccer DB'}
+                            </button>
+                        )}
                         <button 
                             className="action-button" 
                             onClick={handleProcessImport} 
                             disabled={isLoading || !importStartDate || !importEndDate || selectedLeagues.length === 0}
                         >
-                            {isLoading ? 'Importing...' : 'Import Matchups'}
+                            {isLoading ? 'Importing...' : 'Import from OddsAPI'}
                         </button>
                     </div>
                 </div>
@@ -1867,7 +2821,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                             <div style={{ marginBottom: '0.75rem' }}>
                                 <div style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.5rem', fontWeight: '500' }}>League:</div>
                                 <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                                    {['NBA', 'NFL', 'EPL', 'MLB', 'NHL'].map(league => (
+                                    {['NBA', 'NFL', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'MLB', 'NHL'].map(league => (
                                         <label key={league} style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer', fontSize: '0.85rem' }}>
                                             <input
                                                 type="checkbox"
@@ -2300,6 +3254,92 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                             disabled={isGeneratingDFSArticle}
                         >
                             Cancel
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Heat Picks Generation Modal */}
+        {showHeatPicksModal && (
+            <div className="modal-overlay" onClick={() => { if (!isGeneratingHeatPicks) setShowHeatPicksModal(false); }}>
+                <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '600px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                        <h2>Heat Picks Generation</h2>
+                        <button
+                            className="cancel"
+                            onClick={() => {
+                                if (!isGeneratingHeatPicks) {
+                                    setShowHeatPicksModal(false);
+                                    setError(null);
+                                }
+                            }}
+                            disabled={isGeneratingHeatPicks}
+                            style={{ background: 'transparent', border: 'none', fontSize: '1.5rem', cursor: 'pointer' }}
+                        >
+                            ×
+                        </button>
+                    </div>
+
+                    {error && (
+                        <div style={{ padding: '1rem', background: 'rgba(248, 66, 66, 0.1)', border: '1px solid rgba(248, 66, 66, 0.5)', borderRadius: '4px', marginBottom: '1rem', color: '#f84242' }}>
+                            {error}
+                        </div>
+                    )}
+
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Select Date:</label>
+                        <input
+                            type="date"
+                            value={heatPicksDate}
+                            onChange={(e) => setHeatPicksDate(e.target.value)}
+                            disabled={isGeneratingHeatPicks}
+                            style={{ width: '100%', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+                        />
+                    </div>
+
+                    <div style={{ marginBottom: '1.5rem' }}>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Select League:</label>
+                        <select
+                            value={heatPicksLeague}
+                            onChange={(e) => setHeatPicksLeague(e.target.value)}
+                            disabled={isGeneratingHeatPicks}
+                            style={{ width: '100%', padding: '0.5rem', border: '1px solid #ccc', borderRadius: '4px' }}
+                        >
+                            <option value="NBA">NBA</option>
+                            <option value="NFL">NFL</option>
+                            <option value="EPL">EPL</option>
+                            <option value="BUNDESLIGA">Bundesliga</option>
+                            <option value="LIGUE 1">Ligue 1</option>
+                            <option value="PREMIER LEAGUE">Premier League</option>
+                        </select>
+                    </div>
+
+                    {isGeneratingHeatPicks && (
+                        <div style={{ textAlign: 'center', padding: '2rem' }}>
+                            <div className="loader">Generating Heat Picks...</div>
+                        </div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
+                        <button
+                            className="cancel"
+                            onClick={() => {
+                                if (!isGeneratingHeatPicks) {
+                                    setShowHeatPicksModal(false);
+                                    setError(null);
+                                }
+                            }}
+                            disabled={isGeneratingHeatPicks}
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            className="action-button"
+                            onClick={handleGenerateHeatPicks}
+                            disabled={isGeneratingHeatPicks || !heatPicksDate || !heatPicksLeague}
+                        >
+                            Generate Heat Picks
                         </button>
                     </div>
                 </div>
@@ -5103,14 +6143,15 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
         try {
             const m = charts?.momentumLine;
             if (m?.series) {
-                const a = m?.series?.A?.margins || [];
-                const b = m?.series?.B?.margins || [];
+                // Handle both NBA (margins) and soccer (xgDiff) data structures
+                const a = m?.series?.A?.margins || m?.series?.A?.xgDiff || [];
+                const b = m?.series?.B?.margins || m?.series?.B?.xgDiff || [];
                 const aLabel = m?.series?.A?.label || 'A';
                 const bLabel = m?.series?.B?.label || 'B';
                 const len = Math.max(a.length, b.length, 1);
 
                 const el = document.getElementById(momentumCanvasId) as HTMLCanvasElement | null;
-                if (el) {
+                if (el && (a.length > 0 || b.length > 0)) {
                     const chart = new Chart(el, {
                         type: 'line',
                         data: {
@@ -5127,24 +6168,36 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
             }
         } catch {}
 
-        // 2) Star load (USG10 vs MIN10)
+        // 2) Star load (USG10 vs MIN10 for NBA, xG5 vs min5 for soccer)
         try {
             const s = charts?.starLoad;
             const players: any[] = Array.isArray(s?.players) ? s.players : [];
             if (players.length > 0) {
-                const labels = players.map(p => `${String(p?.teamAbbr || '').trim()} ${String(p?.playerName || '').trim()}`.trim());
-                const usg = players.map(p => (typeof p?.USG10 === 'number' && Number.isFinite(p.USG10)) ? p.USG10 : null);
-                const min = players.map(p => (typeof p?.MIN10 === 'number' && Number.isFinite(p.MIN10)) ? p.MIN10 : null);
+                // Handle both NBA (teamAbbr) and soccer (teamName) structures
+                const labels = players.map(p => {
+                    const teamAbbr = p?.teamAbbr || p?.teamName || '';
+                    const playerName = p?.playerName || '';
+                    return `${String(teamAbbr).trim()} ${String(playerName).trim()}`.trim();
+                });
+                // Handle both NBA (USG10/MIN10) and soccer (xG5/min5) field names
+                const usg = players.map(p => {
+                    const val = p?.USG10 ?? p?.xG5;
+                    return (typeof val === 'number' && Number.isFinite(val)) ? val : null;
+                });
+                const min = players.map(p => {
+                    const val = p?.MIN10 ?? p?.MIN5 ?? p?.min5;
+                    return (typeof val === 'number' && Number.isFinite(val)) ? val : null;
+                });
 
                 const el = document.getElementById(starLoadCanvasId) as HTMLCanvasElement | null;
-                if (el) {
+                if (el && (usg.some(v => v !== null) || min.some(v => v !== null))) {
                     const chart = new Chart(el, {
                         type: 'bar',
                         data: {
                             labels,
                             datasets: [
-                                { label: 'USG10', data: usg, yAxisID: 'yUSG', backgroundColor: 'rgba(255,26,26,0.80)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 },
-                                { label: 'MIN10', data: min, yAxisID: 'yMIN', backgroundColor: 'rgba(255,230,109,0.78)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 },
+                                { label: 'USG10/xG5', data: usg, yAxisID: 'yUSG', backgroundColor: 'rgba(255,26,26,0.80)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 },
+                                { label: 'MIN10/MIN5', data: min, yAxisID: 'yMIN', backgroundColor: 'rgba(255,230,109,0.78)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 },
                             ],
                         },
                         options: {
@@ -5200,29 +6253,38 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
             }
         } catch {}
 
-        // 4) Role volatility (ΔUSG3 vs season)
+        // 4) Role volatility (ΔUSG3 vs season for NBA, xGChange for soccer)
         try {
             const rv = charts?.roleVolatility;
             const rvPlayers: any[] = Array.isArray(rv?.players) ? rv.players : [];
             if (rvPlayers.length > 0) {
-                const labels = rvPlayers.map(p => `${String(p?.teamAbbr || '').trim()} ${String(p?.playerName || '').trim()}`.trim());
+                // Handle both NBA (teamAbbr) and soccer (teamName) structures
+                const labels = rvPlayers.map(p => {
+                    const teamAbbr = p?.teamAbbr || p?.teamName || '';
+                    const playerName = p?.playerName || '';
+                    return `${String(teamAbbr).trim()} ${String(playerName).trim()}`.trim();
+                });
+                // Handle both NBA (deltaUSG3vsSeason) and soccer (xGChange) field names
                 const vals = rvPlayers.map(p => {
-                    const v = p?.deltaUSG3vsSeason;
+                    const v = p?.deltaUSG3vsSeason ?? p?.xGChange;
                     return (typeof v === 'number' && Number.isFinite(v)) ? v : 0;
                 });
                 const maxAbs = Math.max(1, ...vals.map(v => Math.abs(Number(v) || 0)));
 
                 const el = document.getElementById(volatilityCanvasId) as HTMLCanvasElement | null;
-                if (el) {
+                if (el && vals.some(v => v !== 0)) {
                     const chart = new Chart(el, {
                         type: 'bar',
                         data: {
                             labels,
                             datasets: [
                                 {
-                                    label: 'ΔUSG3',
+                                    label: 'ΔUSG3/ΔxG',
                                     data: vals,
-                                    backgroundColor: rvPlayers.map(p => colorForVol(p?.deltaUSG3vsSeason)),
+                                    backgroundColor: rvPlayers.map(p => {
+                                        const val = p?.deltaUSG3vsSeason ?? p?.xGChange ?? 0;
+                                        return colorForVol(val);
+                                    }),
                                     borderColor: 'rgba(0,0,0,0.65)',
                                     borderWidth: 1,
                                 },
@@ -9007,9 +10069,11 @@ function buildTemperatureCheckRenderedMarkdown(matchPack: MatchPackV3, summary: 
         const isFiniteNum = (v: any) => typeof v === 'number' && Number.isFinite(v);
 
         if (k === 'last10') {
-          const aM = num(raw?.A?.margin10);
-          const bM = num(raw?.B?.margin10);
+          // Check margin (basketball) or xgDiff (soccer) first
+          const aM = num(raw?.A?.margin10) || num(raw?.A?.xgDiff10);
+          const bM = num(raw?.B?.margin10) || num(raw?.B?.xgDiff10);
           if (isFiniteNum(aM) && isFiniteNum(bM) && aM !== bM) return aM > bM ? 'A' : 'B';
+          // Fall back to wins
           const aW = num(raw?.A?.w10);
           const bW = num(raw?.B?.w10);
           if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
@@ -9017,9 +10081,11 @@ function buildTemperatureCheckRenderedMarkdown(matchPack: MatchPackV3, summary: 
         }
 
         if (k === 'last3') {
-          const aM = num(raw?.A?.margin3);
-          const bM = num(raw?.B?.margin3);
+          // Check margin (basketball) or xgDiff (soccer) first
+          const aM = num(raw?.A?.margin3) || num(raw?.A?.xgDiff3);
+          const bM = num(raw?.B?.margin3) || num(raw?.B?.xgDiff3);
           if (isFiniteNum(aM) && isFiniteNum(bM) && aM !== bM) return aM > bM ? 'A' : 'B';
+          // Fall back to wins
           const aW = num(raw?.A?.w3);
           const bW = num(raw?.B?.w3);
           if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
@@ -9044,13 +10110,15 @@ function buildTemperatureCheckRenderedMarkdown(matchPack: MatchPackV3, summary: 
         }
 
         if (k === 'standings') {
-          const aR = num(raw?.A?.rank);
-          const bR = num(raw?.B?.rank);
-          // Smaller rank is better
+          // Check rank (basketball) or position (soccer) first
+          const aR = num(raw?.A?.rank) || num(raw?.A?.position);
+          const bR = num(raw?.B?.rank) || num(raw?.B?.position);
+          // Smaller rank/position is better
           if (isFiniteNum(aR) && isFiniteNum(bR) && aR !== bR) return aR < bR ? 'A' : 'B';
-          const aW = num(raw?.A?.wins);
-          const bW = num(raw?.B?.wins);
-          if (isFiniteNum(aW) && isFiniteNum(bW) && aW !== bW) return aW > bW ? 'A' : 'B';
+          // Fall back to points (soccer) or wins (basketball)
+          const aP = num(raw?.A?.points) || num(raw?.A?.wins);
+          const bP = num(raw?.B?.points) || num(raw?.B?.wins);
+          if (isFiniteNum(aP) && isFiniteNum(bP) && aP !== bP) return aP > bP ? 'A' : 'B';
           return 'even';
         }
 
@@ -9093,9 +10161,38 @@ function buildTemperatureCheckRenderedMarkdown(matchPack: MatchPackV3, summary: 
     const metric = escapeHtmlSimple(String(highlightComparison.metric || highlightComparison.key || 'comparison'));
     const aDisp = escapeHtmlSimple(String(highlightComparison.display?.A || String(highlightComparison.A || '')));
     const bDisp = escapeHtmlSimple(String(highlightComparison.display?.B || String(highlightComparison.B || '')));
-    const winner = escapeHtmlSimple(String(highlightComparison.winner || 'even'));
+    const winnerRaw = String(highlightComparison.winner || 'even');
+    
+    // Get short team names for display
+    const getShortTeamName = (fullName: string): string => {
+      if (!fullName) return '';
+      const trimmed = fullName.trim();
+      if (!trimmed) return '';
+      const parts = trimmed.split(/\s+/);
+      if (parts.length === 1) return parts[0];
+      const lastWord = parts[parts.length - 1];
+      const suffixes = ['FC', 'United', 'City', 'Town'];
+      if (suffixes.includes(lastWord) && parts.length > 1) {
+        return parts[parts.length - 2] + ' ' + lastWord;
+      }
+      return lastWord;
+    };
+    
+    const teamAName = escapeHtmlSimple(getShortTeamName(teamA));
+    const teamBName = escapeHtmlSimple(getShortTeamName(teamB));
+    
+    // Map winner to team name
+    let winnerDisplay = winnerRaw;
+    if (winnerRaw === 'A') {
+      winnerDisplay = teamAName;
+    } else if (winnerRaw === 'B') {
+      winnerDisplay = teamBName;
+    } else {
+      winnerDisplay = escapeHtmlSimple(winnerRaw);
+    }
+    
     lines.push(`<div style="margin-top:0.55rem; color:#00ff41; font-weight:900; letter-spacing:0.14em; font-family:'Courier New', monospace; font-size:0.75rem; text-transform:uppercase;">KEY_COMP</div>`);
-    lines.push(`<div style="margin-top:0.2rem; padding:0.45rem 0.55rem; background:rgba(0,0,0,0.22); border:1px solid rgba(0,255,65,0.16); border-radius:10px; color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.78rem;">${metric}: A=${aDisp} | B=${bDisp} <span style="color:rgba(255,255,255,0.6);">(winner: ${winner})</span></div>`);
+    lines.push(`<div style="margin-top:0.2rem; padding:0.45rem 0.55rem; background:rgba(0,0,0,0.22); border:1px solid rgba(0,255,65,0.16); border-radius:10px; color:rgba(255,255,255,0.82); font-family:'Courier New', monospace; font-size:0.78rem;">${metric}: ${teamAName}=${aDisp} | ${teamBName}=${bDisp} <span style="color:rgba(255,255,255,0.6);">(winner: ${winnerDisplay})</span></div>`);
   }
   // NOTE: charts now render via Chart.js in the published Temperature_Check panel.
   // We intentionally do not inject the old priority-player HTML chart here anymore.

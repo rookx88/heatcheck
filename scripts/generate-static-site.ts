@@ -6,6 +6,7 @@ import { generateArchivePage } from './templates/archive-template';
 import { generateLeagueHubPage } from './templates/league-hub-template';
 import { generateDatePage } from './templates/date-page-template';
 import { generateDFSArticlePage } from './templates/dfs-article-template';
+import { generateHeatPicksArticlePage } from './templates/heat-picks-article-template';
 import { generateDFSHubPage } from './templates/dfs-hub-template';
 import { generateBaseHtml } from './templates/base-template';
 import { formatDateISO, normalizeLeague } from './utils/date-formatter';
@@ -409,11 +410,11 @@ async function generateAllPages(): Promise<void> {
         copyConfigFiles();
         console.log('');
         
-        // Generate article pages (excluding DFS articles which are handled separately)
+        // Generate article pages (excluding DFS and Heat Picks articles which are handled separately)
         console.log('Generating article pages...');
         const postsByLeague = groupPostsByLeague(posts);
         const postsByDate = groupPostsByDate(posts);
-        const regularPosts = posts.filter(p => p.storyType !== 'dfs_article');
+        const regularPosts = posts.filter(p => p.storyType !== 'dfs_article' && p.storyType !== 'heat_picks');
         
         for (const post of regularPosts) {
             const league = normalizeLeague(post.league);
@@ -483,6 +484,38 @@ async function generateAllPages(): Promise<void> {
             writeHtmlFile(articlePath, html);
         }
         console.log(`✓ Generated ${dfsPosts.length} DFS article pages\n`);
+        
+        // Generate Heat Picks article pages
+        console.log('Generating Heat Picks article pages...');
+        const heatPicksPosts = posts.filter(p => p.storyType === 'heat_picks');
+        console.log(`  Found ${heatPicksPosts.length} Heat Picks article(s)`);
+        
+        for (const post of heatPicksPosts) {
+            const league = normalizeLeague(post.league);
+            const date = post.matchupScheduledDate 
+                ? formatDateISO(post.matchupScheduledDate)
+                : formatDateISO(post.createdAt);
+            
+            // Extract slug from stored SEO slug
+            const storedSlug = post.websiteStory?.seo?.slug || '';
+            let articlePath: string;
+            
+            if (storedSlug) {
+                // Use stored slug: {league}/heat-picks-today-{MM-DD-YYYY}/index.html
+                articlePath = `${league}/${storedSlug}/index.html`;
+            } else {
+                // Fallback: generate from date
+                const dateParts = date.split('-');
+                const slugDate = `${dateParts[1]}-${dateParts[2]}-${dateParts[0]}`;
+                articlePath = `${league}/heat-picks-today-${slugDate}/index.html`;
+            }
+            
+            const relatedPosts = heatPicksPosts.filter(p => p.id !== post.id).slice(0, 3);
+            const html = generateHeatPicksArticlePage(post, relatedPosts, baseUrl);
+            
+            writeHtmlFile(articlePath, html);
+        }
+        console.log(`✓ Generated ${heatPicksPosts.length} Heat Picks article pages\n`);
         
         // Generate DFS hub page
         if (dfsPosts.length > 0) {

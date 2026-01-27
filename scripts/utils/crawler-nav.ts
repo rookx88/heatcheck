@@ -26,7 +26,7 @@ export function generateCrawlerNav(recentDates: RecentDate[], baseUrl: string = 
         datesByLeague[league].sort((a, b) => b.date.localeCompare(a.date));
     });
 
-    const leagues = ['NBA', 'NFL', 'EPL', 'DFS'];
+    const leagues = ['NBA', 'NFL', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'DFS'];
     
     // Use relative URLs for local navigation (baseUrl only for canonical/OG tags)
     // For static HTML files, use relative paths so navigation works correctly
