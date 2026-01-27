@@ -126,7 +126,7 @@ function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number
     const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
     const narratives = heatCheckData.narratives || {};
     
-    // Base score from statistical signals (0-60 points) - matches Heat Picks
+    // Temperature-based scoring: 50 = baseline, 70 = warm, 90 = hot, 100 = scorching
     let baseScore = 0;
     let momentumScore = 0;
     let availabilityScore = 0;
@@ -140,21 +140,21 @@ function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number
         const comparisons = factDrop.comparisons || [];
         const availability = factDrop.raw?.availability;
         
-        // 1. MOMENTUM (0-20 points) - 30% weight in Heat Picks
+        // 1. MOMENTUM (0-25 points, increased for temperature model)
         const aMargin10 = teamForm.A?.margin10 || teamForm.A?.xgDiff10 || 0;
         const aMargin3 = teamForm.A?.margin3 || teamForm.A?.xgDiff3 || 0;
         const bMargin10 = teamForm.B?.margin10 || teamForm.B?.xgDiff10 || 0;
         const bMargin3 = teamForm.B?.margin3 || teamForm.B?.xgDiff3 || 0;
         const momentumDivergence = Math.abs((aMargin3 - aMargin10) - (bMargin3 - bMargin10));
-        momentumScore = Math.min(20, momentumDivergence * 2); // Scale to 0-20
+        momentumScore = Math.min(25, momentumDivergence * 2.5); // Increased multiplier
         
-        // 2. AVAILABILITY (0-15 points) - 25% weight in Heat Picks
+        // 2. AVAILABILITY (0-20 points, increased for temperature model)
         const aAbsences = availability?.majorAbsences?.A?.count || 0;
         const bAbsences = availability?.majorAbsences?.B?.count || 0;
         const availabilityDiff = Math.abs(aAbsences - bAbsences);
-        availabilityScore = Math.min(15, availabilityDiff * 3); // Scale to 0-15
+        availabilityScore = Math.min(20, availabilityDiff * 4); // Increased multiplier
         
-        // 3. CLOSE GAMES (0-15 points) - 25% weight in Heat Picks
+        // 3. CLOSE GAMES (0-20 points, increased for temperature model)
         const closeMarginComp = comparisons.find((c: any) => c?.key === 'closeMargin');
         if (closeMarginComp) {
             const aCloseW = teamForm.A?.closeW10 || 0;
@@ -164,10 +164,10 @@ function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number
             const aCloseRate = aCloseW + aCloseL > 0 ? aCloseW / (aCloseW + aCloseL) : 0;
             const bCloseRate = bCloseW + bCloseL > 0 ? bCloseW / (bCloseW + bCloseL) : 0;
             const closeGameDiff = Math.abs(aCloseRate - bCloseRate);
-            closeGamesScore = Math.min(15, closeGameDiff * 30); // Scale to 0-15
+            closeGamesScore = Math.min(20, closeGameDiff * 40); // Increased multiplier
         }
         
-        // 4. COMPARISONS (0-10 points) - 20% weight in Heat Picks
+        // 4. COMPARISONS (0-15 points, increased for temperature model)
         let comparisonsTotal = 0;
         comparisons.forEach((comp: any) => {
             if (comp?.key && comp?.key !== 'closeMargin') {
@@ -175,88 +175,88 @@ function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number
                 const bVal = comp?.B || 0;
                 const diff = Math.abs(aVal - bVal);
                 if (diff > 0.1) {
-                    comparisonsTotal += Math.min(2, diff); // Cap each comparison
+                    comparisonsTotal += Math.min(3, diff * 1.5); // Increased cap and multiplier
                 }
             }
         });
-        comparisonsScore = Math.min(10, comparisonsTotal);
+        comparisonsScore = Math.min(15, comparisonsTotal);
     } else {
         // Fallback: Use legacy factPack data if matchPackV3 not available
         const odds = factPack.odds || {};
         const markets = odds.markets || [];
         const spreadMarket = markets.find((m: any) => m.market === 'Spread');
         
-        // Use spread as proxy for competitiveness (0-20 points)
+        // Use spread as proxy for competitiveness (scaled up)
         if (spreadMarket && typeof spreadMarket.point === 'number') {
             const spread = Math.abs(spreadMarket.point);
-            if (spread <= 3) momentumScore = 18;
-            else if (spread <= 6) momentumScore = 15;
-            else if (spread <= 10) momentumScore = 12;
-            else momentumScore = 8;
+            if (spread <= 3) momentumScore = 22;
+            else if (spread <= 6) momentumScore = 18;
+            else if (spread <= 10) momentumScore = 15;
+            else momentumScore = 12;
         } else {
-            momentumScore = 10; // Default if no spread
+            momentumScore = 15; // Default if no spread
         }
     }
     
     baseScore = momentumScore + availabilityScore + closeGamesScore + comparisonsScore;
     
-    // NARRATIVE STRENGTH (0-25 points)
+    // NARRATIVE STRENGTH (0-35 points, increased for temperature model)
     let narrativeScore = 0;
     if (narratives?.candidate_cards && narratives.candidate_cards.length > 0) {
-        // Primary narrative score (0-15 points)
+        // Primary narrative score (0-20 points, increased from 15)
         const primaryNarrativeId = narratives.selected?.primary_narrative_id;
         const primaryCard = narratives.candidate_cards.find(
             (c: any) => c.narrative_id === primaryNarrativeId
         );
         
         if (primaryCard) {
-            // Use total_score if available (0-35 scale), normalize to 0-15
+            // Use total_score if available (0-35 scale), normalize to 0-20
             if (primaryCard.total_score !== undefined) {
-                narrativeScore += Math.min(15, (primaryCard.total_score / 35) * 15);
+                narrativeScore += Math.min(20, (primaryCard.total_score / 35) * 20);
             } else {
                 // Fallback: use score_breakdown if available
                 const breakdown = primaryCard.score_breakdown || {};
                 const breakdownScore = (breakdown.factual_support || 0) + 
                                       (breakdown.stakes || 0) + 
                                       (breakdown.performance_alignment || 0);
-                narrativeScore += Math.min(15, (breakdownScore / 20) * 15);
+                narrativeScore += Math.min(20, (breakdownScore / 20) * 20);
             }
         }
         
-        // Secondary narratives boost (0-5 points)
+        // Secondary narratives boost (0-8 points, increased from 5)
         const secondaryIds = narratives.selected?.secondary_narrative_ids || [];
-        if (secondaryIds.length >= 2) narrativeScore += 5;
-        else if (secondaryIds.length === 1) narrativeScore += 2;
+        if (secondaryIds.length >= 2) narrativeScore += 8;
+        else if (secondaryIds.length === 1) narrativeScore += 4;
         
-        // Emotion tags diversity (0-5 points)
+        // Emotion tags diversity (0-7 points, increased from 5)
         const allEmotionTags = narratives.candidate_cards
             .flatMap((c: any) => c.emotion_tags || []);
         const uniqueEmotionTags = [...new Set(allEmotionTags)];
-        if (uniqueEmotionTags.length >= 4) narrativeScore += 5;
-        else if (uniqueEmotionTags.length >= 3) narrativeScore += 3;
-        else if (uniqueEmotionTags.length >= 2) narrativeScore += 1;
+        if (uniqueEmotionTags.length >= 4) narrativeScore += 7;
+        else if (uniqueEmotionTags.length >= 3) narrativeScore += 5;
+        else if (uniqueEmotionTags.length >= 2) narrativeScore += 2;
     }
     
-    narrativeScore = Math.min(25, narrativeScore);
+    narrativeScore = Math.min(35, Math.round(narrativeScore));
     
-    // EVIDENCE QUALITY (0-15 points)
+    // EVIDENCE QUALITY (0-23 points, increased for temperature model)
     let evidenceScore = 0;
     const quotes = evidenceBundle.quotes || [];
     const timelineEvents = evidenceBundle.timeline_events || [];
     
-    // Quotes quality (0-8 points)
-    if (quotes.length >= 5) evidenceScore += 8;
-    else if (quotes.length >= 3) evidenceScore += 6;
-    else if (quotes.length >= 2) evidenceScore += 4;
-    else if (quotes.length === 1) evidenceScore += 2;
+    // Quotes quality (0-12 points, increased from 8)
+    if (quotes.length >= 5) evidenceScore += 12;
+    else if (quotes.length >= 3) evidenceScore += 9;
+    else if (quotes.length >= 2) evidenceScore += 6;
+    else if (quotes.length === 1) evidenceScore += 3;
     
-    // Timeline events (0-4 points)
-    if (timelineEvents.length >= 5) evidenceScore += 4;
-    else if (timelineEvents.length >= 3) evidenceScore += 3;
-    else if (timelineEvents.length >= 2) evidenceScore += 2;
-    else if (timelineEvents.length === 1) evidenceScore += 1;
+    // Timeline events (0-6 points, increased from 4)
+    if (timelineEvents.length >= 5) evidenceScore += 6;
+    else if (timelineEvents.length >= 3) evidenceScore += 5;
+    else if (timelineEvents.length >= 2) evidenceScore += 3;
+    else if (timelineEvents.length === 1) evidenceScore += 2;
     
-    // Recent evidence bonus (0-3 points)
+    // Recent evidence bonus (0-5 points, increased from 3)
     const now = new Date();
     const recentQuotes = quotes.filter((q: any) => {
         if (!q.date_utc) return false;
@@ -268,14 +268,18 @@ function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number
             return false;
         }
     });
-    if (recentQuotes.length >= 3) evidenceScore += 3;
-    else if (recentQuotes.length >= 2) evidenceScore += 2;
-    else if (recentQuotes.length >= 1) evidenceScore += 1;
+    if (recentQuotes.length >= 3) evidenceScore += 5;
+    else if (recentQuotes.length >= 2) evidenceScore += 3;
+    else if (recentQuotes.length >= 1) evidenceScore += 2;
     
-    evidenceScore = Math.min(15, evidenceScore);
+    evidenceScore = Math.min(23, evidenceScore);
     
-    // Total score (0-100)
-    const total = Math.round(baseScore + narrativeScore + evidenceScore);
+    // Total score with base temperature: 50 = baseline, then add components
+    // Base temperature ensures even basic matchups start at ~50-60
+    // Good matchups reach 70-80, strong ones reach 90+
+    const baseTemperature = 50;
+    const rawTotal = baseTemperature + baseScore + narrativeScore + evidenceScore;
+    const total = Math.round(Math.min(100, Math.max(50, rawTotal))); // Cap between 50-100
     
     // Map to legacy breakdown format for backward compatibility
     // Distribute scores across the 5 categories

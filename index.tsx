@@ -443,7 +443,8 @@ async function computeHeatPicksClassification(
     });
   }
 
-  // 2. Calculate Base HeatScore from Statistical Signals (0-60 points)
+  // 2. Calculate Base HeatScore from Statistical Signals (scaled for temperature-like range)
+  // Temperature model: 50 = baseline, 70 = warm, 90 = hot, 100 = scorching
   const momentumWeight = 0.3;
   const availabilityWeight = 0.25;
   const closeGamesWeight = 0.25;
@@ -454,11 +455,12 @@ async function computeHeatPicksClassification(
   const closeGamesContrib = signalsHit.find(s => s.signalKey === 'closeGames')?.score || 0;
   const comparisonsContrib = signalsHit.find(s => s.signalKey === 'comparisons')?.score || 0;
 
-  // Scale signal scores to 0-60 range (matching unified system)
-  const momentumScoreScaled = Math.min(20, (momentumContrib / 100) * 20);
-  const availabilityScoreScaled = Math.min(15, (availabilityContrib / 100) * 15);
-  const closeGamesScoreScaled = Math.min(15, (closeGamesContrib / 100) * 15);
-  const comparisonsScoreScaled = Math.min(10, (comparisonsContrib / 100) * 10);
+  // Scale signal scores with higher multipliers for temperature-like range
+  // Each signal can contribute more to reach 70-90 range
+  const momentumScoreScaled = Math.min(25, (momentumContrib / 100) * 25); // Increased from 20
+  const availabilityScoreScaled = Math.min(20, (availabilityContrib / 100) * 20); // Increased from 15
+  const closeGamesScoreScaled = Math.min(20, (closeGamesContrib / 100) * 20); // Increased from 15
+  const comparisonsScoreScaled = Math.min(15, (comparisonsContrib / 100) * 15); // Increased from 10
 
   const baseScore = Math.round(
     momentumScoreScaled +
@@ -467,65 +469,65 @@ async function computeHeatPicksClassification(
     comparisonsScoreScaled
   );
 
-  // 3. Add Narrative Strength (0-25 points)
+  // 3. Add Narrative Strength (scaled up for temperature model)
   let narrativeScore = 0;
   const narratives = post.heatCheckData?.narratives;
   if (narratives?.candidate_cards && narratives.candidate_cards.length > 0) {
-    // Primary narrative score (0-15 points)
+    // Primary narrative score (0-20 points, increased from 15)
     const primaryNarrativeId = narratives.selected?.primary_narrative_id;
     const primaryCard = narratives.candidate_cards.find(
       (c: any) => c.narrative_id === primaryNarrativeId
     );
     
     if (primaryCard) {
-      // Use total_score if available (0-35 scale), normalize to 0-15
+      // Use total_score if available (0-35 scale), normalize to 0-20
       if (primaryCard.total_score !== undefined) {
-        narrativeScore += Math.min(15, (primaryCard.total_score / 35) * 15);
+        narrativeScore += Math.min(20, (primaryCard.total_score / 35) * 20);
       } else {
         // Fallback: use score_breakdown if available
         const breakdown = primaryCard.score_breakdown || {};
         const breakdownScore = (breakdown.factual_support || 0) + 
                               (breakdown.stakes || 0) + 
                               (breakdown.performance_alignment || 0);
-        narrativeScore += Math.min(15, (breakdownScore / 20) * 15);
+        narrativeScore += Math.min(20, (breakdownScore / 20) * 20);
       }
     }
     
-    // Secondary narratives boost (0-5 points)
+    // Secondary narratives boost (0-8 points, increased from 5)
     const secondaryIds = narratives.selected?.secondary_narrative_ids || [];
-    if (secondaryIds.length >= 2) narrativeScore += 5;
-    else if (secondaryIds.length === 1) narrativeScore += 2;
+    if (secondaryIds.length >= 2) narrativeScore += 8;
+    else if (secondaryIds.length === 1) narrativeScore += 4;
     
-    // Emotion tags diversity (0-5 points)
+    // Emotion tags diversity (0-7 points, increased from 5)
     const allEmotionTags = narratives.candidate_cards
       .flatMap((c: any) => c.emotion_tags || []);
     const uniqueEmotionTags = [...new Set(allEmotionTags)];
-    if (uniqueEmotionTags.length >= 4) narrativeScore += 5;
-    else if (uniqueEmotionTags.length >= 3) narrativeScore += 3;
-    else if (uniqueEmotionTags.length >= 2) narrativeScore += 1;
+    if (uniqueEmotionTags.length >= 4) narrativeScore += 7;
+    else if (uniqueEmotionTags.length >= 3) narrativeScore += 5;
+    else if (uniqueEmotionTags.length >= 2) narrativeScore += 2;
   }
   
-  narrativeScore = Math.min(25, Math.round(narrativeScore));
+  narrativeScore = Math.min(35, Math.round(narrativeScore)); // Increased from 25
 
-  // 4. Add Evidence Quality (0-15 points)
+  // 4. Add Evidence Quality (scaled up for temperature model)
   let evidenceScore = 0;
   const evidenceBundle = post.heatCheckData?.evidence_bundle || post.heatCheckData?.evidenceBundle || {};
   const quotes = evidenceBundle.quotes || [];
   const timelineEvents = evidenceBundle.timeline_events || [];
   
-  // Quotes quality (0-8 points)
-  if (quotes.length >= 5) evidenceScore += 8;
-  else if (quotes.length >= 3) evidenceScore += 6;
-  else if (quotes.length >= 2) evidenceScore += 4;
-  else if (quotes.length === 1) evidenceScore += 2;
+  // Quotes quality (0-12 points, increased from 8)
+  if (quotes.length >= 5) evidenceScore += 12;
+  else if (quotes.length >= 3) evidenceScore += 9;
+  else if (quotes.length >= 2) evidenceScore += 6;
+  else if (quotes.length === 1) evidenceScore += 3;
   
-  // Timeline events (0-4 points)
-  if (timelineEvents.length >= 5) evidenceScore += 4;
-  else if (timelineEvents.length >= 3) evidenceScore += 3;
-  else if (timelineEvents.length >= 2) evidenceScore += 2;
-  else if (timelineEvents.length === 1) evidenceScore += 1;
+  // Timeline events (0-6 points, increased from 4)
+  if (timelineEvents.length >= 5) evidenceScore += 6;
+  else if (timelineEvents.length >= 3) evidenceScore += 5;
+  else if (timelineEvents.length >= 2) evidenceScore += 3;
+  else if (timelineEvents.length === 1) evidenceScore += 2;
   
-  // Recent evidence bonus (0-3 points)
+  // Recent evidence bonus (0-5 points, increased from 3)
   const now = new Date();
   const recentQuotes = quotes.filter((q: any) => {
     if (!q.date_utc) return false;
@@ -537,14 +539,19 @@ async function computeHeatPicksClassification(
       return false;
     }
   });
-  if (recentQuotes.length >= 3) evidenceScore += 3;
-  else if (recentQuotes.length >= 2) evidenceScore += 2;
-  else if (recentQuotes.length >= 1) evidenceScore += 1;
+  if (recentQuotes.length >= 3) evidenceScore += 5;
+  else if (recentQuotes.length >= 2) evidenceScore += 3;
+  else if (recentQuotes.length >= 1) evidenceScore += 2;
   
-  evidenceScore = Math.min(15, evidenceScore);
+  evidenceScore = Math.min(23, evidenceScore); // Increased from 15
 
-  // 5. Calculate Unified HeatScore (0-100)
-  const heatScore = Math.round(baseScore + narrativeScore + evidenceScore);
+  // 5. Calculate Unified HeatScore with base temperature (50 = baseline, like room temp)
+  // Base temperature: Every matchup starts at 50 degrees
+  // Then add signals (0-80) + narratives (0-35) + evidence (0-23) = max 188, but we cap at 100
+  // This ensures: decent matchup = ~70, strong = ~90, exceptional = 100
+  const baseTemperature = 50; // Baseline temperature
+  const rawHeatScore = baseTemperature + baseScore + narrativeScore + evidenceScore;
+  const heatScore = Math.round(Math.min(100, Math.max(50, rawHeatScore))); // Cap between 50-100
 
   // 6. Market Lag Numeric
   let marketLag: number | null = null;
@@ -594,12 +601,15 @@ async function computeHeatPicksClassification(
   
   const hasTwoSignalsSameSide = Object.values(signalsBySide).some(signals => signals.length >= 2);
 
-  // Updated thresholds: Unified scoring (0-100) includes stats (0-60) + narratives (0-25) + evidence (0-15)
-  // HEAT_PICK: Requires strong overall score (70+) with good stats + narrative/evidence support
-  // WARM_LEAN: Requires decent score (60+) with some narrative/evidence
-  if (heatScore >= 70 && hasTwoSignalsSameSide && (marketLag === null || marketLag >= 50) && evidenceChart) {
+  // Temperature-based thresholds: 70 = warm, 90 = hot
+  // HEAT_PICK: Hot matchups (85+) with strong signals and narrative/evidence
+  // WARM_LEAN: Warm matchups (70+) with decent signals
+  const hasStrongNarrativeOrEvidence = narrativeScore >= 15 || evidenceScore >= 12;
+  const hasOneStrongSignal = signalsHit.length >= 1 && signalsHit.some(s => s.score >= 50);
+  
+  if (heatScore >= 85 && (hasTwoSignalsSameSide || (hasOneStrongSignal && hasStrongNarrativeOrEvidence)) && evidenceChart) {
     classification = 'HEAT_PICK';
-  } else if (heatScore >= 60 && heatScore < 70 && signalsHit.length > 0 && (marketLag === null || marketLag < 50 || !evidenceChart)) {
+  } else if (heatScore >= 70 && signalsHit.length > 0) {
     classification = 'WARM_LEAN';
   } else {
     classification = 'NO_HEAT';
@@ -1949,6 +1959,30 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
           try {
             let oddsData: { gameMarkets: any; playerProps: any } | null = null;
 
+            // Determine sport based on league (same logic as Heat Picks)
+            const league = matchup.league || '';
+            const leagueUpper = league.toUpperCase();
+            let sport = 'basketball_nba'; // default
+            if (isSoccerLeague(league)) {
+                if (leagueUpper === 'EPL' || leagueUpper === 'PREMIER LEAGUE') {
+                    sport = 'soccer_epl';
+                } else if (leagueUpper === 'BUNDESLIGA') {
+                    sport = 'soccer_germany_bundesliga';
+                } else if (leagueUpper === 'LA LIGA') {
+                    sport = 'soccer_spain_la_liga';
+                } else if (leagueUpper === 'SERIE A') {
+                    sport = 'soccer_italy_serie_a';
+                } else if (leagueUpper === 'LIGUE 1') {
+                    sport = 'soccer_france_ligue_one';
+                } else {
+                    sport = 'soccer_germany_bundesliga'; // fallback for other soccer leagues
+                }
+            } else if (leagueUpper === 'NBA') {
+                sport = 'basketball_nba';
+            } else if (leagueUpper === 'NFL') {
+                sport = 'americanfootball_nfl';
+            }
+
             if (articleApiSource === 'gemini') {
               // Use Gemini to search for odds (no event ID needed)
               setGenerationProgress(prev => prev ? { ...prev, step: `Searching for odds using Gemini AI for ${matchupLabel}...` } : null);
@@ -1966,11 +2000,28 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                   eventId = factPack.odds.event_id;
                 } else {
                   try {
+                    // Normalize date to YYYY-MM-DD format for fallback
+                    let gameDateForFallback: string | null = null;
+                    const dateSource = matchup.scheduledDate || pack?.matchup?.gameDateEst || null;
+                    if (dateSource) {
+                      if (/^\d{4}-\d{2}-\d{2}$/.test(dateSource)) {
+                        gameDateForFallback = dateSource;
+                      } else {
+                        try {
+                          const date = new Date(dateSource);
+                          if (!isNaN(date.getTime())) {
+                            gameDateForFallback = date.toISOString().split('T')[0];
+                          }
+                        } catch (e) {
+                          console.warn(`Could not parse date for fallback OddsAPI: ${dateSource}`, e);
+                        }
+                      }
+                    }
                     const eventInfo = await apiClient.findOddsEventId(
                       matchup.teamA,
                       matchup.teamB,
-                      matchup.scheduledDate || pack?.matchup?.gameDateEst || null,
-                      'basketball_nba'
+                      gameDateForFallback,
+                      sport
                     );
                     eventId = eventInfo.eventId;
                     console.log(`[V3 Edge] Found event ID for fallback: ${eventId} for ${matchupLabel}`);
@@ -1980,7 +2031,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                 }
 
                 if (eventId) {
-                  oddsData = await apiClient.getOddsForGame(eventId, 'basketball_nba');
+                  oddsData = await apiClient.getOddsForGame(eventId, sport);
                   console.log(`[V3 Edge] Fallback to TheOddsAPI successful for ${matchupLabel}`);
                 } else {
                   heatChecksEdge.no_edge_reason = `Gemini odds search failed and could not find OddsAPI event ID for fallback. ${geminiError.message || 'Unknown error'}`;
@@ -2023,12 +2074,12 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                     }
                   }
                   
-                  console.log(`[V3 Edge] Searching OddsAPI for: ${matchup.teamA} vs ${matchup.teamB} on ${gameDateForOdds || 'any date'}`);
+                  console.log(`[V3 Edge] Searching OddsAPI for: ${matchup.teamA} vs ${matchup.teamB} on ${gameDateForOdds || 'any date'} (sport: ${sport})`);
                   const eventInfo = await apiClient.findOddsEventId(
                     matchup.teamA,
                     matchup.teamB,
                     gameDateForOdds,
-                    'basketball_nba'
+                    sport
                   );
                   eventId = eventInfo.eventId;
                   console.log(`[V3 Edge] Found event ID: ${eventId} for ${matchupLabel}`);
@@ -2052,7 +2103,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
               if (eventId) {
                 setGenerationProgress(prev => prev ? { ...prev, step: `Fetching odds from TheOddsAPI for ${matchupLabel}...` } : null);
                 try {
-                  oddsData = await apiClient.getOddsForGame(eventId, 'basketball_nba');
+                  oddsData = await apiClient.getOddsForGame(eventId, sport);
                   console.log(`[V3 Edge] Fetched odds using TheOddsAPI for ${matchupLabel}`);
                 } catch (oddsError: any) {
                   const errorMessage = oddsError.message || String(oddsError);
@@ -2084,7 +2135,8 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                 oddsData.gameMarkets,
                 oddsData.playerProps,
                 matchup.teamA,
-                matchup.teamB
+                matchup.teamB,
+                matchup.league
               );
 
               // Layer 2: Edge Validator
@@ -2389,9 +2441,28 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         // Try to fetch odds
         let oddsData: any = null;
         try {
-          const sport = isSoccerLeague(heatPicksLeague) 
-            ? (heatPicksLeague === 'EPL' || heatPicksLeague === 'PREMIER LEAGUE' ? 'soccer_epl' : 'soccer_bundesliga')
-            : (heatPicksLeague === 'NBA' ? 'basketball_nba' : 'americanfootball_nfl');
+          // Map league to TheOddsAPI sport key
+          const leagueUpper = heatPicksLeague.toUpperCase();
+          let sport = 'basketball_nba'; // default
+          if (isSoccerLeague(heatPicksLeague)) {
+            if (leagueUpper === 'EPL' || leagueUpper === 'PREMIER LEAGUE') {
+              sport = 'soccer_epl';
+            } else if (leagueUpper === 'BUNDESLIGA') {
+              sport = 'soccer_germany_bundesliga';
+            } else if (leagueUpper === 'LA LIGA') {
+              sport = 'soccer_spain_la_liga';
+            } else if (leagueUpper === 'SERIE A') {
+              sport = 'soccer_italy_serie_a';
+            } else if (leagueUpper === 'LIGUE 1') {
+              sport = 'soccer_france_ligue_1';
+            } else {
+              sport = 'soccer_germany_bundesliga'; // fallback for other soccer leagues
+            }
+          } else if (leagueUpper === 'NBA') {
+            sport = 'basketball_nba';
+          } else if (leagueUpper === 'NFL') {
+            sport = 'americanfootball_nfl';
+          }
           
           const eventIdResult = await apiClient.findOddsEventId(
             post.teamA || '',
@@ -6367,6 +6438,29 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
 
             let oddsData: { gameMarkets: any; playerProps: any };
 
+            // Determine sport based on league (same logic as Heat Picks)
+            const leagueUpper = league.toUpperCase();
+            let sport = 'basketball_nba'; // default
+            if (isSoccerLeague(league)) {
+                if (leagueUpper === 'EPL' || leagueUpper === 'PREMIER LEAGUE') {
+                    sport = 'soccer_epl';
+                } else if (leagueUpper === 'BUNDESLIGA') {
+                    sport = 'soccer_germany_bundesliga';
+                } else if (leagueUpper === 'LA LIGA') {
+                    sport = 'soccer_spain_la_liga';
+                } else if (leagueUpper === 'SERIE A') {
+                    sport = 'soccer_italy_serie_a';
+                } else if (leagueUpper === 'LIGUE 1') {
+                    sport = 'soccer_france_ligue_one';
+                } else {
+                    sport = 'soccer_germany_bundesliga'; // fallback for other soccer leagues
+                }
+            } else if (leagueUpper === 'NBA') {
+                sport = 'basketball_nba';
+            } else if (leagueUpper === 'NFL') {
+                sport = 'americanfootball_nfl';
+            }
+
             if (edgeApiSource === 'gemini') {
                 // Use Gemini to search for odds
                 const scheduledDate = editedPost.matchupScheduledDate || matchPackV3?.matchup?.gameDateEst || null;
@@ -6383,11 +6477,12 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
                     // Try to find event ID by querying OddsAPI
                     try {
                         const scheduledDate = editedPost.matchupScheduledDate || matchPackV3?.matchup?.gameDateEst || null;
+                        console.log(`[Editor] Searching OddsAPI for: ${teamA} vs ${teamB} (sport: ${sport})`);
                         const eventInfo = await apiClient.findOddsEventId(
                             teamA,
                             teamB,
                             scheduledDate,
-                            'basketball_nba'
+                            sport
                         );
                         eventId = eventInfo.eventId;
                         console.log(`[Editor] Found event ID: ${eventId} for ${teamA} vs ${teamB}`);
@@ -6406,7 +6501,7 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
                 }
 
                 // Fetch odds from OddsAPI
-                oddsData = await apiClient.getOddsForGame(eventId, 'basketball_nba');
+                oddsData = await apiClient.getOddsForGame(eventId, sport);
                 console.log('[Editor] Fetched odds using TheOddsAPI');
             }
             
@@ -6416,7 +6511,8 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
                 oddsData.gameMarkets,
                 oddsData.playerProps,
                 teamA,
-                teamB
+                teamB,
+                league
             );
 
             // Layer 2: Edge Validator
@@ -8852,9 +8948,13 @@ async function findEdgeCandidates(
     gameMarkets: any,
     playerProps: any,
     teamA: string,
-    teamB: string
+    teamB: string,
+    league?: string
 ): Promise<{ gameCandidate: EdgeCandidate | null; propCandidates: EdgeCandidate[] }> {
     const candidates: EdgeCandidate[] = [];
+
+    // Detect if this is a soccer match
+    const isSoccer = league ? isSoccerLeague(league) : (matchPackV3?.source === 'soccer_stats_db' || matchPackV3?.factDrop?.raw?.teamForm?.A?.xgDiff10 !== undefined);
 
     // Extract team form from MatchPackV3
     const factDrop = matchPackV3?.factDrop || {};
@@ -8892,10 +8992,19 @@ async function findEdgeCandidates(
                         
                         if (homeOutcome && awayOutcome) {
                             // Simple scoring: favor team with better recent form
-                            const marginA = teamFormA.margin10 || 0;
-                            const marginB = teamFormB.margin10 || 0;
+                            // For NBA: use margin10/margin3 (point differential)
+                            // For Soccer: use xgDiff10/xgDiff3 (expected goal differential)
+                            const marginA = isSoccer 
+                                ? (teamFormA.xgDiff10 || teamFormA.margin10 || 0)
+                                : (teamFormA.margin10 || teamFormA.xgDiff10 || 0);
+                            const marginB = isSoccer
+                                ? (teamFormB.xgDiff10 || teamFormB.margin10 || 0)
+                                : (teamFormB.margin10 || teamFormB.xgDiff10 || 0);
                             const isHomeA = gameMarkets.home_team === teamA;
-                            const homeAdvantage = isHomeA ? 3 : -3; // ~3 point home advantage
+                            // Home advantage: ~3 points for NBA, ~0.4 goals for soccer
+                            const homeAdvantage = isSoccer 
+                                ? (isHomeA ? 0.4 : -0.4)
+                                : (isHomeA ? 3 : -3);
                             const scoreA = marginA + homeAdvantage;
                             const scoreB = marginB - homeAdvantage;
                             
@@ -8935,10 +9044,19 @@ async function findEdgeCandidates(
                         );
                         
                         if (homeOutcome && awayOutcome && homeOutcome.point !== undefined) {
-                            const marginA = teamFormA.margin10 || 0;
-                            const marginB = teamFormB.margin10 || 0;
+                            // For NBA: use margin10 (point differential)
+                            // For Soccer: use xgDiff10 (expected goal differential)
+                            const marginA = isSoccer 
+                                ? (teamFormA.xgDiff10 || teamFormA.margin10 || 0)
+                                : (teamFormA.margin10 || teamFormA.xgDiff10 || 0);
+                            const marginB = isSoccer
+                                ? (teamFormB.xgDiff10 || teamFormB.margin10 || 0)
+                                : (teamFormB.margin10 || teamFormB.xgDiff10 || 0);
                             const isHomeA = gameMarkets.home_team === teamA;
-                            const homeAdvantage = isHomeA ? 3 : -3;
+                            // Home advantage: ~3 points for NBA, ~0.4 goals for soccer
+                            const homeAdvantage = isSoccer 
+                                ? (isHomeA ? 0.4 : -0.4)
+                                : (isHomeA ? 3 : -3);
                             const projectedMargin = (marginA - marginB) + (isHomeA ? homeAdvantage : -homeAdvantage);
                             const spread = homeOutcome.point;
                             const edge = Math.abs(projectedMargin - spread);
@@ -8982,8 +9100,8 @@ async function findEdgeCandidates(
         }
     }
 
-    // Score player props
-    if (playerProps && playerProps.bookmakers) {
+    // Score player props (NBA only - soccer doesn't have player props in TheOddsAPI)
+    if (!isSoccer && playerProps && playerProps.bookmakers) {
         // Create a map of player name to form leader data
         const playerDataMap = new Map<string, any>();
         for (const leader of formLeaders) {
@@ -9306,10 +9424,21 @@ async function generateHeatChecksEdgeV3(
         } else {
             // Fallback: Create a generic game edge if none were validated
             // Use moneyline as default fallback
-            const marginA = teamFormA.margin10 || 0;
-            const marginB = teamFormB.margin10 || 0;
+            // Detect if this is a soccer match
+            const isSoccer = isSoccerLeague(league);
+            // For NBA: use margin10 (point differential)
+            // For Soccer: use xgDiff10 (expected goal differential)
+            const marginA = isSoccer 
+                ? (teamFormA.xgDiff10 || teamFormA.margin10 || 0)
+                : (teamFormA.margin10 || teamFormA.xgDiff10 || 0);
+            const marginB = isSoccer
+                ? (teamFormB.xgDiff10 || teamFormB.margin10 || 0)
+                : (teamFormB.margin10 || teamFormB.xgDiff10 || 0);
             const isHomeA = matchup.homeAway?.A === 'HOME';
-            const homeAdvantage = isHomeA ? 3 : -3;
+            // Home advantage: ~3 points for NBA, ~0.4 goals for soccer
+            const homeAdvantage = isSoccer 
+                ? (isHomeA ? 0.4 : -0.4)
+                : (isHomeA ? 3 : -3);
             const projectedWinner = (marginA + homeAdvantage) > marginB ? 'TEAM_A' : 'TEAM_B';
             
             gameMarkets.moneyline = {
@@ -9320,30 +9449,37 @@ async function generateHeatChecksEdgeV3(
             };
         }
 
+        // Detect if this is a soccer match for proper data display
+        const isSoccer = isSoccerLeague(league);
+        const formMetricLabel = isSoccer ? 'xG diff' : 'margin';
+        const formA10 = isSoccer 
+            ? (teamFormA.xgDiff10 || teamFormA.margin10 || 0)
+            : (teamFormA.margin10 || teamFormA.xgDiff10 || 0);
+        const formA3 = isSoccer
+            ? (teamFormA.xgDiff3 || teamFormA.margin3 || 0)
+            : (teamFormA.margin3 || teamFormA.xgDiff3 || 0);
+        const formB10 = isSoccer
+            ? (teamFormB.xgDiff10 || teamFormB.margin10 || 0)
+            : (teamFormB.margin10 || teamFormB.xgDiff10 || 0);
+        const formB3 = isSoccer
+            ? (teamFormB.xgDiff3 || teamFormB.margin3 || 0)
+            : (teamFormB.margin3 || teamFormB.xgDiff3 || 0);
+
         const edgePrompt = `
 You are HeatChecks Edge Writer.
 
 Goal:
-Create a concise, credible betting "Edge" summary for an NBA matchup using ONLY the provided data.
+Create a concise, credible betting "Edge" summary for a ${isSoccer ? 'soccer' : 'basketball'} matchup using ONLY the provided data.
 You are NOT allowed to invent lines, odds, injuries, or stats.
 
 Inputs you will receive:
 1) matchup: teams, date, event_id
 2) game_markets: moneyline/spread/total with best available line + price + book
-3) prop_shortlist: up to 2 props, each with:
-   - player_name
-   - market_key (ex: player_points, player_assists, player_threes, player_points_rebounds_assists)
-   - selection (OVER/UNDER)
-   - line, price_american, book
-   - supporting signals:
-     minutes_avg_3, minutes_delta_3_vs_season
-     usage_proxy_avg_3, usage_delta_3_vs_season
-     injury_context: notable OUT players on team/opponent
-     rest_flags: back_to_back, three_in_four
+3) prop_shortlist: up to 2 props (${isSoccer ? 'NOTE: Soccer matches typically do not have player props, so this may be empty' : 'each with player_name, market_key, selection, line, price_american, book, and supporting signals'})
 4) narrative_tags: revenge_game, role_surge, injury_consolidation, fatigue_stack, must_win (booleans)
 
 MATCHUP: ${teamA} vs ${teamB} (${league})
-GAME DATE: ${matchup.gameDateEst || 'Unknown'}
+GAME DATE: ${matchup.gameDateEst || matchup.gameDate || 'Unknown'}
 
 GAME MARKETS:
 ${JSON.stringify(gameMarkets, null, 2)}
@@ -9352,8 +9488,9 @@ PROP SHORTLIST:
 ${JSON.stringify(propShortlist, null, 2)}
 
 TEAM FORM:
-Team A (${teamA}): L10 margin ${teamFormA.margin10 || 0}, L3 margin ${teamFormA.margin3 || 0}
-Team B (${teamB}): L10 margin ${teamFormB.margin10 || 0}, L3 margin ${teamFormB.margin3 || 0}
+Team A (${teamA}): L10 ${formMetricLabel} ${formA10.toFixed(2)}, L3 ${formMetricLabel} ${formA3.toFixed(2)}
+Team B (${teamB}): L10 ${formMetricLabel} ${formB10.toFixed(2)}, L3 ${formMetricLabel} ${formB3.toFixed(2)}
+${isSoccer ? '(Note: For soccer, margin refers to expected goal differential, not point differential)' : ''}
 
 NARRATIVE TAGS:
 ${JSON.stringify(narrativeTags, null, 2)}
@@ -9389,12 +9526,13 @@ Output STRICT JSON matching this schema:
 }
 
 Rules:
-- You MUST return exactly ONE game edge and exactly ONE player prop.
-- If the provided game_markets or prop_shortlist are fallbacks (indicated by generic values), acknowledge this in the receipts/risks.
-- Receipts must reference the provided signals (minutes_delta, usage_delta, injuries, rest), not vague claims.
+- You MUST return exactly ONE game edge${isSoccer ? ' (soccer matches typically do not have player props)' : ' and exactly ONE player prop'}.
+${isSoccer ? '- For soccer matches, focus on game markets (moneyline, spread, total) only. Player props are not typically available.' : '- If the provided game_markets or prop_shortlist are fallbacks (indicated by generic values), acknowledge this in the receipts/risks.'}
+- Receipts must reference the provided signals${isSoccer ? ' (team form, xG differential, injuries)' : ' (minutes_delta, usage_delta, injuries, rest)'}, not vague claims.
 - Keep receipts short, punchy, and measurable.
+- For soccer: Use goal-based terminology (e.g., "goals", "expected goals", "xG differential") instead of point-based terminology.
 - TEAM_A refers to ${teamA}, TEAM_B refers to ${teamB}.
-- Always return exactly one prop in player_props array (even if it's a fallback).
+${isSoccer ? '- For soccer matches, player_props array should be empty (soccer does not have player props).' : '- Always return exactly one prop in player_props array (even if it\'s a fallback).'}
 - Always return a game edge (even if market="none" for fallback cases, still provide one_sentence_call).
 `;
 
@@ -9427,16 +9565,21 @@ Rules:
             }
         }
 
-        // Validate and ensure required fields - ensure exactly one game and one prop
+        // Validate and ensure required fields
+        // For soccer: only game edge (no player props)
+        // For NBA: game edge + one player prop
         const playerProps = Array.isArray(edgeData.player_props) ? edgeData.player_props : [];
         
-        // Ensure we have exactly one prop
+        // Ensure we have exactly one prop (NBA only - soccer doesn't have player props)
         let finalProps: any[] = [];
-        if (playerProps.length > 0) {
+        if (isSoccer) {
+            // Soccer matches don't have player props - leave empty
+            finalProps = [];
+        } else if (playerProps.length > 0) {
             // Use the first prop
             finalProps = [playerProps[0]];
         } else {
-            // Fallback prop if AI didn't return one
+            // Fallback prop if AI didn't return one (NBA only)
             const formLeadersSection = factDrop.sections?.find((s: any) => 
                 s.key === 'formLeaders' || s.title === 'FORM_LEADERS' || s.title === 'formLeaders'
             );

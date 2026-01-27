@@ -721,13 +721,35 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
 
         const teamA = String(req.query.teamA || '').trim();
         const teamB = String(req.query.teamB || '').trim();
-        const gameDate = String(req.query.gameDate || '').trim(); // YYYY-MM-DD format
+        let gameDate = String(req.query.gameDate || '').trim();
         const sport = String(req.query.sport || 'basketball_nba').trim();
+        
+        // Normalize gameDate to YYYY-MM-DD format (handle ISO datetime strings)
+        if (gameDate) {
+            // If it's already in YYYY-MM-DD format, use it
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(gameDate)) {
+                // Try to parse as ISO datetime and extract date part
+                try {
+                    const dateObj = new Date(gameDate);
+                    if (!isNaN(dateObj.getTime())) {
+                        gameDate = dateObj.toISOString().split('T')[0];
+                    } else {
+                        gameDate = ''; // Invalid date, clear it
+                    }
+                } catch (e) {
+                    console.warn(`[GET /api/odds/find-event] Could not parse gameDate: ${gameDate}`, e);
+                    gameDate = ''; // Invalid date, clear it
+                }
+            }
+        }
 
         if (!teamA || !teamB) {
             return res.status(400).json({ message: 'Missing required query params: teamA and teamB' });
         }
 
+        console.log(`[GET /api/odds/find-event] Sport parameter: "${sport}"`);
+        console.log(`[GET /api/odds/find-event] Searching for: "${teamA}" vs "${teamB}" on ${gameDate || 'any date'} (normalized from original)`);
+        
         const baseUrl = 'https://api.the-odds-api.com/v4';
         const params = new URLSearchParams({
             apiKey: ODDS_API_KEY,
@@ -738,6 +760,7 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
         });
         
         const url = `${baseUrl}/sports/${sport}/odds?${params.toString()}`;
+        console.log(`[GET /api/odds/find-event] OddsAPI URL: ${url.replace(ODDS_API_KEY || '', 'REDACTED')}`);
         const response = await fetch(url);
 
         if (!response.ok) {
@@ -782,14 +805,37 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
                 .replace(/^la\s+/i, 'los angeles ') // "LA Clippers" -> "los angeles clippers"
                 .replace(/^ny\s+/i, 'new york ') // "NY Knicks" -> "new york knicks"
                 .replace(/^phx\s+/i, 'phoenix ') // "PHX Suns" -> "phoenix suns"
+                // Handle RB Leipzig / RasenBallsport Leipzig - normalize both to "rb leipzig" for matching
+                .replace(/^rasenballsport\s+/i, 'rb ') // "RasenBallsport Leipzig" -> "rb leipzig"
+                // Remove common German/European team prefixes
+                .replace(/^(sv|tsg|fc|sc|cf|ac|as|rc|ud|cd|cf|real|athletic|club)\s+/i, '')
+                .replace(/\s+(sv|tsg|fc|sc|cf|ac|as|rc|ud|cd|cf)$/i, '')
+                // Remove year prefixes (e.g., "1899 Hoffenheim")
+                .replace(/^\d{4}\s+/i, '')
                 .trim();
         };
 
-        // Extract team name without city (last word or last two words for special cases)
+        // Extract core team name (removes prefixes and gets main identifier)
         const getTeamNameOnly = (fullName: string) => {
-            const parts = fullName.toLowerCase().split(/\s+/);
-            if (parts.length <= 1) return fullName.toLowerCase();
-            // Return last word (e.g., "Clippers", "Bulls")
+            const normalized = normalizeTeamName(fullName);
+            const parts = normalized.split(/\s+/);
+            if (parts.length <= 1) return normalized;
+            
+            // For German teams, try to get meaningful parts
+            // "SV Werder Bremen" -> "werder bremen" or "bremen"
+            // "TSG Hoffenheim" -> "hoffenheim"
+            // "1899 Hoffenheim" -> "hoffenheim"
+            
+            // If last word is a city name that's also the team name, use it
+            // Otherwise, use last 2 words if they form a meaningful name
+            if (parts.length >= 2) {
+                const lastTwo = parts.slice(-2).join(' ');
+                // If the last two words together are meaningful (like "Werder Bremen"), use both
+                if (lastTwo.length > 6) {
+                    return lastTwo;
+                }
+            }
+            // Otherwise, return last word
             return parts[parts.length - 1];
         };
 
@@ -807,11 +853,28 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
         const teamsMatch = (team1: string, team2: string, team1NameOnly: string, team2NameOnly: string) => {
             // Exact match
             if (team1 === team2) return true;
-            // Partial match (one contains the other)
+            
+            // Partial match (one contains the other) - more flexible
             if (team1.includes(team2) || team2.includes(team1)) return true;
+            
             // Team name only match (e.g., "Clippers" matches "Los Angeles Clippers")
+            // Also handles "bremen" matching "werder bremen" or "sv werder bremen"
             if (team1.includes(team2NameOnly) || team2.includes(team1NameOnly)) return true;
-            if (team1NameOnly === team2NameOnly && team1NameOnly.length > 3) return true; // Avoid false matches on short names
+            
+            // Reverse check: if one name only is contained in the other full name
+            // "werder bremen" should match "bremen" or "sv werder bremen"
+            if (team1NameOnly.includes(team2) || team2NameOnly.includes(team1)) return true;
+            
+            // Exact match on name only (avoid false matches on very short names)
+            if (team1NameOnly === team2NameOnly && team1NameOnly.length > 3) return true;
+            
+            // For multi-word names, check if any significant word matches
+            // "werder bremen" vs "bremen" - both contain "bremen"
+            const team1Words = team1.split(/\s+/).filter(w => w.length > 3);
+            const team2Words = team2.split(/\s+/).filter(w => w.length > 3);
+            const commonWords = team1Words.filter(w => team2Words.includes(w));
+            if (commonWords.length > 0 && commonWords.some(w => w.length > 4)) return true;
+            
             return false;
         };
 
@@ -825,9 +888,18 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
             const homeTeamNameOnly = getTeamNameOnly(game.home_team || '');
             const awayTeamNameOnly = getTeamNameOnly(game.away_team || '');
             
-            // Log available games for debugging (first 5)
-            if (availableGames.length < 5) {
+            // Log available games for debugging (first 10, and all that might match)
+            if (availableGames.length < 10) {
                 availableGames.push(`${game.home_team} vs ${game.away_team} (${game.commence_time})`);
+            }
+            
+            // Also log games that might match based on partial team name
+            const homeNormalized = normalizeTeamName(game.home_team || '');
+            const awayNormalized = normalizeTeamName(game.away_team || '');
+            if ((homeNormalized.includes(teamANameOnly) || homeNormalized.includes(teamBNameOnly) ||
+                 awayNormalized.includes(teamANameOnly) || awayNormalized.includes(teamBNameOnly)) &&
+                availableGames.length < 20) {
+                availableGames.push(`[POTENTIAL MATCH] ${game.home_team} vs ${game.away_team} (${game.commence_time})`);
             }
             
             // Check if teams match (either order, with flexible matching)
@@ -842,44 +914,82 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
                 // If gameDate provided, check date (convert to EST for comparison)
                 if (gameDate) {
                     if (game.commence_time) {
-                        const gameDateObj = new Date(game.commence_time);
-                        
-                        // Convert game date to EST/EDT (America/New_York timezone)
-                        const gameDateEST = new Intl.DateTimeFormat('en-CA', {
-                            timeZone: 'America/New_York',
-                            year: 'numeric',
-                            month: '2-digit',
-                            day: '2-digit'
-                        }).format(gameDateObj);
-                        
-                        // Compare with target date (which should already be in YYYY-MM-DD format)
-                        // gameDateEST will be in YYYY-MM-DD format from Intl.DateTimeFormat
-                        if (gameDateEST === gameDate) {
-                            console.log(`[GET /api/odds/find-event] Date match found: ${gameDateEST} === ${gameDate}`);
-                            matchedGame = game;
-                            break;
-                        }
-                        
-                        // Also check if dates are within 1 day (for edge cases)
-                        const gameDateESTObj = new Date(gameDateEST + 'T00:00:00');
-                        const targetDateESTObj = new Date(gameDate + 'T00:00:00');
-                        const daysDiffEST = Math.abs(Math.floor((gameDateESTObj.getTime() - targetDateESTObj.getTime()) / (1000 * 60 * 60 * 24)));
-                        
-                        if (daysDiffEST <= 1) {
-                            console.log(`[GET /api/odds/find-event] Date within 1 day: ${gameDateEST} vs ${gameDate} (${daysDiffEST} days)`);
-                            matchedGame = game;
-                            break;
-                        }
-                        
-                        // Fallback: also check UTC date and within 1 day
-                        const gameDateStr = gameDateObj.toISOString().split('T')[0];
-                        const targetDateObj = new Date(gameDate + 'T00:00:00Z');
-                        const targetDateStr = targetDateObj.toISOString().split('T')[0];
-                        const daysDiff = Math.abs(Math.floor((gameDateObj.getTime() - targetDateObj.getTime()) / (1000 * 60 * 60 * 24)));
-                        
-                        if (gameDateStr === targetDateStr || daysDiff <= 1) {
-                            matchedGame = game;
-                            break;
+                        try {
+                            const gameDateObj = new Date(game.commence_time);
+                            
+                            // Validate the date object
+                            if (isNaN(gameDateObj.getTime())) {
+                                console.warn(`[GET /api/odds/find-event] Invalid commence_time: ${game.commence_time}`);
+                                // If date is invalid but teams match, use it if no date filter was really needed
+                                if (!gameDate) {
+                                    matchedGame = game;
+                                    break;
+                                }
+                                continue; // Skip this game
+                            }
+                            
+                            // Convert game date to EST/EDT (America/New_York timezone)
+                            let gameDateEST: string;
+                            try {
+                                gameDateEST = new Intl.DateTimeFormat('en-CA', {
+                                    timeZone: 'America/New_York',
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit'
+                                }).format(gameDateObj);
+                            } catch (e) {
+                                console.warn(`[GET /api/odds/find-event] Error formatting date to EST:`, e);
+                                // Fallback to UTC date string
+                                gameDateEST = gameDateObj.toISOString().split('T')[0];
+                            }
+                            
+                            // Compare with target date (which should already be in YYYY-MM-DD format)
+                            // gameDateEST will be in YYYY-MM-DD format from Intl.DateTimeFormat
+                            if (gameDateEST === gameDate) {
+                                console.log(`[GET /api/odds/find-event] Date match found: ${gameDateEST} === ${gameDate}`);
+                                matchedGame = game;
+                                break;
+                            }
+                            
+                            // Also check if dates are within 1 day (for edge cases)
+                            try {
+                                const gameDateESTObj = new Date(gameDateEST + 'T00:00:00');
+                                const targetDateESTObj = new Date(gameDate + 'T00:00:00');
+                                
+                                if (!isNaN(gameDateESTObj.getTime()) && !isNaN(targetDateESTObj.getTime())) {
+                                    const daysDiffEST = Math.abs(Math.floor((gameDateESTObj.getTime() - targetDateESTObj.getTime()) / (1000 * 60 * 60 * 24)));
+                                    
+                                    if (daysDiffEST <= 1) {
+                                        console.log(`[GET /api/odds/find-event] Date within 1 day: ${gameDateEST} vs ${gameDate} (${daysDiffEST} days)`);
+                                        matchedGame = game;
+                                        break;
+                                    }
+                                }
+                            } catch (e) {
+                                console.warn(`[GET /api/odds/find-event] Error comparing dates (EST):`, e);
+                            }
+                            
+                            // Fallback: also check UTC date and within 1 day
+                            try {
+                                const gameDateStr = gameDateObj.toISOString().split('T')[0];
+                                const targetDateObj = new Date(gameDate + 'T00:00:00Z');
+                                
+                                if (!isNaN(targetDateObj.getTime())) {
+                                    const targetDateStr = targetDateObj.toISOString().split('T')[0];
+                                    const daysDiff = Math.abs(Math.floor((gameDateObj.getTime() - targetDateObj.getTime()) / (1000 * 60 * 60 * 24)));
+                                    
+                                    if (gameDateStr === targetDateStr || daysDiff <= 1) {
+                                        matchedGame = game;
+                                        break;
+                                    }
+                                }
+                            } catch (e) {
+                                console.warn(`[GET /api/odds/find-event] Error comparing dates (UTC):`, e);
+                            }
+                        } catch (e) {
+                            console.warn(`[GET /api/odds/find-event] Error processing date for game ${game.home_team} vs ${game.away_team}:`, e);
+                            // If date processing fails but teams match, continue to next game
+                            continue;
                         }
                     } else {
                         // No commence_time, but teams match - use it if no date filter
@@ -897,13 +1007,24 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
         }
 
         if (!matchedGame) {
-            console.warn(`[GET /api/odds/find-event] Game not found. Searched: ${teamA} vs ${teamB} on ${gameDate || 'any'}`);
-            console.warn(`[GET /api/odds/find-event] Normalized search: ${teamANorm} vs ${teamBNorm}`);
-            console.warn(`[GET /api/odds/find-event] Available games (first 10):`, availableGames);
+            console.warn(`[GET /api/odds/find-event] Game not found. Searched: "${teamA}" vs "${teamB}" on ${gameDate || 'any'}`);
+            console.warn(`[GET /api/odds/find-event] Normalized search: "${teamANorm}" vs "${teamBNorm}"`);
+            console.warn(`[GET /api/odds/find-event] Team names only: "${teamANameOnly}" vs "${teamBNameOnly}"`);
+            console.warn(`[GET /api/odds/find-event] Available games (showing potential matches):`, availableGames);
+            
+            // Show all team names from available games for debugging
+            const allTeamNames = new Set<string>();
+            games.forEach((game: any) => {
+                if (game.home_team) allTeamNames.add(game.home_team);
+                if (game.away_team) allTeamNames.add(game.away_team);
+            });
+            console.warn(`[GET /api/odds/find-event] All unique team names in OddsAPI (${allTeamNames.size}):`, Array.from(allTeamNames).slice(0, 30));
+            
             return res.status(404).json({ 
                 message: 'Event not found in OddsAPI',
-                searched: { teamA, teamB, gameDate: gameDate || 'any', normalized: { teamA: teamANorm, teamB: teamBNorm } },
-                availableGamesSample: availableGames.slice(0, 10) // Return sample for debugging
+                searched: { teamA, teamB, gameDate: gameDate || 'any', normalized: { teamA: teamANorm, teamB: teamBNorm }, nameOnly: { teamA: teamANameOnly, teamB: teamBNameOnly } },
+                availableGamesSample: availableGames.slice(0, 20), // Return more for debugging
+                allTeamNames: Array.from(allTeamNames).slice(0, 50) // Return team names for debugging
             });
         }
         
@@ -1706,6 +1827,48 @@ app.post('/api/matchups/import-upcoming-week-games', apiKeyAuth, async (req: exp
             skipped: totalSkipped,
             games: importedGames,
         });
+    }
+});
+
+// GET /api/odds/sports - List all available sports from TheOddsAPI (for debugging)
+app.get('/api/odds/sports', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        if (!ODDS_API_KEY) {
+            return res.status(500).json({ message: 'THE_ODDS_API_KEY is not configured on the server.' });
+        }
+
+        const baseUrl = 'https://api.the-odds-api.com/v4';
+        const url = `${baseUrl}/sports?apiKey=${ODDS_API_KEY}`;
+        
+        console.log(`[GET /api/odds/sports] Fetching available sports from TheOddsAPI...`);
+        const response = await fetch(url);
+
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error(`[GET /api/odds/sports] OddsAPI error (${response.status}):`, errorText);
+            return res.status(response.status).json({ 
+                message: 'Failed to fetch sports from OddsAPI',
+                error: errorText.substring(0, 500)
+            });
+        }
+
+        const sports = await response.json();
+        console.log(`[GET /api/odds/sports] Found ${Array.isArray(sports) ? sports.length : 0} sports`);
+        
+        // Filter for soccer-related sports
+        const soccerSports = Array.isArray(sports) 
+            ? sports.filter((s: any) => s.key && s.key.toLowerCase().includes('soccer'))
+            : [];
+        
+        return res.json({
+            total: Array.isArray(sports) ? sports.length : 0,
+            allSports: sports,
+            soccerSports: soccerSports,
+            soccerKeys: soccerSports.map((s: any) => s.key)
+        });
+    } catch (error: any) {
+        console.error('[GET /api/odds/sports] Error:', error);
+        return res.status(500).json({ message: 'Internal server error', error: error.message });
     }
 });
 
