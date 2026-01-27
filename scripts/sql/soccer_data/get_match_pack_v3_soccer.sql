@@ -41,13 +41,20 @@ ta as (
     or dt.team_name_std ilike '%' || p_team_a || '%'
     or lower(p_team_a) = lower(regexp_replace(dt.team_name_std, '\s+(FC|CF|United|City|Town|Athletic|Club)$', '', 'g'))
     or lower(regexp_replace(p_team_a, '\s+(FC|CF|United|City|Town|Athletic|Club)$', '', 'g')) = lower(regexp_replace(dt.team_name_std, '\s+(FC|CF|United|City|Town|Athletic|Club)$', '', 'g'))
-    -- Handle RB Leipzig / RasenBallsport Leipzig
-    or (lower(regexp_replace(p_team_a, '^rb\s+', 'rasenballsport ', 'i')) = lower(dt.team_name_std))
-    or (lower(regexp_replace(dt.team_name_std, '^rasenballsport\s+', 'rb ', 'i')) = lower(p_team_a))
-    or (lower(regexp_replace(p_team_a, '^rb\s+', 'rasenballsport ', 'i')) ilike '%' || lower(dt.team_name_std) || '%')
-    or (lower(regexp_replace(dt.team_name_std, '^rasenballsport\s+', 'rb ', 'i')) ilike '%' || lower(p_team_a) || '%')
+    -- Handle RB Leipzig / RasenBallsport Leipzig: if both contain "leipzig" and one has "rb"/"rasenballsport", treat as same team
+    or (
+      lower(dt.team_name_std) like '%leipzig%' 
+      and lower(p_team_a) like '%leipzig%'
+      and (
+        (lower(dt.team_name_std) like '%rb%' and lower(p_team_a) like '%rb%')
+        or (lower(dt.team_name_std) like '%rasenballsport%' and lower(p_team_a) like '%rasenballsport%')
+        or (lower(dt.team_name_std) like '%rb%' and lower(p_team_a) like '%rasenballsport%')
+        or (lower(dt.team_name_std) like '%rasenballsport%' and lower(p_team_a) like '%rb%')
+      )
+    )
   order by
-    case when standings_check.has_standings = 1 then 0 else 1 end, -- PRIORITIZE teams with standings data first
+    case when matches_check.has_matches = 1 then 0 else 1 end, -- PRIORITIZE teams with matches first (most important)
+    case when standings_check.has_standings = 1 then 0 else 1 end, -- Then prioritize teams with standings data
     case
       when lower(dt.team_name_std) = lower(p_team_a) then 0
       when lower(regexp_replace(dt.team_name_std, '\s+(FC|CF|United|City|Town|Athletic|Club)$', '', 'g')) = lower(regexp_replace(p_team_a, '\s+(FC|CF|United|City|Town|Athletic|Club)$', '', 'g')) then 1
@@ -69,18 +76,33 @@ tb as (
       and (p_season is null or ls.season = p_season)
     limit 1
   ) standings_check on true
+  left join lateral (
+    select 1 as has_matches
+    from public.matches m
+    where (m.home_team_id = dt.team_id or m.away_team_id = dt.team_id)
+      and (p_season is null or m.season = p_season)
+      and (p_game_date is null or m.date_utc::date >= p_game_date)
+    limit 1
+  ) matches_check on true
   where
     lower(dt.team_name_std) = lower(p_team_b)
     or dt.team_name_std ilike '%' || p_team_b || '%'
     or lower(p_team_b) = lower(regexp_replace(dt.team_name_std, '\s+(FC|CF|United|City|Town|Athletic|Club)$', '', 'g'))
     or lower(regexp_replace(p_team_b, '\s+(FC|CF|United|City|Town|Athletic|Club)$', '', 'g')) = lower(regexp_replace(dt.team_name_std, '\s+(FC|CF|United|City|Town|Athletic|Club)$', '', 'g'))
-    -- Handle RB Leipzig / RasenBallsport Leipzig
-    or (lower(regexp_replace(p_team_b, '^rb\s+', 'rasenballsport ', 'i')) = lower(dt.team_name_std))
-    or (lower(regexp_replace(dt.team_name_std, '^rasenballsport\s+', 'rb ', 'i')) = lower(p_team_b))
-    or (lower(regexp_replace(p_team_b, '^rb\s+', 'rasenballsport ', 'i')) ilike '%' || lower(dt.team_name_std) || '%')
-    or (lower(regexp_replace(dt.team_name_std, '^rasenballsport\s+', 'rb ', 'i')) ilike '%' || lower(p_team_b) || '%')
+    -- Handle RB Leipzig / RasenBallsport Leipzig: if both contain "leipzig" and one has "rb"/"rasenballsport", treat as same team
+    or (
+      lower(dt.team_name_std) like '%leipzig%' 
+      and lower(p_team_b) like '%leipzig%'
+      and (
+        (lower(dt.team_name_std) like '%rb%' and lower(p_team_b) like '%rb%')
+        or (lower(dt.team_name_std) like '%rasenballsport%' and lower(p_team_b) like '%rasenballsport%')
+        or (lower(dt.team_name_std) like '%rb%' and lower(p_team_b) like '%rasenballsport%')
+        or (lower(dt.team_name_std) like '%rasenballsport%' and lower(p_team_b) like '%rb%')
+      )
+    )
   order by
-    case when standings_check.has_standings = 1 then 0 else 1 end, -- PRIORITIZE teams with standings data first
+    case when matches_check.has_matches = 1 then 0 else 1 end, -- PRIORITIZE teams with matches first (most important)
+    case when standings_check.has_standings = 1 then 0 else 1 end, -- Then prioritize teams with standings data
     case
       when lower(dt.team_name_std) = lower(p_team_b) then 0
       when lower(regexp_replace(dt.team_name_std, '\s+(FC|CF|United|City|Town|Athletic|Club)$', '', 'g')) = lower(regexp_replace(p_team_b, '\s+(FC|CF|United|City|Town|Athletic|Club)$', '', 'g')) then 1
@@ -106,10 +128,16 @@ ta_alternates as (
        lower(regexp_replace((select team_name_std from ta), '^(SV|TSG)\s+', '', 'g'))
     or lower(p_team_a) = lower(regexp_replace(team_name_std, '\s+(FC|CF|United|City|Town|Athletic|Club|SV|TSG)$', '', 'g'))
     or lower(p_team_a) = lower(regexp_replace(team_name_std, '^(SV|TSG)\s+', '', 'g'))
-    -- Handle RB Leipzig / RasenBallsport Leipzig
-    or (lower(regexp_replace(team_name_std, '^rasenballsport\s+', 'rb ', 'i')) ilike '%' || lower(regexp_replace((select team_name_std from ta), '^rasenballsport\s+', 'rb ', 'i')) || '%')
-    or (lower(regexp_replace((select team_name_std from ta), '^rasenballsport\s+', 'rb ', 'i')) ilike '%' || lower(regexp_replace(team_name_std, '^rasenballsport\s+', 'rb ', 'i')) || '%')
-    or (lower(regexp_replace(p_team_a, '^rb\s+', 'rasenballsport ', 'i')) ilike '%' || lower(regexp_replace(team_name_std, '^rasenballsport\s+', 'rb ', 'i')) || '%')
+    -- Handle RB Leipzig / RasenBallsport Leipzig: include both Leipzig teams when one is found
+    or (
+      lower(team_name_std) like '%leipzig%' 
+      and (select team_name_std from ta) is not null
+      and lower((select team_name_std from ta)) like '%leipzig%'
+      and (
+        (lower(team_name_std) like '%rb%' or lower(team_name_std) like '%rasenballsport%')
+        and (lower((select team_name_std from ta)) like '%rb%' or lower((select team_name_std from ta)) like '%rasenballsport%')
+      )
+    )
   )
 ),
 tb_alternates as (
@@ -124,10 +152,16 @@ tb_alternates as (
        lower(regexp_replace((select team_name_std from tb), '^(SV|TSG)\s+', '', 'g'))
     or lower(p_team_b) = lower(regexp_replace(team_name_std, '\s+(FC|CF|United|City|Town|Athletic|Club|SV|TSG)$', '', 'g'))
     or lower(p_team_b) = lower(regexp_replace(team_name_std, '^(SV|TSG)\s+', '', 'g'))
-    -- Handle RB Leipzig / RasenBallsport Leipzig
-    or (lower(regexp_replace(team_name_std, '^rasenballsport\s+', 'rb ', 'i')) ilike '%' || lower(regexp_replace((select team_name_std from tb), '^rasenballsport\s+', 'rb ', 'i')) || '%')
-    or (lower(regexp_replace((select team_name_std from tb), '^rasenballsport\s+', 'rb ', 'i')) ilike '%' || lower(regexp_replace(team_name_std, '^rasenballsport\s+', 'rb ', 'i')) || '%')
-    or (lower(regexp_replace(p_team_b, '^rb\s+', 'rasenballsport ', 'i')) ilike '%' || lower(regexp_replace(team_name_std, '^rasenballsport\s+', 'rb ', 'i')) || '%')
+    -- Handle RB Leipzig / RasenBallsport Leipzig: include both Leipzig teams when one is found
+    or (
+      lower(team_name_std) like '%leipzig%' 
+      and (select team_name_std from tb) is not null
+      and lower((select team_name_std from tb)) like '%leipzig%'
+      and (
+        (lower(team_name_std) like '%rb%' or lower(team_name_std) like '%rasenballsport%')
+        and (lower((select team_name_std from tb)) like '%rb%' or lower((select team_name_std from tb)) like '%rasenballsport%')
+      )
+    )
   )
 ),
 m_exact as (
