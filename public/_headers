@@ -1,9 +1,67 @@
 /sitemap.xml
   Content-Type: application/xml; charset=utf-8
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
 /*.xml
   Content-Type: application/xml; charset=utf-8
 
 /robots.txt
   Content-Type: text/plain; charset=utf-8
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
+/assets/*.js
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/*.css
+  Cache-Control: public, max-age=31536000, immutable
+
+/assets/images/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/images/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/
+  Cache-Control: public, max-age=300, stale-while-revalidate=3600
+
+/nba/
+  Cache-Control: public, max-age=600, stale-while-revalidate=3600
+
+/nfl/
+  Cache-Control: public, max-age=600, stale-while-revalidate=3600
+
+/epl/
+  Cache-Control: public, max-age=600, stale-while-revalidate=3600
+
+/bundesliga/
+  Cache-Control: public, max-age=600, stale-while-revalidate=3600
+
+/dfs/
+  Cache-Control: public, max-age=600, stale-while-revalidate=3600
+
+/nba/*prediction*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/nfl/*prediction*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/epl/*prediction*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/bundesliga/*prediction*
+  Cache-Control: public, max-age=3600, stale-while-revalidate=86400
+
+/nba/heat-picks-today*
+  Cache-Control: public, max-age=300, stale-while-revalidate=3600
+
+/nfl/heat-picks-today*
+  Cache-Control: public, max-age=300, stale-while-revalidate=3600
+
+/epl/heat-picks-today*
+  Cache-Control: public, max-age=300, stale-while-revalidate=3600
+
+/bundesliga/heat-picks-today*
+  Cache-Control: public, max-age=300, stale-while-revalidate=3600
+
+/*.html
+  Cache-Control: public, max-age=1800, stale-while-revalidate=3600
