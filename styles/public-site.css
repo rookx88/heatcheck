@@ -907,3 +907,80 @@ body {
 }
 
 /* Removed duplicate - min-height already set in main rule above */
+
+/* Mobile Radar: Polymorphic transparent glass buttons */
+.mobile-radar-games {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.mobile-radar-games .roundup-game-item {
+    display: block;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 12px;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    box-shadow: 
+        0 8px 32px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.2);
+}
+
+.mobile-radar-games .roundup-game-item:active {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(255, 255, 255, 0.25);
+    box-shadow: 
+        0 12px 40px rgba(0, 0, 0, 0.4),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15),
+        inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+    transform: translateY(-2px) scale(0.98);
+}
+
+.mobile-radar-games .game-matchup {
+    color: rgba(255, 255, 255, 0.95);
+    font-family: 'Courier New', monospace;
+    font-size: 1rem;
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.mobile-radar-games .game-date {
+    color: rgba(255, 255, 255, 0.7);
+    font-family: 'Courier New', monospace;
+    font-size: 0.85rem;
+}
+
+.mobile-radar-games .game-heat-score {
+    margin-left: 0.75rem;
+    flex-shrink: 0;
+    text-align: right;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    border-radius: 8px;
+    padding: 0.4rem 0.6rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.mobile-radar-games .game-heat-score > div:first-child {
+    font-size: 0.85rem !important;
+}
+
+.mobile-radar-games .game-heat-score > div:last-child {
+    font-size: 0.75rem !important;
+}
+
+.mobile-radar-games .no-games-message {
+    color: rgba(255, 255, 255, 0.5);
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    text-align: center;
+    padding: 2rem;
+}
+

@@ -58,7 +58,7 @@ async function fetchPublishedPosts() {
  * Combines Heat Picks signals (momentum, availability, close games, comparisons) 
  * + Narrative strength + Evidence quality
  * Matches the Heat Picks scoring system for consistency
- * Temperature-based: 50 = baseline, 70 = warm, 90 = hot, 100 = scorching
+ * Temperature-based: 40 = baseline, 70 = warm, 90 = hot, 100 = scorching
  */
 function calculateHeatScoreFromMatchupData(post) {
     // Special handling for DFS articles
@@ -157,7 +157,7 @@ function calculateHeatScoreFromMatchupData(post) {
     const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
     const narratives = heatCheckData.narratives || {};
     
-    // Temperature-based scoring: 50 = baseline, 70 = warm, 90 = hot, 100 = scorching
+    // Temperature-based scoring: 40 = baseline, 70 = warm, 90 = hot, 100 = scorching
     let baseScore = 0;
     let momentumScore = 0;
     let availabilityScore = 0;
@@ -307,12 +307,12 @@ function calculateHeatScoreFromMatchupData(post) {
     
     evidenceScore = Math.min(23, evidenceScore);
     
-    // Total score with base temperature: 50 = baseline, then add components
-    // Base temperature ensures even basic matchups start at ~50-60
+    // Total score with base temperature: 40 = baseline, then add components
+    // Base temperature ensures even basic matchups start at ~40-50
     // Good matchups reach 70-80, strong ones reach 90+
-    const baseTemperature = 50;
+    const baseTemperature = 40;
     const rawTotal = baseTemperature + baseScore + narrativeScore + evidenceScore;
-    const total = Math.round(Math.min(100, Math.max(50, rawTotal))); // Cap between 50-100
+    const total = Math.round(Math.min(100, Math.max(40, rawTotal))); // Cap between 40-100
     
     // Map to legacy breakdown format for backward compatibility
     // Distribute scores across the 5 categories
@@ -1099,8 +1099,8 @@ function generatePostCard(post) {
                         <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">VISUAL EVIDENCE</div>
                     </div>
                 ` : `
-                    <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 1rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2.2em; max-height: 3.2em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${headline}</h2>
-                    ${quoteHtml}
+                <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 1rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2.2em; max-height: 3.2em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${headline}</h2>
+                ${quoteHtml}
                 `}
                 <a href="${articleUrl}" style="margin-top: 0; margin-bottom: 0; font-size: 0.7rem; padding: 0.4rem 0.8rem; background: #000; border: 2px solid rgba(0, 255, 65, 0.6); color: #fff; cursor: pointer; text-transform: uppercase; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; letter-spacing: 0.08em; transition: all 0.3s ease; width: 100%; box-sizing: border-box; text-decoration: none; display: block; text-align: center; box-shadow: 0 0 10px rgba(0, 255, 65, 0.3), 0 0 20px rgba(0, 255, 65, 0.1);" onmouseover="this.style.borderColor='rgba(0, 255, 65, 0.8)'; this.style.boxShadow='0 0 15px rgba(0, 255, 65, 0.5), 0 0 30px rgba(0, 255, 65, 0.2)';" onmouseout="this.style.borderColor='rgba(0, 255, 65, 0.6)'; this.style.boxShadow='0 0 10px rgba(0, 255, 65, 0.3), 0 0 20px rgba(0, 255, 65, 0.1)';">VIEW STORY</a>
             </div>
@@ -1455,7 +1455,7 @@ function generateMatchupButton(post) {
     const league = (post.league || '').toUpperCase();
     const articleUrl = generateArticleUrl(post);
     
-    // Calculate heat score (using unified temperature model: 50 = baseline, 70 = warm, 90 = hot)
+    // Calculate heat score (using unified temperature model: 40 = baseline, 70 = warm, 90 = hot)
     // Always recalculate to ensure we're using the latest unified model
     const heatScore = calculateHeatScoreFromMatchupData(post);
     const scoreTotal = heatScore.total || 0;
@@ -1468,7 +1468,7 @@ function generateMatchupButton(post) {
     }
     
     // Debug: Log if score seems off (for troubleshooting)
-    if (scoreTotal < 50 || scoreTotal > 100) {
+    if (scoreTotal < 40 || scoreTotal > 100) {
         console.warn('[Radar] Unexpected heat score:', {
             matchup: matchup,
             score: scoreTotal,
@@ -1478,7 +1478,7 @@ function generateMatchupButton(post) {
     }
     
     // Determine score label based on score (adjusted for unified temperature model)
-    // Base temperature is 50, so scores are typically 50-100 range
+    // Base temperature is 40, so scores are typically 40-100 range
     let scoreLabel = 'COOL';
     let scoreColor = 'rgba(255, 255, 255, 0.5)';
     if (scoreTotal >= 85) {
@@ -1488,7 +1488,7 @@ function generateMatchupButton(post) {
         scoreLabel = 'WARM';
         scoreColor = '#ff8000'; // Orange for warm
     } else {
-        // 50-69: Baseline to warm (most matchups start at 50)
+        // 40-69: Baseline to warm (most matchups start at 40)
         scoreLabel = 'COOL';
         scoreColor = 'rgba(255, 255, 255, 0.6)'; // Slightly brighter for baseline
     }

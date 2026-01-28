@@ -8,6 +8,7 @@ import { generateDatePage } from './templates/date-page-template';
 import { generateDFSArticlePage } from './templates/dfs-article-template';
 import { generateHeatPicksArticlePage } from './templates/heat-picks-article-template';
 import { generateDFSHubPage } from './templates/dfs-hub-template';
+import { generateHeatPicksHubPage } from './templates/heat-picks-hub-template';
 import { generateBaseHtml } from './templates/base-template';
 import { formatDateISO, normalizeLeague } from './utils/date-formatter';
 import { generateSlug, ensureUniqueSlug, generateNarrativeSlug, generateMatchupSlug } from './utils/slug-generator';
@@ -524,6 +525,14 @@ async function generateAllPages(): Promise<void> {
             const html = generateDFSHubPage(dfsPosts, baseUrl);
             writeHtmlFile('dfs/index.html', html);
             console.log('✓ Generated DFS hub page\n');
+        }
+        
+        // Generate Heat Picks hub page
+        if (heatPicksPosts.length > 0) {
+            console.log('Generating Heat Picks hub page...');
+            const html = generateHeatPicksHubPage(heatPicksPosts, baseUrl);
+            writeHtmlFile('heat-picks/index.html', html);
+            console.log('✓ Generated Heat Picks hub page\n');
         }
         
         // Generate league hub pages (dynamically for all leagues that have posts)

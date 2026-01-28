@@ -444,7 +444,7 @@ async function computeHeatPicksClassification(
   }
 
   // 2. Calculate Base HeatScore from Statistical Signals (scaled for temperature-like range)
-  // Temperature model: 50 = baseline, 70 = warm, 90 = hot, 100 = scorching
+  // Temperature model: 40 = baseline, 70 = warm, 90 = hot, 100 = scorching
   const momentumWeight = 0.3;
   const availabilityWeight = 0.25;
   const closeGamesWeight = 0.25;
@@ -545,13 +545,13 @@ async function computeHeatPicksClassification(
   
   evidenceScore = Math.min(23, evidenceScore); // Increased from 15
 
-  // 5. Calculate Unified HeatScore with base temperature (50 = baseline, like room temp)
-  // Base temperature: Every matchup starts at 50 degrees
+  // 5. Calculate Unified HeatScore with base temperature (40 = baseline, like room temp)
+  // Base temperature: Every matchup starts at 40 degrees
   // Then add signals (0-80) + narratives (0-35) + evidence (0-23) = max 188, but we cap at 100
   // This ensures: decent matchup = ~70, strong = ~90, exceptional = 100
-  const baseTemperature = 50; // Baseline temperature
+  const baseTemperature = 40; // Baseline temperature
   const rawHeatScore = baseTemperature + baseScore + narrativeScore + evidenceScore;
-  const heatScore = Math.round(Math.min(100, Math.max(50, rawHeatScore))); // Cap between 50-100
+  const heatScore = Math.round(Math.min(100, Math.max(40, rawHeatScore))); // Cap between 40-100
 
   // 6. Market Lag Numeric
   let marketLag: number | null = null;

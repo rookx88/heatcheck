@@ -33,6 +33,7 @@ export function generateCrawlerNav(recentDates: RecentDate[], baseUrl: string = 
     const urlPrefix = '';
     
     let navHtml = '<nav class="crawler-nav" aria-label="Site navigation">\n';
+    navHtml += `  <a href="${urlPrefix}/heat-picks/" class="nav-link" style="display: inline-flex; align-items: center; gap: 0.2rem;"><span style="color: #ff1a1a;">HEAT</span><span style="color: #fff;">Picks</span></a>\n`;
     navHtml += `  <a href="${urlPrefix}/about/" class="nav-link">ABOUT US</a>\n`;
     
     leagues.forEach(league => {

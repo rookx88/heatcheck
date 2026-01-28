@@ -126,7 +126,7 @@ function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number
     const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
     const narratives = heatCheckData.narratives || {};
     
-    // Temperature-based scoring: 50 = baseline, 70 = warm, 90 = hot, 100 = scorching
+    // Temperature-based scoring: 40 = baseline, 70 = warm, 90 = hot, 100 = scorching
     let baseScore = 0;
     let momentumScore = 0;
     let availabilityScore = 0;
@@ -274,12 +274,12 @@ function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number
     
     evidenceScore = Math.min(23, evidenceScore);
     
-    // Total score with base temperature: 50 = baseline, then add components
-    // Base temperature ensures even basic matchups start at ~50-60
+    // Total score with base temperature: 40 = baseline, then add components
+    // Base temperature ensures even basic matchups start at ~40-50
     // Good matchups reach 70-80, strong ones reach 90+
-    const baseTemperature = 50;
+    const baseTemperature = 40;
     const rawTotal = baseTemperature + baseScore + narrativeScore + evidenceScore;
-    const total = Math.round(Math.min(100, Math.max(50, rawTotal))); // Cap between 50-100
+    const total = Math.round(Math.min(100, Math.max(40, rawTotal))); // Cap between 40-100
     
     // Map to legacy breakdown format for backward compatibility
     // Distribute scores across the 5 categories

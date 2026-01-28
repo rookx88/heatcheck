@@ -252,12 +252,12 @@ function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number
     
     evidenceScore = Math.min(23, evidenceScore); // Increased from 15
     
-    // Total score with base temperature: 50 = baseline, then add components
-    // Base temperature ensures even basic matchups start at ~50-60
+    // Total score with base temperature: 40 = baseline, then add components
+    // Base temperature ensures even basic matchups start at ~40-50
     // Good matchups reach 70-80, strong ones reach 90+
-    const baseTemperature = 50;
+    const baseTemperature = 40;
     const rawTotal = baseTemperature + baseScore + narrativeScore + evidenceScore;
-    const total = Math.round(Math.min(100, Math.max(50, rawTotal))); // Cap between 50-100
+    const total = Math.round(Math.min(100, Math.max(40, rawTotal))); // Cap between 40-100
     
     // Map to legacy breakdown format
     const stakes = Math.round((momentumScore + closeGamesScore) / 2);

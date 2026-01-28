@@ -586,7 +586,7 @@ export function generateHeatPicksArticlePage(
                     return `
                         <div style="padding: 0.5rem; background: rgba(0, 0, 0, 0.2); border-left: 2px solid ${tempColor};">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.3rem;">
-                                <a href="#heat-pick-${idx}" style="color: rgba(255, 255, 255, 0.9); text-decoration: none; font-size: 0.7rem; font-weight: bold; border-bottom: 1px dashed rgba(0, 255, 65, 0.5);">
+                                <a href="#heat-pick-${idx}" onclick="event.preventDefault(); document.getElementById('heat-pick-${idx}').scrollIntoView({ behavior: 'smooth', block: 'start' }); return false;" style="color: rgba(255, 255, 255, 0.9); text-decoration: none; font-size: 0.7rem; font-weight: bold; border-bottom: 1px dashed rgba(0, 255, 65, 0.5); cursor: pointer;">
                                     ${escapeHtml(pick.matchup)}
                                 </a>
                                 <div style="color: ${tempColor}; font-size: 0.85rem; font-weight: bold;">${pick.heatScore}°</div>

@@ -39,6 +39,9 @@
 /dfs/
   Cache-Control: public, max-age=600, stale-while-revalidate=3600
 
+/heat-picks/
+  Cache-Control: public, max-age=600, stale-while-revalidate=3600
+
 /nba/*prediction*
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
