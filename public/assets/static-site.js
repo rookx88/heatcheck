@@ -54,357 +54,282 @@ async function fetchPublishedPosts() {
 }
 
 /**
- * Calculate heat score from matchup data (fact_pack, evidence_bundle)
- * Returns score breakdown with 5 categories, each 0-20 points = total 0-100
+ * Unified Heat Score Calculation (0-100)
+ * Combines Heat Picks signals (momentum, availability, close games, comparisons) 
+ * + Narrative strength + Evidence quality
+ * Matches the Heat Picks scoring system for consistency
+ * Temperature-based: 50 = baseline, 70 = warm, 90 = hot, 100 = scorching
  */
 function calculateHeatScoreFromMatchupData(post) {
-    if (!post.heatCheckData) {
+    // Special handling for DFS articles
+    if (post.storyType === 'dfs_article') {
+        const heatCheckData = post.heatCheckData || {};
+        const dfsPlayers = heatCheckData.dfsPlayers || [];
+        const articleDate = post.matchupScheduledDate || post.createdAt;
+        
+        // Calculate days since article date (same day = 0, next day = 1, etc.)
+        let daysAgo = 365;
+        if (articleDate) {
+            try {
+                const articleDateTime = new Date(articleDate);
+            const now = new Date();
+                const diffTime = Math.abs(now.getTime() - articleDateTime.getTime());
+                daysAgo = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+        } catch {
+                daysAgo = 365;
+            }
+        }
+        
+        // RECENCY (0-20 points) - DFS articles are most valuable same day
+        let recencyScore = 0;
+        if (daysAgo === 0) recencyScore = 20; // Same day = max score
+        else if (daysAgo === 1) recencyScore = 15; // Yesterday
+        else if (daysAgo === 2) recencyScore = 10; // 2 days ago
+        else if (daysAgo <= 7) recencyScore = 8; // Within a week
+        else if (daysAgo <= 30) recencyScore = 5; // Within a month
+        else recencyScore = 2; // Older
+        
+        // STAKES (0-20 points) - Based on number of players analyzed
+    let stakesScore = 0;
+        const playerCount = dfsPlayers.length;
+        if (playerCount >= 10) stakesScore = 18; // Full slate analysis
+        else if (playerCount >= 8) stakesScore = 15;
+        else if (playerCount >= 5) stakesScore = 12;
+        else if (playerCount >= 3) stakesScore = 8;
+        else stakesScore = 5;
+        
+        // EMOTION (0-20 points) - Based on average confidence scores
+        let emotionScore = 0;
+        if (playerCount > 0) {
+            const avgConfidence = dfsPlayers.reduce((sum, p) => sum + (p.confidenceScore || 0), 0) / playerCount;
+            if (avgConfidence >= 80) emotionScore = 18;
+            else if (avgConfidence >= 70) emotionScore = 15;
+            else if (avgConfidence >= 60) emotionScore = 12;
+            else if (avgConfidence >= 50) emotionScore = 8;
+            else emotionScore = 5;
+        }
+        
+        // HISTORY (0-20 points) - Variety of narrative types
+        const narrativeTypes = new Set(dfsPlayers.map(p => p.narrativeType || '').filter(Boolean));
+        let historyScore = 0;
+        if (narrativeTypes.size >= 5) historyScore = 18;
+        else if (narrativeTypes.size >= 4) historyScore = 15;
+        else if (narrativeTypes.size >= 3) historyScore = 12;
+        else if (narrativeTypes.size >= 2) historyScore = 8;
+        else historyScore = 5;
+        
+        // PAYBACK (0-20 points) - Count of revenge/motivation narratives
+        let paybackScore = 0;
+        const paybackNarratives = dfsPlayers.filter(p => {
+            const type = (p.narrativeType || '').toLowerCase();
+            return type.includes('revenge') || type.includes('motivation') || type.includes('homecoming');
+        }).length;
+        if (paybackNarratives >= 5) paybackScore = 18;
+        else if (paybackNarratives >= 3) paybackScore = 15;
+        else if (paybackNarratives >= 2) paybackScore = 12;
+        else if (paybackNarratives >= 1) paybackScore = 8;
+        else paybackScore = 5;
+        
+        const total = stakesScore + recencyScore + paybackScore + historyScore + emotionScore;
+        
         return {
-            total: 0,
+            total: Math.min(100, Math.max(0, total)),
             breakdown: {
-                stakes: 0,
-                recency: 0,
-                payback: 0,
-                history: 0,
-                emotion: 0
+                stakes: stakesScore,
+                recency: recencyScore,
+                payback: paybackScore,
+                history: historyScore,
+                emotion: emotionScore
             }
         };
     }
     
+    if (!post.heatCheckData) {
+        return {
+            total: 0,
+            breakdown: { stakes: 0, recency: 0, payback: 0, history: 0, emotion: 0 }
+        };
+    }
+    
     const heatCheckData = post.heatCheckData;
+    const matchPackV3 = heatCheckData.matchPackV3;
     const factPack = heatCheckData.fact_pack || heatCheckData.factPack || {};
     const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
     const narratives = heatCheckData.narratives || {};
     
-    // Helper to safely get values
-    const safeGet = (obj, path, defaultVal = 0) => {
-        const keys = path.split('.');
-        let value = obj;
-        for (const key of keys) {
-            if (value && typeof value === 'object' && key in value) {
-                value = value[key];
-            } else {
-                return defaultVal;
-            }
-        }
-        return value || defaultVal;
-    };
+    // Temperature-based scoring: 50 = baseline, 70 = warm, 90 = hot, 100 = scorching
+    let baseScore = 0;
+    let momentumScore = 0;
+    let availabilityScore = 0;
+    let closeGamesScore = 0;
+    let comparisonsScore = 0;
     
-    // Helper to get date difference in days (more recent = higher score)
-    const getDaysAgo = (dateString) => {
-        if (!dateString) return 365; // Default to old if missing
-        try {
-            const date = new Date(dateString);
-            const now = new Date();
-            const diffTime = Math.abs(now - date);
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-            return diffDays;
-        } catch {
-            return 365;
-        }
-    };
-    
-    // 1. STAKES (0-20 points)
-    let stakesScore = 0;
-    
-    // Helper to check if date is in playoff season for a league
-    const isPlayoffSeason = (dateString, league) => {
-        if (!dateString) return false;
-        try {
-            const date = new Date(dateString);
-            const month = date.getMonth() + 1; // 1-12
-            const leagueLower = (league || '').toLowerCase();
-            
-            // NFL: January-February (months 1-2)
-            if (leagueLower.includes('nfl') || leagueLower === 'football') {
-                return month === 1 || month === 2;
-            }
-            // NBA: April-June (months 4-6)
-            if (leagueLower.includes('nba') || leagueLower === 'basketball') {
-                return month >= 4 && month <= 6;
-            }
-            // MLB: October-November (months 10-11)
-            if (leagueLower.includes('mlb') || leagueLower === 'baseball') {
-                return month === 10 || month === 11;
-            }
-            // NHL: April-June (months 4-6)
-            if (leagueLower.includes('nhl') || leagueLower === 'hockey') {
-                return month >= 4 && month <= 6;
-            }
-            return false;
-        } catch {
-            return false;
-        }
-    };
-    
-    // Helper to check for playoff keywords
-    const hasPlayoffKeywords = () => {
-        const playoffKeywords = ['playoff', 'postseason', 'super bowl', 'conference final', 'semifinal', 
-                                'championship', 'wild card', 'divisional', 'world series', 'finals', 
-                                'elimination', 'must-win', 'do-or-die', 'win or go home'];
+    // If matchPackV3 exists, use Heat Picks signals (preferred method)
+    if (matchPackV3 && matchPackV3.factDrop) {
+        const factDrop = matchPackV3.factDrop;
+        const teamForm = factDrop.raw && factDrop.raw.teamForm ? factDrop.raw.teamForm : {};
+        const comparisons = factDrop.comparisons || [];
+        const availability = factDrop.raw && factDrop.raw.availability ? factDrop.raw.availability : null;
         
-        // Check headline/title
-        const headline = (post.websiteStory?.headline || '').toLowerCase();
-        if (playoffKeywords.some(keyword => headline.includes(keyword))) return true;
+        // 1. MOMENTUM (0-25 points, increased for temperature model)
+        const aMargin10 = (teamForm.A && teamForm.A.margin10) || (teamForm.A && teamForm.A.xgDiff10) || 0;
+        const aMargin3 = (teamForm.A && teamForm.A.margin3) || (teamForm.A && teamForm.A.xgDiff3) || 0;
+        const bMargin10 = (teamForm.B && teamForm.B.margin10) || (teamForm.B && teamForm.B.xgDiff10) || 0;
+        const bMargin3 = (teamForm.B && teamForm.B.margin3) || (teamForm.B && teamForm.B.xgDiff3) || 0;
+        const momentumDivergence = Math.abs((aMargin3 - aMargin10) - (bMargin3 - bMargin10));
+        momentumScore = Math.min(25, momentumDivergence * 2.5); // Increased multiplier
         
-        // Check key_stats
-        const keyStats = factPack.key_stats || [];
-        const statsText = keyStats.map(s => `${s.label} ${s.value} ${s.why_it_matters || ''}`).join(' ').toLowerCase();
-        if (playoffKeywords.some(keyword => statsText.includes(keyword))) return true;
-        
-        // Check standings_summary
-        const standings = factPack.context?.standings_summary || '';
-        if (playoffKeywords.some(keyword => standings.toLowerCase().includes(keyword))) return true;
-        
-        // Check narrative titles/claims
-        const narrativeCards = narratives.candidate_cards || [];
-        const narrativeText = narrativeCards.map(c => `${c.title} ${c.claim || ''}`).join(' ').toLowerCase();
-        if (playoffKeywords.some(keyword => narrativeText.includes(keyword))) return true;
-        
-        return false;
-    };
-    
-    const matchupDate = post.matchupScheduledDate || post.createdAt;
-    const league = post.league || '';
-    const isPlayoff = isPlayoffSeason(matchupDate, league) || hasPlayoffKeywords();
-    
-    // Get recent form data (used in both playoff and regular season calculations)
-    const recentForm = factPack.context?.recent_form || {};
-    const homeForm = recentForm.home || '';
-    const awayForm = recentForm.away || '';
-    
-    // Playoff games get automatic high stakes (base score 15-18)
-    if (isPlayoff) {
-        stakesScore = 15; // Base playoff score
-        
-        // Close spread in playoffs = even higher stakes (+2-3 points)
-        const odds = factPack.odds || {};
-        const markets = odds.markets || [];
-        const spreadMarket = markets.find(m => m.market === 'Spread');
-        
-        if (spreadMarket && typeof spreadMarket.point === 'number') {
-            const spread = Math.abs(spreadMarket.point);
-            if (spread <= 3) stakesScore += 3; // Very close playoff game
-            else if (spread <= 6) stakesScore += 2; // Close playoff game
-            else stakesScore += 1;
-        } else {
-            stakesScore += 2; // Default playoff boost if no spread
+        // 2. AVAILABILITY (0-20 points, increased for temperature model)
+        if (availability && availability.majorAbsences) {
+            const aAbsences = (availability.majorAbsences.A && availability.majorAbsences.A.count) || 0;
+            const bAbsences = (availability.majorAbsences.B && availability.majorAbsences.B.count) || 0;
+            const availabilityDiff = Math.abs(aAbsences - bAbsences);
+            availabilityScore = Math.min(20, availabilityDiff * 4); // Increased multiplier
         }
         
-        // Championship/Super Bowl level gets max (+2 points)
-        const headline = (post.websiteStory?.headline || '').toLowerCase();
-        const championshipKeywords = ['super bowl', 'championship', 'finals', 'world series', 'stanley cup'];
-        if (championshipKeywords.some(keyword => headline.includes(keyword))) {
-            stakesScore += 2;
+        // 3. CLOSE GAMES (0-20 points, increased for temperature model)
+        const closeMarginComp = comparisons.find(c => c && c.key === 'closeMargin');
+        if (closeMarginComp) {
+            const aCloseW = (teamForm.A && teamForm.A.closeW10) || 0;
+            const aCloseL = (teamForm.A && teamForm.A.closeL10) || 0;
+            const bCloseW = (teamForm.B && teamForm.B.closeW10) || 0;
+            const bCloseL = (teamForm.B && teamForm.B.closeL10) || 0;
+            const aCloseRate = aCloseW + aCloseL > 0 ? aCloseW / (aCloseW + aCloseL) : 0;
+            const bCloseRate = bCloseW + bCloseL > 0 ? bCloseW / (bCloseW + bCloseL) : 0;
+            const closeGameDiff = Math.abs(aCloseRate - bCloseRate);
+            closeGamesScore = Math.min(20, closeGameDiff * 40); // Increased multiplier
         }
+        
+        // 4. COMPARISONS (0-15 points, increased for temperature model)
+        let comparisonsTotal = 0;
+        comparisons.forEach(comp => {
+            if (comp && comp.key && comp.key !== 'closeMargin') {
+                const aVal = comp.A || 0;
+                const bVal = comp.B || 0;
+                const diff = Math.abs(aVal - bVal);
+                if (diff > 0.1) {
+                    comparisonsTotal += Math.min(3, diff * 1.5); // Increased cap and multiplier
+                }
+            }
+        });
+        comparisonsScore = Math.min(15, comparisonsTotal);
     } else {
-        // Regular season games - calculate based on multiple factors
-        
-        // Close spread = competitive game = higher stakes (0-7 points)
+        // Fallback: Use legacy factPack data if matchPackV3 not available
         const odds = factPack.odds || {};
         const markets = odds.markets || [];
-        const spreadMarket = markets.find(m => m.market === 'Spread');
+        const spreadMarket = markets.find(m => m && m.market === 'Spread');
         
+        // Use spread as proxy for competitiveness (scaled up)
         if (spreadMarket && typeof spreadMarket.point === 'number') {
             const spread = Math.abs(spreadMarket.point);
-            if (spread <= 3) stakesScore += 7; // Very close
-            else if (spread <= 6) stakesScore += 5; // Close
-            else if (spread <= 10) stakesScore += 3; // Moderate
-            else stakesScore += 1; // Blowout potential
+            if (spread <= 3) momentumScore = 22;
+            else if (spread <= 6) momentumScore = 18;
+            else if (spread <= 10) momentumScore = 15;
+            else momentumScore = 12;
         } else {
-            stakesScore += 3; // Default if no spread
+            momentumScore = 15; // Default if no spread
         }
-        
-        // Late season implications (0-5 points)
-        // Check if game is in late season (within playoff race timeframe)
-        try {
-            const gameDate = new Date(matchupDate);
-            const month = gameDate.getMonth() + 1;
-            const leagueLower = league.toLowerCase();
-            
-            // NFL: December-January (late season)
-            if ((leagueLower.includes('nfl') || leagueLower === 'football') && (month === 12 || month === 1)) {
-                stakesScore += 4;
-            }
-            // NBA: March-April (late season)
-            else if ((leagueLower.includes('nba') || leagueLower === 'basketball') && (month >= 3 && month <= 4)) {
-                stakesScore += 4;
-            }
-            // MLB: September-October (late season)
-            else if ((leagueLower.includes('mlb') || leagueLower === 'baseball') && (month >= 9 && month <= 10)) {
-                stakesScore += 4;
-            }
-            // NHL: March-April (late season)
-            else if ((leagueLower.includes('nhl') || leagueLower === 'hockey') && (month >= 3 && month <= 4)) {
-                stakesScore += 4;
-            }
-        } catch {
-            // Date parsing failed, skip
-        }
-        
-        // Standings/playoff race indicators (0-4 points)
-        const standings = factPack.context?.standings_summary || '';
-        const keyStats = factPack.key_stats || [];
-        const statsText = keyStats.map(s => `${s.label} ${s.value} ${s.why_it_matters || ''}`).join(' ').toLowerCase();
-        
-        const playoffRaceKeywords = ['playoff race', 'wild card', 'division', 'conference', 'standings', 'clinched', 'eliminated'];
-        const hasPlayoffRaceContext = playoffRaceKeywords.some(keyword => 
-            standings.toLowerCase().includes(keyword) || statsText.includes(keyword)
+    }
+    
+    baseScore = momentumScore + availabilityScore + closeGamesScore + comparisonsScore;
+    
+    // NARRATIVE STRENGTH (0-35 points, increased for temperature model)
+    let narrativeScore = 0;
+    if (narratives && narratives.candidate_cards && narratives.candidate_cards.length > 0) {
+        // Primary narrative score (0-20 points, increased from 15)
+        const primaryNarrativeId = narratives.selected && narratives.selected.primary_narrative_id;
+        const primaryCard = narratives.candidate_cards.find(
+            c => c && c.narrative_id === primaryNarrativeId
         );
         
-        if (hasPlayoffRaceContext) {
-            stakesScore += 4;
+        if (primaryCard) {
+            // Use total_score if available (0-35 scale), normalize to 0-20
+            if (primaryCard.total_score !== undefined) {
+                narrativeScore += Math.min(20, (primaryCard.total_score / 35) * 20);
+            } else {
+                // Fallback: use score_breakdown if available
+                const breakdown = primaryCard.score_breakdown || {};
+                const breakdownScore = (breakdown.factual_support || 0) + 
+                                      (breakdown.stakes || 0) + 
+                                      (breakdown.performance_alignment || 0);
+                narrativeScore += Math.min(20, (breakdownScore / 20) * 20);
+            }
         }
         
-        // Recent form indicators (0-3 points)
-        const homeWins = (homeForm.match(/W/g) || []).length;
-        const awayWins = (awayForm.match(/W/g) || []).length;
-        const totalWins = homeWins + awayWins;
-        if (totalWins >= 6) stakesScore += 3;
-        else if (totalWins >= 4) stakesScore += 2;
-        else if (totalWins >= 2) stakesScore += 1;
+        // Secondary narratives boost (0-8 points, increased from 5)
+        const secondaryIds = (narratives.selected && narratives.selected.secondary_narrative_ids) || [];
+        if (secondaryIds.length >= 2) narrativeScore += 8;
+        else if (secondaryIds.length === 1) narrativeScore += 4;
         
-        // Injury impact (0-1 point) - less important in stakes, more in game outcome
-        const injuries = factPack.context?.injuries || [];
-        const criticalInjuries = injuries.filter(i => 
-            i.status && (i.status.toLowerCase().includes('out') || i.status.toLowerCase().includes('doubtful'))
-        ).length;
-        if (criticalInjuries >= 2) stakesScore += 1;
+        // Emotion tags diversity (0-7 points, increased from 5)
+        const allEmotionTags = narratives.candidate_cards
+            .flatMap(c => (c && c.emotion_tags) ? c.emotion_tags : []);
+        const uniqueEmotionTags = [...new Set(allEmotionTags)];
+        if (uniqueEmotionTags.length >= 4) narrativeScore += 7;
+        else if (uniqueEmotionTags.length >= 3) narrativeScore += 5;
+        else if (uniqueEmotionTags.length >= 2) narrativeScore += 2;
     }
     
-    stakesScore = Math.min(20, stakesScore);
+    narrativeScore = Math.min(35, Math.round(narrativeScore));
     
-    // 2. RECENCY (0-20 points) - How recent are the relevant events?
-    let recencyScore = 0;
-    const timelineEvents = evidenceBundle.timeline_events || [];
+    // EVIDENCE QUALITY (0-23 points, increased for temperature model)
+    let evidenceScore = 0;
     const quotes = evidenceBundle.quotes || [];
+    const timelineEvents = evidenceBundle.timeline_events || [];
     
-    // Most recent timeline event (0-10 points)
-    if (timelineEvents.length > 0) {
-        const sortedEvents = timelineEvents
-            .map(e => ({ ...e, daysAgo: getDaysAgo(e.date_utc) }))
-            .sort((a, b) => a.daysAgo - b.daysAgo);
-        
-        const mostRecentDays = sortedEvents[0].daysAgo;
-        if (mostRecentDays <= 30) recencyScore += 10;
-        else if (mostRecentDays <= 90) recencyScore += 8;
-        else if (mostRecentDays <= 180) recencyScore += 6;
-        else if (mostRecentDays <= 365) recencyScore += 4;
-        else recencyScore += 2;
-    } else {
-        recencyScore += 2; // No events = low recency
-    }
+    // Quotes quality (0-12 points, increased from 8)
+    if (quotes.length >= 5) evidenceScore += 12;
+    else if (quotes.length >= 3) evidenceScore += 9;
+    else if (quotes.length >= 2) evidenceScore += 6;
+    else if (quotes.length === 1) evidenceScore += 3;
     
-    // Most recent quote (0-10 points)
-    if (quotes.length > 0) {
-        const sortedQuotes = quotes
-            .map(q => ({ ...q, daysAgo: getDaysAgo(q.date_utc) }))
-            .sort((a, b) => a.daysAgo - b.daysAgo);
-        
-        const mostRecentQuoteDays = sortedQuotes[0].daysAgo;
-        if (mostRecentQuoteDays <= 90) recencyScore += 10;
-        else if (mostRecentQuoteDays <= 180) recencyScore += 8;
-        else if (mostRecentQuoteDays <= 365) recencyScore += 6;
-        else recencyScore += 4;
-    } else {
-        recencyScore += 2; // No quotes = low recency
-    }
+    // Timeline events (0-6 points, increased from 4)
+    if (timelineEvents.length >= 5) evidenceScore += 6;
+    else if (timelineEvents.length >= 3) evidenceScore += 5;
+    else if (timelineEvents.length >= 2) evidenceScore += 3;
+    else if (timelineEvents.length === 1) evidenceScore += 2;
     
-    recencyScore = Math.min(20, recencyScore);
-    
-    // 3. PAYBACK (0-20 points) - Revenge/payback scenarios
-    let paybackScore = 0;
-    
-    // Timeline events with rivalry/trade type (0-12 points)
-    const paybackEvents = timelineEvents.filter(e => {
-        const eventType = (e.event_type || '').toLowerCase();
-        return eventType.includes('rivalry') || eventType.includes('trade') || 
-               eventType.includes('revenge') || eventType.includes('beef');
+    // Recent evidence bonus (0-5 points, increased from 3)
+    const now = new Date();
+    const recentQuotes = quotes.filter(q => {
+        if (!q || !q.date_utc) return false;
+        try {
+            const quoteDate = new Date(q.date_utc);
+            const daysAgo = Math.floor((now.getTime() - quoteDate.getTime()) / (1000 * 60 * 60 * 24));
+            return daysAgo <= 30;
+        } catch {
+            return false;
+        }
     });
+    if (recentQuotes.length >= 3) evidenceScore += 5;
+    else if (recentQuotes.length >= 2) evidenceScore += 3;
+    else if (recentQuotes.length >= 1) evidenceScore += 2;
     
-    if (paybackEvents.length >= 3) paybackScore += 12;
-    else if (paybackEvents.length === 2) paybackScore += 8;
-    else if (paybackEvents.length === 1) paybackScore += 5;
+    evidenceScore = Math.min(23, evidenceScore);
     
-    // Emotion tags from narratives (0-8 points)
-    const primaryNarrativeId = narratives.selected?.primary_narrative_id;
-    const primaryCard = (narratives.candidate_cards || []).find(
-        c => c.narrative_id === primaryNarrativeId
-    );
-    const emotionTags = primaryCard?.emotion_tags || [];
-    const paybackKeywords = ['revenge', 'payback', 'rivalry', 'beef', 'grudge', 'vendetta'];
-    const matchingTags = emotionTags.filter(tag => 
-        paybackKeywords.some(keyword => tag.toLowerCase().includes(keyword))
-    );
+    // Total score with base temperature: 50 = baseline, then add components
+    // Base temperature ensures even basic matchups start at ~50-60
+    // Good matchups reach 70-80, strong ones reach 90+
+    const baseTemperature = 50;
+    const rawTotal = baseTemperature + baseScore + narrativeScore + evidenceScore;
+    const total = Math.round(Math.min(100, Math.max(50, rawTotal))); // Cap between 50-100
     
-    if (matchingTags.length >= 2) paybackScore += 8;
-    else if (matchingTags.length === 1) paybackScore += 4;
-    
-    paybackScore = Math.min(20, paybackScore);
-    
-    // 4. HISTORY (0-20 points) - Historical context, H2H, timeline depth
-    let historyScore = 0;
-    
-    // Timeline event count (indicates depth of history) (0-8 points)
-    if (timelineEvents.length >= 5) historyScore += 8;
-    else if (timelineEvents.length >= 3) historyScore += 6;
-    else if (timelineEvents.length >= 2) historyScore += 4;
-    else if (timelineEvents.length >= 1) historyScore += 2;
-    
-    // Key stats with H2H indicators (0-6 points)
-    const keyStats = factPack.key_stats || [];
-    const h2hStats = keyStats.filter(s => {
-        const label = (s.label || '').toLowerCase();
-        return label.includes('head') || label.includes('h2h') || 
-               label.includes('versus') || label.includes('vs');
-    });
-    if (h2hStats.length >= 2) historyScore += 6;
-    else if (h2hStats.length === 1) historyScore += 3;
-    
-    // Performance alignment (from recent form showing pattern) (0-6 points)
-    const formPattern = homeForm + awayForm;
-    // Streaks indicate patterns/history
-    if (formPattern.match(/WWWW|LLLL/)) historyScore += 6; // Strong patterns
-    else if (formPattern.match(/WWW|LLL/)) historyScore += 4;
-    else if (formPattern.match(/WW|LL/)) historyScore += 2;
-    
-    historyScore = Math.min(20, historyScore);
-    
-    // 5. EMOTION (0-20 points) - Emotional intensity, quotes, audience resonance
-    let emotionScore = 0;
-    
-    // Quote count and quality (0-10 points)
-    if (quotes.length >= 5) emotionScore += 10;
-    else if (quotes.length >= 3) emotionScore += 8;
-    else if (quotes.length >= 2) emotionScore += 6;
-    else if (quotes.length === 1) emotionScore += 3;
-    
-    // Emotion tags intensity (0-6 points)
-    const allEmotionTags = (narratives.candidate_cards || [])
-        .flatMap(c => c.emotion_tags || []);
-    const uniqueEmotionTags = [...new Set(allEmotionTags)];
-    if (uniqueEmotionTags.length >= 4) emotionScore += 6;
-    else if (uniqueEmotionTags.length >= 3) emotionScore += 4;
-    else if (uniqueEmotionTags.length >= 2) emotionScore += 2;
-    
-    // Quote speakers with team context (shows personality/story) (0-4 points)
-    const quotesWithSpeakers = quotes.filter(q => q.speaker && q.team);
-    if (quotesWithSpeakers.length >= 3) emotionScore += 4;
-    else if (quotesWithSpeakers.length >= 2) emotionScore += 2;
-    else if (quotesWithSpeakers.length === 1) emotionScore += 1;
-    
-    emotionScore = Math.min(20, emotionScore);
-    
-    const total = stakesScore + recencyScore + paybackScore + historyScore + emotionScore;
+    // Map to legacy breakdown format for backward compatibility
+    // Distribute scores across the 5 categories
+    const stakes = Math.round((momentumScore + closeGamesScore) / 2);
+    const recency = Math.round(evidenceScore * 0.8); // Most of evidence is recency-based
+    const payback = Math.round(narrativeScore * 0.3); // Part of narrative is payback/rivalry
+    const history = Math.round(comparisonsScore + (narrativeScore * 0.2));
+    const emotion = Math.round((narrativeScore * 0.5) + (evidenceScore * 0.2));
     
     return {
         total: Math.min(100, Math.max(0, total)),
         breakdown: {
-            stakes: stakesScore,
-            recency: recencyScore,
-            payback: paybackScore,
-            history: historyScore,
-            emotion: emotionScore
+            stakes: Math.min(20, stakes),
+            recency: Math.min(20, recency),
+            payback: Math.min(20, payback),
+            history: Math.min(20, history),
+            emotion: Math.min(20, emotion)
         }
     };
 }
@@ -1143,6 +1068,13 @@ function generatePostCard(post) {
                     <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #00ff41; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #00ff4140, 0 0 15px #00ff4160; overflow: hidden;">
                         <div style="color: #00ff41; font-size: 1.2rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative;">DFS</div>
                     </div>
+                    ` : isHeatPicksArticle ? `
+                    <!-- Heat Picks Indicator (HP) - Enhanced -->
+                    <div class="heat-indicator-container heat-picks-indicator" data-post-id="${post.id}" data-heat-picks="true" style="width: 85px; height: 85px; min-width: 85px; border: 3px solid #ff4500; border-radius: 50%; background: linear-gradient(135deg, rgba(255, 69, 0, 0.5) 0%, rgba(255, 26, 26, 0.5) 50%, rgba(255, 69, 0, 0.3) 100%); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 30px rgba(255, 69, 0, 0.6), 0 0 25px rgba(255, 69, 0, 0.8), 0 0 40px rgba(255, 26, 26, 0.4); overflow: visible; cursor: default; pointer-events: none;">
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70px; height: 70px; border: 2px solid rgba(255, 69, 0, 0.6); border-radius: 50%; opacity: 0.8; background: rgba(0, 0, 0, 0.3);"></div>
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 55px; height: 55px; border: 1.5px solid rgba(255, 26, 26, 0.7); border-radius: 50%; opacity: 0.6; background: rgba(0, 0, 0, 0.5);"></div>
+                        <div style="color: #ff1a1a; font-size: 1.5rem; font-weight: 900; -webkit-text-stroke: 2.5px #000000; text-stroke: 2.5px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.8px; z-index: 1; position: relative; text-shadow: 0 0 10px rgba(255, 26, 26, 0.8), 0 0 20px rgba(255, 26, 26, 0.5);">HP</div>
+                    </div>
                     ` : `
                     <!-- Regular Heat Indicator -->
                     <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
@@ -1155,8 +1087,21 @@ function generatePostCard(post) {
                         ${imagePath ? `<img src="${imagePath}" alt="${teamAShort} vs ${teamBShort} ${league} matchup analysis - ${headline} - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">` : '<div style="width: 100%; height: 100%; background: rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.5); font-size: 0.75rem;">No Image</div>'}
                     </div>
                 </div>
-                <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 1rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2.2em; max-height: 3.2em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${headline}</h2>
-                ${quoteHtml}
+                ${isHeatPicksArticle ? `
+                    <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 0.75rem 0; padding: 0.5rem; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(0, 255, 65, 0.3); font-family: 'Courier New', monospace; font-size: 0.65rem; text-align: center; color: rgba(0, 255, 65, 0.9); font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; width: 100%; box-sizing: border-box;">${league} HEAT PICKS - SEE THE HOTTEST PLAYS TODAY</h2>
+                    <div style="margin: 0 0 1rem 0; padding: 0.75rem; background: rgba(0, 0, 0, 0.4); border-left: 3px solid rgba(0, 255, 65, 0.6); border-radius: 2px; font-family: 'Courier New', monospace; display: flex; flex-wrap: nowrap; gap: 0.3rem; justify-content: center; align-items: center; font-size: 0.55rem; white-space: nowrap; overflow: hidden;">
+                        <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">✔ DATA-DRIVEN</div>
+                        <div style="color: rgba(255, 255, 255, 0.6); flex-shrink: 0;">*</div>
+                        <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">NARRATIVE-VERIFIED</div>
+                        <div style="color: rgba(255, 255, 255, 0.6); flex-shrink: 0;">*</div>
+                        <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">MARKET-LAG DETECTED</div>
+                        <div style="color: rgba(255, 255, 255, 0.6); flex-shrink: 0;">*</div>
+                        <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">VISUAL EVIDENCE</div>
+                    </div>
+                ` : `
+                    <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 1rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2.2em; max-height: 3.2em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${headline}</h2>
+                    ${quoteHtml}
+                `}
                 <a href="${articleUrl}" style="margin-top: 0; margin-bottom: 0; font-size: 0.7rem; padding: 0.4rem 0.8rem; background: #000; border: 2px solid rgba(0, 255, 65, 0.6); color: #fff; cursor: pointer; text-transform: uppercase; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; letter-spacing: 0.08em; transition: all 0.3s ease; width: 100%; box-sizing: border-box; text-decoration: none; display: block; text-align: center; box-shadow: 0 0 10px rgba(0, 255, 65, 0.3), 0 0 20px rgba(0, 255, 65, 0.1);" onmouseover="this.style.borderColor='rgba(0, 255, 65, 0.8)'; this.style.boxShadow='0 0 15px rgba(0, 255, 65, 0.5), 0 0 30px rgba(0, 255, 65, 0.2)';" onmouseout="this.style.borderColor='rgba(0, 255, 65, 0.6)'; this.style.boxShadow='0 0 10px rgba(0, 255, 65, 0.3), 0 0 20px rgba(0, 255, 65, 0.1)';">VIEW STORY</a>
             </div>
         </div>
@@ -1510,19 +1455,42 @@ function generateMatchupButton(post) {
     const league = (post.league || '').toUpperCase();
     const articleUrl = generateArticleUrl(post);
     
-    // Calculate heat score
+    // Calculate heat score (using unified temperature model: 50 = baseline, 70 = warm, 90 = hot)
+    // Always recalculate to ensure we're using the latest unified model
     const heatScore = calculateHeatScoreFromMatchupData(post);
     const scoreTotal = heatScore.total || 0;
     
-    // Determine score label based on score
+    // Debug: Log calculation method for troubleshooting
+    const hasMatchPackV3 = !!(post.heatCheckData && post.heatCheckData.matchPackV3);
+    const hasFactPack = !!(post.heatCheckData && (post.heatCheckData.fact_pack || post.heatCheckData.factPack));
+    if (!hasMatchPackV3) {
+        console.log(`[Radar] ${matchup}: Using fallback calculation (no matchPackV3), score: ${scoreTotal}`);
+    }
+    
+    // Debug: Log if score seems off (for troubleshooting)
+    if (scoreTotal < 50 || scoreTotal > 100) {
+        console.warn('[Radar] Unexpected heat score:', {
+            matchup: matchup,
+            score: scoreTotal,
+            hasMatchPackV3: hasMatchPackV3,
+            hasFactPack: hasFactPack
+        });
+    }
+    
+    // Determine score label based on score (adjusted for unified temperature model)
+    // Base temperature is 50, so scores are typically 50-100 range
     let scoreLabel = 'COOL';
     let scoreColor = 'rgba(255, 255, 255, 0.5)';
-    if (scoreTotal >= 70) {
+    if (scoreTotal >= 85) {
         scoreLabel = 'HOT';
-        scoreColor = '#ff8000';
-    } else if (scoreTotal >= 45) {
+        scoreColor = '#ff1a1a'; // Bright red for scorching
+    } else if (scoreTotal >= 70) {
         scoreLabel = 'WARM';
-        scoreColor = '#ffaa00';
+        scoreColor = '#ff8000'; // Orange for warm
+    } else {
+        // 50-69: Baseline to warm (most matchups start at 50)
+        scoreLabel = 'COOL';
+        scoreColor = 'rgba(255, 255, 255, 0.6)'; // Slightly brighter for baseline
     }
     
     // Debug: log date issues
@@ -1601,6 +1569,7 @@ function showRadarLoading() {
 
 /**
  * Store radar scan results in sessionStorage
+ * Note: Posts are stored with their full data, so scores will be recalculated on display
  */
 function storeRadarResults(todayPosts, tomorrowPosts) {
     try {
@@ -1609,7 +1578,9 @@ function storeRadarResults(todayPosts, tomorrowPosts) {
             scanDate: scanDate,
             todayPosts: todayPosts,
             tomorrowPosts: tomorrowPosts,
-            timestamp: Date.now()
+            timestamp: Date.now(),
+            // Store version to detect when calculation function changes
+            scoreVersion: 'unified-temperature-v1'
         };
         sessionStorage.setItem('radarScanResults', JSON.stringify(scanData));
     } catch (error) {
@@ -1620,6 +1591,7 @@ function storeRadarResults(todayPosts, tomorrowPosts) {
 /**
  * Get stored radar scan results from sessionStorage
  * Results expire after 10 minutes to ensure newly published articles appear
+ * Also checks score version to ensure we recalculate with latest function
  */
 function getStoredRadarResults() {
     try {
@@ -1628,6 +1600,14 @@ function getStoredRadarResults() {
         
         const scanData = JSON.parse(stored);
         const today = getTodayDate();
+        
+        // Check if score version matches (if not, clear cache to force recalculation)
+        const currentScoreVersion = 'unified-temperature-v1';
+        if (scanData.scoreVersion !== currentScoreVersion) {
+            console.log('[Radar] Score calculation updated, clearing cached results');
+            sessionStorage.removeItem('radarScanResults');
+            return null;
+        }
         
         // Only use stored results if they're from today (dates haven't changed)
         if (scanData.scanDate === today) {
@@ -1638,6 +1618,7 @@ function getStoredRadarResults() {
             
             if (age < MAX_AGE_MS) {
                 console.log(`[Radar] Using cached results (${Math.round(age / 1000)}s old)`);
+                // Note: Scores will be recalculated when generateMatchupButton is called
                 return {
                     todayPosts: scanData.todayPosts || [],
                     tomorrowPosts: scanData.tomorrowPosts || []
@@ -2248,8 +2229,13 @@ function initHeatIndicatorHover() {
         const post = posts.find(p => p.id === postId);
         if (!post) return;
         
-        // Skip hover effects for DFS articles
-        if (post.storyType === 'dfs_article') {
+        // Skip hover effects for DFS articles and Heat Picks articles
+        if (post.storyType === 'dfs_article' || post.storyType === 'heat_picks') {
+            return;
+        }
+        
+        // Also check for data-heat-picks attribute as fallback
+        if (indicator.getAttribute('data-heat-picks') === 'true' || indicator.classList.contains('heat-picks-indicator')) {
             return;
         }
         
@@ -2538,10 +2524,20 @@ function updateStaticPageHeatScores() {
         
         // Find post data from embedded posts
         const post = posts.find(p => p.id === postId);
-        if (!post) return;
+        if (!post) {
+            console.warn(`[Heat Score Update] Post not found for ID: ${postId}`);
+            return;
+        }
         
         // Calculate the correct score using JavaScript
         const correctScore = calculateHeatScore(post);
+        
+        // Debug: Log calculation details for troubleshooting
+        const hasMatchPackV3 = !!(post.heatCheckData && post.heatCheckData.matchPackV3);
+        const hasFactPack = !!(post.heatCheckData && (post.heatCheckData.fact_pack || post.heatCheckData.factPack));
+        if (!hasMatchPackV3 && hasFactPack) {
+            console.log(`[Heat Score Update] Post ${postId} (${post.teamA} vs ${post.teamB}): Using fallback calculation (no matchPackV3), score: ${correctScore}`);
+        }
         
         // Find the score display element (the number inside the heat indicator)
         // The score is in a div that is a direct child of .heat-indicator-container
@@ -2648,8 +2644,13 @@ function initHeatIndicatorHoverStaticContinue(posts) {
             return;
         }
         
-        // Skip hover effects for DFS articles
-        if (post.storyType === 'dfs_article') {
+        // Skip hover effects for DFS articles and Heat Picks articles
+        if (post.storyType === 'dfs_article' || post.storyType === 'heat_picks') {
+            return;
+        }
+        
+        // Also check for data-heat-picks attribute as fallback
+        if (indicator.getAttribute('data-heat-picks') === 'true' || indicator.classList.contains('heat-picks-indicator')) {
             return;
         }
         

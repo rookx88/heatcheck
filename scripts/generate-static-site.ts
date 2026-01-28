@@ -511,7 +511,8 @@ async function generateAllPages(): Promise<void> {
             }
             
             const relatedPosts = heatPicksPosts.filter(p => p.id !== post.id).slice(0, 3);
-            const html = generateHeatPicksArticlePage(post, relatedPosts, baseUrl);
+            // Pass all posts so we can find matching matchup articles for images
+            const html = generateHeatPicksArticlePage(post, relatedPosts, baseUrl, posts);
             
             writeHtmlFile(articlePath, html);
         }
@@ -684,6 +685,8 @@ async function generateAllPages(): Promise<void> {
                 evidence_bundle: post.heatCheckData.evidence_bundle || post.heatCheckData.evidenceBundle,
                 evidenceBundle: post.heatCheckData.evidenceBundle,
                 narratives: post.heatCheckData.narratives,
+                // Include matchPackV3 for unified temperature model heat score calculation
+                matchPackV3: post.heatCheckData.matchPackV3,
                 // For DFS articles, include dfsPlayers
                 dfsPlayers: post.heatCheckData.dfsPlayers
             } : undefined

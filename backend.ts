@@ -114,7 +114,8 @@ const port = 3001;
 
 // --- MIDDLEWARE ---
 app.use(cors());
-app.use(express.json());
+// Increase JSON payload limit to 50MB for large Heat Picks articles
+app.use(express.json({ limit: '50mb' }));
 
 // --- DATABASE CONNECTION ---
 // The Pool will use the DATABASE_URL from your .env file automatically.

@@ -519,6 +519,13 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
                     <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #00ff41; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #00ff4140, 0 0 15px #00ff4160; overflow: hidden;">
                         <div style="color: #00ff41; font-size: 1.2rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative;">DFS</div>
                     </div>
+                    ` : isHeatPicksArticle ? `
+                    <!-- Heat Picks Indicator (HP) - Enhanced -->
+                    <div class="heat-indicator-container heat-picks-indicator" data-post-id="${post.id}" data-heat-picks="true" style="width: 85px; height: 85px; min-width: 85px; border: 3px solid #ff4500; border-radius: 50%; background: linear-gradient(135deg, rgba(255, 69, 0, 0.5) 0%, rgba(255, 26, 26, 0.5) 50%, rgba(255, 69, 0, 0.3) 100%); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 30px rgba(255, 69, 0, 0.6), 0 0 25px rgba(255, 69, 0, 0.8), 0 0 40px rgba(255, 26, 26, 0.4); overflow: visible; cursor: default; pointer-events: none;">
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 70px; height: 70px; border: 2px solid rgba(255, 69, 0, 0.6); border-radius: 50%; opacity: 0.8; background: rgba(0, 0, 0, 0.3);"></div>
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 55px; height: 55px; border: 1.5px solid rgba(255, 26, 26, 0.7); border-radius: 50%; opacity: 0.6; background: rgba(0, 0, 0, 0.5);"></div>
+                        <div style="color: #ff1a1a; font-size: 1.5rem; font-weight: 900; -webkit-text-stroke: 2.5px #000000; text-stroke: 2.5px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.8px; z-index: 1; position: relative; text-shadow: 0 0 10px rgba(255, 26, 26, 0.8), 0 0 20px rgba(255, 26, 26, 0.5);">HP</div>
+                    </div>
                     ` : `
                     <!-- Regular Heat Indicator -->
                     <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
@@ -531,8 +538,21 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
                         ${imagePath ? `<img src="${imagePath}" alt="${escapeHtml(`${teamAShort} vs ${teamBShort} ${league} ${finalNarrativeSlug} narrative - ${headline} - HeatChecks Analysis`)}" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">` : '<div style="width: 100%; height: 100%; background: rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.5); font-size: 0.75rem;">No Image</div>'}
                     </div>
                 </div>
-                <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 1rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2.2em; max-height: 3.2em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${escapeHtml(headline)}</h2>
-                ${quoteHtml}
+                ${isHeatPicksArticle ? `
+                    <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 0.75rem 0; padding: 0.5rem; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(0, 255, 65, 0.3); font-family: 'Courier New', monospace; font-size: 0.65rem; text-align: center; color: rgba(0, 255, 65, 0.9); font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; width: 100%; box-sizing: border-box;">${league} HEAT PICKS - SEE THE HOTTEST PLAYS TODAY</h2>
+                    <div style="margin: 0 0 1rem 0; padding: 0.75rem; background: rgba(0, 0, 0, 0.4); border-left: 3px solid rgba(0, 255, 65, 0.6); border-radius: 2px; font-family: 'Courier New', monospace; display: flex; flex-wrap: nowrap; gap: 0.3rem; justify-content: center; align-items: center; font-size: 0.55rem; white-space: nowrap; overflow: hidden;">
+                        <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">✔ DATA-DRIVEN</div>
+                        <div style="color: rgba(255, 255, 255, 0.6); flex-shrink: 0;">*</div>
+                        <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">NARRATIVE-VERIFIED</div>
+                        <div style="color: rgba(255, 255, 255, 0.6); flex-shrink: 0;">*</div>
+                        <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">MARKET-LAG DETECTED</div>
+                        <div style="color: rgba(255, 255, 255, 0.6); flex-shrink: 0;">*</div>
+                        <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">VISUAL EVIDENCE</div>
+                    </div>
+                ` : `
+                    <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 1rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2.2em; max-height: 3.2em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${escapeHtml(headline)}</h2>
+                    ${quoteHtml}
+                `}
                 <a href="${articleUrl}" style="margin-top: 0; margin-bottom: 0; font-size: 0.7rem; padding: 0.4rem 0.8rem; background: #000; border: 2px solid rgba(0, 255, 65, 0.6); color: #fff; cursor: pointer; text-transform: uppercase; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; letter-spacing: 0.08em; transition: all 0.3s ease; width: 100%; box-sizing: border-box; text-decoration: none; display: block; text-align: center; box-shadow: 0 0 10px rgba(0, 255, 65, 0.3), 0 0 20px rgba(0, 255, 65, 0.1);" onmouseover="this.style.borderColor='rgba(0, 255, 65, 0.8)'; this.style.boxShadow='0 0 15px rgba(0, 255, 65, 0.5), 0 0 30px rgba(0, 255, 65, 0.2)';" onmouseout="this.style.borderColor='rgba(0, 255, 65, 0.6)'; this.style.boxShadow='0 0 10px rgba(0, 255, 65, 0.3), 0 0 20px rgba(0, 255, 65, 0.1)';">VIEW STORY</a>
             </div>
         </div>

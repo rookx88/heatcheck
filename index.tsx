@@ -675,18 +675,21 @@ async function renderHeatPicksWithLLM(
 
 CLASSIFICATION: ${classified.classification}
 HEAT SCORE: ${classified.heatScore}
+PICK: ${classified.pick || 'N/A'} (${classified.pickType || 'moneyline'})
+MATCHUP: ${classified.matchup}
 SIGNALS HIT: ${JSON.stringify(classified.signalsHit)}
 MARKET LAG (numeric): ${classified.marketLag ?? 'N/A'}
 EVIDENCE CHART: ${classified.evidenceChart ? JSON.stringify(classified.evidenceChart) : 'None'}
-MATCHUP: ${classified.matchup}
 ${narratives && narratives.length > 0 ? `AVAILABLE NARRATIVES: ${JSON.stringify(narratives)}` : ''}
 
+IMPORTANT: The PICK is ${classified.pick || 'N/A'}. This means the algorithm favors ${classified.pick?.includes('+') ? 'the underdog' : classified.pick?.includes('-') ? 'the favorite' : classified.pick || 'one team'}. Your "why hot" bullets must explain why THIS SPECIFIC PICK is justified by the signals, NOT why the game is interesting in general.
+
 Generate EXACTLY:
-1. Three "why hot" bullets (max 12 words each) - explain why this pick triggered
+1. Three "why hot" bullets (max 12 words each) - explain why THIS SPECIFIC PICK (${classified.pick || 'the pick'}) is justified by the signals. Focus on why the picked team has the edge.
 2. 1-2 narrative alignments (ONLY from this allowed list: ${allowedNarratives.join(', ')}) - if narratives match the data
 3. Market lag explanation in plain English (1-2 sentences)
 4. Risk note (1 sentence)
-5. Chart caption explaining "what this proves" (1 sentence)
+5. Chart caption explaining "what this proves" in support of the pick (1 sentence)
 
 Return ONLY valid JSON:
 {
@@ -745,6 +748,319 @@ Return ONLY valid JSON:
       riskNote: 'Standard game risk applies',
       chartCaption: 'Chart supports the pressure signal'
     };
+  }
+}
+
+/**
+ * Sync V2 edge with Heat Pick - updates receipts and risks to match Heat Pick story
+ */
+function syncV2EdgeWithHeatPick(
+  edge: HeatchecksEdgeV2,
+  heatPick: any,
+  article: HeatcheckPost
+): HeatchecksEdgeV2 | null {
+  const pick = heatPick.pick || '';
+  const pickType = heatPick.pickType || 'moneyline';
+  const teamA = article.teamA || '';
+  const teamB = article.teamB || '';
+
+  // Parse the Heat Pick to extract team and line
+  // Format: "Team Name +8.5" or "Team Name" or "Team Name -3.5"
+  const pickMatch = pick.match(/^(.+?)\s*([+-]?\d+\.?\d*)?$/);
+  if (!pickMatch) {
+    console.warn(`[syncV2EdgeWithHeatPick] Could not parse pick: ${pick}`);
+    return null;
+  }
+
+  const [, teamName, lineStr] = pickMatch;
+  const line = lineStr ? parseFloat(lineStr) : null;
+  const isSpread = pickType === 'spread' && line !== null;
+  const isMoneyline = pickType === 'moneyline' || line === null;
+  
+  // Determine which team is being picked
+  const isTeamA = teamName.includes(teamA) || pick.includes(teamA);
+  const isTeamB = teamName.includes(teamB) || pick.includes(teamB);
+  
+  if (!isTeamA && !isTeamB) {
+    console.warn(`[syncV2EdgeWithHeatPick] Could not match team from pick: ${pick}`);
+    return null;
+  }
+
+  // Build receipts from Heat Pick data (whyHot + signalsHit)
+  const receipts: [string, string, string] = ['', '', ''];
+  const whyHot = heatPick.whyHot || [];
+  const signalsHit = heatPick.signalsHit || [];
+  
+  // Combine whyHot bullets and signal evidence for receipts
+  const receiptSources: string[] = [];
+  whyHot.forEach((bullet: string) => {
+    if (bullet && bullet.trim()) receiptSources.push(bullet.trim());
+  });
+  signalsHit.forEach((signal: any) => {
+    if (signal.evidence && signal.evidence.trim()) {
+      receiptSources.push(`Signal: ${signal.evidence.trim()}`);
+    }
+  });
+  
+  // Fill receipts array (max 3)
+  for (let i = 0; i < Math.min(3, receiptSources.length); i++) {
+    receipts[i] = receiptSources[i];
+  }
+  // If we have fewer than 3, keep existing ones or use defaults
+  if (receiptSources.length < 3) {
+    const existingReceipts = edge.game.receipts || ['', '', ''];
+    for (let i = receiptSources.length; i < 3; i++) {
+      if (existingReceipts[i] && existingReceipts[i].trim()) {
+        receipts[i] = existingReceipts[i];
+      }
+    }
+  }
+
+  // Build risks from Heat Pick riskNote and marketLag
+  const risks: [string, string] = ['', ''];
+  const riskSources: string[] = [];
+  
+  if (heatPick.riskNote && heatPick.riskNote.trim()) {
+    riskSources.push(heatPick.riskNote.trim());
+  }
+  if (heatPick.marketLag && heatPick.marketLag.trim()) {
+    riskSources.push(`Market consideration: ${heatPick.marketLag.trim()}`);
+  }
+  
+  // Fill risks array (max 2)
+  for (let i = 0; i < Math.min(2, riskSources.length); i++) {
+    risks[i] = riskSources[i];
+  }
+  // If we have fewer than 2, keep existing ones
+  if (riskSources.length < 2) {
+    const existingRisks = edge.game.risks || ['', ''];
+    for (let i = riskSources.length; i < 2; i++) {
+      if (existingRisks[i] && existingRisks[i].trim()) {
+        risks[i] = existingRisks[i];
+      }
+    }
+  }
+
+  // Update edge game selection - update receipts and risks from Heat Pick
+  const updatedEdge: HeatchecksEdgeV2 = {
+    ...edge,
+    game: {
+      ...edge.game,
+      market: isSpread ? 'spread' : isMoneyline ? 'moneyline' : edge.game.market,
+      selection: isTeamA ? 'TEAM_A' : 'TEAM_B',
+      line: isSpread ? line : (isMoneyline ? null : edge.game.line),
+      // Preserve existing price, book, confidence
+      price_american: edge.game.price_american,
+      book: edge.game.book,
+      confidence: edge.game.confidence || 'medium',
+      // Update receipts and risks from Heat Pick story
+      receipts: receipts,
+      risks: risks,
+      // Update one_sentence_call to reference Heat Pick if not already mentioned
+      one_sentence_call: edge.game.one_sentence_call?.includes(heatPick.pick) 
+        ? edge.game.one_sentence_call 
+        : `${edge.game.one_sentence_call || ''} Heat Pick: ${pick}.`.trim()
+    }
+  };
+
+  return updatedEdge;
+}
+
+/**
+ * Sync V1 edge with Heat Pick - updates rationaleBullets and riskCounterpoints to match Heat Pick story
+ */
+function syncV1EdgeWithHeatPick(
+  edge: HeatchecksEdge,
+  heatPick: any,
+  article: HeatcheckPost
+): HeatchecksEdge | null {
+  const pick = heatPick.pick || '';
+  const teamA = article.teamA || '';
+  const teamB = article.teamB || '';
+
+  // Parse the Heat Pick
+  const pickMatch = pick.match(/^(.+?)\s*([+-]?\d+\.?\d*)?$/);
+  if (!pickMatch) {
+    console.warn(`[syncV1EdgeWithHeatPick] Could not parse pick: ${pick}`);
+    return null;
+  }
+
+  const [, teamName] = pickMatch;
+  const isTeamA = teamName.includes(teamA) || pick.includes(teamA);
+  const isTeamB = teamName.includes(teamB) || pick.includes(teamB);
+  
+  if (!isTeamA && !isTeamB) {
+    console.warn(`[syncV1EdgeWithHeatPick] Could not match team from pick: ${pick}`);
+    return null;
+  }
+
+  // Build rationaleBullets from Heat Pick data (whyHot + signalsHit)
+  const rationaleBullets: string[] = [];
+  const whyHot = heatPick.whyHot || [];
+  const signalsHit = heatPick.signalsHit || [];
+  
+  // Combine whyHot bullets and signal evidence for rationale
+  whyHot.forEach((bullet: string) => {
+    if (bullet && bullet.trim()) rationaleBullets.push(bullet.trim());
+  });
+  signalsHit.forEach((signal: any) => {
+    if (signal.evidence && signal.evidence.trim()) {
+      rationaleBullets.push(`Signal evidence: ${signal.evidence.trim()}`);
+    }
+  });
+  
+  // If we have fewer than 3, keep existing ones
+  if (rationaleBullets.length < 3) {
+    const existingBullets = edge.rationaleBullets || [];
+    for (let i = rationaleBullets.length; i < Math.min(3, existingBullets.length); i++) {
+      if (existingBullets[i] && existingBullets[i].trim()) {
+        rationaleBullets.push(existingBullets[i]);
+      }
+    }
+  }
+  // Limit to 5 bullets max
+  const finalRationaleBullets = rationaleBullets.slice(0, 5);
+
+  // Build riskCounterpoints from Heat Pick riskNote and marketLag
+  const riskCounterpoints: string[] = [];
+  
+  if (heatPick.riskNote && heatPick.riskNote.trim()) {
+    riskCounterpoints.push(heatPick.riskNote.trim());
+  }
+  if (heatPick.marketLag && heatPick.marketLag.trim()) {
+    riskCounterpoints.push(`Market consideration: ${heatPick.marketLag.trim()}`);
+  }
+  
+  // If we have fewer than 2, keep existing ones
+  if (riskCounterpoints.length < 2) {
+    const existingRisks = edge.riskCounterpoints || [];
+    for (let i = riskCounterpoints.length; i < Math.min(2, existingRisks.length); i++) {
+      if (existingRisks[i] && existingRisks[i].trim()) {
+        riskCounterpoints.push(existingRisks[i]);
+      }
+    }
+  }
+  // Limit to 3 risks max
+  const finalRiskCounterpoints = riskCounterpoints.slice(0, 3);
+
+  // Update edge - update rationaleBullets and riskCounterpoints from Heat Pick
+  const updatedEdge: HeatchecksEdge = {
+    ...edge,
+    subjectType: 'team',
+    subjectName: isTeamA ? teamA : teamB,
+    lean: 'FAVOR',
+    // Preserve existing confidence
+    confidence: edge.confidence || 'medium',
+    // Update rationaleBullets and riskCounterpoints from Heat Pick story
+    rationaleBullets: finalRationaleBullets,
+    riskCounterpoints: finalRiskCounterpoints,
+    // Update finalCall to reference Heat Pick if not already mentioned
+    finalCall: edge.finalCall?.includes(heatPick.pick)
+      ? edge.finalCall
+      : `${edge.finalCall || ''} Heat Pick: ${pick}.`.trim()
+  };
+
+  return updatedEdge;
+}
+
+/**
+ * Sync heatchecksEdge on all matching matchup articles when Heat Picks are published
+ * Updates pick/selection, receipts, and risks to match Heat Pick story
+ * Preserves price, book, confidence, and other edge metadata
+ */
+async function syncMatchupEdgesWithHeatPicks(heatPicksPost: HeatcheckPost): Promise<void> {
+  // Only sync for Heat Picks articles
+  if (heatPicksPost.storyType !== 'heat_picks') {
+    return;
+  }
+  
+  // Note: We sync based on the Heat Picks data, not the article status
+  // This allows syncing from drafts too
+
+  const heatPicksData = heatPicksPost.heatCheckData?.heatPicks;
+  if (!heatPicksData) {
+    console.warn('[syncMatchupEdgesWithHeatPicks] No heatPicks data found');
+    return;
+  }
+
+  const date = heatPicksData.date;
+  const league = heatPicksData.sport;
+  const allPicks = [
+    ...(heatPicksData.heatPicks || []),
+    ...(heatPicksData.warmLeans || [])
+  ];
+
+  if (allPicks.length === 0) {
+    console.log('[syncMatchupEdgesWithHeatPicks] No picks to sync');
+    return;
+  }
+
+  console.log(`[syncMatchupEdgesWithHeatPicks] Syncing ${allPicks.length} picks for ${league} on ${date}`);
+
+  try {
+    // Get all published matchup articles for this date/league
+    const matchupPosts = await apiClient.getPublishedPostsByDateLeague(date, league);
+    
+    // Filter to only regular matchup articles (not DFS, not Heat Picks)
+    const articlesToUpdate = matchupPosts.filter(
+      post => post.storyType !== 'dfs_article' && 
+              post.storyType !== 'heat_picks' &&
+              post.heatchecksEdge // Only update articles that have an edge
+    );
+
+    let updatedCount = 0;
+
+    for (const pick of allPicks) {
+      // Find matching matchup article
+      const matchingArticle = articlesToUpdate.find(post => {
+        const matchup = pick.matchup || '';
+        return matchup.includes(post.teamA || '') && matchup.includes(post.teamB || '');
+      });
+
+      if (!matchingArticle || !matchingArticle.heatchecksEdge) {
+        continue;
+      }
+
+      const edge = matchingArticle.heatchecksEdge as any;
+      const isV2 = edge && typeof edge === 'object' && 'game' in edge;
+
+      try {
+        if (isV2) {
+          // Update V2 edge
+          const edgeV2 = edge as HeatchecksEdgeV2;
+          const updatedEdge = syncV2EdgeWithHeatPick(edgeV2, pick, matchingArticle);
+          
+          if (updatedEdge) {
+            // Update the post
+            await apiClient.updatePost(matchingArticle.id, {
+              ...matchingArticle,
+              heatchecksEdge: updatedEdge
+            });
+            updatedCount++;
+            console.log(`[syncMatchupEdgesWithHeatPicks] Updated edge for ${matchingArticle.teamA} vs ${matchingArticle.teamB}`);
+          }
+        } else {
+          // Update V1 edge (legacy)
+          const edgeV1 = edge as HeatchecksEdge;
+          const updatedEdge = syncV1EdgeWithHeatPick(edgeV1, pick, matchingArticle);
+          
+          if (updatedEdge) {
+            await apiClient.updatePost(matchingArticle.id, {
+              ...matchingArticle,
+              heatchecksEdge: updatedEdge
+            });
+            updatedCount++;
+            console.log(`[syncMatchupEdgesWithHeatPicks] Updated edge for ${matchingArticle.teamA} vs ${matchingArticle.teamB}`);
+          }
+        }
+      } catch (error: any) {
+        console.error(`[syncMatchupEdgesWithHeatPicks] Error updating ${matchingArticle.teamA} vs ${matchingArticle.teamB}:`, error);
+      }
+    }
+
+    console.log(`[syncMatchupEdgesWithHeatPicks] Successfully synced ${updatedCount} matchup edges`);
+  } catch (error: any) {
+    console.error('[syncMatchupEdgesWithHeatPicks] Error fetching matchup posts:', error);
   }
 }
 
@@ -6665,10 +6981,19 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
                 fullWebsiteStory: postToSave.websiteStory
             });
             
-            await apiClient.updatePost(postToSave.id, postToSave);
+            const updatedPost = await apiClient.updatePost(postToSave.id, postToSave);
             
             // Verify the save worked by checking the response
             console.log('[EditorModal] Post saved successfully');
+            
+            // NEW: If Heat Picks article is being published, sync matching matchup edges
+            if (newStatus === 'published' && postToSave.storyType === 'heat_picks') {
+                console.log('[EditorModal] Heat Picks published - syncing matchup edges...');
+                // Run sync in background (don't block save)
+                syncMatchupEdgesWithHeatPicks(updatedPost).catch(error => {
+                    console.error('[EditorModal] Error syncing matchup edges:', error);
+                });
+            }
             
             onSave();
             onClose();
@@ -7117,6 +7442,34 @@ Return ONLY the new player section in markdown format, exactly matching the stru
                         <button className="cancel" onClick={onClose} disabled={isSaving} style={{ background: '#666', color: '#fff', border: 'none', padding: '0.5rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>
                             Cancel
                         </button>
+                        {/* Sync Matchup Edges button for Heat Picks articles */}
+                        {(editedPost as any).storyType === 'heat_picks' && (
+                            <button
+                                onClick={async () => {
+                                    if (!editedPost) return;
+                                    try {
+                                        await syncMatchupEdgesWithHeatPicks(editedPost);
+                                        alert('Matchup edges synced successfully! Check console for details.');
+                                    } catch (error: any) {
+                                        console.error('[Sync Button] Error:', error);
+                                        alert(`Failed to sync: ${error.message || 'Unknown error'}`);
+                                    }
+                                }}
+                                disabled={isSaving}
+                                style={{ 
+                                    padding: '0.5rem 1rem', 
+                                    background: '#00ff41', 
+                                    color: '#000', 
+                                    border: 'none', 
+                                    borderRadius: '4px', 
+                                    cursor: 'pointer',
+                                    fontWeight: 'bold'
+                                }}
+                                title="Sync heatchecksEdge on all matching matchup articles with Heat Picks"
+                            >
+                                Sync Matchup Edges
+                            </button>
+                        )}
                     </div>
                 </div>
 

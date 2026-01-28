@@ -7,6 +7,7 @@ export interface BaseTemplateOptions {
     url: string;
     baseUrl?: string;
     ogImage?: string;
+    ogImageAlt?: string;
     ogType?: 'website' | 'article';
     articleMeta?: {
         publishedTime?: string;
@@ -20,6 +21,8 @@ export interface BaseTemplateOptions {
     recentDates?: RecentDate[];
     keywords?: string;
     robots?: string;
+    twitterSite?: string;
+    twitterCreator?: string;
 }
 
 /**
@@ -45,7 +48,14 @@ export function generateBaseHtml(
     // Generate Schema.org JSON-LD
     let schemaOrgScript = '';
     if (options.schemaOrg) {
-        schemaOrgScript = `<script type="application/ld+json">\n${JSON.stringify(options.schemaOrg, null, 2)}\n</script>`;
+        // Handle both array and single object
+        const schemaData = Array.isArray(options.schemaOrg) ? options.schemaOrg : [options.schemaOrg];
+        if (schemaData.length === 1) {
+            schemaOrgScript = `<script type="application/ld+json">\n${JSON.stringify(schemaData[0], null, 2)}\n</script>`;
+        } else {
+            // Multiple schemas - wrap in array
+            schemaOrgScript = `<script type="application/ld+json">\n${JSON.stringify(schemaData, null, 2)}\n</script>`;
+        }
     }
     
     // Generate article meta tags
@@ -84,6 +94,22 @@ export function generateBaseHtml(
         robotsTag = `    <meta name="robots" content="${escapeHtml(options.robots)}">\n`;
     }
     
+    // Generate og:image:alt tag
+    let ogImageAltTag = '';
+    if (options.ogImageAlt) {
+        ogImageAltTag = `    <meta property="og:image:alt" content="${escapeHtml(options.ogImageAlt)}">\n`;
+    }
+    
+    // Generate Twitter meta tags
+    let twitterSiteTag = '';
+    let twitterCreatorTag = '';
+    if (options.twitterSite) {
+        twitterSiteTag = `    <meta name="twitter:site" content="${escapeHtml(options.twitterSite)}">\n`;
+    }
+    if (options.twitterCreator) {
+        twitterCreatorTag = `    <meta name="twitter:creator" content="${escapeHtml(options.twitterCreator)}">\n`;
+    }
+    
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -97,7 +123,7 @@ export function generateBaseHtml(
     <meta property="og:title" content="${escapeHtml(options.title)}">
     <meta property="og:description" content="${escapeHtml(options.description)}">
     <meta property="og:image" content="${escapeHtml(ogImage)}">
-    <meta property="og:url" content="${escapeHtml(options.url)}">
+    ${ogImageAltTag}    <meta property="og:url" content="${escapeHtml(options.url)}">
     <meta property="og:type" content="${ogType}">
     <meta property="og:site_name" content="HeatChecks">
     
@@ -109,7 +135,7 @@ export function generateBaseHtml(
     <meta name="twitter:title" content="${escapeHtml(options.title)}">
     <meta name="twitter:description" content="${escapeHtml(options.description)}">
     <meta name="twitter:image" content="${escapeHtml(ogImage)}">
-    
+    ${twitterSiteTag}${twitterCreatorTag}    
     ${articleMetaTags}${schemaOrgScript ? '\n    ' + schemaOrgScript : ''}
     
     <link rel="stylesheet" href="/assets/public-site.css">
