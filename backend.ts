@@ -597,7 +597,7 @@ app.get('/api/match-pack-v3/soccer', apiKeyAuth, async (req: express.Request, re
     }
 });
 
-// GET /api/odds/game/:eventId - Fetch game odds and player props from OddsAPI (auth required)
+// GET /api/odds/game/:eventId - Fetch game odds from OddsAPI (player props disabled) (auth required)
 app.get('/api/odds/game/:eventId', apiKeyAuth, async (req: express.Request, res: express.Response) => {
     try {
         if (!ODDS_API_KEY) {
@@ -623,29 +623,9 @@ app.get('/api/odds/game/:eventId', apiKeyAuth, async (req: express.Request, res:
         });
         const gameUrl = `${baseUrl}/sports/${sport}/events/${eventId}/odds?${gameParams.toString()}`;
 
-        // Fetch player prop markets
-        const propMarkets = [
-            'player_points',
-            'player_rebounds',
-            'player_assists',
-            'player_threes',
-            'player_points_rebounds_assists',
-            'player_blocks',
-            'player_steals'
-        ].join(',');
-        const propParams = new URLSearchParams({
-            apiKey: ODDS_API_KEY,
-            regions: 'us',
-            markets: propMarkets,
-            oddsFormat: 'american'
-        });
-        const propUrl = `${baseUrl}/sports/${sport}/events/${eventId}/odds?${propParams.toString()}`;
-
-        // Fetch both in parallel
-        const [gameResponse, propResponse] = await Promise.all([
-            fetch(gameUrl),
-            fetch(propUrl)
-        ]);
+        // Skip player props - only fetch game markets
+        // Fetch game markets only
+        const gameResponse = await fetch(gameUrl);
 
         if (!gameResponse.ok) {
             const errorText = await gameResponse.text();
@@ -677,49 +657,9 @@ app.get('/api/odds/game/:eventId', apiKeyAuth, async (req: express.Request, res:
             });
         }
 
-        let propErrorText: string | null = null;
-        if (!propResponse.ok) {
-            propErrorText = await propResponse.text();
-            console.error(`[GET /api/odds/game/:eventId] Prop odds error (${propResponse.status}):`, propErrorText);
-            
-            // Check for quota/usage errors - if quota error, fail the whole request
-            let errorData: any = {};
-            try {
-                errorData = JSON.parse(propErrorText);
-            } catch {
-                errorData = { message: propErrorText };
-            }
-            
-            const isQuotaError = propResponse.status === 401 || 
-                                errorData.error_code === 'OUT_OF_USAGE_CREDITS' ||
-                                propErrorText.includes('quota') ||
-                                propErrorText.includes('usage');
-            
-            if (isQuotaError) {
-                // If quota error, fail the whole request
-                return res.status(propResponse.status).json({ 
-                    message: 'TheOddsAPI usage quota has been reached. Please upgrade your plan or wait for quota reset.',
-                    error: propErrorText.substring(0, 500),
-                    errorCode: errorData.error_code || null,
-                    isQuotaError: true
-                });
-            }
-            
-            // Log non-quota prop errors for debugging
-            console.warn(`[GET /api/odds/game/:eventId] Props request failed (non-quota): ${propResponse.status} - ${propErrorText.substring(0, 200)}`);
-            // Don't fail completely if props fail for other reasons - return game odds only
-        }
-
         const gameData = await gameResponse.json();
-        let propData = null;
-        if (propResponse.ok) {
-            try {
-                propData = await propResponse.json();
-                console.log(`[GET /api/odds/game/:eventId] Successfully fetched props. Prop data type: ${Array.isArray(propData) ? 'array' : typeof propData}, length: ${Array.isArray(propData) ? propData.length : 'object'}`);
-            } catch (e) {
-                console.warn('[GET /api/odds/game/:eventId] Failed to parse prop response as JSON:', e);
-            }
-        }
+        // Player props are no longer fetched - always return null
+        const propData = null;
 
         // Structure the response
         const result: {
@@ -734,7 +674,7 @@ app.get('/api/odds/game/:eventId', apiKeyAuth, async (req: express.Request, res:
             retrievedAt: new Date().toISOString()
         };
 
-        console.log(`[GET /api/odds/game/:eventId] Returning odds data. Game markets: ${Array.isArray(gameData) ? gameData.length : 'object'}, Player props: ${propData ? (Array.isArray(propData) ? propData.length : 'object') : 'null'}`);
+        console.log(`[GET /api/odds/game/:eventId] Returning odds data. Game markets: ${Array.isArray(gameData) ? gameData.length : 'object'}, Player props: disabled (not fetched)`);
         res.json(result);
     } catch (error: any) {
         console.error('[GET /api/odds/game/:eventId] Error:', error);
