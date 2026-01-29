@@ -484,7 +484,7 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
     ` : '';
     
     return `
-        <div class="post-card" data-heat-high="${isHeatHigh}" data-post-id="${post.id}">
+        <div class="post-card" data-heat-high="${isHeatHigh}" data-post-id="${post.id}" ${isHeatPicksArticle ? 'data-heat-picks-card="true"' : ''}>
             <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; box-sizing: border-box; overflow: hidden;">
                 <div style="padding: 0.5rem 0.6rem; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.35); margin-bottom: 0.75rem; text-align: center; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; width: 100%; box-sizing: border-box; overflow: hidden; border-radius: 4px;">
                     <div style="width: 50px; height: 50px; min-width: 50px; border-radius: 50%; border: 2px solid #fff; background: #fff; box-shadow: 0 2px 8px rgba(255, 255, 255, 0.5), 0 0 12px rgba(255, 255, 255, 0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -525,14 +525,12 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
                 </div>
                 ${isHeatPicksArticle ? `
                     <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 0.75rem 0; padding: 0.5rem; background: rgba(0, 0, 0, 0.4); border: 1px solid rgba(0, 255, 65, 0.3); font-family: 'Courier New', monospace; font-size: 0.65rem; text-align: center; color: rgba(0, 255, 65, 0.9); font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em; width: 100%; box-sizing: border-box;">${league} HEAT PICKS - SEE THE HOTTEST PLAYS TODAY</h2>
-                    <div style="margin: 0 0 1rem 0; padding: 0.75rem; background: rgba(0, 0, 0, 0.4); border-left: 3px solid rgba(0, 255, 65, 0.6); border-radius: 2px; font-family: 'Courier New', monospace; display: flex; flex-wrap: nowrap; gap: 0.3rem; justify-content: center; align-items: center; font-size: 0.55rem; white-space: nowrap; overflow: hidden;">
+                    <div style="margin: 0 0 1rem 0; padding: 0.75rem; background: rgba(0, 0, 0, 0.4); border-left: 3px solid rgba(0, 255, 65, 0.6); border-radius: 2px; font-family: 'Courier New', monospace; display: flex; flex-wrap: nowrap; gap: 0.25rem; justify-content: center; align-items: center; font-size: 0.5rem; white-space: nowrap; overflow: hidden;">
                         <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">✔ DATA-DRIVEN</div>
                         <div style="color: rgba(255, 255, 255, 0.6); flex-shrink: 0;">*</div>
                         <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">NARRATIVE-VERIFIED</div>
                         <div style="color: rgba(255, 255, 255, 0.6); flex-shrink: 0;">*</div>
                         <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">MARKET-LAG DETECTED</div>
-                        <div style="color: rgba(255, 255, 255, 0.6); flex-shrink: 0;">*</div>
-                        <div style="color: rgba(0, 255, 65, 0.9); flex-shrink: 0;">VISUAL EVIDENCE</div>
                     </div>
                 ` : `
                     <h2 style="font-size: 0.9rem; line-height: 1.2; margin: 0 0 1rem 0; padding: 0; color: #fff; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-align: center; min-height: 2.2em; max-height: 3.2em; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; width: 100%; box-sizing: border-box; word-wrap: break-word; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">${escapeHtml(headline)}</h2>

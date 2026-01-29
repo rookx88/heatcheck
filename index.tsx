@@ -9224,7 +9224,7 @@ async function searchOddsWithGemini(
     const gameDate = scheduledDate || matchPackV3?.matchup?.gameDateEst || new Date().toISOString().split('T')[0];
     
     const prompt = `
-You are a sports betting odds researcher. Use Google Search to find current betting odds for the following NBA game and player props.
+You are a sports betting odds researcher. Use Google Search to find current betting odds for the following NBA game.
 
 MATCHUP: ${teamA} vs ${teamB}
 LEAGUE: ${league}
@@ -9237,12 +9237,7 @@ TASKS:
    - Total points over/under (if available)
    - Include the sportsbook name and American odds format (+100, -110, etc.)
 
-2. Search for player prop bets for these 4 players:
-${top4Players.map((name: string, idx: number) => `   ${idx + 1}. ${name} - Find points, rebounds, assists, and points+rebounds+assists props if available`).join('\n')}
-   - Include the line (e.g., OVER 25.5 points), American odds, and sportsbook name
-   - Only include OVER props (not UNDER)
-
-3. Return your findings as a JSON object with this exact structure:
+2. Return your findings as a JSON object with this exact structure:
 {
   "gameMarkets": {
     "bookmakers": [
@@ -9276,47 +9271,14 @@ ${top4Players.map((name: string, idx: number) => `   ${idx + 1}. ${name} - Find 
     "home_team": "${teamA}",
     "away_team": "${teamB}"
   },
-  "playerProps": {
-    "bookmakers": [
-      {
-        "title": "Sportsbook Name",
-        "markets": [
-          {
-            "key": "player_points",
-            "outcomes": [
-              {"description": "Player Name", "name": "Over", "point": 25.5, "price": -110}
-            ]
-          },
-          {
-            "key": "player_rebounds",
-            "outcomes": [
-              {"description": "Player Name", "name": "Over", "point": 8.5, "price": -110}
-            ]
-          },
-          {
-            "key": "player_assists",
-            "outcomes": [
-              {"description": "Player Name", "name": "Over", "point": 6.5, "price": -110}
-            ]
-          },
-          {
-            "key": "player_points_rebounds_assists",
-            "outcomes": [
-              {"description": "Player Name", "name": "Over", "point": 35.5, "price": -110}
-            ]
-          }
-        ]
-      }
-    ]
-  }
+  "playerProps": null
 }
 
 CRITICAL REQUIREMENTS:
 - Use Google Search to find REAL, CURRENT betting odds from reputable sportsbooks
 - Only include odds that actually exist - do not invent or estimate
 - If you cannot find odds for a specific market, omit it from the response
-- For player props, only include the 4 players listed above
-- Only include OVER props (not UNDER)
+- Player props are disabled - always set "playerProps" to null
 - Return ONLY valid JSON, no markdown, no explanations
 `;
 
@@ -9356,9 +9318,10 @@ CRITICAL REQUIREMENTS:
         }
 
         // Ensure structure matches expected format
+        // Player props are disabled - always return null
         return {
             gameMarkets: oddsData.gameMarkets || { bookmakers: [] },
-            playerProps: oddsData.playerProps || { bookmakers: [] }
+            playerProps: null
         };
     } catch (error: any) {
         console.error('[searchOddsWithGemini] Error:', error);
@@ -9523,8 +9486,11 @@ async function findEdgeCandidates(
         }
     }
 
-    // Score player props (NBA only - soccer doesn't have player props in TheOddsAPI)
-    if (!isSoccer && playerProps && playerProps.bookmakers) {
+    // Player props are disabled - skip processing entirely
+    // Score player props (DISABLED - no longer fetching player props from OddsAPI)
+    // NOTE: Player props processing is disabled - always skip this block
+    const shouldProcessPlayerProps = false; // Player props disabled
+    if (shouldProcessPlayerProps && !isSoccer && playerProps && playerProps.bookmakers && Array.isArray(playerProps.bookmakers) && playerProps.bookmakers.length > 0) {
         // Create a map of player name to form leader data
         const playerDataMap = new Map<string, any>();
         for (const leader of formLeaders) {

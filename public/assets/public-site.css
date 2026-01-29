@@ -503,6 +503,23 @@ body {
     transform: translateY(-2px);
 }
 
+/* Heat Pick Article Cards - Green Border */
+.post-card[data-heat-picks-card="true"] {
+    border: 1px solid rgba(0, 255, 65, 0.6);
+    border-left: 2px solid rgba(0, 255, 65, 0.7);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4),
+                inset 0 0 30px rgba(0, 255, 65, 0.1),
+                0 0 2px rgba(0, 255, 65, 0.4);
+}
+
+.post-card[data-heat-picks-card="true"]:hover {
+    border-color: rgba(0, 255, 65, 0.8);
+    box-shadow: 0 8px 30px rgba(0, 255, 65, 0.3),
+                inset 0 0 60px rgba(0, 255, 65, 0.15),
+                0 0 20px rgba(0, 255, 65, 0.5),
+                0 0 40px rgba(0, 255, 65, 0.2);
+}
+
 .post-card > * {
     box-sizing: border-box;
     position: relative;
