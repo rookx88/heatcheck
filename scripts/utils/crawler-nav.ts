@@ -38,7 +38,9 @@ export function generateCrawlerNav(recentDates: RecentDate[], baseUrl: string = 
     
     leagues.forEach(league => {
         const leagueLower = normalizeLeague(league);
-        const dates = datesByLeague[league] || [];
+        // Normalize league name to uppercase for lookup (datesByLeague uses uppercase keys)
+        const leagueKey = league.toUpperCase();
+        const dates = datesByLeague[leagueKey] || [];
         
         navHtml += `  <div class="league-nav-item">\n`;
         // IMPORTANT: Use a real href so search engines can crawl these links.

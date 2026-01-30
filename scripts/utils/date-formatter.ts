@@ -3,16 +3,26 @@
  * Handles both ISO format (YYYY-MM-DD) and full datetime strings
  */
 function parseLocalDate(dateString: string): Date {
-    // If it's already in YYYY-MM-DD format, parse it as local date
+    // Extract YYYY-MM-DD from the beginning of the string (handles both "2026-01-30" and "2026-01-30T08:00:00.000Z")
     const isoMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})/);
     if (isoMatch) {
         const [, year, month, day] = isoMatch;
         // month is 0-indexed in Date constructor
+        // Always use local date components to avoid timezone shifts
         return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
     }
-    // Otherwise, parse normally and use local components
-    const date = new Date(dateString);
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    // Fallback: try to parse and extract local components (should rarely be needed)
+    try {
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) {
+            throw new Error('Invalid date');
+        }
+        return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    } catch (e) {
+        // If all else fails, return current date
+        console.warn('Failed to parse date:', dateString, e);
+        return new Date();
+    }
 }
 
 /**

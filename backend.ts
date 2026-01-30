@@ -1928,12 +1928,29 @@ app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request,
                 try {
                     const homeTeam = match.home_team_name;
                     const awayTeam = match.away_team_name;
-                    const gameDate = match.game_date;
                     
-                    // Convert UTC date_utc to local time for scheduled_time
-                    // For soccer, we'll use the UTC time directly but convert to HH:MM format
+                    // Convert UTC date_utc to America/New_York timezone for consistent date handling
+                    // This ensures dates match how other imports (OddsAPI) handle dates
                     const dateUtc = new Date(match.date_utc);
-                    const gameTime = dateUtc.toISOString().substring(11, 16); // Extract HH:MM from ISO string
+                    if (isNaN(dateUtc.getTime())) {
+                        console.warn(`[${frontendLeague}] Invalid date_utc for ${homeTeam} vs ${awayTeam}:`, match.date_utc);
+                        totalSkipped++;
+                        continue;
+                    }
+                    
+                    // Convert UTC to America/New_York timezone (consistent with OddsAPI imports)
+                    const tz = "America/New_York";
+                    const gameDate = formatYmdInTimeZone(dateUtc, tz);
+                    const gameTime = formatHmInTimeZone(dateUtc, tz);
+                    
+                    // Debug logging for date conversion
+                    console.log(`[${frontendLeague}] Date conversion:`, {
+                        dateUtc: match.date_utc,
+                        utcDate: dateUtc.toISOString(),
+                        nyDate: gameDate,
+                        nyTime: gameTime,
+                        timezone: tz
+                    });
 
                     // Find or create teams in main database
                     const teamAId = await findOrCreateTeam(homeTeam, frontendLeague, pool);

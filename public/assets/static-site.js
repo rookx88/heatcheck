@@ -1281,7 +1281,9 @@ function initCrawlerNav(posts) {
         if (!leagueContainer) return;
 
         const submenu = leagueContainer.querySelector('.nav-submenu');
-        const items = league && recentDates[league] ? recentDates[league] : null;
+        // Normalize league name to uppercase for lookup (recentDates uses uppercase keys)
+        const leagueKey = league ? league.toUpperCase() : null;
+        const items = leagueKey && recentDates[leagueKey] ? recentDates[leagueKey] : null;
         if (!submenu || !items || items.length === 0) return;
 
         // Keep (or create) HUB link
