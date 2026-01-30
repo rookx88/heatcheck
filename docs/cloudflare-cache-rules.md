@@ -104,3 +104,4 @@ After implementing these rules:
 - **Rule Order**: These rules can be in any order, but Rule 1 (query string) should be evaluated for HTML pages.
 - **Conflicts**: If Cache Rules conflict with `_headers`, Cloudflare will use the more restrictive setting.
 
+

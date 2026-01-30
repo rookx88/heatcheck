@@ -66,11 +66,11 @@ function calculateHeatScoreFromMatchupData(post) {
         const heatCheckData = post.heatCheckData || {};
         const dfsPlayers = heatCheckData.dfsPlayers || [];
         const articleDate = post.matchupScheduledDate || post.createdAt;
-        
+    
         // Calculate days since article date (same day = 0, next day = 1, etc.)
         let daysAgo = 365;
         if (articleDate) {
-            try {
+        try {
                 const articleDateTime = new Date(articleDate);
             const now = new Date();
                 const diffTime = Math.abs(now.getTime() - articleDateTime.getTime());
@@ -97,7 +97,7 @@ function calculateHeatScoreFromMatchupData(post) {
         else if (playerCount >= 5) stakesScore = 12;
         else if (playerCount >= 3) stakesScore = 8;
         else stakesScore = 5;
-        
+            
         // EMOTION (0-20 points) - Based on average confidence scores
         let emotionScore = 0;
         if (playerCount > 0) {
@@ -170,7 +170,7 @@ function calculateHeatScoreFromMatchupData(post) {
         const teamForm = factDrop.raw && factDrop.raw.teamForm ? factDrop.raw.teamForm : {};
         const comparisons = factDrop.comparisons || [];
         const availability = factDrop.raw && factDrop.raw.availability ? factDrop.raw.availability : null;
-        
+    
         // 1. MOMENTUM (0-25 points, increased for temperature model)
         const aMargin10 = (teamForm.A && teamForm.A.margin10) || (teamForm.A && teamForm.A.xgDiff10) || 0;
         const aMargin3 = (teamForm.A && teamForm.A.margin3) || (teamForm.A && teamForm.A.xgDiff3) || 0;
@@ -567,6 +567,16 @@ function getImagePath(post) {
  * Normalize league name to URL-friendly format (matches backend logic)
  */
 function normalizeLeague(league) {
+    if (!league) return '';
+    // Normalize to handle case variations and whitespace
+    const normalized = String(league).trim();
+    
+    // Handle La Liga specifically first (most common issue)
+    const upper = normalized.toUpperCase();
+    if (upper === 'LA LIGA' || upper === 'LALIGA' || upper === 'LA-LIGA') {
+        return 'laliga';
+    }
+    
     const leagueMap = {
         'NBA': 'nba',
         'NFL': 'nfl',
@@ -574,16 +584,34 @@ function normalizeLeague(league) {
         'Premier League': 'epl',
         'LaLiga': 'laliga',
         'La Liga': 'laliga',
+        'LA LIGA': 'laliga',
         'Serie A': 'serie-a',
+        'SERIE A': 'serie-a',
         'Bundesliga': 'bundesliga',
         'Ligue 1': 'ligue-1',
+        'LIGUE 1': 'ligue-1',
         'MLB': 'mlb',
         'NHL': 'nhl',
         'UFC': 'ufc',
         'Soccer': 'soccer',
         'DFS': 'dfs',
     };
-    return leagueMap[league] || (league || '').toLowerCase().replace(/\s+/g, '-');
+    
+    // Check exact match first
+    if (leagueMap[normalized]) {
+        return leagueMap[normalized];
+    }
+    
+    // Final fallback: convert to lowercase and replace spaces with hyphens
+    // But for La Liga, we want 'laliga' not 'la-liga'
+    const lower = normalized.toLowerCase();
+    if (lower === 'la liga' || lower === 'laliga' || lower === 'la-liga') {
+        return 'laliga';
+    }
+    
+    // Ensure we always return a valid string
+    const result = lower.replace(/\s+/g, '-');
+    return result || 'unknown';
 }
 
 /**
@@ -708,6 +736,7 @@ function generateMatchupSlug(teamA, teamB) {
  * For DFS articles: /dfs/{league}/{date}/dfs-value-narratives-{date}/
  */
 function generateArticleUrl(post) {
+    // Normalize league name - normalizeLeague handles La Liga correctly
     const league = normalizeLeague(post.league || '');
     const date = post.matchupScheduledDate 
         ? formatDateForUrl(post.matchupScheduledDate)

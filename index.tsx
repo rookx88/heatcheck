@@ -197,7 +197,8 @@ function extractJson<T>(text: string): T {
 
 // Helper function to detect if a league is a soccer league
 const isSoccerLeague = (league: string): boolean => {
-  const upper = league.toUpperCase();
+  if (!league) return false;
+  const upper = league.toUpperCase().trim();
   return upper === 'EPL' || upper === 'LA LIGA' || upper === 'SERIE A' || upper === 'BUNDESLIGA' || upper === 'LIGUE 1' || upper === 'PREMIER LEAGUE';
 };
 
@@ -2203,7 +2204,12 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
           }
           
           // Route to correct endpoint based on league
-          const { pack } = isSoccerLeague(matchup.league || '')
+          // EPL and other soccer leagues use the soccer endpoint (matchpack, charts, etc.)
+          const league = matchup.league || '';
+          const isSoccer = isSoccerLeague(league);
+          console.log(`[V3] League: "${league}", isSoccer: ${isSoccer}, routing to ${isSoccer ? 'getMatchPackV3Soccer' : 'getMatchPackV3'}`);
+          
+          const { pack } = isSoccer
             ? await apiClient.getMatchPackV3Soccer(
                 matchup.teamA,
                 matchup.teamB,
@@ -2219,6 +2225,16 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
 
           if (!pack) throw new Error('MatchPackV3 returned null pack');
           if (pack.error) throw new Error(`${pack.error}: ${pack.message || 'MatchPack generation failed'}`);
+          
+          // Verify pack structure for EPL/soccer leagues
+          if (isSoccer) {
+            console.log(`[V3] Soccer MatchPack received for ${matchupLabel}:`, {
+              hasFactDrop: !!pack.factDrop,
+              hasCharts: !!pack.factDrop?.charts,
+              hasMatchup: !!pack.matchup,
+              source: pack.source || 'unknown'
+            });
+          }
 
           setGenerationProgress(prev => prev ? { ...prev, step: `Researching evidence + odds for ${matchupLabel}...` } : null);
           const v2Research = await generateHeatCheckNarrativeV2(matchup);
@@ -4509,8 +4525,16 @@ const HeatchecksFeed: React.FC<{ refreshKey: boolean, setEditingPost: (post: Hea
                                 'NFL': 'nfl',
                                 'EPL': 'epl',
                                 'Premier League': 'epl',
+                                'LaLiga': 'laliga',
+                                'La Liga': 'laliga',
+                                'Serie A': 'serie-a',
+                                'Bundesliga': 'bundesliga',
+                                'Ligue 1': 'ligue-1',
                                 'MLB': 'mlb',
-                                'NHL': 'nhl'
+                                'NHL': 'nhl',
+                                'UFC': 'ufc',
+                                'Soccer': 'soccer',
+                                'DFS': 'dfs'
                             };
                             const league = leagueMap[post.league] || post.league.toLowerCase().replace(/\s+/g, '-');
                             

@@ -1362,29 +1362,78 @@ app.get('/api/matchups/v3/soccer', async (req: express.Request, res: express.Res
             where += ` AND m.league = $${params.length}`;
         }
 
+        // For date filtering, we need to use timezone-aware conversion
+        // If filtering by a specific league, use that league's timezone
+        // Otherwise, we'll filter in the CASE statement in the main query
         if (startDate) {
             if (!/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
                 return res.status(400).json({ message: 'Invalid startDate; expected YYYY-MM-DD' });
             }
             params.push(startDate);
-            where += ` AND m.date_utc::date >= $${params.length}::date`;
+            // Use timezone-aware date filtering based on league
+            if (dbLeague) {
+                const leagueTimezoneMap: Record<string, string> = {
+                    'ENG-Premier League': 'Europe/London',
+                    'ESP-La Liga': 'Europe/Madrid',
+                    'ITA-Serie A': 'Europe/Rome',
+                    'GER-Bundesliga': 'Europe/Berlin',
+                    'FRA-Ligue 1': 'Europe/Paris'
+                };
+                const tz = leagueTimezoneMap[dbLeague] || 'UTC';
+                where += ` AND (m.date_utc AT TIME ZONE '${tz}')::date >= $${params.length}::date`;
+            } else {
+                // If no league filter, check all timezones (less efficient but handles mixed leagues)
+                where += ` AND (
+                    (m.league = 'ENG-Premier League' AND (m.date_utc AT TIME ZONE 'Europe/London')::date >= $${params.length}::date) OR
+                    (m.league = 'ESP-La Liga' AND (m.date_utc AT TIME ZONE 'Europe/Madrid')::date >= $${params.length}::date) OR
+                    (m.league = 'ITA-Serie A' AND (m.date_utc AT TIME ZONE 'Europe/Rome')::date >= $${params.length}::date) OR
+                    (m.league = 'GER-Bundesliga' AND (m.date_utc AT TIME ZONE 'Europe/Berlin')::date >= $${params.length}::date) OR
+                    (m.league = 'FRA-Ligue 1' AND (m.date_utc AT TIME ZONE 'Europe/Paris')::date >= $${params.length}::date) OR
+                    (m.league NOT IN ('ENG-Premier League', 'ESP-La Liga', 'ITA-Serie A', 'GER-Bundesliga', 'FRA-Ligue 1') AND m.date_utc::date >= $${params.length}::date)
+                )`;
+            }
         }
         if (endDate) {
             if (!/^\d{4}-\d{2}-\d{2}$/.test(endDate)) {
                 return res.status(400).json({ message: 'Invalid endDate; expected YYYY-MM-DD' });
             }
             params.push(endDate);
-            where += ` AND m.date_utc::date <= $${params.length}::date`;
+            // Use timezone-aware date filtering based on league
+            if (dbLeague) {
+                const leagueTimezoneMap: Record<string, string> = {
+                    'ENG-Premier League': 'Europe/London',
+                    'ESP-La Liga': 'Europe/Madrid',
+                    'ITA-Serie A': 'Europe/Rome',
+                    'GER-Bundesliga': 'Europe/Berlin',
+                    'FRA-Ligue 1': 'Europe/Paris'
+                };
+                const tz = leagueTimezoneMap[dbLeague] || 'UTC';
+                where += ` AND (m.date_utc AT TIME ZONE '${tz}')::date <= $${params.length}::date`;
+            } else {
+                // If no league filter, check all timezones
+                where += ` AND (
+                    (m.league = 'ENG-Premier League' AND (m.date_utc AT TIME ZONE 'Europe/London')::date <= $${params.length}::date) OR
+                    (m.league = 'ESP-La Liga' AND (m.date_utc AT TIME ZONE 'Europe/Madrid')::date <= $${params.length}::date) OR
+                    (m.league = 'ITA-Serie A' AND (m.date_utc AT TIME ZONE 'Europe/Rome')::date <= $${params.length}::date) OR
+                    (m.league = 'GER-Bundesliga' AND (m.date_utc AT TIME ZONE 'Europe/Berlin')::date <= $${params.length}::date) OR
+                    (m.league = 'FRA-Ligue 1' AND (m.date_utc AT TIME ZONE 'Europe/Paris')::date <= $${params.length}::date) OR
+                    (m.league NOT IN ('ENG-Premier League', 'ESP-La Liga', 'ITA-Serie A', 'GER-Bundesliga', 'FRA-Ligue 1') AND m.date_utc::date <= $${params.length}::date)
+                )`;
+            }
         }
 
+        // Map database league format to timezone for date conversion
+        // Filter by league timezone, but output dates/times in EST for consistency
         const sql = `
             select
                 m.match_id as id,
                 coalesce(m.league, 'ENG-Premier League') as league,
                 at.team_name_std as "teamA",
                 ht.team_name_std as "teamB",
-                to_char(m.date_utc::date, 'YYYY-MM-DD') as "scheduledDate",
-                to_char(m.date_utc, 'HH24:MI') as "scheduledTime",
+                -- Convert UTC to EST for date display (articles show EST)
+                to_char((m.date_utc AT TIME ZONE 'America/New_York')::date, 'YYYY-MM-DD') as "scheduledDate",
+                -- Convert UTC to EST for time display (articles show EST)
+                to_char(m.date_utc AT TIME ZONE 'America/New_York', 'HH24:MI') as "scheduledTime",
                 m.venue as venue,
                 coalesce(m.status, 'scheduled') as status
             from public.matches m

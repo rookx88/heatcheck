@@ -13,11 +13,11 @@ function parseLocalDate(dateString: string): Date {
     }
     // Fallback: try to parse and extract local components (should rarely be needed)
     try {
-        const date = new Date(dateString);
+    const date = new Date(dateString);
         if (isNaN(date.getTime())) {
             throw new Error('Invalid date');
         }
-        return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
     } catch (e) {
         // If all else fails, return current date
         console.warn('Failed to parse date:', dateString, e);

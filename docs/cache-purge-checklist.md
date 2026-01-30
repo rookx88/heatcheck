@@ -180,3 +180,4 @@ If there's a site-wide issue requiring full cache purge (rare):
 4. **Document purges**: Note why you purged (for learning)
 5. **Test in staging**: Verify cache behavior before production changes
 
+

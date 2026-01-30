@@ -103,3 +103,4 @@ All SEO tags are:
 - `scripts/templates/base-template.ts` - Added support for og:image:alt, twitter:site, twitter:creator
 - `scripts/templates/heat-picks-article-template.ts` - Enhanced SEO implementation with all required tags
 
+
