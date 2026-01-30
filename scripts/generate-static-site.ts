@@ -537,17 +537,22 @@ async function generateAllPages(): Promise<void> {
         
         // Generate league hub pages (dynamically for all leagues that have posts)
         console.log('Generating league hub pages...');
-        const uniqueLeagues = new Set<string>();
+        // Store both original league name and normalized key to avoid mismatches
+        const leagueMap = new Map<string, string>(); // normalized key -> original league name
         posts.forEach(post => {
-            uniqueLeagues.add(post.league.toUpperCase());
+            const normalized = normalizeLeague(post.league);
+            if (!leagueMap.has(normalized)) {
+                leagueMap.set(normalized, post.league);
+            }
         });
-        const leagues = Array.from(uniqueLeagues).sort();
-        console.log(`  Found ${leagues.length} unique league(s): ${leagues.join(', ')}`);
+        const normalizedLeagues = Array.from(leagueMap.keys()).sort();
+        console.log(`  Found ${normalizedLeagues.length} unique league(s): ${normalizedLeagues.join(', ')}`);
         
-        for (const league of leagues) {
-            const leaguePosts = postsByLeague[normalizeLeague(league)] || [];
+        for (const normalizedLeague of normalizedLeagues) {
+            const originalLeague = leagueMap.get(normalizedLeague) || normalizedLeague;
+            const leaguePosts = postsByLeague[normalizedLeague] || [];
             if (leaguePosts.length > 0) {
-                console.log(`  Generating ${league} hub with ${leaguePosts.length} post(s)`);
+                console.log(`  Generating ${originalLeague} hub with ${leaguePosts.length} post(s)`);
                 // Debug: Log posts with/without images for this hub
                 const postsWithImages = leaguePosts.filter(p => p.websiteStory?.image || p.websiteStory?.imageUrl);
                 const postsWithoutImages = leaguePosts.filter(p => !(p.websiteStory?.image || p.websiteStory?.imageUrl));
@@ -561,11 +566,11 @@ async function generateAllPages(): Promise<void> {
                     console.log(`    ✓ ${postsWithImages.length} post(s) with images`);
                 }
             }
-            const html = generateLeagueHubPage(league, leaguePosts, baseUrl);
-            const hubPath = `${normalizeLeague(league)}/index.html`;
+            const html = generateLeagueHubPage(originalLeague, leaguePosts, baseUrl);
+            const hubPath = `${normalizedLeague}/index.html`;
             writeHtmlFile(hubPath, html);
         }
-        console.log(`✓ Generated ${leagues.length} league hub pages\n`);
+        console.log(`✓ Generated ${normalizedLeagues.length} league hub pages\n`);
         
         // Generate date pages
         console.log('Generating date pages...');

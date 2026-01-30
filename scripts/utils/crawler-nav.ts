@@ -90,8 +90,10 @@ export function extractRecentDates(posts: any[]): RecentDate[] {
         // Use formatDateISO which now handles timezone issues correctly
         const dateStr = formatDateISO(date);
         const storyType = String(post.storyType || '').toLowerCase();
-        const leagueRaw = String(post.league || '').toUpperCase();
+        // Normalize league name FIRST (before uppercasing) to get correct URL format
+        const leagueRaw = String(post.league || '');
         const leagueLower = normalizeLeague(leagueRaw);
+        const leagueUpper = leagueRaw.toUpperCase();
 
         // DFS articles live under /dfs/{sport}/{date}/ and should NOT pollute the main league nav
         if (storyType === 'dfs_article') {
@@ -101,17 +103,17 @@ export function extractRecentDates(posts: any[]): RecentDate[] {
                 dateMap.set(dfsKey, {
                     league: 'DFS',
                     date: dateStr,
-                    display: `${formatDateForNav(date)} ${leagueRaw}`, // e.g., "Jan 15 NBA"
+                    display: `${formatDateForNav(date)} ${leagueUpper}`, // e.g., "Jan 15 NBA"
                     url: `/dfs/${dfsSport}/${dateStr}/`
                 });
             }
             return;
         }
 
-        const key = `${leagueRaw}-${dateStr}`;
+        const key = `${leagueUpper}-${dateStr}`;
         if (!dateMap.has(key)) {
             dateMap.set(key, {
-                league: leagueRaw,
+                league: leagueUpper,
                 date: dateStr,
                 display: formatDateForNav(date), // Also uses fixed date parsing
                 url: `/${leagueLower}/${dateStr}/`

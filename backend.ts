@@ -1897,7 +1897,18 @@ app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request,
             const frontendLeague = reverseLeagueMap[dbLeague] || dbLeague;
             console.log(`\n[${frontendLeague}] Processing league: ${dbLeague}`);
 
+            // Map each league to its local timezone for date filtering
+            const leagueTimezoneMap: Record<string, string> = {
+                'EPL': 'Europe/London',
+                'La Liga': 'Europe/Madrid',
+                'Serie A': 'Europe/Rome',
+                'Bundesliga': 'Europe/Berlin',
+                'Ligue 1': 'Europe/Paris'
+            };
+            const leagueTz = leagueTimezoneMap[frontendLeague] || 'UTC';
+            
             // Query soccer database for matches in date range
+            // Use timezone conversion for date filtering to match the league's local timezone
             const sql = `
                 SELECT 
                     m.match_id,
@@ -1915,8 +1926,8 @@ app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request,
                 JOIN public.dim_team ht ON ht.team_id = m.home_team_id
                 JOIN public.dim_team at ON at.team_id = m.away_team_id
                 WHERE m.league = $1
-                    AND m.date_utc::date >= $2::date
-                    AND m.date_utc::date <= $3::date
+                    AND (m.date_utc AT TIME ZONE '${leagueTz}')::date >= $2::date
+                    AND (m.date_utc AT TIME ZONE '${leagueTz}')::date <= $3::date
                     AND (m.status IS NULL OR m.status = 'scheduled' OR m.status = 'not_started')
                 ORDER BY m.date_utc ASC
             `;
@@ -1929,8 +1940,8 @@ app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request,
                     const homeTeam = match.home_team_name;
                     const awayTeam = match.away_team_name;
                     
-                    // Convert UTC date_utc to America/New_York timezone for consistent date handling
-                    // This ensures dates match how other imports (OddsAPI) handle dates
+                    // Convert UTC date_utc to the league's local timezone for accurate date handling
+                    // European leagues use their local timezones, not America/New_York
                     const dateUtc = new Date(match.date_utc);
                     if (isNaN(dateUtc.getTime())) {
                         console.warn(`[${frontendLeague}] Invalid date_utc for ${homeTeam} vs ${awayTeam}:`, match.date_utc);
@@ -1938,8 +1949,17 @@ app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request,
                         continue;
                     }
                     
-                    // Convert UTC to America/New_York timezone (consistent with OddsAPI imports)
-                    const tz = "America/New_York";
+                    // Map each league to its local timezone
+                    const leagueTimezoneMap: Record<string, string> = {
+                        'EPL': 'Europe/London',
+                        'La Liga': 'Europe/Madrid',
+                        'Serie A': 'Europe/Rome',
+                        'Bundesliga': 'Europe/Berlin',
+                        'Ligue 1': 'Europe/Paris'
+                    };
+                    
+                    // Use league-specific timezone, fallback to America/New_York for consistency
+                    const tz = leagueTimezoneMap[frontendLeague] || "America/New_York";
                     const gameDate = formatYmdInTimeZone(dateUtc, tz);
                     const gameTime = formatHmInTimeZone(dateUtc, tz);
                     
@@ -1947,8 +1967,8 @@ app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request,
                     console.log(`[${frontendLeague}] Date conversion:`, {
                         dateUtc: match.date_utc,
                         utcDate: dateUtc.toISOString(),
-                        nyDate: gameDate,
-                        nyTime: gameTime,
+                        localDate: gameDate,
+                        localTime: gameTime,
                         timezone: tz
                     });
 

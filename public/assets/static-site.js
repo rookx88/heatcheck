@@ -573,10 +573,15 @@ function normalizeLeague(league) {
         'EPL': 'epl',
         'Premier League': 'epl',
         'LaLiga': 'laliga',
+        'La Liga': 'laliga',
+        'Serie A': 'serie-a',
+        'Bundesliga': 'bundesliga',
+        'Ligue 1': 'ligue-1',
         'MLB': 'mlb',
         'NHL': 'nhl',
         'UFC': 'ufc',
         'Soccer': 'soccer',
+        'DFS': 'dfs',
     };
     return leagueMap[league] || (league || '').toLowerCase().replace(/\s+/g, '-');
 }
@@ -1164,9 +1169,10 @@ function extractRecentDates(posts) {
         
         const dateStr = formatDateForUrl(date);
         const storyType = String(post.storyType || '').toLowerCase();
-        // Normalize league name using the same function used elsewhere
-        const leagueUpper = (post.league || '').toUpperCase();
-        const leagueLower = normalizeLeague(leagueUpper);
+        // Normalize league name FIRST (before uppercasing) to get correct URL format
+        const leagueRaw = String(post.league || '');
+        const leagueLower = normalizeLeague(leagueRaw);
+        const leagueUpper = leagueRaw.toUpperCase();
 
         // DFS articles belong under /dfs/{sport}/{date}/ and should not populate main league submenus.
         if (storyType === 'dfs_article') {
@@ -1294,7 +1300,9 @@ function initCrawlerNav(posts) {
             hubLink.textContent = 'HUB';
             submenu.prepend(hubLink);
         }
-        hubLink.href = (league || '').toUpperCase() === 'DFS' ? `/dfs/` : `/${String(league).toLowerCase()}/`;
+        // Use normalizeLeague to get the correct URL format (e.g., "La Liga" -> "laliga", not "la-liga")
+        const leagueLower = normalizeLeague(league || '');
+        hubLink.href = (league || '').toUpperCase() === 'DFS' ? `/dfs/` : `/${leagueLower}/`;
 
         // Remove everything else
         Array.from(submenu.querySelectorAll('a')).forEach(a => {
