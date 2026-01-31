@@ -1514,20 +1514,29 @@ function generateMatchupButton(post) {
         });
     }
     
-    // Determine score label based on score (adjusted for unified temperature model)
-    // Base temperature is 40, so scores are typically 40-100 range
+    // Determine score tier with visual emojis
+    // Tiers: ❄️ COOL (0–59), 🔥 WARM (60–69), 🔥🔥 HOT (70–79), 🔥🔥🔥 VOLATILE (80+)
+    let scoreEmoji = '❄️';
     let scoreLabel = 'COOL';
     let scoreColor = 'rgba(255, 255, 255, 0.5)';
-    if (scoreTotal >= 85) {
-        scoreLabel = 'HOT';
-        scoreColor = '#ff1a1a'; // Bright red for scorching
+    
+    if (scoreTotal >= 80) {
+        scoreEmoji = '🔥🔥🔥';
+        scoreLabel = 'SCORCHING';
+        scoreColor = '#ff1a1a'; // Bright red for volatile
     } else if (scoreTotal >= 70) {
+        scoreEmoji = '🔥🔥';
+        scoreLabel = 'HOT';
+        scoreColor = '#ff3333'; // Red for hot
+    } else if (scoreTotal >= 60) {
+        scoreEmoji = '🔥';
         scoreLabel = 'WARM';
         scoreColor = '#ff8000'; // Orange for warm
     } else {
-        // 40-69: Baseline to warm (most matchups start at 40)
+        // 0-59: Cool
+        scoreEmoji = '❄️';
         scoreLabel = 'COOL';
-        scoreColor = 'rgba(255, 255, 255, 0.6)'; // Slightly brighter for baseline
+        scoreColor = 'rgba(255, 255, 255, 0.6)'; // White for cool
     }
     
     // Debug: log date issues
@@ -1549,7 +1558,10 @@ function generateMatchupButton(post) {
             </div>
             <div class="game-heat-score" style="margin-left: 0.75rem; flex-shrink: 0; text-align: right;">
                 <div style="color: ${scoreColor}; font-family: 'Courier New', monospace; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">${scoreLabel}</div>
-                <div style="color: rgba(255, 255, 255, 0.6); font-family: 'Courier New', monospace; font-size: 0.6rem; margin-top: 0.15rem;">${scoreTotal}</div>
+                <div style="color: rgba(255, 255, 255, 0.6); font-family: 'Courier New', monospace; font-size: 0.6rem; margin-top: 0.15rem; display: flex; align-items: center; justify-content: flex-end; gap: 0.25rem;">
+                    <span style="font-size: 0.6rem; line-height: 1;">${scoreEmoji}</span>
+                    <span>${scoreTotal}</span>
+                </div>
             </div>
         </a>
     `;
@@ -1709,25 +1721,37 @@ function showRadarResults(todayPosts, tomorrowPosts, shouldStore = true) {
     if (leftDate) leftDate.textContent = formatDateDisplay(today).toUpperCase();
     if (rightDate) rightDate.textContent = formatDateDisplay(tomorrow).toUpperCase();
     
+    // Sort posts by heat score (hottest to coolest)
+    const sortByHeatScore = (posts) => {
+        return [...posts].sort((a, b) => {
+            const scoreA = calculateHeatScoreFromMatchupData(a).total || 0;
+            const scoreB = calculateHeatScoreFromMatchupData(b).total || 0;
+            return scoreB - scoreA; // Descending order (hottest first)
+        });
+    };
+    
+    const sortedTodayPosts = sortByHeatScore(todayPosts);
+    const sortedTomorrowPosts = sortByHeatScore(tomorrowPosts);
+    
     if (leftGames) {
-        if (todayPosts.length > 0) {
-            leftGames.innerHTML = todayPosts.map(post => generateMatchupButton(post)).join('');
+        if (sortedTodayPosts.length > 0) {
+            leftGames.innerHTML = sortedTodayPosts.map(post => generateMatchupButton(post)).join('');
         } else {
             leftGames.innerHTML = '<div class="no-games-message">NO GAMES TODAY</div>';
         }
     }
     
     if (rightGames) {
-        if (tomorrowPosts.length > 0) {
-            rightGames.innerHTML = tomorrowPosts.map(post => generateMatchupButton(post)).join('');
+        if (sortedTomorrowPosts.length > 0) {
+            rightGames.innerHTML = sortedTomorrowPosts.map(post => generateMatchupButton(post)).join('');
         } else {
             rightGames.innerHTML = '<div class="no-games-message">NO GAMES TOMORROW</div>';
         }
     }
     
-    // Store results for persistence across page navigations
+    // Store sorted results for persistence across page navigations
     if (shouldStore) {
-        storeRadarResults(todayPosts, tomorrowPosts);
+        storeRadarResults(sortedTodayPosts, sortedTomorrowPosts);
     }
 }
 
@@ -2171,19 +2195,30 @@ function showMobileRadarResults(todayPosts, shouldStore = true) {
         dateTitle.textContent = formatDateDisplay(today).toUpperCase();
     }
     
+    // Sort posts by heat score (hottest to coolest)
+    const sortByHeatScore = (posts) => {
+        return [...posts].sort((a, b) => {
+            const scoreA = calculateHeatScoreFromMatchupData(a).total || 0;
+            const scoreB = calculateHeatScoreFromMatchupData(b).total || 0;
+            return scoreB - scoreA; // Descending order (hottest first)
+        });
+    };
+    
+    const sortedTodayPosts = sortByHeatScore(todayPosts);
+    
     if (gamesContainer) {
-        if (todayPosts.length > 0) {
-            gamesContainer.innerHTML = todayPosts.map(post => generateMatchupButton(post)).join('');
+        if (sortedTodayPosts.length > 0) {
+            gamesContainer.innerHTML = sortedTodayPosts.map(post => generateMatchupButton(post)).join('');
         } else {
             gamesContainer.innerHTML = '<div class="no-games-message">NO GAMES TODAY</div>';
         }
     }
     
-    // Store results (reuse desktop storage function)
+    // Store sorted results (reuse desktop storage function)
     if (shouldStore) {
         const storedResults = getStoredRadarResults();
         const tomorrowPosts = storedResults ? storedResults.tomorrowPosts : [];
-        storeRadarResults(todayPosts, tomorrowPosts);
+        storeRadarResults(sortedTodayPosts, tomorrowPosts);
     }
 }
 
