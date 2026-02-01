@@ -159,6 +159,20 @@ const LEAGUE_TO_ODDS_API: { [key: string]: string } = {
     'NHL': 'icehockey_nhl'
 };
 
+// Load OddsAPI team mappings
+let ODDSAPI_TEAM_MAPPING: { [sport: string]: { [internalName: string]: string } } = {};
+try {
+    const mappingPath = path.join(process.cwd(), 'scripts', 'data', 'oddsapi-team-mapping.json');
+    if (fs.existsSync(mappingPath)) {
+        ODDSAPI_TEAM_MAPPING = JSON.parse(fs.readFileSync(mappingPath, 'utf-8'));
+        console.log(`[OddsAPI] Loaded team mappings for ${Object.keys(ODDSAPI_TEAM_MAPPING).length} sports`);
+    } else {
+        console.warn(`[OddsAPI] Team mapping file not found at: ${mappingPath}`);
+    }
+} catch (error: any) {
+    console.warn('[OddsAPI] Could not load team mappings:', error.message);
+}
+
 /**
  * Format date as YYYY-MM-DD in specific timezone
  * Uses Intl.DateTimeFormat to handle DST automatically
@@ -597,6 +611,47 @@ app.get('/api/match-pack-v3/soccer', apiKeyAuth, async (req: express.Request, re
     }
 });
 
+// GET /api/match-pack-v4 - Get MatchPackV4 JSON from nba_heat_sheet DB (auth required)
+// V4 includes all V3 data plus advancedHeatStats for 3-pillar heat scoring
+app.get('/api/match-pack-v4', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        if (!nbaHeatSheetPool) {
+            return res.status(500).json({ message: 'NBA_HEAT_SHEET_DATABASE_URL is not configured on the server.' });
+        }
+
+        const teamA = String(req.query.teamA || '').trim();
+        const teamB = String(req.query.teamB || '').trim();
+        const gameDateEstRaw = req.query.gameDateEst ? String(req.query.gameDateEst).trim() : '';
+        const seasonRaw = req.query.season ? String(req.query.season).trim() : '';
+
+        if (!teamA || !teamB) {
+            return res.status(400).json({ message: 'Missing required query params: teamA and teamB' });
+        }
+
+        // Validate optional date format (YYYY-MM-DD) if provided
+        let gameDateEst: string | null = null;
+        if (gameDateEstRaw) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(gameDateEstRaw)) {
+                return res.status(400).json({ message: 'Invalid gameDateEst; expected YYYY-MM-DD' });
+            }
+            gameDateEst = gameDateEstRaw;
+        }
+
+        const season: string | null = seasonRaw || null;
+
+        const result = await nbaHeatSheetPool.query(
+            'select public.get_match_pack_v4($1::text,$2::text,$3::date,$4::varchar) as pack',
+            [teamA, teamB, gameDateEst, season]
+        );
+
+        const pack = result.rows?.[0]?.pack ?? null;
+        res.json({ pack });
+    } catch (err: any) {
+        console.error('Error fetching MatchPackV4:', err);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 // GET /api/odds/game/:eventId - Fetch game odds from OddsAPI (player props disabled) (auth required)
 app.get('/api/odds/game/:eventId', apiKeyAuth, async (req: express.Request, res: express.Response) => {
     try {
@@ -694,6 +749,34 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
         let gameDate = String(req.query.gameDate || '').trim();
         const sport = String(req.query.sport || 'basketball_nba').trim();
         
+        // Try to map team names to OddsAPI official names first
+        const sportMapping = ODDSAPI_TEAM_MAPPING[sport] || {};
+        let mappedTeamA = sportMapping[teamA] || teamA;
+        let mappedTeamB = sportMapping[teamB] || teamB;
+        
+        // Also try case-insensitive lookup
+        if (mappedTeamA === teamA) {
+            const teamALower = teamA.toLowerCase();
+            for (const [internalName, oddsApiName] of Object.entries(sportMapping)) {
+                if (internalName.toLowerCase() === teamALower) {
+                    mappedTeamA = oddsApiName;
+                    break;
+                }
+            }
+        }
+        if (mappedTeamB === teamB) {
+            const teamBLower = teamB.toLowerCase();
+            for (const [internalName, oddsApiName] of Object.entries(sportMapping)) {
+                if (internalName.toLowerCase() === teamBLower) {
+                    mappedTeamB = oddsApiName;
+                    break;
+                }
+            }
+        }
+        
+        console.log(`[GET /api/odds/find-event] Original: "${teamA}" vs "${teamB}"`);
+        console.log(`[GET /api/odds/find-event] Mapped to OddsAPI: "${mappedTeamA}" vs "${mappedTeamB}"`);
+        
         // Normalize gameDate to YYYY-MM-DD format (handle ISO datetime strings)
         if (gameDate) {
             // If it's already in YYYY-MM-DD format, use it
@@ -717,8 +800,39 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
             return res.status(400).json({ message: 'Missing required query params: teamA and teamB' });
         }
 
+        // Try to map team names to OddsAPI official names first
+        const sportMapping = ODDSAPI_TEAM_MAPPING[sport] || {};
+        let mappedTeamA = sportMapping[teamA] || teamA;
+        let mappedTeamB = sportMapping[teamB] || teamB;
+        
+        // Also try case-insensitive lookup
+        if (mappedTeamA === teamA) {
+            const teamALower = teamA.toLowerCase();
+            for (const [internalName, oddsApiName] of Object.entries(sportMapping)) {
+                if (internalName.toLowerCase() === teamALower) {
+                    mappedTeamA = oddsApiName;
+                    break;
+                }
+            }
+        }
+        if (mappedTeamB === teamB) {
+            const teamBLower = teamB.toLowerCase();
+            for (const [internalName, oddsApiName] of Object.entries(sportMapping)) {
+                if (internalName.toLowerCase() === teamBLower) {
+                    mappedTeamB = oddsApiName;
+                    break;
+                }
+            }
+        }
+        
+        // Use mapped names for searching
+        const searchTeamA = mappedTeamA;
+        const searchTeamB = mappedTeamB;
+
         console.log(`[GET /api/odds/find-event] Sport parameter: "${sport}"`);
-        console.log(`[GET /api/odds/find-event] Searching for: "${teamA}" vs "${teamB}" on ${gameDate || 'any date'} (normalized from original)`);
+        console.log(`[GET /api/odds/find-event] Original: "${teamA}" vs "${teamB}"`);
+        console.log(`[GET /api/odds/find-event] Mapped to OddsAPI: "${searchTeamA}" vs "${searchTeamB}"`);
+        console.log(`[GET /api/odds/find-event] Searching on ${gameDate || 'any date'}`);
         
         const baseUrl = 'https://api.the-odds-api.com/v4';
         const params = new URLSearchParams({
@@ -782,16 +896,36 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
                 .replace(/\s+(sv|tsg|fc|sc|cf|ac|as|rc|ud|cd|cf)$/i, '')
                 // Remove year prefixes (e.g., "1899 Hoffenheim")
                 .replace(/^\d{4}\s+/i, '')
+                // NBA-specific: normalize common variations
+                .replace(/\s+76ers\s*/i, ' 76ers') // "Philadelphia 76ers" -> "philadelphia 76ers"
+                .replace(/\s+trail\s+blazers\s*/i, ' trail blazers') // "Portland Trail Blazers"
                 .trim();
         };
 
         // Extract core team name (removes prefixes and gets main identifier)
-        const getTeamNameOnly = (fullName: string) => {
+        const getTeamNameOnly = (fullName: string, sportKey: string = '') => {
             const normalized = normalizeTeamName(fullName);
             const parts = normalized.split(/\s+/);
             if (parts.length <= 1) return normalized;
             
-            // For German teams, try to get meaningful parts
+            // For NBA teams, use the last word (team name) as the identifier
+            // "Los Angeles Lakers" -> "lakers"
+            // "New York Knicks" -> "knicks"
+            // "Philadelphia 76ers" -> "76ers"
+            if (sportKey === 'basketball_nba') {
+                const lastWord = parts[parts.length - 1];
+                // Special case for "76ers" - keep it as is
+                if (lastWord === '76ers' || lastWord === '76er') {
+                    return '76ers';
+                }
+                // Special case for "Trail Blazers" - keep both words
+                if (parts.length >= 2 && parts[parts.length - 2] === 'trail' && parts[parts.length - 1] === 'blazers') {
+                    return 'trail blazers';
+                }
+                return lastWord;
+            }
+            
+            // For European teams, try to get meaningful parts
             // "SV Werder Bremen" -> "werder bremen" or "bremen"
             // "TSG Hoffenheim" -> "hoffenheim"
             // "1899 Hoffenheim" -> "hoffenheim"
@@ -809,12 +943,12 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
             return parts[parts.length - 1];
         };
 
-        const teamANorm = normalizeTeamName(teamA);
-        const teamBNorm = normalizeTeamName(teamB);
-        const teamANameOnly = getTeamNameOnly(teamA);
-        const teamBNameOnly = getTeamNameOnly(teamB);
+        // Use mapped names for normalization
+        const teamANorm = normalizeTeamName(searchTeamA);
+        const teamBNorm = normalizeTeamName(searchTeamB);
+        const teamANameOnly = getTeamNameOnly(searchTeamA, sport);
+        const teamBNameOnly = getTeamNameOnly(searchTeamB, sport);
 
-        console.log(`[GET /api/odds/find-event] Searching for: "${teamA}" vs "${teamB}" on ${gameDate || 'any date'}`);
         console.log(`[GET /api/odds/find-event] Normalized: "${teamANorm}" vs "${teamBNorm}"`);
         console.log(`[GET /api/odds/find-event] Team names only: "${teamANameOnly}" vs "${teamBNameOnly}"`);
         console.log(`[GET /api/odds/find-event] Total games available: ${games.length}`);
@@ -844,6 +978,11 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
             const team2Words = team2.split(/\s+/).filter(w => w.length > 3);
             const commonWords = team1Words.filter(w => team2Words.includes(w));
             if (commonWords.length > 0 && commonWords.some(w => w.length > 4)) return true;
+            
+            // NBA-specific: match last word (e.g., "Bucks" matches "Milwaukee Bucks", "Celtics" matches "Boston Celtics")
+            const team1LastWord = team1.split(/\s+/).pop() || '';
+            const team2LastWord = team2.split(/\s+/).pop() || '';
+            if (team1LastWord.length > 4 && team2LastWord.length > 4 && team1LastWord === team2LastWord) return true;
             
             return false;
         };
@@ -978,6 +1117,7 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
 
         if (!matchedGame) {
             console.warn(`[GET /api/odds/find-event] Game not found. Searched: "${teamA}" vs "${teamB}" on ${gameDate || 'any'}`);
+            console.warn(`[GET /api/odds/find-event] Mapped to: "${searchTeamA}" vs "${searchTeamB}"`);
             console.warn(`[GET /api/odds/find-event] Normalized search: "${teamANorm}" vs "${teamBNorm}"`);
             console.warn(`[GET /api/odds/find-event] Team names only: "${teamANameOnly}" vs "${teamBNameOnly}"`);
             console.warn(`[GET /api/odds/find-event] Available games (showing potential matches):`, availableGames);
@@ -992,7 +1132,14 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
             
             return res.status(404).json({ 
                 message: 'Event not found in OddsAPI',
-                searched: { teamA, teamB, gameDate: gameDate || 'any', normalized: { teamA: teamANorm, teamB: teamBNorm }, nameOnly: { teamA: teamANameOnly, teamB: teamBNameOnly } },
+                searched: { 
+                    teamA, 
+                    teamB, 
+                    gameDate: gameDate || 'any', 
+                    mapped: { teamA: searchTeamA, teamB: searchTeamB },
+                    normalized: { teamA: teamANorm, teamB: teamBNorm }, 
+                    nameOnly: { teamA: teamANameOnly, teamB: teamBNameOnly } 
+                },
                 availableGamesSample: availableGames.slice(0, 20), // Return more for debugging
                 allTeamNames: Array.from(allTeamNames).slice(0, 50) // Return team names for debugging
             });

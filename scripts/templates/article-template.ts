@@ -229,8 +229,12 @@ export function generateArticlePage(
             </div>`;
     }).join('');
 
-    // Temperature Check (HeatArticleV3): sits above Narrative.log (Narrative Rack)
+    // Temperature Check (HeatArticleV3/V4): sits above Narrative.log (Narrative Rack)
+    // V4 articles use matchPackV4 but have the same structure as V3 (V4 extends V3)
+    const matchPackV4: any = (heatCheckData as any).matchPackV4;
     const matchPackV3: any = (heatCheckData as any).matchPackV3;
+    // Use V4 if available, fallback to V3
+    const matchPack: any = matchPackV4 || matchPackV3;
     const tempCheck: any = (heatCheckData as any).temperatureCheck;
     const tempSummary: any = tempCheck?.summary || null;
     const tempAI: any = tempCheck?.ai || null;
@@ -241,15 +245,15 @@ export function generateArticlePage(
         (typeof post.heatchecksEdge === 'object' && 'finalCall' in post.heatchecksEdge)
     );
 
-    const temperatureCheckHtml = matchPackV3 ? (() => {
+    const temperatureCheckHtml = matchPack ? (() => {
         const renderedOverride = typeof tempCheck?.renderedMarkdown === 'string' && tempCheck.renderedMarkdown.trim()
             ? tempCheck.renderedMarkdown.trim()
             : null;
 
-        const bullets: any[] = Array.isArray(matchPackV3?.factDrop?.bullets) ? matchPackV3.factDrop.bullets : [];
-        const comparisons: any[] = Array.isArray(matchPackV3?.factDrop?.comparisons) ? matchPackV3.factDrop.comparisons : [];
-        const sections: any[] = Array.isArray(matchPackV3?.factDrop?.sections) ? matchPackV3.factDrop.sections : [];
-        const charts: any = matchPackV3?.factDrop?.charts || null;
+        const bullets: any[] = Array.isArray(matchPack?.factDrop?.bullets) ? matchPack.factDrop.bullets : [];
+        const comparisons: any[] = Array.isArray(matchPack?.factDrop?.comparisons) ? matchPack.factDrop.comparisons : [];
+        const sections: any[] = Array.isArray(matchPack?.factDrop?.sections) ? matchPack.factDrop.sections : [];
+        const charts: any = matchPack?.factDrop?.charts || null;
 
         const visibleKeys: string[] = Array.isArray(tempSummary?.visibleBulletKeys) && tempSummary.visibleBulletKeys.length > 0
             ? tempSummary.visibleBulletKeys
@@ -351,7 +355,7 @@ export function generateArticlePage(
         const highlightComparisonKey = tempSummary?.highlightComparisonKey || 'margin10';
         const highlightComparison = comparisons.find(c => c?.key === highlightComparisonKey) || comparisons[0] || null;
 
-        const availability = matchPackV3?.factDrop?.raw?.availability?.majorAbsences || null;
+        const availability = matchPack?.factDrop?.raw?.availability?.majorAbsences || null;
         const availabilityCounts = availability ? {
             A: availability?.A?.count ?? 0,
             B: availability?.B?.count ?? 0
@@ -378,10 +382,10 @@ export function generateArticlePage(
                 const buttonHtml = hasEdge ? `<button onclick="document.getElementById('heatchecks-edge-section')?.scrollIntoView({behavior: 'smooth', block: 'start'}); return false;" style="margin-left: 0.75rem; padding: 0.3rem 0.6rem; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.95); font-family: 'Courier New', monospace; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; transition: all 0.2s ease; border-radius: 3px; white-space: nowrap;" onmouseover="this.style.background='rgba(255,255,255,0.25)'; this.style.borderColor='rgba(255,255,255,0.6)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(255,255,255,0.15)'; this.style.borderColor='rgba(255,255,255,0.4)'; this.style.color='rgba(255,255,255,0.95)';">See Prediction</button>` : '';
                 lines.push(`<div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.8rem; letter-spacing:0.08em;"><span>TEMP: <span style="color:#00ff41; font-weight:900; text-shadow:0 0 10px rgba(0,255,65,0.25);">${escapeHtml(label)}</span></span>${buttonHtml}</div>`);
             }
-            const teamA = String(matchPackV3?.matchup?.teamA || matchPackV3?.matchup?.teamAAbbr || 'Team A');
-            const teamB = String(matchPackV3?.matchup?.teamB || matchPackV3?.matchup?.teamBAbbr || 'Team B');
-            const haA = String(matchPackV3?.matchup?.homeAway?.A || '');
-            const haB = String(matchPackV3?.matchup?.homeAway?.B || '');
+            const teamA = String(matchPack?.matchup?.teamA || matchPack?.matchup?.teamAAbbr || 'Team A');
+            const teamB = String(matchPack?.matchup?.teamB || matchPack?.matchup?.teamBAbbr || 'Team B');
+            const haA = String(matchPack?.matchup?.homeAway?.A || '');
+            const haB = String(matchPack?.matchup?.homeAway?.B || '');
             if (haA || haB) {
                 lines.push(`<div style="margin-top:0.15rem; color:rgba(255,255,255,0.72); font-family:'Courier New', monospace; font-size:0.78rem;">HOME/AWAY: <span style="color:rgba(255,255,255,0.9); font-weight:700;">${escapeHtml(teamA)}</span> (${escapeHtml(haA || 'n/a')}) | <span style="color:rgba(255,255,255,0.9); font-weight:700;">${escapeHtml(teamB)}</span> (${escapeHtml(haB || 'n/a')})</div>`);
             }
@@ -404,8 +408,8 @@ export function generateArticlePage(
                 const winnerRaw = String(highlightComparison.winner || 'even');
                 
                 // Get team names - prefer matchPackV3 data, fallback to post data
-                const teamAName = getShortTeamName(matchPackV3?.matchup?.teamA || post.teamA || 'Team A');
-                const teamBName = getShortTeamName(matchPackV3?.matchup?.teamB || post.teamB || 'Team B');
+                const teamAName = getShortTeamName(matchPack?.matchup?.teamA || post.teamA || 'Team A');
+                const teamBName = getShortTeamName(matchPack?.matchup?.teamB || post.teamB || 'Team B');
                 
                 // Map winner to team name
                 let winnerDisplay = winnerRaw;
@@ -474,8 +478,8 @@ export function generateArticlePage(
             charts &&
             (charts?.momentumLine || charts?.starLoad || charts?.pressureBar || charts?.roleVolatility);
 
-        const momentumLegendA = String(charts?.momentumLine?.series?.A?.label || matchPackV3?.matchup?.teamAAbbr || 'A');
-        const momentumLegendB = String(charts?.momentumLine?.series?.B?.label || matchPackV3?.matchup?.teamBAbbr || 'B');
+        const momentumLegendA = String(charts?.momentumLine?.series?.A?.label || matchPack?.matchup?.teamAAbbr || 'A');
+        const momentumLegendB = String(charts?.momentumLine?.series?.B?.label || matchPack?.matchup?.teamBAbbr || 'B');
 
         const chartsJson = (() => {
             try {
@@ -526,7 +530,7 @@ export function generateArticlePage(
 
                     <div style="padding:0.55rem; background:rgba(0, 8, 4, 0.88); border:1px solid rgba(0, 255, 65, 0.18); border-radius:10px;">
                         <div style="color:rgba(255,255,255,0.86); font-family:'Courier New', monospace; font-size:0.78rem; line-height:1.35;">
-                            Close-game record (≤ ${escapeHtml(String(matchPackV3?.factDrop?.charts?.pressureBar?.closeMargin ?? matchPackV3?.factDrop?.meta?.closeMargin ?? 6))}): who survives the pressure possessions.
+                            Close-game record (≤ ${escapeHtml(String(matchPack?.factDrop?.charts?.pressureBar?.closeMargin ?? matchPack?.factDrop?.meta?.closeMargin ?? 6))}): who survives the pressure possessions.
                         </div>
                         <div style="margin-top:0.35rem; height:140px;">
                             <canvas id="${pressureCanvasId}" style="width:100%; height:100%;"></canvas>

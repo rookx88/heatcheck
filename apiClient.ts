@@ -246,6 +246,24 @@ export const apiClient = {
         return response.json();
     },
 
+    async getMatchPackV4(
+        teamA: string,
+        teamB: string,
+        gameDateEst?: string | null,
+        season?: string | null
+    ): Promise<{ pack: any }> {
+        const params = new URLSearchParams();
+        params.set('teamA', teamA);
+        params.set('teamB', teamB);
+        if (gameDateEst) params.set('gameDateEst', gameDateEst);
+        if (season) params.set('season', season);
+
+        const response = await apiRequest(`/api/match-pack-v4?${params.toString()}`, {
+            method: 'GET',
+        });
+        return response.json();
+    },
+
     async getOddsForGame(eventId: string, sport: string = 'basketball_nba'): Promise<{
         eventId: string;
         gameMarkets: any;

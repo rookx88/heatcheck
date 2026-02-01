@@ -2,6 +2,7 @@ import { generateBaseHtml, BaseTemplateOptions } from './base-template';
 import { escapeHtml } from '../utils/html-escape';
 import { formatDateForCard, formatDateISO, normalizeLeague, formatDateForNav, getShortTeamName, getTeamAcronym } from '../utils/date-formatter';
 import { generateSlug, generateNarrativeSlug, generateMatchupSlug } from '../utils/slug-generator';
+import { calculateV4HeatScore } from '../shared/heat-score-v4';
 
 export interface HeatcheckPost {
     id: string;
@@ -121,6 +122,65 @@ function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number
     }
     
     const heatCheckData = post.heatCheckData as any;
+    
+    // Check if this post has a stored Heat Picks score
+    // Heat Picks articles store scores in heatCheckData.heatPicks.heatPicks[]
+    if (heatCheckData.heatPicks && heatCheckData.heatPicks.heatPicks && Array.isArray(heatCheckData.heatPicks.heatPicks)) {
+        const teamA = post.teamA || '';
+        const teamB = post.teamB || '';
+        // Find matching pick by team names or matchup string
+        const matchingPick = heatCheckData.heatPicks.heatPicks.find((pick: any) => {
+            if (!pick) return false;
+            // Check direct team match
+            if (pick.teamA === teamA && pick.teamB === teamB) return true;
+            if (pick.teamA === teamB && pick.teamB === teamA) return true;
+            // Check matchup string match
+            if (pick.matchup) {
+                const matchupLower = (pick.matchup || '').toLowerCase();
+                const teamALower = teamA.toLowerCase();
+                const teamBLower = teamB.toLowerCase();
+                if (matchupLower.includes(teamALower) && matchupLower.includes(teamBLower)) return true;
+            }
+            return false;
+        });
+        
+        if (matchingPick && typeof matchingPick.heatScore === 'number') {
+            // Return the stored Heat Picks score to ensure consistency
+            return {
+                total: matchingPick.heatScore,
+                breakdown: {
+                    stakes: 0,
+                    recency: 0,
+                    payback: 0,
+                    history: 0,
+                    emotion: 0
+                }
+            };
+        }
+    }
+    
+    // Check if V4 heat score calculation is available (has matchPackV4 with advancedHeatStats)
+    const matchPackV4 = heatCheckData.matchPackV4;
+    if (matchPackV4?.factDrop?.raw?.advancedHeatStats) {
+        try {
+            const v4Result = calculateV4HeatScore(post);
+            // Map V4 result to legacy breakdown format for backward compatibility
+            return {
+                total: v4Result.heatScore,
+                breakdown: {
+                    stakes: Math.round(v4Result.pillars.controlStress.score * 0.2),
+                    recency: Math.round(v4Result.pillars.emotionalLoad.components.availabilityShock.score * 0.2),
+                    payback: Math.round(v4Result.pillars.emotionalLoad.components.revenge.score * 0.2),
+                    history: Math.round(v4Result.pillars.emotionalLoad.components.history.score * 0.2),
+                    emotion: Math.round(v4Result.pillars.emotionalLoad.score * 0.2)
+                }
+            };
+        } catch (e) {
+            // Fall through to V3 calculation if V4 fails
+            console.warn('V4 heat score calculation failed, falling back to V3:', e);
+        }
+    }
+    
     const matchPackV3 = heatCheckData.matchPackV3;
     const factPack = heatCheckData.fact_pack || heatCheckData.factPack || {};
     const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};

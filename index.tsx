@@ -1083,6 +1083,7 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   const [isGeneratingHeatArticle, setIsGeneratingHeatArticle] = useState<boolean>(false);
   const [isGeneratingHeatArticleV2, setIsGeneratingHeatArticleV2] = useState<boolean>(false);
   const [isGeneratingHeatArticleV3, setIsGeneratingHeatArticleV3] = useState<boolean>(false);
+  const [isGeneratingHeatArticleV4, setIsGeneratingHeatArticleV4] = useState<boolean>(false);
   const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number; step: string; matchup: string } | null>(null);
   const [editingMatchupId, setEditingMatchupId] = useState<string | null>(null);
   const [editDate, setEditDate] = useState<string>('');
@@ -1100,8 +1101,8 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   const [heatPicksDate, setHeatPicksDate] = useState<string>('');
   const [heatPicksLeague, setHeatPicksLeague] = useState<string>('NBA');
 
-  const isGeneratingAnyHeatArticle = isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3;
-  const [matchupModalSource, setMatchupModalSource] = useState<'oddsapi' | 'v3'>('oddsapi');
+  const isGeneratingAnyHeatArticle = isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3 || isGeneratingHeatArticleV4;
+  const [matchupModalSource, setMatchupModalSource] = useState<'oddsapi' | 'v3' | 'v4'>('oddsapi');
   const [articleApiSource, setArticleApiSource] = useState<'theoddsapi' | 'gemini'>('theoddsapi');
 
   const formatDateYmdForDisplay = (ymd: string) => {
@@ -1411,6 +1412,32 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
     }
   };
 
+  const handleGenerateArticleV4 = async () => {
+    // Load NBA matchups only for V4
+    try {
+      setError(null);
+      // Load NBA matchups from v3 endpoint (nba_heat_sheet DB) - V4 only supports NBA
+      const nbaMatchups = await apiClient.getMatchupsV3();
+      
+      setAvailableMatchups(nbaMatchups);
+      setMatchupModalSource('v4');
+      setSelectedMatchupIds([]);
+      setEditingMatchupId(null);
+      setEditDate('');
+      setEditTime('');
+      // Reset filters
+      setMatchupFilterLeague([]);
+      setMatchupFilterSearch('');
+      setMatchupFilterDate('all');
+      setMatchupFilterCustomStart('');
+      setMatchupFilterCustomEnd('');
+      setShowMatchupModal(true);
+    } catch (e: any) {
+      console.error("Failed to load NBA matchups for V4:", e);
+      setError(e.message || "Failed to load NBA matchups from database.");
+    }
+  };
+
   const handleToggleMatchup = (matchupId: string) => {
     setSelectedMatchupIds(prev => 
       prev.includes(matchupId) 
@@ -1431,8 +1458,8 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
   };
 
   const handleSaveMatchup = async (matchupId: string) => {
-    if (matchupModalSource === 'v3') {
-      setError('V3 matchups are sourced from the stats DB and cannot be edited here.');
+    if (matchupModalSource === 'v3' || matchupModalSource === 'v4') {
+      setError('V3/V4 matchups are sourced from the stats DB and cannot be edited here.');
       return;
     }
     try {
@@ -2605,6 +2632,448 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
     }
   };
 
+  const handleProcessHeatArticleV4 = async () => {
+    if (selectedMatchupIds.length === 0) {
+      setError("Please select at least one matchup.");
+      return;
+    }
+
+    setIsGeneratingHeatArticleV4(true);
+    setError(null);
+
+    const selectedMatchups = filteredMatchups.filter(m => selectedMatchupIds.includes(m.id));
+    const completed: string[] = [];
+    const failed: Array<{ matchup: string; error: string }> = [];
+
+    try {
+      for (let i = 0; i < selectedMatchups.length; i++) {
+        const matchup = selectedMatchups[i];
+        const matchupLabel = `${matchup.teamA} vs ${matchup.teamB}`;
+
+        setGenerationProgress({
+          current: i + 1,
+          total: selectedMatchups.length,
+          step: `Fetching MatchPackV4 for ${matchupLabel}...`,
+          matchup: matchupLabel
+        });
+
+        try {
+          // Normalize scheduledDate to YYYY-MM-DD format
+          let normalizedDate: string | null = null;
+          if (matchup.scheduledDate) {
+            // If it's already in YYYY-MM-DD format, use it
+            if (/^\d{4}-\d{2}-\d{2}$/.test(matchup.scheduledDate)) {
+              normalizedDate = matchup.scheduledDate;
+            } else {
+              // Try to parse and format it
+              try {
+                const date = new Date(matchup.scheduledDate);
+                if (!isNaN(date.getTime())) {
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                  const day = String(date.getDate()).padStart(2, '0');
+                  normalizedDate = `${year}-${month}-${day}`;
+                }
+              } catch (e) {
+                console.warn(`Could not parse scheduledDate: ${matchup.scheduledDate}`, e);
+              }
+            }
+          }
+          
+          // V4 only supports NBA - verify league
+          const league = matchup.league || '';
+          if (league.toUpperCase() !== 'NBA') {
+            throw new Error(`V4 only supports NBA matchups. Found: ${league}`);
+          }
+          
+          console.log(`[V4] Fetching MatchPackV4 for ${matchupLabel}...`);
+          
+          const { pack } = await apiClient.getMatchPackV4(
+            matchup.teamA,
+            matchup.teamB,
+            normalizedDate,
+            null
+          );
+
+          if (!pack) throw new Error('MatchPackV4 returned null pack');
+          if (pack.error) throw new Error(`${pack.error}: ${pack.message || 'MatchPack generation failed'}`);
+          
+          console.log(`[V4] MatchPackV4 received for ${matchupLabel}:`, {
+            hasFactDrop: !!pack.factDrop,
+            hasAdvancedHeatStats: !!pack.factDrop?.raw?.advancedHeatStats,
+            hasCharts: !!pack.factDrop?.charts,
+            hasMatchup: !!pack.matchup,
+            source: pack.source || 'unknown'
+          });
+
+          setGenerationProgress(prev => prev ? { ...prev, step: `Researching evidence + odds for ${matchupLabel}...` } : null);
+          const v2Research = await generateHeatCheckNarrativeV2(matchup);
+          const factPack = v2Research.fact_pack || {};
+          const evidenceBundleRaw = v2Research.evidence_bundle || {};
+
+          // Normalize evidence for V3 (adds quoteIds, timeline ids, relatedPlayers placeholder)
+          const evidenceForV3 = normalizeEvidenceForV3(evidenceBundleRaw);
+
+          setGenerationProgress(prev => prev ? { ...prev, step: `V3 Narrative Engine: building story for ${matchupLabel}...` } : null);
+          const v3Narrative = await generateHeatArticleV3Narrative(pack, evidenceForV3);
+
+          // Temperature Check (summary + small AI takeaways)
+          setGenerationProgress(prev => prev ? { ...prev, step: `Temperature Check: assembling ${matchupLabel}...` } : null);
+          const tempSummary = buildTemperatureCheckSummary(pack);
+          let tempAI: any = null;
+          try {
+            tempAI = await generateTemperatureCheckV3AI(pack, evidenceForV3);
+          } catch (e: any) {
+            console.warn('[V4 TemperatureCheck] AI takeaways failed, proceeding with summary only:', e?.message || e);
+            tempAI = { tempScore: 0, takeaways: [], risks: [], usedStatAnchors: [], usedQuoteIds: [], warnings: [`AI takeaways failed: ${e?.message || 'unknown error'}`] };
+          }
+          const tempRenderedMarkdown = buildTemperatureCheckRenderedMarkdown(pack, tempSummary, tempAI);
+
+          // Render markdown article from V3 narrative JSON
+          const v3Markdown = renderHeatArticleV3Markdown(v3Narrative, evidenceForV3);
+
+          // Map narrative cards to existing narrative rack structure
+          const cards = Array.isArray(v3Narrative?.narrativeCards) ? v3Narrative.narrativeCards : [];
+          const primaryAngleId = v3Narrative?.selectedAngles?.primary?.id || cards?.[0]?.id || 'N_1';
+          const candidateCards = cards.map((c: any) => ({
+            narrative_id: String(c.id || ''),
+            title: String(c.title || ''),
+            claim: String(c.claim || ''),
+            emotion_tags: Array.isArray(c.emotionTags) ? c.emotionTags : [],
+            total_score: Number.isFinite(c.score) ? c.score : 0,
+          }));
+
+          // Build narratives container
+          const narrativesForPost = {
+            candidate_cards: candidateCards,
+            selected: { primary_narrative_id: String(primaryAngleId) }
+          };
+
+          // Edge generation: use new 3-layer system for V3
+          setGenerationProgress(prev => prev ? { ...prev, step: `Finding Edge candidates for ${matchupLabel}...` } : null);
+          
+          let heatChecksEdge: HeatchecksEdgeV2 = {
+            game: { market: 'none', selection: 'none', line: null, price_american: null, book: null, confidence: 'low', receipts: ['', '', ''], risks: ['', ''], one_sentence_call: '' },
+            player_props: [],
+            no_edge_reason: null
+          };
+
+          try {
+            let oddsData: { gameMarkets: any; playerProps: any } | null = null;
+
+            // Determine sport based on league (NBA for V4)
+            const leagueUpper = league.toUpperCase();
+            let sport = 'basketball_nba';
+            if (leagueUpper === 'NBA') {
+              sport = 'basketball_nba';
+            }
+
+            if (articleApiSource === 'gemini') {
+              // Use Gemini to search for odds (no event ID needed)
+              setGenerationProgress(prev => prev ? { ...prev, step: `Searching for odds using Gemini AI for ${matchupLabel}...` } : null);
+              try {
+                oddsData = await searchOddsWithGemini(pack, matchup.teamA, matchup.teamB, matchup.league, matchup.scheduledDate || pack?.matchup?.gameDateEst || null);
+                console.log(`[V4 Edge] Fetched odds using Gemini for ${matchupLabel}`);
+              } catch (geminiError: any) {
+                console.warn(`[V4 Edge] Gemini odds search failed for ${matchupLabel}:`, geminiError.message || geminiError);
+                // Fallback to TheOddsAPI if Gemini fails
+                setGenerationProgress(prev => prev ? { ...prev, step: `Falling back to TheOddsAPI for ${matchupLabel}...` } : null);
+                
+                // Try to get event ID for fallback
+                let eventId: string | null = null;
+                if (factPack.odds?.event_id) {
+                  eventId = factPack.odds.event_id;
+                } else {
+                  try {
+                    // Normalize date to YYYY-MM-DD format for fallback
+                    let gameDateForFallback: string | null = null;
+                    const dateSource = matchup.scheduledDate || pack?.matchup?.gameDateEst || null;
+                    if (dateSource) {
+                      if (/^\d{4}-\d{2}-\d{2}$/.test(dateSource)) {
+                        gameDateForFallback = dateSource;
+                      } else {
+                        try {
+                          const date = new Date(dateSource);
+                          if (!isNaN(date.getTime())) {
+                            gameDateForFallback = date.toISOString().split('T')[0];
+                          }
+                        } catch (e) {
+                          console.warn(`Could not parse date for fallback OddsAPI: ${dateSource}`, e);
+                        }
+                      }
+                    }
+                    const eventInfo = await apiClient.findOddsEventId(
+                      matchup.teamA,
+                      matchup.teamB,
+                      gameDateForFallback,
+                      sport
+                    );
+                    eventId = eventInfo.eventId;
+                    console.log(`[V4 Edge] Found event ID for fallback: ${eventId} for ${matchupLabel}`);
+                  } catch (findError: any) {
+                    console.warn(`[V4 Edge] Could not find event ID for fallback:`, findError.message || findError);
+                  }
+                }
+
+                if (eventId) {
+                  oddsData = await apiClient.getOddsForGame(eventId, sport);
+                  console.log(`[V4 Edge] Fallback to TheOddsAPI successful for ${matchupLabel}`);
+                } else {
+                  heatChecksEdge.no_edge_reason = `Gemini odds search failed and could not find OddsAPI event ID for fallback. ${geminiError.message || 'Unknown error'}`;
+                  console.warn(`[V4 Edge] ${heatChecksEdge.no_edge_reason}`);
+                }
+              }
+            } else {
+              // Use TheOddsAPI - need to find event ID first
+              let eventId: string | null = null;
+              if (factPack.odds?.event_id) {
+                eventId = factPack.odds.event_id;
+              } else {
+                // Try to find event ID by querying OddsAPI with team names and date
+                setGenerationProgress(prev => prev ? { ...prev, step: `Finding OddsAPI event ID for ${matchupLabel}...` } : null);
+                try {
+                  // Normalize date to YYYY-MM-DD format
+                  let gameDateForOdds: string | null = null;
+                  if (matchup.scheduledDate) {
+                    if (/^\d{4}-\d{2}-\d{2}$/.test(matchup.scheduledDate)) {
+                      gameDateForOdds = matchup.scheduledDate;
+                    } else {
+                      try {
+                        const date = new Date(matchup.scheduledDate);
+                        if (!isNaN(date.getTime())) {
+                          gameDateForOdds = date.toISOString().split('T')[0];
+                        }
+                      } catch (e) {
+                        console.warn(`Could not parse scheduledDate for OddsAPI: ${matchup.scheduledDate}`, e);
+                      }
+                    }
+                  } else if (pack?.matchup?.gameDateEst) {
+                    // Normalize gameDateEst to YYYY-MM-DD
+                    try {
+                      const date = new Date(pack.matchup.gameDateEst);
+                      if (!isNaN(date.getTime())) {
+                        gameDateForOdds = date.toISOString().split('T')[0];
+                      }
+                    } catch (e) {
+                      console.warn(`Could not parse gameDateEst for OddsAPI: ${pack.matchup.gameDateEst}`, e);
+                    }
+                  }
+                  
+                  console.log(`[V4 Edge] Searching OddsAPI for: ${matchup.teamA} vs ${matchup.teamB} on ${gameDateForOdds || 'any date'} (sport: ${sport})`);
+                  const eventInfo = await apiClient.findOddsEventId(
+                    matchup.teamA,
+                    matchup.teamB,
+                    gameDateForOdds,
+                    sport
+                  );
+                  eventId = eventInfo.eventId;
+                  console.log(`[V4 Edge] Found event ID: ${eventId} for ${matchupLabel}`);
+                } catch (findError: any) {
+                  const errorMessage = findError.message || String(findError);
+                  const isQuotaError = errorMessage.includes('quota') || 
+                                      errorMessage.includes('OUT_OF_USAGE_CREDITS') ||
+                                      (findError as any)?.isQuotaError;
+                  
+                  if (isQuotaError) {
+                    console.warn(`[V4 Edge] TheOddsAPI quota exceeded for ${matchupLabel}. Article will be created without Edge recommendations.`);
+                    heatChecksEdge.no_edge_reason = `TheOddsAPI usage quota has been reached. Please upgrade your plan at https://the-odds-api.com or wait for quota reset.`;
+                  } else {
+                    console.warn(`[V4 Edge] Could not find event ID for ${matchupLabel}:`, errorMessage);
+                    heatChecksEdge.no_edge_reason = `Could not find OddsAPI event ID for ${matchupLabel}. Team names may not match OddsAPI format, or game may not be available yet.`;
+                  }
+                  // Continue without event ID - will set no_edge_reason above
+                }
+              }
+
+              if (eventId) {
+                setGenerationProgress(prev => prev ? { ...prev, step: `Fetching odds from TheOddsAPI for ${matchupLabel}...` } : null);
+                try {
+                  oddsData = await apiClient.getOddsForGame(eventId, sport);
+                  console.log(`[V4 Edge] Fetched odds using TheOddsAPI for ${matchupLabel}`);
+                } catch (oddsError: any) {
+                  const errorMessage = oddsError.message || String(oddsError);
+                  const isQuotaError = errorMessage.includes('quota') || 
+                                      errorMessage.includes('OUT_OF_USAGE_CREDITS') ||
+                                      (oddsError as any)?.isQuotaError;
+                  
+                  if (isQuotaError) {
+                    heatChecksEdge.no_edge_reason = `TheOddsAPI usage quota has been reached. Please upgrade your plan at https://the-odds-api.com or wait for quota reset.`;
+                    console.warn(`[V4 Edge] TheOddsAPI quota exceeded for ${matchupLabel}`);
+                  } else {
+                    heatChecksEdge.no_edge_reason = `Failed to fetch odds from TheOddsAPI for ${matchupLabel}: ${errorMessage}`;
+                    console.warn(`[V4 Edge] Failed to fetch odds:`, errorMessage);
+                  }
+                }
+              }
+              
+              // If no_edge_reason is set but oddsData is null, log it
+              if (heatChecksEdge.no_edge_reason && !oddsData) {
+                console.warn(`[V4 Edge] ${heatChecksEdge.no_edge_reason}`);
+              }
+            }
+
+            if (oddsData) {
+              // Layer 1: Edge Finder
+              setGenerationProgress(prev => prev ? { ...prev, step: `Scoring Edge candidates for ${matchupLabel}...` } : null);
+              const candidates = await findEdgeCandidates(
+                pack,
+                oddsData.gameMarkets,
+                oddsData.playerProps,
+                matchup.teamA,
+                matchup.teamB,
+                matchup.league
+              );
+
+              // Layer 2: Edge Validator
+              setGenerationProgress(prev => prev ? { ...prev, step: `Validating Edge candidates for ${matchupLabel}...` } : null);
+              const validated = await validateEdgeCandidates(candidates, pack);
+
+              // Layer 3: Edge Writer
+              setGenerationProgress(prev => prev ? { ...prev, step: `Writing HeatChecks Edge for ${matchupLabel}...` } : null);
+              heatChecksEdge = await generateHeatChecksEdgeV3(
+                validated,
+                pack,
+                matchup.teamA,
+                matchup.teamB,
+                matchup.league
+              );
+            }
+          } catch (edgeError: any) {
+            console.error(`[V4 Edge] Error generating Edge for ${matchupLabel}:`, edgeError);
+            // Don't fail completely - just set a reason
+            heatChecksEdge.no_edge_reason = `Edge generation failed: ${edgeError.message || 'Unknown error'}. Article will be created without Edge recommendations.`;
+          }
+
+          const headline = v3Narrative?.deepDive?.headline || `${matchup.teamA} vs ${matchup.teamB} — HeatChecks V4`;
+          const dek = v3Narrative?.narrativeThesis || `A story-first deep dive powered by local stats + evidence logs.`;
+
+          const newDraftPost = await apiClient.createDraft({
+            league: matchup.league,
+            teamA: matchup.teamA,
+            teamB: matchup.teamB,
+            matchupScheduledDate: matchup.scheduledDate,
+            storyType: 'heat_article_v3', // Same as V3 for compatibility
+            scanNarrative: v3Narrative?.selectedAngles?.primary?.title || dek,
+            websiteStory: {
+              formatStyle: "QUOTE_LEDE",
+              headline,
+              dek,
+              whyItMatters: [],
+              theBackstory: v3Markdown,
+              theData: [],
+              keyMomentsTimeline: [],
+              theReceipts: [],
+              pressurePoints: [],
+              whatToWatch: [],
+              edgeAngle: dek,
+              tags: ['HeatArticleV4', matchup.league],
+              sources: [],
+              seo: {
+                slug: `${matchup.teamA}-vs-${matchup.teamB}-matchpack-v4`.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+                metaTitle: `${headline} | HeatChecks`,
+                metaDescription: dek
+              },
+              image: '',
+              imageUrl: undefined
+            },
+            heatchecksEdge: heatChecksEdge,
+            heatCheckData: {
+              matchPackV4: pack, // Store as matchPackV4 to distinguish from V3
+              temperatureCheck: { summary: tempSummary, ai: tempAI, renderedMarkdown: tempRenderedMarkdown },
+              v3Narrative,
+              narratives: narrativesForPost,
+              article: { long_form_markdown: v3Markdown, long_form_markdown_original: v3Markdown },
+              // store evidence + odds for template + edge
+              evidence_bundle: {
+                sources: evidenceForV3.sources.map(s => ({
+                  source_id: s.sourceId,
+                  title: s.title || '',
+                  publisher: s.publisher || '',
+                  url: s.url || '',
+                  published_utc: s.publishedUtc || '',
+                  reliability_tier: s.reliabilityTier || ''
+                })),
+                quotes: evidenceForV3.quotes.map(q => ({
+                  quote_id: q.quoteId,
+                  quote: q.quote,
+                  speaker: q.speaker || '',
+                  team: q.team || '',
+                  source_id: q.sourceId || '',
+                  context: ''
+                })),
+                timeline_events: evidenceForV3.timeline.map(t => ({
+                  event_id: t.eventId,
+                  event_type: 'other',
+                  date_utc: t.dateUtc || '',
+                  summary: t.summary,
+                  source_id: ''
+                }))
+              },
+              fact_pack: factPack
+            }
+          });
+
+          completed.push(matchupLabel);
+          console.log(`✅ [${matchupLabel}] [${i + 1}/${selectedMatchups.length}] V4 MatchPack draft created: ${newDraftPost.id}`);
+          setGenerationProgress(prev => prev ? { ...prev, step: `✅ Completed ${i + 1}/${selectedMatchups.length}: ${matchupLabel}` } : null);
+        } catch (articleError: any) {
+          const errorMessage = articleError.message || 'Unknown error';
+          failed.push({ matchup: matchupLabel, error: errorMessage });
+          console.error(`❌ [${matchupLabel}] [${i + 1}/${selectedMatchups.length}] Failed to generate V4 MatchPack draft:`, articleError);
+          setGenerationProgress(prev => prev ? { ...prev, step: `❌ Failed ${i + 1}/${selectedMatchups.length}: ${matchupLabel} - ${errorMessage}` } : null);
+          continue;
+        }
+      }
+
+      setGenerationProgress({
+        current: selectedMatchups.length,
+        total: selectedMatchups.length,
+        step: completed.length === selectedMatchups.length
+          ? `✅ All ${completed.length} V4 pack(s) created successfully!`
+          : `Completed ${completed.length}/${selectedMatchups.length} V4 pack(s). ${failed.length} failed.`,
+        matchup: ''
+      });
+
+      // Log final summary
+      console.log('=== HEAT ARTICLE V4 GENERATION SUMMARY ===');
+      console.log(`Total matchups: ${selectedMatchups.length}`);
+      console.log(`✅ Completed: ${completed.length}`);
+      completed.forEach((matchup, idx) => {
+        console.log(`  ${idx + 1}. ${matchup}`);
+      });
+      if (failed.length > 0) {
+        console.log(`❌ Failed: ${failed.length}`);
+        failed.forEach((failure, idx) => {
+          console.log(`  ${idx + 1}. ${failure.matchup}: ${failure.error}`);
+        });
+      }
+      console.log('========================================');
+
+      // Wait a moment to show completion message, then close modal
+      setTimeout(() => {
+        setGenerationProgress(null);
+        setShowMatchupModal(false);
+        setSelectedMatchupIds([]);
+        
+        // Show success/error message
+        if (completed.length === selectedMatchups.length) {
+          setError(null); // Clear any previous errors
+          console.log('All V4 articles generated successfully. Access them in the Content Feed tab.');
+        } else {
+          setError(`Generated ${completed.length} of ${selectedMatchups.length} V4 articles. ${failed.length} failed. Check console for details.`);
+        }
+      }, 2000); // 2 second delay to show completion message
+      
+    } catch (e: any) {
+      console.error("Fatal error in V4 heat article generation:", e);
+      setError(e.message || "V4 Article generation failed. Check console for details.");
+      setGenerationProgress(null);
+      // Keep modal open on error so user can see the error
+    } finally {
+      setIsGeneratingHeatArticleV4(false);
+    }
+  };
+
   const handleGenerateDFSArticle = async (file: File) => {
     setIsGeneratingDFSArticle(true);
     setError(null);
@@ -3034,14 +3503,17 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
             <button className="scan-button" onClick={fetchNarratives} disabled={isLoading}>{isLoading ? 'Scanning...' : 'Find Revenge Narratives'}</button>
             <button className="scan-button" onClick={handleImportMatchups} disabled={isLoading}>Import Matchups</button>
-            <button className="scan-button" onClick={handleGenerateArticle} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3}>
+            <button className="scan-button" onClick={handleGenerateArticle} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3 || isGeneratingHeatArticleV4}>
                 {isGeneratingHeatArticle ? 'Generating...' : 'Heat Article Generator'}
             </button>
-            <button className="scan-button" onClick={handleGenerateArticleV2} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3}>
+            <button className="scan-button" onClick={handleGenerateArticleV2} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3 || isGeneratingHeatArticleV4}>
                 {isGeneratingHeatArticleV2 ? 'Generating...' : 'Heat Article v2'}
             </button>
-            <button className="scan-button" onClick={handleGenerateArticleV3} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3}>
+            <button className="scan-button" onClick={handleGenerateArticleV3} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3 || isGeneratingHeatArticleV4}>
                 {isGeneratingHeatArticleV3 ? 'Generating...' : 'Heat Article v3 (MatchPack)'}
+            </button>
+            <button className="scan-button" onClick={handleGenerateArticleV4} disabled={isLoading || isGeneratingHeatArticle || isGeneratingHeatArticleV2 || isGeneratingHeatArticleV3 || isGeneratingHeatArticleV4}>
+                {isGeneratingHeatArticleV4 ? 'Generating...' : 'Heat Article v4 (MatchPack V4)'}
             </button>
             <button className="scan-button" onClick={() => setShowDFSModal(true)} disabled={isLoading || isGeneratingDFSArticle}>
                 DFS Article Generator
@@ -3567,6 +4039,16 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
                         >
                             {isGeneratingHeatArticleV3 ? 'Generating V3...' : `Generate ${selectedMatchupIds.length} V3 Pack(s)`}
                         </button>
+                        {matchupModalSource === 'v4' && (
+                            <button
+                                className="action-button"
+                                onClick={handleProcessHeatArticleV4}
+                                disabled={isGeneratingAnyHeatArticle || selectedMatchupIds.length === 0}
+                                style={{ background: '#ff6b35', marginLeft: '0.5rem' }}
+                            >
+                                {isGeneratingHeatArticleV4 ? 'Generating V4...' : `Generate ${selectedMatchupIds.length} V4 Pack(s)`}
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -6501,8 +6983,22 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
     const [isRegeneratingEdge, setIsRegeneratingEdge] = useState(false);
     const [edgeApiSource, setEdgeApiSource] = useState<'theoddsapi' | 'gemini'>('theoddsapi');
 
+    // V4 state variables
+    const [v4NarrativeJson, setV4NarrativeJson] = useState<string>('');
+    const [v4TempAiJson, setV4TempAiJson] = useState<string>('');
+    const [v4EvidenceJson, setV4EvidenceJson] = useState<string>('');
+    const [v4AdvancedHeatStatsJson, setV4AdvancedHeatStatsJson] = useState<string>('');
+    const [showV4Advanced, setShowV4Advanced] = useState<boolean>(false);
+    const v4ChartInstancesRef = useRef<any[]>([]);
+
     const v3ChartsPayload: any = (editedPost as any)?.storyType === 'heat_article_v3'
         ? (editedPost as any)?.heatCheckData?.matchPackV3?.factDrop?.charts
+        : null;
+
+    // V4 detection: check for matchPackV4 in heatCheckData
+    const isV4Article = !!(editedPost as any)?.heatCheckData?.matchPackV4;
+    const v4ChartsPayload: any = isV4Article
+        ? (editedPost as any)?.heatCheckData?.matchPackV4?.factDrop?.charts
         : null;
 
     const v3ChartsKey = useMemo(() => {
@@ -6537,6 +7033,20 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
                 setV3TempAiJson('');
                 setV3EvidenceJson('');
             }
+
+            // Initialize V4 JSON editors (check for matchPackV4)
+            const hc: any = (post as any).heatCheckData || {};
+            if (hc.matchPackV4) {
+                setV4NarrativeJson(JSON.stringify(hc.v3Narrative || {}, null, 2));
+                setV4TempAiJson(JSON.stringify(hc.temperatureCheck?.ai || {}, null, 2));
+                setV4EvidenceJson(JSON.stringify(hc.evidence_bundle || hc.evidenceBundle || {}, null, 2));
+                setV4AdvancedHeatStatsJson(JSON.stringify(hc.matchPackV4?.factDrop?.raw?.advancedHeatStats || {}, null, 2));
+            } else {
+                setV4NarrativeJson('');
+                setV4TempAiJson('');
+                setV4EvidenceJson('');
+                setV4AdvancedHeatStatsJson('');
+            }
             
             // Load available images dynamically from backend
             apiClient.getImages()
@@ -6556,6 +7066,10 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
             setV3NarrativeJson('');
             setV3TempAiJson('');
             setV3EvidenceJson('');
+            setV4NarrativeJson('');
+            setV4TempAiJson('');
+            setV4EvidenceJson('');
+            setV4AdvancedHeatStatsJson('');
         }
     }, [post]);
 
@@ -6801,6 +7315,242 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
         };
     }, [editedPost?.id, v3ChartsKey]);
 
+    // V4 charts preview (Chart.js canvas) in the editor - same logic as V3 but using matchPackV4
+    useEffect(() => {
+        // cleanup previous charts
+        try {
+            for (const c of v4ChartInstancesRef.current) {
+                try { c?.destroy?.(); } catch {}
+            }
+        } finally {
+            v4ChartInstancesRef.current = [];
+        }
+
+        if (!editedPost || !isV4Article) return;
+        const charts: any = v4ChartsPayload;
+        if (!charts) return;
+
+        const idSuffix = editedPost.id;
+        const momentumCanvasId = `v4-editor-chart-momentum-${idSuffix}`;
+        const starLoadCanvasId = `v4-editor-chart-starload-${idSuffix}`;
+        const pressureCanvasId = `v4-editor-chart-pressure-${idSuffix}`;
+        const volatilityCanvasId = `v4-editor-chart-volatility-${idSuffix}`;
+
+        const padFront = (arr: any[], len: number) => {
+            const a = Array.isArray(arr) ? arr.slice() : [];
+            while (a.length < len) a.unshift(null);
+            return a;
+        };
+        const buildLabels = (len: number) => Array.from({ length: len }, (_, i) => `G${i + 1}`);
+        const colorForVol = (v: any) => {
+            if (typeof v !== 'number' || !Number.isFinite(v)) return 'rgba(255,255,255,0.25)';
+            return v >= 0 ? 'rgba(255,26,26,0.85)' : 'rgba(255,230,109,0.80)';
+        };
+
+        const commonOptions: any = {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: { duration: 0 },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(0,0,0,0.92)',
+                    borderColor: 'rgba(0,255,65,0.25)',
+                    borderWidth: 1,
+                    titleColor: 'rgba(255,255,255,0.92)',
+                    bodyColor: 'rgba(255,255,255,0.85)',
+                },
+            },
+            scales: {
+                x: {
+                    ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } },
+                    grid: { color: 'rgba(255,255,255,0.08)' },
+                },
+                y: {
+                    ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } },
+                    grid: {
+                        color: (ctx: any) =>
+                            ctx?.tick?.value === 0 ? 'rgba(0,255,65,0.25)' : 'rgba(255,255,255,0.08)',
+                    },
+                },
+            },
+        };
+
+        // 1) Momentum line
+        try {
+            const m = charts?.momentumLine;
+            if (m?.series) {
+                const a = m?.series?.A?.margins || m?.series?.A?.xgDiff || [];
+                const b = m?.series?.B?.margins || m?.series?.B?.xgDiff || [];
+                const aLabel = m?.series?.A?.label || 'A';
+                const bLabel = m?.series?.B?.label || 'B';
+                const len = Math.max(a.length, b.length, 1);
+
+                const el = document.getElementById(momentumCanvasId) as HTMLCanvasElement | null;
+                if (el && (a.length > 0 || b.length > 0)) {
+                    const chart = new Chart(el, {
+                        type: 'line',
+                        data: {
+                            labels: buildLabels(len),
+                            datasets: [
+                                { label: aLabel, data: padFront(a, len), borderColor: 'rgba(255,26,26,0.95)', backgroundColor: 'rgba(255,26,26,0.15)', tension: 0.25, pointRadius: 0, borderWidth: 2 },
+                                { label: bLabel, data: padFront(b, len), borderColor: 'rgba(255,230,109,0.95)', backgroundColor: 'rgba(255,230,109,0.12)', tension: 0.25, pointRadius: 0, borderWidth: 2 },
+                            ],
+                        },
+                        options: commonOptions,
+                    });
+                    v4ChartInstancesRef.current.push(chart);
+                }
+            }
+        } catch {}
+
+        // 2) Star load
+        try {
+            const s = charts?.starLoad;
+            const players: any[] = Array.isArray(s?.players) ? s.players : [];
+            if (players.length > 0) {
+                const labels = players.map(p => {
+                    const teamAbbr = p?.teamAbbr || p?.teamName || '';
+                    const playerName = p?.playerName || '';
+                    return `${String(teamAbbr).trim()} ${String(playerName).trim()}`.trim();
+                });
+                const usg = players.map(p => {
+                    const val = p?.USG10 ?? p?.xG5;
+                    return (typeof val === 'number' && Number.isFinite(val)) ? val : null;
+                });
+                const min = players.map(p => {
+                    const val = p?.MIN10 ?? p?.MIN5 ?? p?.min5;
+                    return (typeof val === 'number' && Number.isFinite(val)) ? val : null;
+                });
+
+                const el = document.getElementById(starLoadCanvasId) as HTMLCanvasElement | null;
+                if (el && (usg.some(v => v !== null) || min.some(v => v !== null))) {
+                    const chart = new Chart(el, {
+                        type: 'bar',
+                        data: {
+                            labels,
+                            datasets: [
+                                { label: 'USG10/xG5', data: usg, yAxisID: 'yUSG', backgroundColor: 'rgba(255,26,26,0.80)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 },
+                                { label: 'MIN10/min5', data: min, yAxisID: 'yMIN', backgroundColor: 'rgba(255,230,109,0.80)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1 },
+                            ],
+                        },
+                        options: {
+                            ...commonOptions,
+                            scales: {
+                                ...commonOptions.scales,
+                                yUSG: { position: 'left', ticks: { color: 'rgba(255,26,26,0.70)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                                yMIN: { position: 'right', ticks: { color: 'rgba(255,230,109,0.70)', font: { family: 'Courier New', size: 10 } }, grid: { display: false } },
+                            },
+                        } as any,
+                    });
+                    v4ChartInstancesRef.current.push(chart);
+                }
+            }
+        } catch {}
+
+        // 3) Pressure bar (close-game record) - V3 structure: { A: { wins, losses, label }, B: { wins, losses, label } }
+        try {
+            const p = charts?.pressureBar;
+            if (p?.A && p?.B) {
+                const labels = [String(p?.A?.label || 'A'), String(p?.B?.label || 'B')];
+                const wins = [Number(p?.A?.wins || 0), Number(p?.B?.wins || 0)];
+                const losses = [Number(p?.A?.losses || 0), Number(p?.B?.losses || 0)];
+
+                const el = document.getElementById(pressureCanvasId) as HTMLCanvasElement | null;
+                if (el) {
+                    const chart = new Chart(el, {
+                        type: 'bar',
+                        data: {
+                            labels,
+                            datasets: [
+                                { label: 'Wins', data: wins, backgroundColor: 'rgba(255,26,26,0.78)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1, stack: 's' },
+                                { label: 'Losses', data: losses, backgroundColor: 'rgba(255,255,255,0.18)', borderColor: 'rgba(0,0,0,0.65)', borderWidth: 1, stack: 's' },
+                            ],
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: { duration: 0 },
+                            plugins: { legend: { display: false }, tooltip: commonOptions.plugins.tooltip },
+                            scales: {
+                                x: { stacked: true, beginAtZero: true, ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                                y: { stacked: true, ticks: { color: 'rgba(255,255,255,0.70)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                            },
+                        } as any,
+                    });
+                    v4ChartInstancesRef.current.push(chart);
+                }
+            }
+        } catch {}
+
+        // 4) Role volatility (ΔUSG3 vs season for NBA, xGChange for soccer)
+        try {
+            const rv = charts?.roleVolatility;
+            const rvPlayers: any[] = Array.isArray(rv?.players) ? rv.players : [];
+            if (rvPlayers.length > 0) {
+                // Handle both NBA (teamAbbr) and soccer (teamName) structures
+                const labels = rvPlayers.map(p => {
+                    const teamAbbr = p?.teamAbbr || p?.teamName || '';
+                    const playerName = p?.playerName || '';
+                    return `${String(teamAbbr).trim()} ${String(playerName).trim()}`.trim();
+                });
+                // Handle both NBA (deltaUSG3vsSeason) and soccer (xGChange) field names
+                const vals = rvPlayers.map(p => {
+                    const v = p?.deltaUSG3vsSeason ?? p?.xGChange;
+                    return (typeof v === 'number' && Number.isFinite(v)) ? v : 0;
+                });
+                const maxAbs = Math.max(1, ...vals.map(v => Math.abs(Number(v) || 0)));
+
+                const el = document.getElementById(volatilityCanvasId) as HTMLCanvasElement | null;
+                if (el && vals.some(v => v !== 0)) {
+                    const chart = new Chart(el, {
+                        type: 'bar',
+                        data: {
+                            labels,
+                            datasets: [
+                                {
+                                    label: 'ΔUSG3/ΔxG',
+                                    data: vals,
+                                    backgroundColor: rvPlayers.map(p => {
+                                        const val = p?.deltaUSG3vsSeason ?? p?.xGChange ?? 0;
+                                        return colorForVol(val);
+                                    }),
+                                    borderColor: 'rgba(0,0,0,0.65)',
+                                    borderWidth: 1,
+                                },
+                            ],
+                        },
+                        options: {
+                            indexAxis: 'y',
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: { duration: 0 },
+                            plugins: { legend: { display: false }, tooltip: commonOptions.plugins.tooltip },
+                            scales: {
+                                x: {
+                                    suggestedMin: -maxAbs,
+                                    suggestedMax: maxAbs,
+                                    ticks: { color: 'rgba(255,255,255,0.65)', font: { family: 'Courier New', size: 10 } },
+                                    grid: { color: (ctx: any) => ctx?.tick?.value === 0 ? 'rgba(0,255,65,0.25)' : 'rgba(255,255,255,0.08)' },
+                                },
+                                y: { ticks: { color: 'rgba(255,255,255,0.70)', font: { family: 'Courier New', size: 10 } }, grid: { color: 'rgba(255,255,255,0.08)' } },
+                            },
+                        } as any,
+                    });
+                    v4ChartInstancesRef.current.push(chart);
+                }
+            }
+        } catch {}
+
+        return () => {
+            for (const c of v4ChartInstancesRef.current) {
+                try { c?.destroy?.(); } catch {}
+            }
+            v4ChartInstancesRef.current = [];
+        };
+    }, [editedPost?.id, isV4Article, v4ChartsPayload]);
+
     const handleFieldChange = (fieldPath: string, value: any) => {
         if (!editedPost) return;
         setEditedPost(prev => {
@@ -6836,12 +7586,14 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
             const teamB = editedPost.teamB;
             const league = editedPost.league;
             
-            // Get matchPackV3 from heatCheckData
+            // Get matchPack from heatCheckData (V4 extends V3, so use V4 if available, otherwise V3)
             const heatCheckData = (editedPost as any).heatCheckData || {};
+            const matchPackV4 = heatCheckData.matchPackV4;
             const matchPackV3 = heatCheckData.matchPackV3;
+            const matchPack = matchPackV4 || matchPackV3; // V4 extends V3, so V4 has all V3 data
             
-            if (!matchPackV3) {
-                alert('MatchPackV3 data not found. Cannot regenerate edge without match data.');
+            if (!matchPack) {
+                alert('MatchPack data not found. Cannot regenerate edge without match data.');
                 setIsRegeneratingEdge(false);
                 return;
             }
@@ -6873,8 +7625,8 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
 
             if (edgeApiSource === 'gemini') {
                 // Use Gemini to search for odds
-                const scheduledDate = editedPost.matchupScheduledDate || matchPackV3?.matchup?.gameDateEst || null;
-                oddsData = await searchOddsWithGemini(matchPackV3, teamA, teamB, league, scheduledDate);
+                const scheduledDate = editedPost.matchupScheduledDate || matchPack?.matchup?.gameDateEst || null;
+                oddsData = await searchOddsWithGemini(matchPack, teamA, teamB, league, scheduledDate);
                 console.log('[Editor] Fetched odds using Gemini');
             } else {
                 // Use TheOddsAPI
@@ -6886,7 +7638,7 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
                 } else {
                     // Try to find event ID by querying OddsAPI
                     try {
-                        const scheduledDate = editedPost.matchupScheduledDate || matchPackV3?.matchup?.gameDateEst || null;
+                        const scheduledDate = editedPost.matchupScheduledDate || matchPack?.matchup?.gameDateEst || null;
                         console.log(`[Editor] Searching OddsAPI for: ${teamA} vs ${teamB} (sport: ${sport})`);
                         const eventInfo = await apiClient.findOddsEventId(
                             teamA,
@@ -6917,7 +7669,7 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
             
             // Layer 1: Edge Finder
             const candidates = await findEdgeCandidates(
-                matchPackV3,
+                matchPack,
                 oddsData.gameMarkets,
                 oddsData.playerProps,
                 teamA,
@@ -6926,12 +7678,12 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
             );
 
             // Layer 2: Edge Validator
-            const validated = await validateEdgeCandidates(candidates, matchPackV3);
+            const validated = await validateEdgeCandidates(candidates, matchPack);
 
             // Layer 3: Edge Writer
             const newEdge = await generateHeatChecksEdgeV3(
                 validated,
-                matchPackV3,
+                matchPack,
                 teamA,
                 teamB,
                 league
@@ -6966,8 +7718,42 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
                 status: newStatus
             };
 
+            // V4: apply JSON editors if present (check for matchPackV4)
+            const hcData: any = postToSave.heatCheckData || {};
+            if (hcData.matchPackV4) {
+                postToSave.heatCheckData = postToSave.heatCheckData || {};
+
+                if (showV4Advanced) {
+                    try {
+                        postToSave.heatCheckData.v3Narrative = v4NarrativeJson.trim() ? JSON.parse(v4NarrativeJson) : postToSave.heatCheckData.v3Narrative;
+                    } catch (e: any) {
+                        throw new Error(`V4 Narrative JSON invalid: ${e.message}`);
+                    }
+                    try {
+                        postToSave.heatCheckData.temperatureCheck = postToSave.heatCheckData.temperatureCheck || {};
+                        postToSave.heatCheckData.temperatureCheck.ai = v4TempAiJson.trim() ? JSON.parse(v4TempAiJson) : postToSave.heatCheckData.temperatureCheck.ai;
+                    } catch (e: any) {
+                        throw new Error(`V4 Temperature Check AI JSON invalid: ${e.message}`);
+                    }
+                    try {
+                        postToSave.heatCheckData.evidence_bundle = v4EvidenceJson.trim() ? JSON.parse(v4EvidenceJson) : postToSave.heatCheckData.evidence_bundle;
+                    } catch (e: any) {
+                        throw new Error(`V4 Evidence Bundle JSON invalid: ${e.message}`);
+                    }
+                    try {
+                        // Save advancedHeatStats
+                        if (!postToSave.heatCheckData.matchPackV4) postToSave.heatCheckData.matchPackV4 = {};
+                        if (!postToSave.heatCheckData.matchPackV4.factDrop) postToSave.heatCheckData.matchPackV4.factDrop = {};
+                        if (!postToSave.heatCheckData.matchPackV4.factDrop.raw) postToSave.heatCheckData.matchPackV4.factDrop.raw = {};
+                        postToSave.heatCheckData.matchPackV4.factDrop.raw.advancedHeatStats = v4AdvancedHeatStatsJson.trim() ? JSON.parse(v4AdvancedHeatStatsJson) : postToSave.heatCheckData.matchPackV4.factDrop.raw.advancedHeatStats;
+                    } catch (e: any) {
+                        throw new Error(`V4 Advanced Heat Stats JSON invalid: ${e.message}`);
+                    }
+                }
+            }
+
             // V3: apply JSON editors if present
-            if (postToSave.storyType === 'heat_article_v3') {
+            if (postToSave.storyType === 'heat_article_v3' && !hcData.matchPackV4) {
                 postToSave.heatCheckData = postToSave.heatCheckData || {};
 
                 if (showV3Advanced) {
@@ -7073,6 +7859,53 @@ const EditorModal: React.FC<{ post: HeatcheckPost | null; onClose: () => void; o
             alert('Applied V3 Narrative JSON → Article markdown + Narrative.log cards. Remember to Save Draft.');
         } catch (e: any) {
             alert(`Failed to apply V3 narrative: ${e.message || 'Unknown error'}`);
+        }
+    };
+
+    const handleApplyV4NarrativeToArticle = () => {
+        if (!editedPost) return;
+        const hc: any = (editedPost as any).heatCheckData || {};
+        if (!hc.matchPackV4) return;
+        try {
+            const v3 = showV4Advanced ? (v4NarrativeJson.trim() ? JSON.parse(v4NarrativeJson) : hc.v3Narrative) : hc.v3Narrative;
+            if (!v3) throw new Error('No v3Narrative available');
+
+            // Extract evidence bundle for speaker lookup
+            const evidenceBundle = hc.evidence_bundle || hc.evidenceBundle || {};
+            const evidenceForV3 = normalizeEvidenceForV3(evidenceBundle);
+            const markdown = renderHeatArticleV3Markdown(v3, evidenceForV3);
+
+            // Map narrative cards into Narrative.log structure
+            const cards = Array.isArray(v3?.narrativeCards) ? v3.narrativeCards : [];
+            const primaryAngleId = v3?.selectedAngles?.primary?.id || cards?.[0]?.id || 'N_1';
+            const candidateCards = cards.map((c: any) => ({
+                narrative_id: String(c.id || ''),
+                title: String(c.title || ''),
+                claim: String(c.claim || ''),
+                emotion_tags: Array.isArray(c.emotionTags) ? c.emotionTags : [],
+                total_score: Number.isFinite(c.score) ? c.score : 0,
+            }));
+
+            setEditedPost(prev => {
+                if (!prev) return prev;
+                const newPost: any = JSON.parse(JSON.stringify(prev));
+                newPost.websiteStory = newPost.websiteStory || {};
+                newPost.websiteStory.theBackstory = markdown;
+
+                newPost.heatCheckData = newPost.heatCheckData || {};
+                newPost.heatCheckData.article = newPost.heatCheckData.article || {};
+                newPost.heatCheckData.article.long_form_markdown = markdown;
+                newPost.heatCheckData.v3Narrative = v3;
+                newPost.heatCheckData.narratives = {
+                    candidate_cards: candidateCards,
+                    selected: { primary_narrative_id: String(primaryAngleId) }
+                };
+                return newPost;
+            });
+
+            alert('Applied V4 Narrative JSON → Article markdown + Narrative.log cards. Remember to Save Draft.');
+        } catch (e: any) {
+            alert(`Failed to apply V4 narrative: ${e.message || 'Unknown error'}`);
         }
     };
 
@@ -7688,6 +8521,204 @@ Return ONLY the new player section in markdown format, exactly matching the stru
                                             </div>
                                             <div style={{ color: '#999', fontSize: '0.8rem', marginTop: '0.5rem' }}>
                                                 Tip: After editing V3 Narrative JSON, click <span style={{ color: '#ffe66d', fontWeight: 'bold' }}>Apply V3 Narrative JSON → Article</span> to sync markdown + Narrative.log.
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* V4 Editor Section */}
+                            {isV4Article && (
+                                <div style={{ marginBottom: '1.5rem', padding: '1rem', background: '#222', border: '1px solid rgba(255, 107, 53, 0.35)', borderRadius: '6px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                                        <div>
+                                            <div style={{ fontWeight: 'bold', color: '#ff6b35' }}>HeatArticleV4 Editor</div>
+                                            <div style={{ color: '#aaa', fontSize: '0.85rem' }}>Edit Temperature Check + (optional) raw V4 JSON before publishing.</div>
+                                        </div>
+                                        <button
+                                            onClick={() => setShowV4Advanced(v => !v)}
+                                            style={{ padding: '0.4rem 0.75rem', background: showV4Advanced ? '#444' : '#333', color: '#fff', border: '1px solid #555', borderRadius: '4px', cursor: 'pointer' }}
+                                        >
+                                            {showV4Advanced ? 'Hide Advanced' : 'Show Advanced'}
+                                        </button>
+                                    </div>
+
+                                    <div style={{ marginTop: '1rem' }}>
+                                        <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>Temperature Check (Published Text)</div>
+                                        <div style={{ color: '#aaa', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                                            This is the exact text that will display in the Temperature Check section on the published page.
+                                        </div>
+                                        <textarea
+                                            value={String(((editedPost as any).heatCheckData?.temperatureCheck?.renderedMarkdown) || '')}
+                                            onChange={(e) => handleFieldChange('heatCheckData.temperatureCheck.renderedMarkdown', e.target.value)}
+                                            placeholder="Write the Temperature Check exactly how you want it to appear..."
+                                            style={{ width: '100%', minHeight: '160px', padding: '0.75rem', background: '#111', border: '1px solid rgba(255, 107, 53, 0.35)', color: '#fff', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.9rem', lineHeight: '1.5' }}
+                                        />
+
+                                        <div style={{ marginTop: '0.75rem' }}>
+                                            <div style={{ fontWeight: 'bold', marginBottom: '0.4rem' }}>Preview (Published)</div>
+                                            <div
+                                                style={{ padding: '0.75rem', background: '#0d0d0d', border: '1px solid #333', borderRadius: '4px' }}
+                                                dangerouslySetInnerHTML={{
+                                                    __html: (() => {
+                                                        const raw = String(((editedPost as any).heatCheckData?.temperatureCheck?.renderedMarkdown) || '');
+                                                        const looksHtml = /<\s*(div|section|span|canvas|table|p|ul|ol|h[1-6]|br)\b/i.test(raw);
+                                                        return looksHtml ? raw : markdownToHtml(raw);
+                                                    })()
+                                                }}
+                                            />
+                                        </div>
+
+                                        {(() => {
+                                            const charts: any = (editedPost as any).heatCheckData?.matchPackV4?.factDrop?.charts || null;
+                                            const hasCharts =
+                                                charts &&
+                                                (charts?.momentumLine || charts?.starLoad || charts?.pressureBar || charts?.roleVolatility);
+                                            if (!hasCharts) return null;
+                                            const idSuffix = editedPost.id;
+                                            return (
+                                                <div style={{ marginTop: '0.75rem' }}>
+                                                    <div style={{ fontWeight: 'bold', marginBottom: '0.4rem' }}>Charts Preview (Canvas)</div>
+                                                    <div style={{ color: '#aaa', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                                                        These charts render from MatchPackV4 data (canvas). SEO still comes from the surrounding written analysis.
+                                                    </div>
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                                                        <div style={{ padding: '0.75rem', background: '#0d0d0d', border: '1px solid #333', borderRadius: '6px' }}>
+                                                            <div style={{ color: '#ddd', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Rolling Margin Trend</div>
+                                                            {(() => {
+                                                                const m = (editedPost as any).heatCheckData?.matchPackV4?.factDrop?.charts?.momentumLine;
+                                                                const aLabel = String(m?.series?.A?.label || (editedPost as any).heatCheckData?.matchPackV4?.matchup?.teamAAbbr || 'A');
+                                                                const bLabel = String(m?.series?.B?.label || (editedPost as any).heatCheckData?.matchPackV4?.matchup?.teamBAbbr || 'B');
+                                                                return (
+                                                                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap', fontFamily: 'Courier New, monospace', fontSize: '0.75rem', color: 'rgba(255,255,255,0.72)', marginBottom: '0.5rem' }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                                            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: 'rgba(255,26,26,0.95)', boxShadow: '0 0 10px rgba(255,26,26,0.18)' }} />
+                                                                            <span>{aLabel}</span>
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                                                                            <span style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 999, background: 'rgba(255,230,109,0.95)', boxShadow: '0 0 10px rgba(255,230,109,0.12)' }} />
+                                                                            <span>{bLabel}</span>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })()}
+                                                            <div style={{ height: 170 }}>
+                                                                <canvas id={`v4-editor-chart-momentum-${idSuffix}`} style={{ width: '100%', height: '100%' }} />
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ padding: '0.75rem', background: '#0d0d0d', border: '1px solid #333', borderRadius: '6px' }}>
+                                                            <div style={{ color: '#ddd', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Usage vs Minutes Stress</div>
+                                                            <div style={{ height: 200 }}>
+                                                                <canvas id={`v4-editor-chart-starload-${idSuffix}`} style={{ width: '100%', height: '100%' }} />
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ padding: '0.75rem', background: '#0d0d0d', border: '1px solid #333', borderRadius: '6px' }}>
+                                                            <div style={{ color: '#ddd', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Close-Game Record</div>
+                                                            <div style={{ height: 140 }}>
+                                                                <canvas id={`v4-editor-chart-pressure-${idSuffix}`} style={{ width: '100%', height: '100%' }} />
+                                                            </div>
+                                                        </div>
+                                                        <div style={{ padding: '0.75rem', background: '#0d0d0d', border: '1px solid #333', borderRadius: '6px' }}>
+                                                            <div style={{ color: '#ddd', fontSize: '0.85rem', marginBottom: '0.5rem' }}>Role Volatility (ΔUSG3 vs Season)</div>
+                                                            <div style={{ height: 220 }}>
+                                                                <canvas id={`v4-editor-chart-volatility-${idSuffix}`} style={{ width: '100%', height: '100%' }} />
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+
+                                        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.75rem' }}>
+                                            <button
+                                                onClick={handleApplyV4NarrativeToArticle}
+                                                style={{ padding: '0.5rem 0.75rem', background: '#ff6b35', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}
+                                            >
+                                                Apply V4 Narrative JSON → Article
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    {showV4Advanced && (
+                                        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #333' }}>
+                                            <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>Advanced (Raw JSON)</div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
+                                                <div style={{ padding: '0.75rem', background: '#151515', border: '1px solid #333', borderRadius: '4px' }}>
+                                                    <div style={{ fontWeight: 'bold', marginBottom: '0.5rem' }}>Temperature Check (Auto-build settings)</div>
+                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                                                        <div>
+                                                            <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Highlight comparison key</label>
+                                                            <input
+                                                                type="text"
+                                                                value={((editedPost as any).heatCheckData?.temperatureCheck?.summary?.highlightComparisonKey) || ''}
+                                                                onChange={(e) => handleFieldChange('heatCheckData.temperatureCheck.summary.highlightComparisonKey', e.target.value)}
+                                                                placeholder="e.g., margin10"
+                                                                style={{ width: '100%', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px' }}
+                                                            />
+                                                        </div>
+                                                        <div>
+                                                            <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Availability display override</label>
+                                                            <input
+                                                                type="text"
+                                                                value={((editedPost as any).heatCheckData?.temperatureCheck?.summary?.availabilityDisplayOverride) || ''}
+                                                                onChange={(e) => handleFieldChange('heatCheckData.temperatureCheck.summary.availabilityDisplayOverride', e.target.value)}
+                                                                placeholder="Optional: custom text to display"
+                                                                style={{ width: '100%', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px' }}
+                                                            />
+                                                        </div>
+                                                        <div style={{ gridColumn: '1 / -1' }}>
+                                                            <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Visible bullet keys (one per line)</label>
+                                                            <textarea
+                                                                value={Array.isArray((editedPost as any).heatCheckData?.temperatureCheck?.summary?.visibleBulletKeys) ? (editedPost as any).heatCheckData.temperatureCheck.summary.visibleBulletKeys.join('\\n') : ''}
+                                                                onChange={(e) => handleFieldChange('heatCheckData.temperatureCheck.summary.visibleBulletKeys', e.target.value.split('\\n').map(s => s.trim()).filter(Boolean))}
+                                                                style={{ width: '100%', minHeight: '80px', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontFamily: 'monospace' }}
+                                                            />
+                                                        </div>
+                                                        <div style={{ gridColumn: '1 / -1' }}>
+                                                            <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Priority players override (displayText, one per line)</label>
+                                                            <textarea
+                                                                value={Array.isArray((editedPost as any).heatCheckData?.temperatureCheck?.summary?.priorityPlayersOverride) ? (editedPost as any).heatCheckData.temperatureCheck.summary.priorityPlayersOverride.join('\\n') : ''}
+                                                                onChange={(e) => handleFieldChange('heatCheckData.temperatureCheck.summary.priorityPlayersOverride', e.target.value.split('\\n').map(s => s.trim()).filter(Boolean))}
+                                                                style={{ width: '100%', minHeight: '80px', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontFamily: 'monospace' }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>V4 Narrative JSON (editable)</label>
+                                                    <textarea
+                                                        value={v4NarrativeJson}
+                                                        onChange={(e) => setV4NarrativeJson(e.target.value)}
+                                                        style={{ width: '100%', minHeight: '180px', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Temperature Check AI JSON (editable)</label>
+                                                    <textarea
+                                                        value={v4TempAiJson}
+                                                        onChange={(e) => setV4TempAiJson(e.target.value)}
+                                                        style={{ width: '100%', minHeight: '140px', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Evidence Bundle JSON (editable)</label>
+                                                    <textarea
+                                                        value={v4EvidenceJson}
+                                                        onChange={(e) => setV4EvidenceJson(e.target.value)}
+                                                        style={{ width: '100%', minHeight: '140px', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label style={{ display: 'block', fontSize: '0.85rem', color: '#bbb', marginBottom: '0.25rem' }}>Advanced Heat Stats JSON (editable)</label>
+                                                    <textarea
+                                                        value={v4AdvancedHeatStatsJson}
+                                                        onChange={(e) => setV4AdvancedHeatStatsJson(e.target.value)}
+                                                        style={{ width: '100%', minHeight: '140px', padding: '0.5rem', background: '#111', border: '1px solid #444', color: '#fff', borderRadius: '4px', fontFamily: 'monospace', fontSize: '0.85rem' }}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div style={{ color: '#999', fontSize: '0.8rem', marginTop: '0.5rem' }}>
+                                                Tip: After editing V4 Narrative JSON, click <span style={{ color: '#ff6b35', fontWeight: 'bold' }}>Apply V4 Narrative JSON → Article</span> to sync markdown + Narrative.log.
                                             </div>
                                         </div>
                                     )}

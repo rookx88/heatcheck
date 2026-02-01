@@ -54,6 +54,176 @@ async function fetchPublishedPosts() {
 }
 
 /**
+ * V4 Heat Score Calculation Helpers (3-Pillar System)
+ */
+function clamp(x, lo, hi) {
+    return Math.min(hi, Math.max(lo, x));
+}
+
+function scorePct(value, maxValue) {
+    if (maxValue <= 0) return 0;
+    return clamp(value / maxValue, 0, 1);
+}
+
+function calculateV4HeatScore(post) {
+    const heatCheckData = post.heatCheckData || {};
+    const matchPackV4 = heatCheckData.matchPackV4;
+    const matchPackV3 = heatCheckData.matchPackV3;
+    const narratives = heatCheckData.narratives || {};
+    const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
+    
+    // Get sections from V4 or V3
+    const sections = (matchPackV4 && matchPackV4.factDrop && matchPackV4.factDrop.sections) 
+        ? matchPackV4.factDrop.sections 
+        : ((matchPackV3 && matchPackV3.factDrop && matchPackV3.factDrop.sections) 
+            ? matchPackV3.factDrop.sections 
+            : []);
+    
+    // Get advancedHeatStats from V4
+    const advancedHeatStats = (matchPackV4 && matchPackV4.factDrop && matchPackV4.factDrop.raw && matchPackV4.factDrop.raw.advancedHeatStats)
+        ? matchPackV4.factDrop.raw.advancedHeatStats
+        : null;
+    
+    // Calculate Control Stress
+    const controlStress = (advancedHeatStats && advancedHeatStats.controlStress) || {};
+    let momentumDivergence = controlStress.momentumDivergence || 0;
+    let creationAsymmetry = controlStress.creationAsymmetry || 0;
+    let shotQualityMismatch = controlStress.shotQualityMismatch || 0;
+    
+    // V3 fallback for momentumDivergence
+    if (momentumDivergence === 0 && matchPackV3 && matchPackV3.factDrop && matchPackV3.factDrop.raw && matchPackV3.factDrop.raw.teamForm) {
+        const teamForm = matchPackV3.factDrop.raw.teamForm;
+        const margin3_A = (teamForm.A && teamForm.A.margin3) ? teamForm.A.margin3 : 0;
+        const margin10_A = (teamForm.A && teamForm.A.margin10) ? teamForm.A.margin10 : 0;
+        const margin3_B = (teamForm.B && teamForm.B.margin3) ? teamForm.B.margin3 : 0;
+        const margin10_B = (teamForm.B && teamForm.B.margin10) ? teamForm.B.margin10 : 0;
+        const momentumDelta_A = margin3_A - margin10_A;
+        const momentumDelta_B = margin3_B - margin10_B;
+        momentumDivergence = clamp(Math.abs(momentumDelta_A - momentumDelta_B) * 0.6, 0, 12);
+    }
+    
+    const controlStressRaw = scorePct(momentumDivergence, 12) * 45 + scorePct(creationAsymmetry, 10) * 30 + scorePct(shotQualityMismatch, 8) * 25;
+    const controlStressScore = clamp(Math.round(controlStressRaw), 0, 100);
+    
+    // Calculate Structural Instability
+    const structuralInstability = (advancedHeatStats && advancedHeatStats.structuralInstability) || {};
+    let rotationVolatility = structuralInstability.rotationVolatility || 0;
+    let availabilityImbalance = structuralInstability.availabilityImbalance || 0;
+    const scheduleStress = structuralInstability.scheduleStress || 0;
+    
+    // V3 fallback for availabilityImbalance
+    if (availabilityImbalance === 0 && matchPackV3 && matchPackV3.factDrop && matchPackV3.factDrop.raw && matchPackV3.factDrop.raw.availability) {
+        const availability = matchPackV3.factDrop.raw.availability;
+        const countA = (availability.majorAbsences && availability.majorAbsences.A && availability.majorAbsences.A.count) ? availability.majorAbsences.A.count : 0;
+        const countB = (availability.majorAbsences && availability.majorAbsences.B && availability.majorAbsences.B.count) ? availability.majorAbsences.B.count : 0;
+        const absDiff = Math.abs(countA - countB);
+        availabilityImbalance = clamp(absDiff * 0.7, 0, 7);
+    }
+    
+    const structuralRaw = scorePct(rotationVolatility, 8) * 45 + scorePct(availabilityImbalance, 7) * 35 + scorePct(scheduleStress, 5) * 20;
+    const structuralInstabilityScore = clamp(Math.round(structuralRaw), 0, 100);
+    
+    // Calculate Emotional Load
+    const revengeWatch = sections.find(function(s) { return s && s.title === 'REVENGE_WATCH'; });
+    const revengeItems = (revengeWatch && Array.isArray(revengeWatch.items)) ? revengeWatch.items : [];
+    const revengeCount = revengeItems.length;
+    let revengeScore = 0;
+    if (revengeCount === 0) revengeScore = 0;
+    else if (revengeCount === 1) revengeScore = 18;
+    else if (revengeCount === 2) revengeScore = 28;
+    else revengeScore = 35;
+    
+    const availabilityShock = sections.find(function(s) { return s && s.title === 'AVAILABILITY_SHOCK'; });
+    const shockItems = (availabilityShock && Array.isArray(availabilityShock.items)) ? availabilityShock.items : [];
+    const shockCount = shockItems.length;
+    let absDiff = 0;
+    if (matchPackV3 && matchPackV3.factDrop && matchPackV3.factDrop.raw && matchPackV3.factDrop.raw.availability) {
+        const availability = matchPackV3.factDrop.raw.availability;
+        const countA = (availability.majorAbsences && availability.majorAbsences.A && availability.majorAbsences.A.count) ? availability.majorAbsences.A.count : 0;
+        const countB = (availability.majorAbsences && availability.majorAbsences.B && availability.majorAbsences.B.count) ? availability.majorAbsences.B.count : 0;
+        absDiff = Math.abs(countA - countB);
+    }
+    let shockBase = 0;
+    if (shockCount === 0) shockBase = 0;
+    else if (shockCount === 1) shockBase = 14;
+    else if (shockCount === 2) shockBase = 22;
+    else shockBase = 28;
+    const imbalanceBonus = Math.min(2, absDiff);
+    const availabilityShockScore = Math.min(30, shockBase + imbalanceBonus);
+    
+    const vsOppHistory = sections.find(function(s) { return s && s.title === 'VS_OPP_HISTORY'; });
+    const histItems = (vsOppHistory && Array.isArray(vsOppHistory.items)) ? vsOppHistory.items : [];
+    const histCount = histItems.length;
+    let historyScore = 0;
+    if (histCount === 0) historyScore = 0;
+    else if (histCount === 1) historyScore = 8;
+    else if (histCount === 2) historyScore = 14;
+    else historyScore = 20;
+    
+    let closeDependScore = 0;
+    let standingsScore = 0;
+    let formCompressionScore = 0;
+    if (matchPackV3 && matchPackV3.factDrop && matchPackV3.factDrop.raw) {
+        const teamForm = matchPackV3.factDrop.raw.teamForm || {};
+        const standings = matchPackV3.factDrop.raw.standings || {};
+        const closeW10_A = (teamForm.A && teamForm.A.closeW10) ? teamForm.A.closeW10 : 0;
+        const closeL10_A = (teamForm.A && teamForm.A.closeL10) ? teamForm.A.closeL10 : 0;
+        const closeW10_B = (teamForm.B && teamForm.B.closeW10) ? teamForm.B.closeW10 : 0;
+        const closeL10_B = (teamForm.B && teamForm.B.closeL10) ? teamForm.B.closeL10 : 0;
+        const closeA = closeW10_A + closeL10_A;
+        const closeB = closeW10_B + closeL10_B;
+        const closeAvg = (closeA + closeB) / 2;
+        if (closeAvg >= 6) closeDependScore = 6;
+        else if (closeAvg >= 4) closeDependScore = 4;
+        else if (closeAvg >= 2) closeDependScore = 2;
+        const rankA = (standings.A && standings.A.rank) ? standings.A.rank : 0;
+        const rankB = (standings.B && standings.B.rank) ? standings.B.rank : 0;
+        const rankMin = Math.min(rankA, rankB);
+        const rankMax = Math.max(rankA, rankB);
+        if (rankMin <= 4 && rankMax <= 10) standingsScore = 6;
+        else if (rankMin <= 6) standingsScore = 4;
+        else if (rankMax >= 11) standingsScore = 2;
+        const margin3_A = Math.abs((teamForm.A && teamForm.A.margin3) ? teamForm.A.margin3 : 0);
+        const margin3_B = Math.abs((teamForm.B && teamForm.B.margin3) ? teamForm.B.margin3 : 0);
+        const avgAbsMargin3 = (margin3_A + margin3_B) / 2;
+        if (avgAbsMargin3 <= 3) formCompressionScore = 3;
+        else if (avgAbsMargin3 <= 6) formCompressionScore = 2;
+    }
+    const pressureEnvScore = closeDependScore + standingsScore + formCompressionScore;
+    const emotionalLoadScore = clamp(Math.round(revengeScore + availabilityShockScore + historyScore + pressureEnvScore), 0, 100);
+    
+    // Final weighted score: BASE_HEAT + (ControlStress * 0.40) + (StructuralInstability * 0.35) + (EmotionalLoad * 0.25)
+    const BASE_HEAT = 40;
+    const heatDelta = controlStressScore * 0.40 + structuralInstabilityScore * 0.35 + emotionalLoadScore * 0.25;
+    const heatScore = clamp(Math.round(BASE_HEAT + heatDelta), 0, 100);
+    
+    return {
+        heatScore: heatScore,
+        pillars: {
+            controlStress: {
+                score: controlStressScore,
+                inputs: { momentumDivergence, creationAsymmetry, shotQualityMismatch },
+                receipts: controlStress.receipts || {}
+            },
+            structuralInstability: {
+                score: structuralInstabilityScore,
+                inputs: { rotationVolatility, availabilityImbalance, scheduleStress },
+                receipts: structuralInstability.receipts || {}
+            },
+            emotionalLoad: {
+                score: emotionalLoadScore,
+                components: {
+                    revenge: { score: revengeScore, count: revengeCount },
+                    availabilityShock: { score: availabilityShockScore, count: shockCount, absDiff: absDiff > 0 ? absDiff : undefined },
+                    history: { score: historyScore, count: histCount },
+                    pressureEnv: { score: pressureEnvScore }
+                }
+            }
+        }
+    };
+}
+
+/**
  * Unified Heat Score Calculation (0-100)
  * Combines Heat Picks signals (momentum, availability, close games, comparisons) 
  * + Narrative strength + Evidence quality
@@ -152,6 +322,123 @@ function calculateHeatScoreFromMatchupData(post) {
     }
     
     const heatCheckData = post.heatCheckData;
+    
+    // Check if this post has a stored Heat Picks score
+    // Option 1: Check if this post itself has heatPicks data (for hub posts)
+    if (heatCheckData.heatPicks && heatCheckData.heatPicks.heatPicks && Array.isArray(heatCheckData.heatPicks.heatPicks)) {
+        const teamA = post.teamA || '';
+        const teamB = post.teamB || '';
+        // Find matching pick by team names or matchup string
+        const matchingPick = heatCheckData.heatPicks.heatPicks.find((pick) => {
+            if (!pick) return false;
+            // Check direct team match
+            if (pick.teamA === teamA && pick.teamB === teamB) return true;
+            if (pick.teamA === teamB && pick.teamB === teamA) return true;
+            // Check matchup string match
+            if (pick.matchup) {
+                const matchupLower = (pick.matchup || '').toLowerCase();
+                const teamALower = teamA.toLowerCase();
+                const teamBLower = teamB.toLowerCase();
+                if (matchupLower.includes(teamALower) && matchupLower.includes(teamBLower)) return true;
+            }
+            return false;
+        });
+        
+        if (matchingPick && typeof matchingPick.heatScore === 'number') {
+            // Return the stored Heat Picks score to ensure consistency
+            return {
+                total: matchingPick.heatScore,
+                breakdown: {
+                    stakes: 0,
+                    recency: 0,
+                    payback: 0,
+                    history: 0,
+                    emotion: 0
+                }
+            };
+        }
+    }
+    
+    // Option 2: Check if this post has a directly stored heatScore from Heat Picks
+    // (This would be set when Heat Picks are generated and synced to individual posts)
+    if (heatCheckData.heatPicksHeatScore && typeof heatCheckData.heatPicksHeatScore === 'number') {
+        return {
+            total: heatCheckData.heatPicksHeatScore,
+            breakdown: {
+                stakes: 0,
+                recency: 0,
+                payback: 0,
+                history: 0,
+                emotion: 0
+            }
+        };
+    }
+    
+    // Option 3: Try to find matching Heat Picks hub post from embedded posts
+    // This works when all posts are available (like in static site generation)
+    try {
+        const embeddedPosts = getEmbeddedPosts();
+        if (embeddedPosts && embeddedPosts.length > 0) {
+            const teamA = post.teamA || '';
+            const teamB = post.teamB || '';
+            // Find Heat Picks hub posts
+            const heatPicksHubs = embeddedPosts.filter((p) => p.storyType === 'heat_picks');
+            for (const hub of heatPicksHubs) {
+                const hubHeatPicks = hub.heatCheckData?.heatPicks;
+                if (hubHeatPicks && hubHeatPicks.heatPicks && Array.isArray(hubHeatPicks.heatPicks)) {
+                    const matchingPick = hubHeatPicks.heatPicks.find((pick) => {
+                        if (!pick) return false;
+                        if (pick.teamA === teamA && pick.teamB === teamB) return true;
+                        if (pick.teamA === teamB && pick.teamB === teamA) return true;
+                        if (pick.matchup) {
+                            const matchupLower = (pick.matchup || '').toLowerCase();
+                            const teamALower = teamA.toLowerCase();
+                            const teamBLower = teamB.toLowerCase();
+                            if (matchupLower.includes(teamALower) && matchupLower.includes(teamBLower)) return true;
+                        }
+                        return false;
+                    });
+                    if (matchingPick && typeof matchingPick.heatScore === 'number') {
+                        return {
+                            total: matchingPick.heatScore,
+                            breakdown: {
+                                stakes: 0,
+                                recency: 0,
+                                payback: 0,
+                                history: 0,
+                                emotion: 0
+                            }
+                        };
+                    }
+                }
+            }
+        }
+    } catch (e) {
+        // getEmbeddedPosts might not be available in all contexts, ignore errors
+    }
+    
+    // Check if V4 heat score calculation is available (has matchPackV4 with advancedHeatStats)
+    const matchPackV4 = heatCheckData.matchPackV4;
+    if (matchPackV4 && matchPackV4.factDrop && matchPackV4.factDrop.raw && matchPackV4.factDrop.raw.advancedHeatStats) {
+        try {
+            const v4Result = calculateV4HeatScore(post);
+            // Map V4 result to legacy breakdown format for backward compatibility
+            return {
+                total: v4Result.heatScore,
+                breakdown: {
+                    stakes: Math.round(v4Result.pillars.controlStress.score * 0.2),
+                    recency: Math.round(v4Result.pillars.emotionalLoad.components.availabilityShock.score * 0.2),
+                    payback: Math.round(v4Result.pillars.emotionalLoad.components.revenge.score * 0.2),
+                    history: Math.round(v4Result.pillars.emotionalLoad.components.history.score * 0.2),
+                    emotion: Math.round(v4Result.pillars.emotionalLoad.score * 0.2)
+                }
+            };
+        } catch (e) {
+            // Fall through to V3 calculation if V4 fails
+            console.warn('[Heat Score] V4 calculation failed, falling back to V3:', e);
+        }
+    }
+    
     const matchPackV3 = heatCheckData.matchPackV3;
     const factPack = heatCheckData.fact_pack || heatCheckData.factPack || {};
     const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
@@ -423,6 +710,183 @@ function generateHeatBreakdown(post) {
     });
     
     breakdownHtml += '</div></div>';
+    return breakdownHtml;
+}
+
+/**
+ * Generate 3-pillar heat breakdown HTML for hover display (NBA V4 articles)
+ * Uses advancedHeatStats from matchPackV4
+ * Falls back to 5-category breakdown if V4 data not available
+ */
+function generateHeatBreakdownV4(post) {
+    const heatCheckData = post.heatCheckData || {};
+    const matchPackV4 = heatCheckData.matchPackV4;
+    
+    // Check if this is a V4 article with advancedHeatStats
+    if (!matchPackV4 || !matchPackV4.factDrop || !matchPackV4.factDrop.raw || !matchPackV4.factDrop.raw.advancedHeatStats) {
+        // Fallback to old 5-category breakdown
+        return generateHeatBreakdown(post);
+    }
+    
+    // Use V4 calculation to get proper 0-100 pillar scores
+    let v4Result;
+    try {
+        v4Result = calculateV4HeatScore(post);
+    } catch (e) {
+        console.warn('[Heat Breakdown] V4 calculation failed, falling back to 5-category:', e);
+        return generateHeatBreakdown(post);
+    }
+    
+    const controlStress = v4Result.pillars.controlStress;
+    const structuralInstability = v4Result.pillars.structuralInstability;
+    const emotionalLoad = v4Result.pillars.emotionalLoad;
+    const total = v4Result.heatScore;
+    
+    // Helper: Render 5-block bar (each block = 20%)
+    // Use consistent block characters that are the same width
+    // score is 0-100, so each block = 20 points
+    const renderBar = (score) => {
+        const blocksFilled = Math.max(0, Math.min(5, Math.round((score / 100) * 5)));
+        // Use full block (█) for filled and light shade (░) for empty - both are same width in monospace
+        const filled = '█'.repeat(blocksFilled);
+        const empty = '░'.repeat(5 - blocksFilled);
+        return filled + empty;
+    };
+    
+    // Helper: Get receipts for a pillar (1-2 max)
+    const getReceipts = (receiptsObj, pillarType, controlStressData) => {
+        const receipts = [];
+        if (!receiptsObj) return receipts;
+        
+        // Control Stress receipts
+        if (pillarType === 'performance') {
+            // Check for momentum divergence receipt (may be stored directly in controlStress or receipts)
+            // The SQL function stores momentumDivergence receipts in the scalar, but they might be in receipts.momentum
+            if (Array.isArray(receiptsObj.momentum) && receiptsObj.momentum.length > 0) {
+                receipts.push(...receiptsObj.momentum.slice(0, 1));
+            }
+            if (Array.isArray(receiptsObj.creation) && receiptsObj.creation.length > 0) {
+                receipts.push(...receiptsObj.creation.slice(0, 1));
+            }
+            if (Array.isArray(receiptsObj.shotQuality) && receiptsObj.shotQuality.length > 0) {
+                receipts.push(...receiptsObj.shotQuality.slice(0, 1));
+            }
+            // If we have momentumDivergence > 0 but no receipt, create a generic one
+            if (receipts.length === 0 && controlStressData && controlStressData.momentumDivergence > 0) {
+                receipts.push('Momentum diverging: recent form shift detected');
+            }
+        }
+        
+        // Structural Instability receipts
+        if (pillarType === 'situational') {
+            if (Array.isArray(receiptsObj.rotation) && receiptsObj.rotation.length > 0) {
+                receipts.push(...receiptsObj.rotation.slice(0, 1));
+            }
+            if (Array.isArray(receiptsObj.availability) && receiptsObj.availability.length > 0) {
+                receipts.push(...receiptsObj.availability.slice(0, 1));
+            }
+            if (Array.isArray(receiptsObj.schedule) && receiptsObj.schedule.length > 0) {
+                receipts.push(...receiptsObj.schedule.slice(0, 1));
+            }
+        }
+        
+        return receipts.slice(0, 2); // Max 2 receipts
+    };
+    
+    // Helper: Get emotional load receipts
+    const getEmotionalReceipts = (components) => {
+        const receipts = [];
+        if (components.revenge && components.revenge.count > 0) {
+            receipts.push('Revenge spot vs former team');
+        }
+        if (components.availabilityShock && components.availabilityShock.count > 0) {
+            receipts.push('Recent availability shock detected');
+        }
+        if (components.history && components.history.count > 0) {
+            receipts.push('Strong vs opponent history');
+        }
+        return receipts.slice(0, 1); // Limit to 1 receipt
+    };
+    
+    // Determine if game is HOT+ (for showing receipts)
+    const isHot = total >= 70;
+    
+    const pillars = [
+        {
+            emoji: '🔴',
+            label: 'Performance Stress',
+            description: 'Who\'s actually controlling games right now?',
+            score: controlStress.score, // 0-100 score
+            receipts: isHot ? getReceipts(controlStress.receipts, 'performance', controlStress) : []
+        },
+        {
+            emoji: '🟠',
+            label: 'Situational Pressure',
+            description: 'Is this a normal game… or a fragile one?',
+            score: structuralInstability.score, // 0-100 score
+            receipts: isHot ? getReceipts(structuralInstability.receipts, 'situational') : []
+        },
+        {
+            emoji: '🔥',
+            label: 'Emotional Load',
+            description: 'Is emotion likely to affect behavior?',
+            score: emotionalLoad.score, // 0-100 score
+            receipts: isHot ? getEmotionalReceipts(emotionalLoad.components) : []
+        }
+    ];
+    
+    let breakdownHtml = `
+        <div style="padding: 0.25rem; background: rgba(0, 0, 0, 0.98); border: 2px solid #ff0040; border-radius: 4px; font-family: 'Courier New', monospace; color: #fff; height: 100%; width: 100%; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; position: absolute; top: 0; left: 0; justify-content: space-between;">
+            <!-- Pillars -->
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 0.14rem; min-height: 0; overflow: hidden;">
+    `;
+    
+    pillars.forEach((pillar, index) => {
+        const bar = renderBar(pillar.score); // score is 0-100, max is always 100
+        
+        breakdownHtml += `
+            <div style="flex-shrink: 0; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 2px; padding: 0.1rem 0.12rem; background: rgba(255, 255, 255, 0.02);">
+                <!-- Pillar Header and Bar - Text on left, bar on right -->
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.2rem; margin-bottom: 0.05rem;">
+                    <div style="flex: 1; min-width: 0;">
+                        <div style="font-size: 0.5rem; color: rgba(255, 255, 255, 0.9); line-height: 1.2; margin-bottom: 0.03rem; font-weight: 700;">
+                            ${pillar.emoji} ${pillar.label}
+                        </div>
+                        <div style="font-size: 0.38rem; color: rgba(255, 255, 255, 0.6); line-height: 1.15;">
+                            ${pillar.description}
+                        </div>
+                    </div>
+                    <!-- Bar on the right side - fixed width to ensure all bars are same size -->
+                    <span style="font-size: 0.7rem; color: rgba(255, 255, 255, 0.95); font-family: 'Courier New', monospace; letter-spacing: 0; flex-shrink: 0; line-height: 1; display: inline-block; text-align: right; white-space: nowrap; padding-left: 0.1rem; width: 2.5rem; min-width: 2.5rem; max-width: 2.5rem;">${bar}</span>
+                </div>
+        `;
+        
+        // Show receipts if available and game is HOT+ (limit to 1 receipt to save space)
+        if (pillar.receipts && pillar.receipts.length > 0) {
+            const receipt = pillar.receipts[0]; // Only show first receipt
+            breakdownHtml += `
+                    <div style="font-size: 0.32rem; color: rgba(255, 255, 255, 0.65); line-height: 1.25; margin-top: 0.04rem; padding-left: 0.1rem; border-left: 1px solid rgba(255, 255, 255, 0.2); font-style: italic;">
+                        "${escapeHtml(receipt)}"
+                    </div>
+            `;
+        }
+        
+        breakdownHtml += '</div>';
+    });
+    
+    // Footer
+    breakdownHtml += `
+            </div>
+            
+            <!-- Footer -->
+            <div style="margin-top: 0.1rem; padding-top: 0.08rem; border-top: 1px solid rgba(255, 0, 64, 0.3); flex-shrink: 0;">
+                <div style="font-size: 0.3rem; color: rgba(255, 255, 255, 0.5); line-height: 1.25; text-align: center; font-style: italic;">
+                    Heat rises when control, context, and emotion collide.
+                </div>
+            </div>
+        </div>
+    `;
+    
     return breakdownHtml;
 }
 
@@ -2296,8 +2760,11 @@ function initHeatIndicatorHover() {
         const imageContainer = document.querySelector(`.post-card-image-container[data-post-id="${postId}"]`);
         if (!imageContainer) return;
         
-        // Find the post data from window.publishedPosts (works for both homepage and static pages)
-        const posts = window.publishedPosts || publishedPosts || [];
+        // Find the post data - try embedded posts first (most complete data), then fallback to window.publishedPosts
+        let posts = getEmbeddedPosts();
+        if (posts.length === 0) {
+            posts = window.publishedPosts || publishedPosts || [];
+        }
         const post = posts.find(p => p.id === postId);
         if (!post) return;
         
@@ -2318,7 +2785,26 @@ function initHeatIndicatorHover() {
         
         // On mouseenter: replace image with breakdown
         indicator.addEventListener('mouseenter', () => {
-            const breakdownHtml = generateHeatBreakdown(post);
+            // Check if this is a V4 article with advancedHeatStats
+            const heatCheckData = post.heatCheckData || {};
+            const matchPackV4 = heatCheckData.matchPackV4;
+            
+            // More robust detection - check each level explicitly
+            let isV4 = false;
+            if (matchPackV4) {
+                if (matchPackV4.factDrop) {
+                    if (matchPackV4.factDrop.raw) {
+                        if (matchPackV4.factDrop.raw.advancedHeatStats) {
+                            isV4 = true;
+                        }
+                    }
+                }
+            }
+            
+            const breakdownHtml = isV4 
+                ? generateHeatBreakdownV4(post)
+                : generateHeatBreakdown(post);
+            
             imageContainer.innerHTML = breakdownHtml;
         });
         
@@ -2731,7 +3217,26 @@ function initHeatIndicatorHoverStaticContinue(posts) {
         }
         
         indicator.addEventListener('mouseenter', () => {
-            const breakdownHtml = generateHeatBreakdown(post);
+            // Check if this is a V4 article with advancedHeatStats
+            const heatCheckData = post.heatCheckData || {};
+            const matchPackV4 = heatCheckData.matchPackV4;
+            
+            // More robust detection - check each level explicitly
+            let isV4 = false;
+            if (matchPackV4) {
+                if (matchPackV4.factDrop) {
+                    if (matchPackV4.factDrop.raw) {
+                        if (matchPackV4.factDrop.raw.advancedHeatStats) {
+                            isV4 = true;
+                        }
+                    }
+                }
+            }
+            
+            const breakdownHtml = isV4 
+                ? generateHeatBreakdownV4(post)
+                : generateHeatBreakdown(post);
+            
             imageContainer.innerHTML = breakdownHtml;
         });
         
