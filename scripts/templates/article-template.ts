@@ -3,6 +3,7 @@ import { markdownToHtml } from '../utils/markdown-converter';
 import { escapeHtml } from '../utils/html-escape';
 import { formatDateISO, normalizeLeague, getShortTeamName, getTeamAcronym } from '../utils/date-formatter';
 import { generateSlug, generateNarrativeSlug, generateMatchupSlug, generatePredictionSlug, extractNarrativeKeywords } from '../utils/slug-generator';
+import { calculateV4HeatScore } from '../shared/heat-score-v4';
 
 export interface HeatcheckPost {
     id: string;
@@ -86,6 +87,300 @@ export interface HeatcheckPost {
     };
     heatchecksEdge?: {
         finalCall?: string;
+    };
+}
+
+/**
+ * Get heat score tier label based on unified thresholds
+ * Matches the tiers used in radar modals: COOL (0-59), WARM (60-69), HOT (70-79), SCORCHING (80+)
+ */
+function getHeatScoreTier(heatScore: number): 'COOL' | 'WARM' | 'HOT' | 'SCORCHING' {
+    if (heatScore >= 80) return 'SCORCHING';
+    if (heatScore >= 70) return 'HOT';
+    if (heatScore >= 60) return 'WARM';
+    return 'COOL';
+}
+
+/**
+ * Unified Heat Score Calculation (0-100)
+ * Always calculates using V4 -> V3 -> fallback (no stored scores)
+ * This ensures consistency across all pages: radar modals, article posts, and Heat Picks cards
+ */
+function calculateHeatScoreFromMatchupData(post: HeatcheckPost): { total: number; breakdown: { stakes: number; recency: number; payback: number; history: number; emotion: number } } {
+    // Special handling for DFS articles
+    if (post.storyType === 'dfs_article') {
+        const heatCheckData = post.heatCheckData as any;
+        const dfsPlayers = heatCheckData?.dfsPlayers || [];
+        const articleDate = post.matchupScheduledDate || post.createdAt;
+        
+        // Calculate days since article date
+        let daysAgo = 365;
+        if (articleDate) {
+            try {
+                const articleDateTime = new Date(articleDate);
+                const now = new Date();
+                const diffTime = Math.abs(now.getTime() - articleDateTime.getTime());
+                daysAgo = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            } catch {
+                daysAgo = 365;
+            }
+        }
+        
+        let recencyScore = 0;
+        if (daysAgo === 0) recencyScore = 20;
+        else if (daysAgo === 1) recencyScore = 15;
+        else if (daysAgo === 2) recencyScore = 10;
+        else if (daysAgo <= 7) recencyScore = 8;
+        else if (daysAgo <= 30) recencyScore = 5;
+        else recencyScore = 2;
+        
+        let stakesScore = 0;
+        const playerCount = dfsPlayers.length;
+        if (playerCount >= 10) stakesScore = 18;
+        else if (playerCount >= 8) stakesScore = 15;
+        else if (playerCount >= 5) stakesScore = 12;
+        else if (playerCount >= 3) stakesScore = 8;
+        else stakesScore = 5;
+            
+        let emotionScore = 0;
+        if (playerCount > 0) {
+            const avgConfidence = dfsPlayers.reduce((sum: number, p: any) => sum + (p.confidenceScore || 0), 0) / playerCount;
+            if (avgConfidence >= 80) emotionScore = 18;
+            else if (avgConfidence >= 70) emotionScore = 15;
+            else if (avgConfidence >= 60) emotionScore = 12;
+            else if (avgConfidence >= 50) emotionScore = 8;
+            else emotionScore = 5;
+        }
+        
+        const narrativeTypes = new Set(dfsPlayers.map((p: any) => p.narrativeType || '').filter(Boolean));
+        let historyScore = 0;
+        if (narrativeTypes.size >= 5) historyScore = 18;
+        else if (narrativeTypes.size >= 4) historyScore = 15;
+        else if (narrativeTypes.size >= 3) historyScore = 12;
+        else if (narrativeTypes.size >= 2) historyScore = 8;
+        else historyScore = 5;
+        
+        let paybackScore = 0;
+        const paybackNarratives = dfsPlayers.filter((p: any) => {
+            const type = (p.narrativeType || '').toLowerCase();
+            return type.includes('revenge') || type.includes('motivation') || type.includes('homecoming');
+        }).length;
+        if (paybackNarratives >= 5) paybackScore = 18;
+        else if (paybackNarratives >= 3) paybackScore = 15;
+        else if (paybackNarratives >= 2) paybackScore = 12;
+        else if (paybackNarratives >= 1) paybackScore = 8;
+        else paybackScore = 5;
+        
+        const total = stakesScore + recencyScore + paybackScore + historyScore + emotionScore;
+        
+        return {
+            total: Math.min(100, Math.max(0, total)),
+            breakdown: {
+                stakes: stakesScore,
+                recency: recencyScore,
+                payback: paybackScore,
+                history: historyScore,
+                emotion: emotionScore
+            }
+        };
+    }
+    
+    if (!post.heatCheckData) {
+        return {
+            total: 0,
+            breakdown: { stakes: 0, recency: 0, payback: 0, history: 0, emotion: 0 }
+        };
+    }
+    
+    const heatCheckData = post.heatCheckData as any;
+    
+    // Always calculate using V4 -> V3 -> fallback (no stored scores)
+    // Check if V4 heat score calculation is available
+    const matchPackV4 = heatCheckData.matchPackV4;
+    if (matchPackV4?.factDrop?.raw?.advancedHeatStats) {
+        try {
+            const v4Result = calculateV4HeatScore(post as any);
+            return {
+                total: v4Result.heatScore,
+                breakdown: {
+                    stakes: Math.round(v4Result.pillars.controlStress.score * 0.2),
+                    recency: Math.round(v4Result.pillars.emotionalLoad.components.availabilityShock.score * 0.2),
+                    payback: Math.round(v4Result.pillars.emotionalLoad.components.revenge.score * 0.2),
+                    history: Math.round(v4Result.pillars.emotionalLoad.components.history.score * 0.2),
+                    emotion: Math.round(v4Result.pillars.emotionalLoad.score * 0.2)
+                }
+            };
+        } catch (e) {
+            // Fall through to V3 calculation if V4 fails
+        }
+    }
+    
+    const matchPackV3 = heatCheckData.matchPackV3;
+    const factPack = heatCheckData.fact_pack || heatCheckData.factPack || {};
+    const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
+    const narratives = heatCheckData.narratives || {};
+    
+    let baseScore = 0;
+    let momentumScore = 0;
+    let availabilityScore = 0;
+    let closeGamesScore = 0;
+    let comparisonsScore = 0;
+    
+    // If matchPackV3 exists, use Heat Picks signals (preferred method)
+    if (matchPackV3?.factDrop) {
+        const factDrop = matchPackV3.factDrop;
+        const teamForm = factDrop.raw?.teamForm || {};
+        const comparisons = factDrop.comparisons || [];
+        const availability = factDrop.raw?.availability;
+        
+        // 1. MOMENTUM (0-25 points)
+        const aMargin10 = teamForm.A?.margin10 || teamForm.A?.xgDiff10 || 0;
+        const aMargin3 = teamForm.A?.margin3 || teamForm.A?.xgDiff3 || 0;
+        const bMargin10 = teamForm.B?.margin10 || teamForm.B?.xgDiff10 || 0;
+        const bMargin3 = teamForm.B?.margin3 || teamForm.B?.xgDiff3 || 0;
+        const momentumDivergence = Math.abs((aMargin3 - aMargin10) - (bMargin3 - bMargin10));
+        momentumScore = Math.min(25, momentumDivergence * 2.5);
+        
+        // 2. AVAILABILITY (0-20 points)
+        if (availability?.majorAbsences) {
+            const aAbsences = availability.majorAbsences.A?.count || 0;
+            const bAbsences = availability.majorAbsences.B?.count || 0;
+            const availabilityDiff = Math.abs(aAbsences - bAbsences);
+            availabilityScore = Math.min(20, availabilityDiff * 4);
+        }
+        
+        // 3. CLOSE GAMES (0-20 points)
+        const closeMarginComp = comparisons.find((c: any) => c?.key === 'closeMargin');
+        if (closeMarginComp) {
+            const aCloseW = teamForm.A?.closeW10 || 0;
+            const aCloseL = teamForm.A?.closeL10 || 0;
+            const bCloseW = teamForm.B?.closeW10 || 0;
+            const bCloseL = teamForm.B?.closeL10 || 0;
+            const aCloseRate = aCloseW + aCloseL > 0 ? aCloseW / (aCloseW + aCloseL) : 0;
+            const bCloseRate = bCloseW + bCloseL > 0 ? bCloseW / (bCloseW + bCloseL) : 0;
+            const closeGameDiff = Math.abs(aCloseRate - bCloseRate);
+            closeGamesScore = Math.min(20, closeGameDiff * 40);
+        }
+        
+        // 4. COMPARISONS (0-15 points)
+        let comparisonsTotal = 0;
+        comparisons.forEach((comp: any) => {
+            if (comp?.key && comp.key !== 'closeMargin') {
+                const aVal = comp.A || 0;
+                const bVal = comp.B || 0;
+                const diff = Math.abs(aVal - bVal);
+                if (diff > 0.1) {
+                    comparisonsTotal += Math.min(3, diff * 1.5);
+                }
+            }
+        });
+        comparisonsScore = Math.min(15, comparisonsTotal);
+    } else {
+        // Fallback: Use legacy factPack data if matchPackV3 not available
+        const odds = factPack.odds || {};
+        const markets = odds.markets || [];
+        const spreadMarket = markets.find((m: any) => m.market === 'Spread');
+        
+        if (spreadMarket && typeof spreadMarket.point === 'number') {
+            const spread = Math.abs(spreadMarket.point);
+            if (spread <= 3) momentumScore = 22;
+            else if (spread <= 6) momentumScore = 18;
+            else if (spread <= 10) momentumScore = 15;
+            else momentumScore = 12;
+        } else {
+            momentumScore = 15;
+        }
+    }
+    
+    baseScore = momentumScore + availabilityScore + closeGamesScore + comparisonsScore;
+    
+    // NARRATIVE STRENGTH (0-35 points)
+    let narrativeScore = 0;
+    if (narratives?.candidate_cards && narratives.candidate_cards.length > 0) {
+        const primaryNarrativeId = narratives.selected?.primary_narrative_id;
+        const primaryCard = narratives.candidate_cards.find(
+            (c: any) => c.narrative_id === primaryNarrativeId
+        );
+        
+        if (primaryCard) {
+            if (primaryCard.total_score !== undefined) {
+                narrativeScore += Math.min(20, (primaryCard.total_score / 35) * 20);
+            } else {
+                const breakdown = primaryCard.score_breakdown || {};
+                const breakdownScore = (breakdown.factual_support || 0) + 
+                                      (breakdown.stakes || 0) + 
+                                      (breakdown.performance_alignment || 0);
+                narrativeScore += Math.min(20, (breakdownScore / 20) * 20);
+            }
+        }
+        
+        const secondaryIds = narratives.selected?.secondary_narrative_ids || [];
+        if (secondaryIds.length >= 2) narrativeScore += 8;
+        else if (secondaryIds.length === 1) narrativeScore += 4;
+        
+        const allEmotionTags = narratives.candidate_cards
+            .flatMap((c: any) => c.emotion_tags || []);
+        const uniqueEmotionTags = [...new Set(allEmotionTags)];
+        if (uniqueEmotionTags.length >= 4) narrativeScore += 7;
+        else if (uniqueEmotionTags.length >= 3) narrativeScore += 5;
+        else if (uniqueEmotionTags.length >= 2) narrativeScore += 2;
+    }
+    
+    narrativeScore = Math.min(35, Math.round(narrativeScore));
+    
+    // EVIDENCE QUALITY (0-23 points)
+    let evidenceScore = 0;
+    const quotes = evidenceBundle.quotes || [];
+    const timelineEvents = evidenceBundle.timeline_events || [];
+    
+    if (quotes.length >= 5) evidenceScore += 12;
+    else if (quotes.length >= 3) evidenceScore += 9;
+    else if (quotes.length >= 2) evidenceScore += 6;
+    else if (quotes.length === 1) evidenceScore += 3;
+    
+    if (timelineEvents.length >= 5) evidenceScore += 6;
+    else if (timelineEvents.length >= 3) evidenceScore += 5;
+    else if (timelineEvents.length >= 2) evidenceScore += 3;
+    else if (timelineEvents.length === 1) evidenceScore += 2;
+    
+    const now = new Date();
+    const recentQuotes = quotes.filter((q: any) => {
+        if (!q || !q.date_utc) return false;
+        try {
+            const quoteDate = new Date(q.date_utc);
+            const daysAgo = Math.floor((now.getTime() - quoteDate.getTime()) / (1000 * 60 * 60 * 24));
+            return daysAgo <= 30;
+        } catch {
+            return false;
+        }
+    });
+    if (recentQuotes.length >= 3) evidenceScore += 5;
+    else if (recentQuotes.length >= 2) evidenceScore += 3;
+    else if (recentQuotes.length >= 1) evidenceScore += 2;
+    
+    evidenceScore = Math.min(23, evidenceScore);
+    
+    // Total score with base temperature: 40 = baseline
+    const baseTemperature = 40;
+    const rawTotal = baseTemperature + baseScore + narrativeScore + evidenceScore;
+    const total = Math.round(Math.min(100, Math.max(40, rawTotal)));
+    
+    // Map to legacy breakdown format
+    const stakes = Math.round((momentumScore + closeGamesScore) / 2);
+    const recency = Math.round(evidenceScore * 0.8);
+    const payback = Math.round(narrativeScore * 0.3);
+    const history = Math.round(comparisonsScore + (narrativeScore * 0.2));
+    const emotion = Math.round((narrativeScore * 0.5) + (evidenceScore * 0.2));
+    
+    return {
+        total: Math.min(100, Math.max(0, total)),
+        breakdown: {
+            stakes: Math.min(20, stakes),
+            recency: Math.min(20, recency),
+            payback: Math.min(20, payback),
+            history: Math.min(20, history),
+            emotion: Math.min(20, emotion)
+        }
     };
 }
 
@@ -239,6 +534,11 @@ export function generateArticlePage(
     const tempSummary: any = tempCheck?.summary || null;
     const tempAI: any = tempCheck?.ai || null;
     
+    // Calculate unified heat score for TEMP log (all data is available here)
+    const heatScoreResult = calculateHeatScoreFromMatchupData(post);
+    const unifiedHeatScore = heatScoreResult.total;
+    const heatScoreTier = getHeatScoreTier(unifiedHeatScore);
+    
     // Check if edge exists for button display
     const hasEdge = post.heatchecksEdge && (
         (typeof post.heatchecksEdge === 'object' && 'game' in post.heatchecksEdge && 'player_props' in post.heatchecksEdge) ||
@@ -372,16 +672,14 @@ export function generateArticlePage(
 
         const aiTakeaways = Array.isArray(tempAI?.takeaways) ? tempAI.takeaways : [];
         const aiRisks = Array.isArray(tempAI?.risks) ? tempAI.risks : [];
-        const tempScore = Number.isFinite(tempAI?.tempScore) ? tempAI.tempScore : null;
 
         const buildDefaultMarkdown = () => {
             const lines: string[] = [];
-            if (tempScore !== null) {
-                const label = tempScore >= 70 ? 'HOT' : tempScore >= 45 ? 'WARM' : 'COOL';
-                // Only show button if edge section exists (hasEdge is from outer scope)
-                const buttonHtml = hasEdge ? `<button onclick="document.getElementById('heatchecks-edge-section')?.scrollIntoView({behavior: 'smooth', block: 'start'}); return false;" style="margin-left: 0.75rem; padding: 0.3rem 0.6rem; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.95); font-family: 'Courier New', monospace; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; transition: all 0.2s ease; border-radius: 3px; white-space: nowrap;" onmouseover="this.style.background='rgba(255,255,255,0.25)'; this.style.borderColor='rgba(255,255,255,0.6)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(255,255,255,0.15)'; this.style.borderColor='rgba(255,255,255,0.4)'; this.style.color='rgba(255,255,255,0.95)';">See Prediction</button>` : '';
-                lines.push(`<div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.8rem; letter-spacing:0.08em;"><span>TEMP: <span style="color:#00ff41; font-weight:900; text-shadow:0 0 10px rgba(0,255,65,0.25);">${escapeHtml(label)}</span></span>${buttonHtml}</div>`);
-            }
+            // Use unified heat score tier instead of AI tempScore
+            const label = heatScoreTier; // COOL, WARM, HOT, or SCORCHING
+            // Only show button if edge section exists (hasEdge is from outer scope)
+            const buttonHtml = hasEdge ? `<button onclick="document.getElementById('heatchecks-edge-section')?.scrollIntoView({behavior: 'smooth', block: 'start'}); return false;" style="margin-left: 0.75rem; padding: 0.3rem 0.6rem; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.95); font-family: 'Courier New', monospace; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; transition: all 0.2s ease; border-radius: 3px; white-space: nowrap;" onmouseover="this.style.background='rgba(255,255,255,0.25)'; this.style.borderColor='rgba(255,255,255,0.6)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(255,255,255,0.15)'; this.style.borderColor='rgba(255,255,255,0.4)'; this.style.color='rgba(255,255,255,0.95)';">See Prediction</button>` : '';
+            lines.push(`<div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.8rem; letter-spacing:0.08em;"><span>TEMP: <span style="color:#00ff41; font-weight:900; text-shadow:0 0 10px rgba(0,255,65,0.25);">${escapeHtml(label)}</span></span>${buttonHtml}</div>`);
             const teamA = String(matchPack?.matchup?.teamA || matchPack?.matchup?.teamAAbbr || 'Team A');
             const teamB = String(matchPack?.matchup?.teamB || matchPack?.matchup?.teamBAbbr || 'Team B');
             const haA = String(matchPack?.matchup?.homeAway?.A || '');
@@ -461,11 +759,22 @@ export function generateArticlePage(
         // - buildDefaultMarkdown() returns styled HTML blocks already.
         // - renderedOverride is often ALSO pre-rendered HTML (we store it that way for V3).
         // Passing HTML through markdownToHtml() can introduce <br/> whitespace between tags,
-        // which creates the “dead space” you’re seeing in FACTDROP cards.
+        // which creates the "dead space" you're seeing in FACTDROP cards.
         const renderedOverrideLooksHtml =
             !!renderedOverride && /<\s*(div|section|span|canvas|table|p|ul|ol|h[1-6]|br)\b/i.test(renderedOverride);
-        const finalContentHtml = renderedOverride
-            ? (renderedOverrideLooksHtml ? renderedOverride : markdownToHtml(renderedOverride))
+        
+        // If there's a rendered override, replace the TEMP line with unified heat score tier
+        let processedRenderedOverride = renderedOverride;
+        if (renderedOverride) {
+            // Replace TEMP line in rendered markdown with unified heat score tier
+            // Match both formats: TEMP: <span>...</span> and TEMP: <span style="...">...</span>
+            const tempLineRegex = /<div[^>]*>TEMP:\s*<span[^>]*>([^<]*)<\/span>[^<]*<\/div>/i;
+            const newTempLine = `<div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.8rem; letter-spacing:0.08em;"><span>TEMP: <span style="color:#00ff41; font-weight:900; text-shadow:0 0 10px rgba(0,255,65,0.25);">${escapeHtml(heatScoreTier)}</span></span>${hasEdge ? `<button onclick="document.getElementById('heatchecks-edge-section')?.scrollIntoView({behavior: 'smooth', block: 'start'}); return false;" style="margin-left: 0.75rem; padding: 0.3rem 0.6rem; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.95); font-family: 'Courier New', monospace; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; transition: all 0.2s ease; border-radius: 3px; white-space: nowrap;" onmouseover="this.style.background='rgba(255,255,255,0.25)'; this.style.borderColor='rgba(255,255,255,0.6)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(255,255,255,0.15)'; this.style.borderColor='rgba(255,255,255,0.4)'; this.style.color='rgba(255,255,255,0.95)';">See Prediction</button>` : ''}</div>`;
+            processedRenderedOverride = renderedOverride.replace(tempLineRegex, newTempLine);
+        }
+        
+        const finalContentHtml = processedRenderedOverride
+            ? (renderedOverrideLooksHtml ? processedRenderedOverride : markdownToHtml(processedRenderedOverride))
             : finalMarkdown;
 
         const chartsDataId = `v3-charts-data-${post.id}`;
@@ -1000,7 +1309,7 @@ export function generateArticlePage(
     // Get short team names for meta tags and breadcrumbs (define once, reuse)
     const teamAShort = getShortTeamName(post.teamA || '');
     const teamBShort = getShortTeamName(post.teamB || '');
-    const matchupMeta = `${teamAShort} vs ${teamBShort}`;
+    const matchupMeta = `${getTeamAcronym(post.teamA || '', post.league)} vs ${getTeamAcronym(post.teamB || '', post.league)}`;
     
     // Generate breadcrumb navigation
     // Only Home, League, and Date should be links; Matchup and Article Title are just text labels
@@ -1095,7 +1404,7 @@ export function generateArticlePage(
                         </div>
                         <p style="color: rgba(255, 255, 255, 0.6); font-size: 0.85rem; margin-bottom: 0.5rem;">// ${escapeHtml(post.websiteStory.dek)}</p>
                         <div style="color: rgba(255, 255, 255, 0.8); font-size: 0.8rem; font-family: 'Courier New', monospace;">
-                            <span class="matchup-info-full">&gt; MATCHUP: ${escapeHtml(post.league.toUpperCase())} | ${escapeHtml(post.teamA)} vs ${escapeHtml(post.teamB)} | DATE: <time datetime="${post.matchupScheduledDate || post.createdAt}">${escapeHtml(date)}</time></span>
+                            <span class="matchup-info-full">&gt; MATCHUP: ${escapeHtml(post.league.toUpperCase())} | ${escapeHtml(getTeamAcronym(post.teamA || '', post.league))} vs ${escapeHtml(getTeamAcronym(post.teamB || '', post.league))} | DATE: <time datetime="${post.matchupScheduledDate || post.createdAt}">${escapeHtml(date)}</time></span>
                             <span class="matchup-info-mobile" style="display: none;">&gt; MATCHUP: ${escapeHtml(post.league.toUpperCase())} | ${escapeHtml(getTeamAcronym(post.teamA || '', post.league))} vs ${escapeHtml(getTeamAcronym(post.teamB || '', post.league))} | DATE: <time datetime="${post.matchupScheduledDate || post.createdAt}">${escapeHtml(date)}</time></span>
                         </div>
                     </header>

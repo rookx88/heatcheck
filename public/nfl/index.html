@@ -427,7 +427,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/25</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">SEAHAWKS VS RAMS</span>
+                        <span class="matchup-card-full">SEA VS LAR</span>
                         <span class="matchup-card-mobile" style="display: none;">SEA VS LAR</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -436,15 +436,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="8fdac352-f1b1-4413-af86-ed83136e7b73" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">94</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="8fdac352-f1b1-4413-af86-ed83136e7b73" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">94</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="8fdac352-f1b1-4413-af86-ed83136e7b73" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Seahawks-vs-Rams-2026-01-25.png" alt="Seahawks vs Rams NFL seahawks-vs-rams-rivalry narrative - Seahawks vs Rams Prediction: A Rivalry Decided by a Single Play - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Seahawks-vs-Rams-2026-01-25.png" alt="Seahawks vs Rams NFL seahawks-vs-rams-rivalry narrative - Seahawks vs Rams Prediction: A Rivalry Decided by a Single Play - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -469,7 +513,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/25</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">BRONCOS VS PATRIOTS</span>
+                        <span class="matchup-card-full">DEN VS NE</span>
                         <span class="matchup-card-mobile" style="display: none;">DEN VS NE</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -478,15 +522,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="66075803-080e-4029-9ee8-06c442929ba4" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">87</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="66075803-080e-4029-9ee8-06c442929ba4" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">87</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="66075803-080e-4029-9ee8-06c442929ba4" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Patriots-vs-Broncos-2026-01-25.png" alt="Broncos vs Patriots NFL broncos-vs-patriots-pressure narrative - Broncos vs Patriots: A Championship Moment Redefined by Pressure - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Patriots-vs-Broncos-2026-01-25.png" alt="Broncos vs Patriots NFL broncos-vs-patriots-pressure narrative - Broncos vs Patriots: A Championship Moment Redefined by Pressure - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -511,7 +599,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/18</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">BEARS VS RAMS</span>
+                        <span class="matchup-card-full">CHI VS LAR</span>
                         <span class="matchup-card-mobile" style="display: none;">CHI VS LAR</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -520,15 +608,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="37552bfc-c2ce-4824-a06b-c61c3ee7b400" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">94</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="37552bfc-c2ce-4824-a06b-c61c3ee7b400" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">94</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="37552bfc-c2ce-4824-a06b-c61c3ee7b400" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Bears-vs-Rams-2026-01-18.png" alt="Bears vs Rams NFL bears-vs-rams-pressure narrative - Bears vs Rams: Where Improvised Brilliance Meets Calculated Pressure - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Bears-vs-Rams-2026-01-18.png" alt="Bears vs Rams NFL bears-vs-rams-pressure narrative - Bears vs Rams: Where Improvised Brilliance Meets Calculated Pressure - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -553,7 +685,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/18</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">PATRIOTS VS TEXANS</span>
+                        <span class="matchup-card-full">NE VS HOU</span>
                         <span class="matchup-card-mobile" style="display: none;">NE VS HOU</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -562,15 +694,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="e1578098-e7bb-4091-acfc-df2f41401acb" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">89</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="e1578098-e7bb-4091-acfc-df2f41401acb" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">89</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="e1578098-e7bb-4091-acfc-df2f41401acb" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Texans-vs-Patriots-2026-01-18.png" alt="Patriots vs Texans NFL patriots-vs-texans-pressure narrative - Patriots vs Texans: How Much Pressure Can One Defense Absorb? - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Texans-vs-Patriots-2026-01-18.png" alt="Patriots vs Texans NFL patriots-vs-texans-pressure narrative - Patriots vs Texans: How Much Pressure Can One Defense Absorb? - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -595,7 +771,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/17</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">BRONCOS VS BILLS</span>
+                        <span class="matchup-card-full">DEN VS BUF</span>
                         <span class="matchup-card-mobile" style="display: none;">DEN VS BUF</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -604,15 +780,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="71d913c8-ef8e-4974-8a4b-0ab197f135ba" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">100</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="71d913c8-ef8e-4974-8a4b-0ab197f135ba" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">100</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="71d913c8-ef8e-4974-8a4b-0ab197f135ba" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Bills-vs-Broncos-2026-01-17.png" alt="Broncos vs Bills NFL broncos-vs-bills-pressure narrative - Broncos vs Bills: Where Data, Doubt, and Pressure Collide - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Bills-vs-Broncos-2026-01-17.png" alt="Broncos vs Bills NFL broncos-vs-bills-pressure narrative - Broncos vs Bills: Where Data, Doubt, and Pressure Collide - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -637,7 +857,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/17</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">SEAHAWKS VS 49ERS</span>
+                        <span class="matchup-card-full">SEA VS SF</span>
                         <span class="matchup-card-mobile" style="display: none;">SEA VS SF</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -646,15 +866,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="214ee944-e504-4aa4-a375-3254905ee5e6" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">98</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="214ee944-e504-4aa4-a375-3254905ee5e6" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">98</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="214ee944-e504-4aa4-a375-3254905ee5e6" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Seahawks-vs-Niners-2026-01-17.png" alt="Seahawks vs 49ers NFL seahawks-vs-49ers-49ers narrative - 49ers vs Seahawks: When Desperation Meets Expectation - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Seahawks-vs-Niners-2026-01-17.png" alt="Seahawks vs 49ers NFL seahawks-vs-49ers-49ers narrative - 49ers vs Seahawks: When Desperation Meets Expectation - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -679,7 +943,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/12</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">STEELERS VS TEXANS</span>
+                        <span class="matchup-card-full">PIT VS HOU</span>
                         <span class="matchup-card-mobile" style="display: none;">PIT VS HOU</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -688,15 +952,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="ddbb7119-6d4b-4335-96a5-7313293fbec2" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">99</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="ddbb7119-6d4b-4335-96a5-7313293fbec2" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">99</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="ddbb7119-6d4b-4335-96a5-7313293fbec2" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Steelers-vs-Texans-2026-01-12.png" alt="Steelers vs Texans NFL steelers-vs-texans-pressure narrative - Steelers vs Texans: Where Playoff Pressure Will Break a Legacy - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Steelers-vs-Texans-2026-01-12.png" alt="Steelers vs Texans NFL steelers-vs-texans-pressure narrative - Steelers vs Texans: Where Playoff Pressure Will Break a Legacy - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -721,7 +1029,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/11</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">EAGLES VS 49ERS</span>
+                        <span class="matchup-card-full">PHI VS SF</span>
                         <span class="matchup-card-mobile" style="display: none;">PHI VS SF</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -730,15 +1038,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="90572b6d-da61-4477-90ea-1dad3565fc7c" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">96</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="90572b6d-da61-4477-90ea-1dad3565fc7c" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">96</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="90572b6d-da61-4477-90ea-1dad3565fc7c" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Niners-vs-Eagles-2026-01-11.png" alt="Eagles vs 49ers NFL eagles-vs-49ers-pressure narrative - Eagles vs 49ers: Where Pressure Defines this NFC Rematch - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Niners-vs-Eagles-2026-01-11.png" alt="Eagles vs 49ers NFL eagles-vs-49ers-pressure narrative - Eagles vs 49ers: Where Pressure Defines this NFC Rematch - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -763,7 +1115,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/11</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">PATRIOTS VS CHARGERS</span>
+                        <span class="matchup-card-full">NE VS LAC</span>
                         <span class="matchup-card-mobile" style="display: none;">NE VS LAC</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -772,15 +1124,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="69f60db1-3f97-43ab-a574-86ae5f5d5850" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">100</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="69f60db1-3f97-43ab-a574-86ae5f5d5850" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">100</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="69f60db1-3f97-43ab-a574-86ae5f5d5850" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Patriots-vs-Chargers-2026-01-11.png" alt="Patriots vs Chargers NFL patriots-vs-chargers-pressure narrative - Patriots vs Chargers: Decoding the Pressure in a Potential Trap Game - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Patriots-vs-Chargers-2026-01-11.png" alt="Patriots vs Chargers NFL patriots-vs-chargers-pressure narrative - Patriots vs Chargers: Decoding the Pressure in a Potential Trap Game - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -805,7 +1201,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/11</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">JAGUARS VS BILLS</span>
+                        <span class="matchup-card-full">JAX VS BUF</span>
                         <span class="matchup-card-mobile" style="display: none;">JAX VS BUF</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -814,15 +1210,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="1512a1f0-dfaa-47b9-ac41-94b9b85b85b0" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">100</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="1512a1f0-dfaa-47b9-ac41-94b9b85b85b0" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">100</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="1512a1f0-dfaa-47b9-ac41-94b9b85b85b0" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Bills-vs-Jaguars-2026-01-11.png" alt="Jaguars vs Bills NFL jaguars-vs-bills-pressure narrative - Jaguars vs Bills: Where Postseason Pressure Reshapes a Narrative - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Bills-vs-Jaguars-2026-01-11.png" alt="Jaguars vs Bills NFL jaguars-vs-bills-pressure narrative - Jaguars vs Bills: Where Postseason Pressure Reshapes a Narrative - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -847,7 +1287,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/10</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">PANTHERS VS RAMS</span>
+                        <span class="matchup-card-full">CAR VS LAR</span>
                         <span class="matchup-card-mobile" style="display: none;">CAR VS LAR</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -856,15 +1296,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="4a060b81-17e4-47c7-801a-27c5e90b2d74" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">93</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="4a060b81-17e4-47c7-801a-27c5e90b2d74" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">93</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="4a060b81-17e4-47c7-801a-27c5e90b2d74" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Rams-vs-Panthers-2026-01-10.png" alt="Panthers vs Rams NFL panthers-vs-rams-revenge narrative - Panthers vs Rams: Can Carolina Handle the Weight of the Crown? - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Rams-vs-Panthers-2026-01-10.png" alt="Panthers vs Rams NFL panthers-vs-rams-revenge narrative - Panthers vs Rams: Can Carolina Handle the Weight of the Crown? - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -889,7 +1373,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/10</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">BEARS VS PACKERS</span>
+                        <span class="matchup-card-full">CHI VS GB</span>
                         <span class="matchup-card-mobile" style="display: none;">CHI VS GB</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -898,15 +1382,59 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="966ad6cf-b8ca-4f93-a79e-0358113db21b" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">84</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="966ad6cf-b8ca-4f93-a79e-0358113db21b" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="42.5" y1="0" x2="42.5" y2="20" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="42.5" y1="85" x2="42.5" y2="65" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="20" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="85" y1="42.5" x2="65" y2="42.5" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="29.8" y1="29.8" x2="14.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="55.2" x2="70.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="55.2" y1="29.8" x2="70.5" y2="14.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="29.8" y1="55.2" x2="14.5" y2="70.5" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="53.5" y1="23.5" x2="59.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="31.5" x2="67.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="61.5" y1="53.5" x2="67.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="53.5" y1="61.5" x2="59.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="61.5" x2="25.5" y2="67.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="53.5" x2="17.5" y2="59.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="23.5" y1="31.5" x2="17.5" y2="25.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="31.5" y1="23.5" x2="25.5" y2="17.5" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="48.2" y1="22.3" x2="51.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="36.8" x2="66" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="62.7" y1="48.2" x2="66" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="48.2" y1="62.7" x2="51.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="62.7" x2="33.5" y2="66" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="48.2" x2="19" y2="51.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="22.3" y1="36.8" x2="19" y2="33.5" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="36.8" y1="22.3" x2="33.5" y2="19" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="50.8" y1="22.9" x2="55.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="34.2" x2="66.8" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="62.1" y1="50.8" x2="66.8" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="50.8" y1="62.1" x2="55.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="62.1" x2="29.5" y2="66.8" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="50.8" x2="18.2" y2="55.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="22.9" y1="34.2" x2="18.2" y2="29.5" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="34.2" y1="22.9" x2="29.5" y2="18.2" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="42.5" cy="42.5" r="22" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">84</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="966ad6cf-b8ca-4f93-a79e-0358113db21b" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Bears-vs-Packers-2026-01-10.png" alt="Bears vs Packers NFL bears-vs-packers-pressure narrative - Caleb Williams vs. The Ghost of Lambeau: A New Era Faces Old Pressure - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Bears-vs-Packers-2026-01-10.png" alt="Bears vs Packers NFL bears-vs-packers-pressure narrative - Caleb Williams vs. The Ghost of Lambeau: A New Era Faces Old Pressure - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 

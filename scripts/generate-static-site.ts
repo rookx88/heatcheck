@@ -632,7 +632,7 @@ async function generateAllPages(): Promise<void> {
         // Generate homepage (index.html)
         console.log('Generating homepage...');
         const homepageContent = `
-            <div class="content-area-title terminal-style"><span class="glitch-text" data-text="RECENT.LOGS">RECENT.LOGS</span></div>
+            <div class="content-area-title terminal-style"><span class="glitch-text" data-text="Temperature Forecasts">Temperature Forecasts</span></div>
             <div class="post-list" id="recent-logs-list">
                 <!-- Post cards will be inserted here by static-site.js -->
             </div>
@@ -692,7 +692,7 @@ async function generateAllPages(): Promise<void> {
                     metaDescription: post.websiteStory?.seo?.metaDescription || ''
                 }
             },
-            // Only include heatCheckData fields needed for heat score calculation
+            // Only include heatCheckData fields needed for heat score calculation and hover breakdown
             heatCheckData: post.heatCheckData ? {
                 fact_pack: post.heatCheckData.fact_pack || post.heatCheckData.factPack,
                 factPack: post.heatCheckData.factPack,
@@ -701,6 +701,8 @@ async function generateAllPages(): Promise<void> {
                 narratives: post.heatCheckData.narratives,
                 // Include matchPackV3 for unified temperature model heat score calculation
                 matchPackV3: post.heatCheckData.matchPackV3,
+                // Include matchPackV4 for V4 hover breakdown (3-pillar heat score)
+                matchPackV4: post.heatCheckData.matchPackV4,
                 // For DFS articles, include dfsPlayers
                 dfsPlayers: post.heatCheckData.dfsPlayers
             } : undefined

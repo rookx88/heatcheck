@@ -338,7 +338,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/30</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">LENS VS HAVRE</span>
+                        <span class="matchup-card-full">LEN VS LHX</span>
                         <span class="matchup-card-mobile" style="display: none;">LEN VS LHX</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -347,15 +347,45 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="d2100040-06fb-4596-867d-df8805ce93ed" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">58</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="d2100040-06fb-4596-867d-df8805ce93ed" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Main snowflake arms extending to edges - 6 arms total -->
+                <line x1="42.5" y1="0" x2="42.5" y2="85" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="0" y1="42.5" x2="85" y2="42.5" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="27.5" y1="27.5" x2="57.5" y2="57.5" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="57.5" y1="27.5" x2="27.5" y2="57.5" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Additional diagonal arms -->
+                <line x1="53.1" y1="22.7" x2="31.9" y2="62.3" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="62.3" y1="31.9" x2="22.7" y2="53.1" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Small diagonal lines on main arms -->
+                <line x1="42.5" y1="6" x2="36.5" y2="12" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="42.5" y1="6" x2="48.5" y2="12" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="42.5" y1="79" x2="36.5" y2="73" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="42.5" y1="79" x2="48.5" y2="73" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="6" y1="42.5" x2="12" y2="36.5" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="6" y1="42.5" x2="12" y2="48.5" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="79" y1="42.5" x2="73" y2="36.5" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="79" y1="42.5" x2="73" y2="48.5" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <!-- Small diagonal lines on diagonal arms -->
+                <line x1="49.6" y1="35.4" x2="53.1" y2="31.9" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="49.6" y1="35.4" x2="46.7" y2="38.3" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="35.4" y1="49.6" x2="31.9" y2="53.1" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="35.4" y1="49.6" x2="38.3" y2="46.7" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="49.6" y1="49.6" x2="53.1" y2="53.1" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="49.6" y1="49.6" x2="46.7" y2="46.7" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="35.4" y1="35.4" x2="31.9" y2="31.9" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="35.4" y1="35.4" x2="38.3" y2="38.3" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(135, 206, 235, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">58</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="d2100040-06fb-4596-867d-df8805ce93ed" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Lens-vs-LeHavre-2026-01-30.png" alt="Lens vs Havre LIGUE 1 lens-vs-havre-after narrative - After the Fall - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Lens-vs-LeHavre-2026-01-30.png" alt="Lens vs Havre LIGUE 1 lens-vs-havre-after narrative - After the Fall - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 

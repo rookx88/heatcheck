@@ -338,7 +338,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/31</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">LORIENT VS NANTES</span>
+                        <span class="matchup-card-full">LOR VS NAN</span>
                         <span class="matchup-card-mobile" style="display: none;">LOR VS NAN</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -347,15 +347,24 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="e13adf31-3993-4c01-ae3d-800cf959ad87" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">61</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="e13adf31-3993-4c01-ae3d-800cf959ad87" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Cloud shape - even larger to fill circle -->
+                <path d="M 10.5 56.5 Q 2.5 28.5 24.5 28.5 Q 30.5 12.5 52.5 24.5 Q 58.5 12.5 74.5 24.5 Q 82.5 28.5 74.5 56.5 Z" 
+                      fill="#b0b0b0" stroke="#888888" stroke-width="2" opacity="0.9"/>
+                <ellipse cx="24.5" cy="32.5" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
+                <ellipse cx="60.5" cy="32.5" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">61</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="e13adf31-3993-4c01-ae3d-800cf959ad87" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Lorient-vs-Nantes-2026-01-31.png" alt="Lorient vs Nantes LIGUE 1 lorient-vs-nantes-brittany narrative - Brittany&#039;s Divide: Lorient&#039;s Composure vs. Nantes&#039; Chaos - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Lorient-vs-Nantes-2026-01-31.png" alt="Lorient vs Nantes LIGUE 1 lorient-vs-nantes-brittany narrative - Brittany&#039;s Divide: Lorient&#039;s Composure vs. Nantes&#039; Chaos - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -380,7 +389,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/31</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">MONACO VS RENNES</span>
+                        <span class="matchup-card-full">MON VS REN</span>
                         <span class="matchup-card-mobile" style="display: none;">MON VS REN</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -389,15 +398,24 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="d0186ed9-585b-4449-ae7e-0e58446fb7bc" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">64</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="d0186ed9-585b-4449-ae7e-0e58446fb7bc" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Cloud shape - even larger to fill circle -->
+                <path d="M 10.5 56.5 Q 2.5 28.5 24.5 28.5 Q 30.5 12.5 52.5 24.5 Q 58.5 12.5 74.5 24.5 Q 82.5 28.5 74.5 56.5 Z" 
+                      fill="#b0b0b0" stroke="#888888" stroke-width="2" opacity="0.9"/>
+                <ellipse cx="24.5" cy="32.5" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
+                <ellipse cx="60.5" cy="32.5" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">64</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="d0186ed9-585b-4449-ae7e-0e58446fb7bc" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/Monaco-vs-StadeRennais-2026-01-31.png" alt="Monaco vs Rennes LIGUE 1 monaco-vs-rennes-monaco narrative - Monaco&#039;s Spiral vs. Rennes&#039; Ascent - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/Monaco-vs-StadeRennais-2026-01-31.png" alt="Monaco vs Rennes LIGUE 1 monaco-vs-rennes-monaco narrative - Monaco&#039;s Spiral vs. Rennes&#039; Ascent - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 
@@ -422,7 +440,7 @@
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">01/31</div>
                     </div>
                     <div style="color: #fff; font-size: 1.05rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; text-transform: uppercase; letter-spacing: 0.08em; flex: 1; min-width: 0; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-sizing: border-box; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">
-                        <span class="matchup-card-full">PARIS FC VS MARSEILLE</span>
+                        <span class="matchup-card-full">PFX VS MAR</span>
                         <span class="matchup-card-mobile" style="display: none;">PFX VS MAR</span>
                     </div>
                     <div style="width: 40px; height: 40px; min-width: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.1); box-shadow: 0 2px 8px rgba(255, 255, 255, 0.3), 0 0 12px rgba(255, 255, 255, 0.2); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
@@ -431,15 +449,24 @@
                 </div>
                 <div style="display: flex; gap: 0.5rem; margin-bottom: 0.75rem; align-items: center; justify-content: flex-start; position: relative; width: 100%; box-sizing: border-box;">
                     
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="fdbccdb4-af88-4a39-8748-55e24de600dc" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">62</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="fdbccdb4-af88-4a39-8748-55e24de600dc" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        
+            <svg width="85" height="85" viewBox="0 0 85 85" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Cloud shape - even larger to fill circle -->
+                <path d="M 10.5 56.5 Q 2.5 28.5 24.5 28.5 Q 30.5 12.5 52.5 24.5 Q 58.5 12.5 74.5 24.5 Q 82.5 28.5 74.5 56.5 Z" 
+                      fill="#b0b0b0" stroke="#888888" stroke-width="2" opacity="0.9"/>
+                <ellipse cx="24.5" cy="32.5" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
+                <ellipse cx="60.5" cy="32.5" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
+            </svg>
+        
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: rgba(255, 215, 0, 0.95); display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: #000000; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">62</div>
+                        </div>
                     </div>
                     
                     <div class="post-card-image-container" data-post-id="fdbccdb4-af88-4a39-8748-55e24de600dc" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        <img src="/assets/images/ParisFC-vs-Marseille-2026-01-31.png" alt="Paris FC vs Marseille LIGUE 1 fc-vs-marseille-point narrative - Point of Fracture: A Club&#039;s Shame Meets a City&#039;s Pride - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">
+                        <img src="/assets/images/ParisFC-vs-Marseille-2026-01-31.png" alt="Paris FC vs Marseille LIGUE 1 fc-vs-marseille-point narrative - Point of Fracture: A Club&#039;s Shame Meets a City&#039;s Pride - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">
                     </div>
                 </div>
                 

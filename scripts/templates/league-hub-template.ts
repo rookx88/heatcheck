@@ -379,6 +379,109 @@ function getLeagueAbbreviation(league: string): string {
 }
 
 /**
+ * Get temperature symbol based on heat score
+ * Returns SVG symbol HTML: Sunny (70+), Cloudy (60-70), Snowflake (<60)
+ * Symbol fills the entire 85px circle, with number in center black circle
+ */
+function getTemperatureSymbol(heatScore: number): string {
+    const size = 85; // Full circle size
+    const center = size / 2;
+    
+    if (heatScore >= 70) {
+        // Sunny symbol ☀️ - Yellow sun with many rays extending to edges
+        const sunRadius = 22;
+        const rayLength = 20; // Longer rays extending closer to edge
+        return `
+            <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Sun rays extending from sun circle to edges - 24 rays total -->
+                <!-- Cardinal directions - Yellow (longer) -->
+                <line x1="${center}" y1="0" x2="${center}" y2="${rayLength}" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="${center}" y1="${size}" x2="${center}" y2="${size - rayLength}" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="0" y1="${center}" x2="${rayLength}" y2="${center}" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <line x1="${size}" y1="${center}" x2="${size - rayLength}" y2="${center}" stroke="#ffd700" stroke-width="3" stroke-linecap="round"/>
+                <!-- Diagonal rays - Yellow (extended longer) -->
+                <line x1="${center - 12.7}" y1="${center - 12.7}" x2="${center - 28}" y2="${center - 28}" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="${center + 12.7}" y1="${center + 12.7}" x2="${center + 28}" y2="${center + 28}" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="${center + 12.7}" y1="${center - 12.7}" x2="${center + 28}" y2="${center - 28}" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <line x1="${center - 12.7}" y1="${center + 12.7}" x2="${center - 28}" y2="${center + 28}" stroke="#ffd700" stroke-width="2.8" stroke-linecap="round"/>
+                <!-- Rays at 30° intervals - Yellow -->
+                <line x1="${center + 11}" y1="${center - 19}" x2="${center + 17}" y2="${center - 25}" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="${center + 19}" y1="${center - 11}" x2="${center + 25}" y2="${center - 17}" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="${center + 19}" y1="${center + 11}" x2="${center + 25}" y2="${center + 17}" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="${center + 11}" y1="${center + 19}" x2="${center + 17}" y2="${center + 25}" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="${center - 11}" y1="${center + 19}" x2="${center - 17}" y2="${center + 25}" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="${center - 19}" y1="${center + 11}" x2="${center - 25}" y2="${center + 17}" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="${center - 19}" y1="${center - 11}" x2="${center - 25}" y2="${center - 17}" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="${center - 11}" y1="${center - 19}" x2="${center - 17}" y2="${center - 25}" stroke="#ffd700" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Orange rays at 15° intervals - between yellow rays -->
+                <line x1="${center + 5.7}" y1="${center - 20.2}" x2="${center + 9}" y2="${center - 23.5}" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="${center + 20.2}" y1="${center - 5.7}" x2="${center + 23.5}" y2="${center - 9}" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="${center + 20.2}" y1="${center + 5.7}" x2="${center + 23.5}" y2="${center + 9}" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="${center + 5.7}" y1="${center + 20.2}" x2="${center + 9}" y2="${center + 23.5}" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="${center - 5.7}" y1="${center + 20.2}" x2="${center - 9}" y2="${center + 23.5}" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="${center - 20.2}" y1="${center + 5.7}" x2="${center - 23.5}" y2="${center + 9}" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="${center - 20.2}" y1="${center - 5.7}" x2="${center - 23.5}" y2="${center - 9}" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <line x1="${center - 5.7}" y1="${center - 20.2}" x2="${center - 9}" y2="${center - 23.5}" stroke="#ff8c00" stroke-width="2.2" stroke-linecap="round"/>
+                <!-- Additional orange rays at 7.5° intervals -->
+                <line x1="${center + 8.3}" y1="${center - 19.6}" x2="${center + 13}" y2="${center - 24.3}" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center + 19.6}" y1="${center - 8.3}" x2="${center + 24.3}" y2="${center - 13}" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center + 19.6}" y1="${center + 8.3}" x2="${center + 24.3}" y2="${center + 13}" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center + 8.3}" y1="${center + 19.6}" x2="${center + 13}" y2="${center + 24.3}" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center - 8.3}" y1="${center + 19.6}" x2="${center - 13}" y2="${center + 24.3}" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center - 19.6}" y1="${center + 8.3}" x2="${center - 24.3}" y2="${center + 13}" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center - 19.6}" y1="${center - 8.3}" x2="${center - 24.3}" y2="${center - 13}" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center - 8.3}" y1="${center - 19.6}" x2="${center - 13}" y2="${center - 24.3}" stroke="#ffa500" stroke-width="2" stroke-linecap="round"/>
+                <!-- Sun circle - yellow instead of black -->
+                <circle cx="${center}" cy="${center}" r="${sunRadius}" fill="#ffd700" stroke="#ffaa00" stroke-width="2" opacity="0.95"/>
+            </svg>
+        `;
+    } else if (heatScore >= 60) {
+        // Cloudy symbol ☁️ - Gray cloud filling entire circle (even larger)
+        return `
+            <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Cloud shape - even larger to fill circle -->
+                <path d="M ${center - 32} ${center + 14} Q ${center - 40} ${center - 14} ${center - 18} ${center - 14} Q ${center - 12} ${center - 30} ${center + 10} ${center - 18} Q ${center + 16} ${center - 30} ${center + 32} ${center - 18} Q ${center + 40} ${center - 14} ${center + 32} ${center + 14} Z" 
+                      fill="#b0b0b0" stroke="#888888" stroke-width="2" opacity="0.9"/>
+                <ellipse cx="${center - 18}" cy="${center - 10}" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
+                <ellipse cx="${center + 18}" cy="${center - 10}" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
+            </svg>
+        `;
+    } else {
+        // Snowflake symbol ❄️ - Blue/white snowflake with more arms filling entire circle
+        return `
+            <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+                <!-- Main snowflake arms extending to edges - 6 arms total -->
+                <line x1="${center}" y1="0" x2="${center}" y2="${size}" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="0" y1="${center}" x2="${size}" y2="${center}" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="${center - 15}" y1="${center - 15}" x2="${center + 15}" y2="${center + 15}" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="${center + 15}" y1="${center - 15}" x2="${center - 15}" y2="${center + 15}" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Additional diagonal arms -->
+                <line x1="${center + 10.6}" y1="${center - 19.8}" x2="${center - 10.6}" y2="${center + 19.8}" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <line x1="${center + 19.8}" y1="${center - 10.6}" x2="${center - 19.8}" y2="${center + 10.6}" stroke="#87ceeb" stroke-width="2.5" stroke-linecap="round"/>
+                <!-- Small diagonal lines on main arms -->
+                <line x1="${center}" y1="6" x2="${center - 6}" y2="12" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center}" y1="6" x2="${center + 6}" y2="12" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center}" y1="${size - 6}" x2="${center - 6}" y2="${size - 12}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center}" y1="${size - 6}" x2="${center + 6}" y2="${size - 12}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="6" y1="${center}" x2="12" y2="${center - 6}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="6" y1="${center}" x2="12" y2="${center + 6}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${size - 6}" y1="${center}" x2="${size - 12}" y2="${center - 6}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${size - 6}" y1="${center}" x2="${size - 12}" y2="${center + 6}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <!-- Small diagonal lines on diagonal arms -->
+                <line x1="${center + 7.1}" y1="${center - 7.1}" x2="${center + 10.6}" y2="${center - 10.6}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center + 7.1}" y1="${center - 7.1}" x2="${center + 4.2}" y2="${center - 4.2}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center - 7.1}" y1="${center + 7.1}" x2="${center - 10.6}" y2="${center + 10.6}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center - 7.1}" y1="${center + 7.1}" x2="${center - 4.2}" y2="${center + 4.2}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center + 7.1}" y1="${center + 7.1}" x2="${center + 10.6}" y2="${center + 10.6}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center + 7.1}" y1="${center + 7.1}" x2="${center + 4.2}" y2="${center + 4.2}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center - 7.1}" y1="${center - 7.1}" x2="${center - 10.6}" y2="${center - 10.6}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+                <line x1="${center - 7.1}" y1="${center - 7.1}" x2="${center - 4.2}" y2="${center - 4.2}" stroke="#b0e0e6" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+        `;
+    }
+}
+
+/**
  * Generate post card HTML (same as archive)
  */
 export function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
@@ -465,7 +568,7 @@ export function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
     
     // For DFS articles, generate matchup text with day of week + "DFS Football"
     // For Heat Picks articles, use "Heat Picks" label
-    let displayMatchup = matchup;
+    let displayMatchup = `${getTeamAcronym(post.teamA || '', post.league)} VS ${getTeamAcronym(post.teamB || '', post.league)}`.toUpperCase();
     let displayMatchupMobile = `${getTeamAcronym(post.teamA || '', post.league)} VS ${getTeamAcronym(post.teamB || '', post.league)}`.toUpperCase();
     if (isDFSArticle) {
         const articleDate = post.matchupScheduledDate || post.createdAt;
@@ -587,11 +690,12 @@ export function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
                         <div style="color: #ff1a1a; font-size: 1.5rem; font-weight: 900; -webkit-text-stroke: 2.5px #000000; text-stroke: 2.5px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.8px; z-index: 1; position: relative; text-shadow: 0 0 10px rgba(255, 26, 26, 0.8), 0 0 20px rgba(255, 26, 26, 0.5);">HP</div>
                     </div>
                     ` : `
-                    <!-- Regular Heat Indicator -->
-                    <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: 2px solid #ff0040; border-radius: 50%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: inset 0 0 20px #ff004040, 0 0 15px #ff004060; overflow: hidden; cursor: pointer;">
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 72px; height: 72px; border: 1.5px solid #ffe66d; border-radius: 50%; opacity: 0.75;"></div>
-                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 50px; height: 50px; border: 1.5px solid #ff0040; opacity: 0.7;"></div>
-                        <div class="heat-number" style="color: #ff1a1a; font-size: 1.8rem; font-weight: 900; -webkit-text-stroke: 2px #000000; text-stroke: 2px #000000; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.5px; z-index: 1; position: relative; transition: text-shadow 0.3s ease;">${heatScore}</div>
+                    <!-- Regular Heat Indicator with Temperature Symbol -->
+                    <div class="heat-indicator-container" data-post-id="${post.id}" style="width: 85px; height: 85px; min-width: 85px; border: none; border-radius: 50%; background: transparent; display: flex; align-items: center; justify-content: center; flex-shrink: 0; position: relative; box-shadow: none; overflow: visible; cursor: pointer;">
+                        ${getTemperatureSymbol(heatScore)}
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 36px; height: 36px; border-radius: 50%; background: ${heatScore >= 70 ? 'rgba(255, 215, 0, 0.95)' : heatScore >= 60 && heatScore < 70 ? 'rgba(255, 215, 0, 0.95)' : 'rgba(135, 206, 235, 0.95)'}; display: flex; align-items: center; justify-content: center; z-index: 2; border: 1px solid rgba(255, 255, 255, 0.2);">
+                            <div class="heat-number" style="color: ${heatScore >= 70 ? '#000000' : heatScore >= 60 ? '#000000' : '#000000'}; font-size: 1.4rem; font-weight: 900; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility; letter-spacing: 0.3px; transition: text-shadow 0.3s ease;">${heatScore}</div>
+                        </div>
                     </div>
                     `}
                     <div class="post-card-image-container" data-post-id="${post.id}" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
