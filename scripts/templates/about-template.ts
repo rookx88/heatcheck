@@ -1,7 +1,7 @@
 import { generateCrawlerNav, RecentDate } from '../utils/crawler-nav';
 import { escapeHtml } from '../utils/html-escape';
 import { generateBaseHtml } from './base-template';
-import { generatePostCard } from './index-template';
+import { generatePostCard } from './league-hub-template';
 
 interface HeatcheckPost {
     id: string;

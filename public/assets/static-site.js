@@ -1582,7 +1582,7 @@ function generatePostCard(post) {
                     </div>
                     `}
                     <div class="post-card-image-container" data-post-id="${post.id}" style="flex: 1; height: 130px; min-width: 0; position: relative; overflow: hidden; box-sizing: border-box;">
-                        ${imagePath ? `<img src="${imagePath}" alt="${teamAShort} vs ${teamBShort} ${league} matchup analysis - ${headline} - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: cover; object-position: top; border-radius: 4px; display: block;">` : '<div style="width: 100%; height: 100%; background: rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.5); font-size: 0.75rem;">No Image</div>'}
+                        ${imagePath ? `<img src="${imagePath}" alt="${teamAShort} vs ${teamBShort} ${league} matchup analysis - ${headline} - HeatChecks Analysis" style="width: 100%; height: 100%; object-fit: contain; object-position: center; border-radius: 4px; display: block;">` : '<div style="width: 100%; height: 100%; background: rgba(255, 255, 255, 0.1); border-radius: 4px; display: flex; align-items: center; justify-content: center; color: rgba(255, 255, 255, 0.5); font-size: 0.75rem;">No Image</div>'}
                     </div>
                 </div>
                 ${isHeatPicksArticle ? `
