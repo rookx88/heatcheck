@@ -332,21 +332,406 @@ function generateChartCatalog(matchPackV3: any): Array<{
  */
 interface ClassifiedMatchup {
   classification: 'HEAT_PICK' | 'WARM_LEAN' | 'NO_HEAT';
-  heatScore: number;
-  signalsHit: Array<{ signalKey: string; evidence: string; score: number }>;
+  heatScore: number;  // UI temperature (0-100)
+  pickConfidence: number;  // Publishability score (0-100)
+  heatScorePercentile: number;  // Percentile within slate (0-100)
+  signalsHit: Array<{ 
+    signalKey: string; 
+    evidence: string; 
+    score: number;
+    direction: 'A' | 'B' | 'neutral';  // NEW: signal direction
+  }>;
+  sideConsistencyScore: number;  // NEW: 0-100, higher = more aligned
   marketLag: number | null;
-  evidenceChart: { chartId: string; chartType: string; dataSource: string; questionAnswered: string } | null;
+  evidenceChart: { 
+    chartId: string; 
+    chartType: string; 
+    dataSource: string; 
+    questionAnswered: string;
+    isValid: boolean;  // NEW: chart passes validity rules
+    effectSize: number;  // NEW: quantified effect size
+  } | null;
   matchup: string;
   teamA: string;
   teamB: string;
   matchPackV3: any;
   pickType?: string;
   pick?: string;
+  noHeatReason?: {  // NEW: structured taxonomy
+    category: 'SIGNALS_CONFLICTED' | 'NO_EFFECT_SIZE' | 'MARKET_CORRECTED' | 'SAMPLE_TOO_SMALL' | 'INJURIES_UNCERTAIN' | 'LOW_HEAT_SCORE' | 'MISSING_DATA';
+    details: string;
+  };
+  marketSanityFlags?: {  // NEW: market checks
+    lineMoveAgainst: boolean;
+    unrealisticPrice: boolean;
+    lineMoveMagnitude?: number;
+  };
+}
+
+// Helper: Calculate Side Consistency Score
+function calculateSideConsistency(
+  signalsHit: Array<{ signalKey: string; evidence: string; score: number; direction: 'A' | 'B' | 'neutral' }>,
+  teamA: string,
+  teamB: string
+): number {
+  if (signalsHit.length === 0) return 0;
+  if (signalsHit.length === 1) return 50; // Single signal = neutral consistency
+
+  // Group signals by direction
+  const aSignals = signalsHit.filter(s => s.direction === 'A');
+  const bSignals = signalsHit.filter(s => s.direction === 'B');
+  const neutralSignals = signalsHit.filter(s => s.direction === 'neutral');
+
+  // Calculate weighted alignment
+  const aWeight = aSignals.reduce((sum, s) => sum + s.score, 0);
+  const bWeight = bSignals.reduce((sum, s) => sum + s.score, 0);
+  const neutralWeight = neutralSignals.reduce((sum, s) => sum + s.score, 0);
+  const totalWeight = aWeight + bWeight + neutralWeight;
+
+  if (totalWeight === 0) return 0;
+
+  // If one side dominates, high consistency
+  const maxSideWeight = Math.max(aWeight, bWeight);
+  const consistencyRatio = maxSideWeight / totalWeight;
+
+  // Penalty for mixed signals
+  const mixedPenalty = (Math.min(aWeight, bWeight) / totalWeight) * 0.5;
+
+  // Score: 0-100, higher = more aligned
+  const consistencyScore = (consistencyRatio * 100) - (mixedPenalty * 100);
+  return Math.max(0, Math.min(100, consistencyScore));
+}
+
+// Helper: Calculate slope of array
+function calculateSlope(values: number[]): number {
+  if (values.length < 2) return 0;
+  const n = values.length;
+  const sumX = (n * (n - 1)) / 2;
+  const sumY = values.reduce((sum, v) => sum + v, 0);
+  const sumXY = values.reduce((sum, v, i) => sum + (i * v), 0);
+  const sumX2 = (n * (n - 1) * (2 * n - 1)) / 6;
+  
+  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  return slope;
+}
+
+// Helper: Validate Chart Effect Size
+function validateChartEffectSize(
+  chart: any,
+  matchPack: any,
+  signal: { signalKey: string; score: number; direction: 'A' | 'B' | 'neutral' }
+): { isValid: boolean; effectSize: number } {
+  const factDrop = matchPack.factDrop || {};
+  const teamForm = factDrop.raw?.teamForm || {};
+
+  if (chart.chartId === 'rolling_margin_last10') {
+    // Momentum chart: require minimum separation in trend
+    const aMargins = teamForm.A?.margins || teamForm.A?.xgDiff || [];
+    const bMargins = teamForm.B?.margins || teamForm.B?.xgDiff || [];
+    
+    if (aMargins.length < 5 || bMargins.length < 5) {
+      return { isValid: false, effectSize: 0 };
+    }
+
+    // Calculate slope difference
+    const aSlope = calculateSlope(aMargins.slice(-5));
+    const bSlope = calculateSlope(bMargins.slice(-5));
+    const slopeDiff = Math.abs(aSlope - bSlope);
+    
+    // Minimum effect size: slope difference of 2.0
+    const isValid = slopeDiff >= 2.0;
+    return { isValid, effectSize: slopeDiff };
+  }
+
+  if (chart.chartId === 'rotation_availability') {
+    // Availability chart: require minimum absence difference
+    const availability = factDrop.raw?.availability;
+    const aAbsences = availability?.majorAbsences?.A?.count || 0;
+    const bAbsences = availability?.majorAbsences?.B?.count || 0;
+    const diff = Math.abs(aAbsences - bAbsences);
+    
+    // Minimum effect size: 2+ player difference
+    const isValid = diff >= 2;
+    return { isValid, effectSize: diff };
+  }
+
+  if (chart.chartId === 'close_game_execution') {
+    // Close games: require minimum sample size and rate difference
+    const aCloseW = teamForm.A?.closeW10 || 0;
+    const aCloseL = teamForm.A?.closeL10 || 0;
+    const bCloseW = teamForm.B?.closeW10 || 0;
+    const bCloseL = teamForm.B?.closeL10 || 0;
+    const totalClose = aCloseW + aCloseL + bCloseW + bCloseL;
+    
+    if (totalClose < 10) {
+      return { isValid: false, effectSize: 0 };
+    }
+
+    const aCloseRate = aCloseW + aCloseL > 0 ? aCloseW / (aCloseW + aCloseL) : 0;
+    const bCloseRate = bCloseW + bCloseL > 0 ? bCloseW / (bCloseW + bCloseL) : 0;
+    const rateDiff = Math.abs(aCloseRate - bCloseRate);
+    
+    // Minimum effect size: 0.2 rate difference
+    const isValid = rateDiff >= 0.2;
+    return { isValid, effectSize: rateDiff };
+  }
+
+  // Default: assume valid if chart exists
+  return { isValid: true, effectSize: 1.0 };
+}
+
+// Helper: Market Sanity Checks
+function checkMarketSanity(
+  oddsData: any,
+  signalsHit: Array<{ signalKey: string; score: number; direction: 'A' | 'B' | 'neutral' }>,
+  teamA: string,
+  teamB: string
+): { lineMoveAgainst: boolean; unrealisticPrice: boolean; lineMoveMagnitude?: number } {
+  const flags = {
+    lineMoveAgainst: false,
+    unrealisticPrice: false,
+    lineMoveMagnitude: undefined as number | undefined
+  };
+
+  if (!oddsData?.gameMarkets) return flags;
+
+  // Check line moves (simplified - would need historical odds data)
+  const currentSpread = oddsData.gameMarkets?.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'spreads')?.outcomes?.[0]?.point;
+  const openingSpread = oddsData.gameMarkets?.opening?.spreads?.[0]?.point;
+  
+  if (currentSpread !== undefined && openingSpread !== undefined) {
+    const move = Math.abs(currentSpread - openingSpread);
+    flags.lineMoveMagnitude = move;
+    
+    // If line moved 3+ points against our pick direction, flag it
+    // (This is simplified - would need to know which side we're picking)
+    if (move >= 3) {
+      flags.lineMoveAgainst = true;
+    }
+  }
+
+  // Check for unrealistic prices (big favorites with thin signals)
+  const moneyline = oddsData.gameMarkets?.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'h2h')?.outcomes;
+  if (moneyline && moneyline.length >= 2) {
+    const favoritePrice = Math.min(moneyline[0].price, moneyline[1].price);
+    const impliedProb = favoritePrice < 0 ? Math.abs(favoritePrice) / (Math.abs(favoritePrice) + 100) : 100 / (favoritePrice + 100);
+    
+    // If favorite has >75% implied prob but we have weak signals, flag it
+    if (impliedProb > 0.75 && signalsHit.length < 2) {
+      flags.unrealisticPrice = true;
+    }
+  }
+
+  return flags;
+}
+
+// Helper: Calculate Unified Heat Score V3 (extracted for reuse)
+function calculateUnifiedHeatScoreV3(post: HeatcheckPost): { heatScore: number; narrativeScore: number; evidenceScore: number } {
+  const heatCheckData = post.heatCheckData;
+  if (!heatCheckData) {
+    return { heatScore: 0, narrativeScore: 0, evidenceScore: 0 };
+  }
+  
+  const matchPackV3 = heatCheckData.matchPackV3;
+  const factPack = heatCheckData.fact_pack || heatCheckData.factPack || {};
+  const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
+  const narratives = heatCheckData.narratives || {};
+  
+  let momentumScore = 0;
+  let availabilityScore = 0;
+  let closeGamesScore = 0;
+  let comparisonsScore = 0;
+  
+  // If matchPackV3 exists, use Heat Picks signals (preferred method)
+  if (matchPackV3?.factDrop) {
+    const factDrop = matchPackV3.factDrop;
+    const teamForm = factDrop.raw?.teamForm || {};
+    const comparisons = factDrop.comparisons || [];
+    const availability = factDrop.raw?.availability;
+    
+    // 1. MOMENTUM (0-25 points)
+    const aMargin10 = teamForm.A?.margin10 || teamForm.A?.xgDiff10 || 0;
+    const aMargin3 = teamForm.A?.margin3 || teamForm.A?.xgDiff3 || 0;
+    const bMargin10 = teamForm.B?.margin10 || teamForm.B?.xgDiff10 || 0;
+    const bMargin3 = teamForm.B?.margin3 || teamForm.B?.xgDiff3 || 0;
+    const momentumDivergence = Math.abs((aMargin3 - aMargin10) - (bMargin3 - bMargin10));
+    momentumScore = Math.min(25, momentumDivergence * 2.5);
+    
+    // 2. AVAILABILITY (0-20 points)
+    if (availability?.majorAbsences) {
+      const aAbsences = availability.majorAbsences.A?.count || 0;
+      const bAbsences = availability.majorAbsences.B?.count || 0;
+      const availabilityDiff = Math.abs(aAbsences - bAbsences);
+      availabilityScore = Math.min(20, availabilityDiff * 4);
+    }
+    
+    // 3. CLOSE GAMES (0-20 points)
+    const closeMarginComp = comparisons.find((c: any) => c?.key === 'closeMargin');
+    if (closeMarginComp) {
+      const aCloseW = teamForm.A?.closeW10 || 0;
+      const aCloseL = teamForm.A?.closeL10 || 0;
+      const bCloseW = teamForm.B?.closeW10 || 0;
+      const bCloseL = teamForm.B?.closeL10 || 0;
+      const aCloseRate = aCloseW + aCloseL > 0 ? aCloseW / (aCloseW + aCloseL) : 0;
+      const bCloseRate = bCloseW + bCloseL > 0 ? bCloseW / (bCloseW + bCloseL) : 0;
+      const closeGameDiff = Math.abs(aCloseRate - bCloseRate);
+      closeGamesScore = Math.min(20, closeGameDiff * 40);
+    }
+    
+    // 4. COMPARISONS (0-15 points)
+    let comparisonsTotal = 0;
+    comparisons.forEach((comp: any) => {
+      if (comp?.key && comp.key !== 'closeMargin') {
+        const aVal = comp.A || 0;
+        const bVal = comp.B || 0;
+        const diff = Math.abs(aVal - bVal);
+        if (diff > 0.1) {
+          comparisonsTotal += Math.min(3, diff * 1.5);
+        }
+      }
+    });
+    comparisonsScore = Math.min(15, comparisonsTotal);
+  } else {
+    // Fallback: Use legacy factPack data if matchPackV3 not available
+    const odds = factPack.odds || {};
+    const markets = odds.markets || [];
+    const spreadMarket = markets.find((m: any) => m.market === 'Spread');
+    
+    if (spreadMarket && typeof spreadMarket.point === 'number') {
+      const spread = Math.abs(spreadMarket.point);
+      if (spread <= 3) momentumScore = 22;
+      else if (spread <= 6) momentumScore = 18;
+      else if (spread <= 10) momentumScore = 15;
+      else momentumScore = 12;
+    } else {
+      momentumScore = 15;
+    }
+  }
+  
+  const baseScore = momentumScore + availabilityScore + closeGamesScore + comparisonsScore;
+  
+  // NARRATIVE STRENGTH (0-35 points)
+  let narrativeScore = 0;
+  if (narratives?.candidate_cards && narratives.candidate_cards.length > 0) {
+    const primaryNarrativeId = narratives.selected?.primary_narrative_id;
+    const primaryCard = narratives.candidate_cards.find(
+      (c: any) => c.narrative_id === primaryNarrativeId
+    );
+    
+    if (primaryCard) {
+      if (primaryCard.total_score !== undefined) {
+        narrativeScore += Math.min(20, (primaryCard.total_score / 35) * 20);
+      } else {
+        const breakdown = primaryCard.score_breakdown || {};
+        const breakdownScore = (breakdown.factual_support || 0) + 
+                              (breakdown.stakes || 0) + 
+                              (breakdown.performance_alignment || 0);
+        narrativeScore += Math.min(20, (breakdownScore / 20) * 20);
+      }
+    }
+    
+    const secondaryIds = narratives.selected?.secondary_narrative_ids || [];
+    if (secondaryIds.length >= 2) narrativeScore += 8;
+    else if (secondaryIds.length === 1) narrativeScore += 4;
+    
+    const allEmotionTags = narratives.candidate_cards
+      .flatMap((c: any) => c.emotion_tags || []);
+    const uniqueEmotionTags = [...new Set(allEmotionTags)];
+    if (uniqueEmotionTags.length >= 4) narrativeScore += 7;
+    else if (uniqueEmotionTags.length >= 3) narrativeScore += 5;
+    else if (uniqueEmotionTags.length >= 2) narrativeScore += 2;
+  }
+  
+  narrativeScore = Math.min(35, Math.round(narrativeScore));
+  
+  // EVIDENCE QUALITY (0-23 points)
+  let evidenceScore = 0;
+  const quotes = evidenceBundle.quotes || [];
+  const timelineEvents = evidenceBundle.timeline_events || [];
+  
+  if (quotes.length >= 5) evidenceScore += 12;
+  else if (quotes.length >= 3) evidenceScore += 9;
+  else if (quotes.length >= 2) evidenceScore += 6;
+  else if (quotes.length === 1) evidenceScore += 3;
+  
+  if (timelineEvents.length >= 5) evidenceScore += 6;
+  else if (timelineEvents.length >= 3) evidenceScore += 5;
+  else if (timelineEvents.length >= 2) evidenceScore += 3;
+  else if (timelineEvents.length === 1) evidenceScore += 2;
+  
+  const now = new Date();
+  const recentQuotes = quotes.filter((q: any) => {
+    if (!q || !q.date_utc) return false;
+    try {
+      const quoteDate = new Date(q.date_utc);
+      const daysAgo = Math.floor((now.getTime() - quoteDate.getTime()) / (1000 * 60 * 60 * 24));
+      return daysAgo <= 30;
+    } catch {
+      return false;
+    }
+  });
+  if (recentQuotes.length >= 3) evidenceScore += 5;
+  else if (recentQuotes.length >= 2) evidenceScore += 3;
+  else if (recentQuotes.length >= 1) evidenceScore += 2;
+  
+  evidenceScore = Math.min(23, evidenceScore);
+  
+  // Total score with base temperature: 40 = baseline
+  const baseTemperature = 40;
+  const rawTotal = baseTemperature + baseScore + narrativeScore + evidenceScore;
+  const heatScore = Math.round(Math.min(100, Math.max(40, rawTotal)));
+  return { heatScore, narrativeScore, evidenceScore };
+}
+
+// Helper: Calculate Pick Confidence (separate from Heat Score)
+function calculatePickConfidence(params: {
+  heatScore: number;
+  sideConsistencyScore: number;
+  signalsHit: Array<{ signalKey: string; score: number }>;
+  narrativeScore: number;
+  evidenceScore: number;
+  evidenceChart: { isValid: boolean; effectSize: number } | null;
+  marketSanityFlags: { lineMoveAgainst: boolean; unrealisticPrice: boolean };
+}): number {
+  let confidence = 0;
+
+  // Signal alignment (0-30 points)
+  const signalCount = params.signalsHit.length;
+  const avgSignalScore = params.signalsHit.length > 0 
+    ? params.signalsHit.reduce((sum, s) => sum + s.score, 0) / params.signalsHit.length 
+    : 0;
+  
+  confidence += Math.min(15, signalCount * 5); // Up to 15 for signal count
+  confidence += Math.min(15, avgSignalScore / 6.67); // Up to 15 for signal strength
+
+  // Side consistency (0-25 points)
+  confidence += (params.sideConsistencyScore / 100) * 25;
+
+  // Chart validity (0-20 points)
+  if (params.evidenceChart?.isValid) {
+    confidence += 15; // Base for valid chart
+    confidence += Math.min(5, params.evidenceChart.effectSize * 2.5); // Bonus for effect size
+  }
+
+  // Narrative + Evidence (0-15 points)
+  const narrativeEvidenceScore = (params.narrativeScore / 35) * 8 + (params.evidenceScore / 23) * 7;
+  confidence += narrativeEvidenceScore;
+
+  // Market sanity penalty (0-10 points deducted)
+  if (params.marketSanityFlags.lineMoveAgainst) {
+    confidence -= 5;
+  }
+  if (params.marketSanityFlags.unrealisticPrice) {
+    confidence -= 5;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(confidence)));
 }
 
 async function computeHeatPicksClassification(
   post: HeatcheckPost,
-  oddsData?: any
+  oddsData?: any,
+  slateHeatScores?: number[]  // NEW: for percentile calculation
 ): Promise<ClassifiedMatchup | null> {
   // Support both V4 and V3 articles (V4 extends V3, so it has all V3 data)
   const matchPackV4 = post.heatCheckData?.matchPackV4;
@@ -354,7 +739,24 @@ async function computeHeatPicksClassification(
   const matchPack = matchPackV4 || matchPackV3;
   
   if (!matchPack || !matchPack.factDrop) {
-    return null;
+    return {
+      classification: 'NO_HEAT',
+      heatScore: 0,
+      pickConfidence: 0,
+      heatScorePercentile: 0,
+      signalsHit: [],
+      sideConsistencyScore: 0,
+      marketLag: null,
+      evidenceChart: null,
+      matchup: `${post.teamA || ''} @ ${post.teamB || ''}`,
+      teamA: post.teamA || '',
+      teamB: post.teamB || '',
+      matchPackV3: matchPackV3,
+      noHeatReason: {
+        category: 'MISSING_DATA',
+        details: 'Missing matchPackV3/V4 data'
+      }
+    };
   }
 
   const factDrop = matchPack.factDrop;
@@ -365,8 +767,8 @@ async function computeHeatPicksClassification(
   const teamB = post.teamB || '';
   const matchup = `${teamA} @ ${teamB}`;
 
-  // 1. Compute Signal Scores (for classification, not heat score)
-  const signalsHit: Array<{ signalKey: string; evidence: string; score: number }> = [];
+  // 1. Compute Signal Scores with Direction
+  const signalsHit: Array<{ signalKey: string; evidence: string; score: number; direction: 'A' | 'B' | 'neutral' }> = [];
 
   // Momentum signal
   const aLast10 = teamForm.A?.w10 || 0;
@@ -374,20 +776,24 @@ async function computeHeatPicksClassification(
   const bLast10 = teamForm.B?.w10 || 0;
   const bLast3 = teamForm.B?.w3 || 0;
   
-  // For NBA: use margin data; for soccer: use xgDiff
   const aMargin10 = teamForm.A?.margin10 || teamForm.A?.xgDiff10 || 0;
   const aMargin3 = teamForm.A?.margin3 || teamForm.A?.xgDiff3 || 0;
   const bMargin10 = teamForm.B?.margin10 || teamForm.B?.xgDiff10 || 0;
   const bMargin3 = teamForm.B?.margin3 || teamForm.B?.xgDiff3 || 0;
 
-  const momentumDivergence = Math.abs((aMargin3 - aMargin10) - (bMargin3 - bMargin10));
+  const aMomentumChange = aMargin3 - aMargin10;
+  const bMomentumChange = bMargin3 - bMargin10;
+  const momentumDivergence = Math.abs(aMomentumChange - bMomentumChange);
   const momentumScore = Math.min(100, momentumDivergence * 10);
+  
   if (momentumScore > 20) {
-    const direction = (aMargin3 - aMargin10) > (bMargin3 - bMargin10) ? teamA : teamB;
+    const direction = aMomentumChange > bMomentumChange ? 'A' : bMomentumChange > aMomentumChange ? 'B' : 'neutral';
+    const directionTeam = direction === 'A' ? teamA : direction === 'B' ? teamB : 'neutral';
     signalsHit.push({
       signalKey: 'momentum',
-      evidence: `${direction} last3 margin ${direction === teamA ? (aMargin3 - aMargin10).toFixed(1) : (bMargin3 - bMargin10).toFixed(1)} vs ${direction === teamA ? teamB : teamA} ${(direction === teamA ? (bMargin3 - bMargin10) : (aMargin3 - aMargin10)).toFixed(1)}`,
-      score: momentumScore
+      evidence: `${directionTeam} last3 margin ${direction === 'A' ? aMomentumChange.toFixed(1) : bMomentumChange.toFixed(1)} vs ${direction === 'A' ? teamB : teamA} ${(direction === 'A' ? bMomentumChange : aMomentumChange).toFixed(1)}`,
+      score: momentumScore,
+      direction: direction as 'A' | 'B' | 'neutral'
     });
   }
 
@@ -396,12 +802,15 @@ async function computeHeatPicksClassification(
   const bAbsences = availability?.majorAbsences?.B?.count || 0;
   const availabilityDiff = Math.abs(aAbsences - bAbsences);
   const availabilityScore = Math.min(100, availabilityDiff * 25);
+  
   if (availabilityScore > 20) {
-    const direction = aAbsences > bAbsences ? teamB : teamA;
+    const direction = aAbsences > bAbsences ? 'B' : bAbsences > aAbsences ? 'A' : 'neutral';
+    const directionTeam = direction === 'A' ? teamA : direction === 'B' ? teamB : 'neutral';
     signalsHit.push({
       signalKey: 'availability',
-      evidence: `${direction === teamA ? teamB : teamA} missing ${availabilityDiff} more key player(s)`,
-      score: availabilityScore
+      evidence: `${directionTeam} missing ${availabilityDiff} more key player(s)`,
+      score: availabilityScore,
+      direction: direction as 'A' | 'B' | 'neutral'
     });
   }
 
@@ -416,12 +825,15 @@ async function computeHeatPicksClassification(
     const bCloseRate = bCloseW + bCloseL > 0 ? bCloseW / (bCloseW + bCloseL) : 0;
     const closeGameDiff = Math.abs(aCloseRate - bCloseRate);
     const closeGameScore = Math.min(100, closeGameDiff * 200);
+    
     if (closeGameScore > 20) {
-      const direction = aCloseRate > bCloseRate ? teamA : teamB;
+      const direction = aCloseRate > bCloseRate ? 'A' : bCloseRate > aCloseRate ? 'B' : 'neutral';
+      const directionTeam = direction === 'A' ? teamA : direction === 'B' ? teamB : 'neutral';
       signalsHit.push({
         signalKey: 'closeGames',
-        evidence: `${direction} close-game win rate ${(direction === teamA ? aCloseRate : bCloseRate).toFixed(1)} vs ${(direction === teamA ? bCloseRate : aCloseRate).toFixed(1)}`,
-        score: closeGameScore
+        evidence: `${directionTeam} close-game win rate ${(direction === 'A' ? aCloseRate : bCloseRate).toFixed(1)} vs ${(direction === 'A' ? bCloseRate : aCloseRate).toFixed(1)}`,
+        score: closeGameScore,
+        direction: direction as 'A' | 'B' | 'neutral'
       });
     }
   }
@@ -429,6 +841,10 @@ async function computeHeatPicksClassification(
   // Comparisons signal (aggregate)
   let comparisonsScore = 0;
   const comparisonSignals: string[] = [];
+  let comparisonDirection: 'A' | 'B' | 'neutral' = 'neutral';
+  let aComparisonWins = 0;
+  let bComparisonWins = 0;
+  
   comparisons.forEach((comp: any) => {
     if (comp?.key && comp?.key !== 'closeMargin') {
       const aVal = comp?.A || 0;
@@ -436,21 +852,28 @@ async function computeHeatPicksClassification(
       const diff = Math.abs(aVal - bVal);
       if (diff > 0.1) {
         comparisonsScore += Math.min(20, diff * 10);
-        const direction = aVal > bVal ? teamA : teamB;
-        comparisonSignals.push(`${comp.key}: ${direction} +${diff.toFixed(2)}`);
+        const direction = aVal > bVal ? 'A' : 'B';
+        if (direction === 'A') aComparisonWins++;
+        else bComparisonWins++;
+        comparisonSignals.push(`${comp.key}: ${direction === 'A' ? teamA : teamB} +${diff.toFixed(2)}`);
       }
     }
   });
+  
   if (comparisonsScore > 20) {
+    comparisonDirection = aComparisonWins > bComparisonWins ? 'A' : bComparisonWins > aComparisonWins ? 'B' : 'neutral';
     signalsHit.push({
       signalKey: 'comparisons',
       evidence: comparisonSignals.slice(0, 2).join('; '),
-      score: Math.min(100, comparisonsScore)
+      score: Math.min(100, comparisonsScore),
+      direction: comparisonDirection
     });
   }
 
-  // 2. Calculate Heat Score using the unified system (same as radar modals and article posts)
-  // Use V4 heat score if available (for NBA articles), otherwise use unified V3 calculation
+  // 2. Calculate Side Consistency Score (contradiction penalty)
+  const sideConsistencyScore = calculateSideConsistency(signalsHit, teamA, teamB);
+
+  // 3. Calculate Heat Score (same as before - this is UI temperature)
   let heatScore: number;
   let narrativeScore = 0;
   let evidenceScore = 0;
@@ -506,182 +929,25 @@ async function computeHeatPicksClassification(
     evidenceScore = result.evidenceScore;
   }
   
-  // Unified V3 heat score calculation (matches static-site.js and article-template.ts)
-  function calculateUnifiedHeatScoreV3(post: HeatcheckPost): { heatScore: number; narrativeScore: number; evidenceScore: number } {
-    const heatCheckData = post.heatCheckData;
-    if (!heatCheckData) {
-      return { heatScore: 0, narrativeScore: 0, evidenceScore: 0 };
-    }
-    
-    const matchPackV3 = heatCheckData.matchPackV3;
-    const factPack = heatCheckData.fact_pack || heatCheckData.factPack || {};
-    const evidenceBundle = heatCheckData.evidence_bundle || heatCheckData.evidenceBundle || {};
-    const narratives = heatCheckData.narratives || {};
-    
-    let momentumScore = 0;
-    let availabilityScore = 0;
-    let closeGamesScore = 0;
-    let comparisonsScore = 0;
-    
-    // If matchPackV3 exists, use Heat Picks signals (preferred method)
-    if (matchPackV3?.factDrop) {
-      const factDrop = matchPackV3.factDrop;
-      const teamForm = factDrop.raw?.teamForm || {};
-      const comparisons = factDrop.comparisons || [];
-      const availability = factDrop.raw?.availability;
-      
-      // 1. MOMENTUM (0-25 points)
-      const aMargin10 = teamForm.A?.margin10 || teamForm.A?.xgDiff10 || 0;
-      const aMargin3 = teamForm.A?.margin3 || teamForm.A?.xgDiff3 || 0;
-      const bMargin10 = teamForm.B?.margin10 || teamForm.B?.xgDiff10 || 0;
-      const bMargin3 = teamForm.B?.margin3 || teamForm.B?.xgDiff3 || 0;
-      const momentumDivergence = Math.abs((aMargin3 - aMargin10) - (bMargin3 - bMargin10));
-      momentumScore = Math.min(25, momentumDivergence * 2.5);
-      
-      // 2. AVAILABILITY (0-20 points)
-      if (availability?.majorAbsences) {
-        const aAbsences = availability.majorAbsences.A?.count || 0;
-        const bAbsences = availability.majorAbsences.B?.count || 0;
-        const availabilityDiff = Math.abs(aAbsences - bAbsences);
-        availabilityScore = Math.min(20, availabilityDiff * 4);
-      }
-      
-      // 3. CLOSE GAMES (0-20 points)
-      const closeMarginComp = comparisons.find((c: any) => c?.key === 'closeMargin');
-      if (closeMarginComp) {
-        const aCloseW = teamForm.A?.closeW10 || 0;
-        const aCloseL = teamForm.A?.closeL10 || 0;
-        const bCloseW = teamForm.B?.closeW10 || 0;
-        const bCloseL = teamForm.B?.closeL10 || 0;
-        const aCloseRate = aCloseW + aCloseL > 0 ? aCloseW / (aCloseW + aCloseL) : 0;
-        const bCloseRate = bCloseW + bCloseL > 0 ? bCloseW / (bCloseW + bCloseL) : 0;
-        const closeGameDiff = Math.abs(aCloseRate - bCloseRate);
-        closeGamesScore = Math.min(20, closeGameDiff * 40);
-      }
-      
-      // 4. COMPARISONS (0-15 points)
-      let comparisonsTotal = 0;
-      comparisons.forEach((comp: any) => {
-        if (comp?.key && comp.key !== 'closeMargin') {
-          const aVal = comp.A || 0;
-          const bVal = comp.B || 0;
-          const diff = Math.abs(aVal - bVal);
-          if (diff > 0.1) {
-            comparisonsTotal += Math.min(3, diff * 1.5);
-          }
-        }
-      });
-      comparisonsScore = Math.min(15, comparisonsTotal);
-    } else {
-      // Fallback: Use legacy factPack data if matchPackV3 not available
-      const odds = factPack.odds || {};
-      const markets = odds.markets || [];
-      const spreadMarket = markets.find((m: any) => m.market === 'Spread');
-      
-      if (spreadMarket && typeof spreadMarket.point === 'number') {
-        const spread = Math.abs(spreadMarket.point);
-        if (spread <= 3) momentumScore = 22;
-        else if (spread <= 6) momentumScore = 18;
-        else if (spread <= 10) momentumScore = 15;
-        else momentumScore = 12;
-      } else {
-        momentumScore = 15;
-      }
-    }
-    
-    const baseScore = momentumScore + availabilityScore + closeGamesScore + comparisonsScore;
-    
-    // NARRATIVE STRENGTH (0-35 points)
-    let narrativeScore = 0;
-    if (narratives?.candidate_cards && narratives.candidate_cards.length > 0) {
-      const primaryNarrativeId = narratives.selected?.primary_narrative_id;
-      const primaryCard = narratives.candidate_cards.find(
-        (c: any) => c.narrative_id === primaryNarrativeId
-      );
-      
-      if (primaryCard) {
-        if (primaryCard.total_score !== undefined) {
-          narrativeScore += Math.min(20, (primaryCard.total_score / 35) * 20);
-        } else {
-          const breakdown = primaryCard.score_breakdown || {};
-          const breakdownScore = (breakdown.factual_support || 0) + 
-                                (breakdown.stakes || 0) + 
-                                (breakdown.performance_alignment || 0);
-          narrativeScore += Math.min(20, (breakdownScore / 20) * 20);
-        }
-      }
-      
-      const secondaryIds = narratives.selected?.secondary_narrative_ids || [];
-      if (secondaryIds.length >= 2) narrativeScore += 8;
-      else if (secondaryIds.length === 1) narrativeScore += 4;
-      
-      const allEmotionTags = narratives.candidate_cards
-        .flatMap((c: any) => c.emotion_tags || []);
-      const uniqueEmotionTags = [...new Set(allEmotionTags)];
-      if (uniqueEmotionTags.length >= 4) narrativeScore += 7;
-      else if (uniqueEmotionTags.length >= 3) narrativeScore += 5;
-      else if (uniqueEmotionTags.length >= 2) narrativeScore += 2;
-    }
-    
-    narrativeScore = Math.min(35, Math.round(narrativeScore));
-    
-    // EVIDENCE QUALITY (0-23 points)
-    let evidenceScore = 0;
-    const quotes = evidenceBundle.quotes || [];
-    const timelineEvents = evidenceBundle.timeline_events || [];
-    
-    if (quotes.length >= 5) evidenceScore += 12;
-    else if (quotes.length >= 3) evidenceScore += 9;
-    else if (quotes.length >= 2) evidenceScore += 6;
-    else if (quotes.length === 1) evidenceScore += 3;
-    
-    if (timelineEvents.length >= 5) evidenceScore += 6;
-    else if (timelineEvents.length >= 3) evidenceScore += 5;
-    else if (timelineEvents.length >= 2) evidenceScore += 3;
-    else if (timelineEvents.length === 1) evidenceScore += 2;
-    
-    const now = new Date();
-    const recentQuotes = quotes.filter((q: any) => {
-      if (!q || !q.date_utc) return false;
-      try {
-        const quoteDate = new Date(q.date_utc);
-        const daysAgo = Math.floor((now.getTime() - quoteDate.getTime()) / (1000 * 60 * 60 * 24));
-        return daysAgo <= 30;
-      } catch {
-        return false;
-      }
-    });
-    if (recentQuotes.length >= 3) evidenceScore += 5;
-    else if (recentQuotes.length >= 2) evidenceScore += 3;
-    else if (recentQuotes.length >= 1) evidenceScore += 2;
-    
-    evidenceScore = Math.min(23, evidenceScore);
-    
-    // Total score with base temperature: 40 = baseline
-    const baseTemperature = 40;
-    const rawTotal = baseTemperature + baseScore + narrativeScore + evidenceScore;
-    const heatScore = Math.round(Math.min(100, Math.max(40, rawTotal)));
-    return { heatScore, narrativeScore, evidenceScore };
+  // 4. Calculate Heat Score Percentile (if slate provided)
+  let heatScorePercentile = 50; // Default if no slate
+  if (slateHeatScores && slateHeatScores.length > 0) {
+    const sortedScores = [...slateHeatScores].sort((a, b) => b - a);
+    const rank = sortedScores.findIndex(score => score <= heatScore);
+    heatScorePercentile = rank === -1 ? 100 : ((sortedScores.length - rank) / sortedScores.length) * 100;
   }
 
-  // 6. Market Lag Numeric
-  let marketLag: number | null = null;
-  if (oddsData?.gameMarkets) {
-    // Simple heuristic: compare HeatScore to spread
-    // If HeatScore is high but spread is close, market lag exists
-    const spread = oddsData.gameMarkets?.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'spreads')?.outcomes?.[0]?.point;
-    if (spread !== undefined) {
-      // Higher heatScore with tighter spread = more lag
-      const spreadAbs = Math.abs(spread);
-      marketLag = Math.min(100, Math.max(0, heatScore - (spreadAbs * 5)));
-    }
-  }
-
-  // 7. Chart Selection
+  // 5. Chart Validity Check
   const chartCatalog = generateChartCatalog(matchPack);
-  let evidenceChart: { chartId: string; chartType: string; dataSource: string; questionAnswered: string } | null = null;
+  let evidenceChart: { 
+    chartId: string; 
+    chartType: string; 
+    dataSource: string; 
+    questionAnswered: string;
+    isValid: boolean;
+    effectSize: number;
+  } | null = null;
   
-  // Select chart that supports the strongest signal
   if (chartCatalog.length > 0 && signalsHit.length > 0) {
     const strongestSignal = signalsHit.reduce((prev, curr) => curr.score > prev.score ? curr : prev);
     const relevantChart = chartCatalog.find(c => {
@@ -691,50 +957,99 @@ async function computeHeatPicksClassification(
       return true;
     }) || chartCatalog[0];
     
+    // Validate chart effect size
+    const chartValidation = validateChartEffectSize(relevantChart, matchPack, strongestSignal);
+    
     evidenceChart = {
       chartId: relevantChart.chartId,
       chartType: relevantChart.chartType,
       dataSource: relevantChart.dataSource,
-      questionAnswered: relevantChart.whatQuestionItAnswers
+      questionAnswered: relevantChart.whatQuestionItAnswers,
+      isValid: chartValidation.isValid,
+      effectSize: chartValidation.effectSize
     };
   }
 
-  // 8. Classification (updated thresholds for unified scoring)
-  let classification: 'HEAT_PICK' | 'WARM_LEAN' | 'NO_HEAT' = 'NO_HEAT';
-  
-  // Check if at least 2 signals support the same side
-  const signalsBySide = signalsHit.reduce((acc, s) => {
-    const side = s.evidence.includes(teamA) ? 'A' : s.evidence.includes(teamB) ? 'B' : 'neutral';
-    if (!acc[side]) acc[side] = [];
-    acc[side].push(s);
-    return acc;
-  }, {} as Record<string, typeof signalsHit>);
-  
-  const hasTwoSignalsSameSide = Object.values(signalsBySide).some(signals => signals.length >= 2);
+  // 6. Market Sanity Checks
+  const marketSanityFlags = checkMarketSanity(oddsData, signalsHit, teamA, teamB);
 
-  // Temperature-based thresholds: 70 = warm, 90 = hot
-  // HEAT_PICK: Hot matchups (85+) with strong signals and narrative/evidence
-  // WARM_LEAN: Warm matchups (70+) with decent signals
-  const hasStrongNarrativeOrEvidence = narrativeScore >= 15 || evidenceScore >= 12;
-  const hasOneStrongSignal = signalsHit.length >= 1 && signalsHit.some(s => s.score >= 50);
-  
-  if (heatScore >= 85 && (hasTwoSignalsSameSide || (hasOneStrongSignal && hasStrongNarrativeOrEvidence)) && evidenceChart) {
+  // 7. Calculate Pick Confidence (separate from Heat Score)
+  const pickConfidence = calculatePickConfidence({
+    heatScore,
+    sideConsistencyScore,
+    signalsHit,
+    narrativeScore,
+    evidenceScore,
+    evidenceChart,
+    marketSanityFlags
+  });
+
+  // 8. Classification with Percentile + Raw Thresholds
+  let classification: 'HEAT_PICK' | 'WARM_LEAN' | 'NO_HEAT' = 'NO_HEAT';
+  let noHeatReason: { category: string; details: string } | undefined;
+
+  // HEAT_PICK: raw ≥ 80 AND percentile ≥ 90th AND pickConfidence ≥ 75
+  if (heatScore >= 80 && heatScorePercentile >= 90 && pickConfidence >= 75) {
     classification = 'HEAT_PICK';
-  } else if (heatScore >= 70 && signalsHit.length > 0) {
+  }
+  // WARM_LEAN: raw ≥ 70 AND percentile ≥ 70th AND pickConfidence ≥ 60
+  else if (heatScore >= 70 && heatScorePercentile >= 70 && pickConfidence >= 60) {
     classification = 'WARM_LEAN';
-  } else {
+  }
+  // NO_HEAT: everything else
+  else {
     classification = 'NO_HEAT';
+    
+    // Structured taxonomy for why not
+    if (sideConsistencyScore < 50) {
+      noHeatReason = {
+        category: 'SIGNALS_CONFLICTED',
+        details: `Signals point in conflicting directions (consistency: ${sideConsistencyScore.toFixed(0)})`
+      };
+    } else if (evidenceChart && !evidenceChart.isValid) {
+      noHeatReason = {
+        category: 'NO_EFFECT_SIZE',
+        details: `Chart effect size (${evidenceChart.effectSize.toFixed(2)}) below threshold`
+      };
+    } else if (marketSanityFlags.lineMoveAgainst || marketSanityFlags.unrealisticPrice) {
+      noHeatReason = {
+        category: 'MARKET_CORRECTED',
+        details: marketSanityFlags.lineMoveAgainst 
+          ? `Line moved ${marketSanityFlags.lineMoveMagnitude?.toFixed(1)} points against pick`
+          : 'Price requires unrealistic edge'
+      };
+    } else if (heatScore < 70) {
+      noHeatReason = {
+        category: 'LOW_HEAT_SCORE',
+        details: `Heat score ${heatScore} below minimum threshold (70)`
+      };
+    } else if (heatScorePercentile < 70) {
+      noHeatReason = {
+        category: 'LOW_HEAT_SCORE',
+        details: `Heat score percentile ${heatScorePercentile.toFixed(0)} below threshold (70th)`
+      };
+    } else {
+      noHeatReason = {
+        category: 'LOW_HEAT_SCORE',
+        details: `Pick confidence ${pickConfidence.toFixed(0)} below threshold`
+      };
+    }
   }
 
-  // Determine pick direction and type
+  // 9. Determine pick direction and type
   let pickType: string | undefined;
   let pick: string | undefined;
   
   if (classification === 'HEAT_PICK' || classification === 'WARM_LEAN') {
-    // Determine which side has the advantage
-    const aSignals = signalsBySide['A']?.length || 0;
-    const bSignals = signalsBySide['B']?.length || 0;
-    const favoredSide = aSignals > bSignals ? teamA : teamB;
+    // Determine which side has the advantage (weighted by signal scores)
+    const aSignalWeight = signalsHit
+      .filter(s => s.direction === 'A')
+      .reduce((sum, s) => sum + s.score, 0);
+    const bSignalWeight = signalsHit
+      .filter(s => s.direction === 'B')
+      .reduce((sum, s) => sum + s.score, 0);
+    
+    const favoredSide = aSignalWeight > bSignalWeight ? teamA : teamB;
     
     if (oddsData?.gameMarkets) {
       const spread = oddsData.gameMarkets?.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'spreads')?.outcomes?.find((o: any) => o.name === favoredSide)?.point;
@@ -751,10 +1066,23 @@ async function computeHeatPicksClassification(
     }
   }
 
+  // 10. Market Lag Numeric
+  let marketLag: number | null = null;
+  if (oddsData?.gameMarkets) {
+    const spread = oddsData.gameMarkets?.bookmakers?.[0]?.markets?.find((m: any) => m.key === 'spreads')?.outcomes?.[0]?.point;
+    if (spread !== undefined) {
+      const spreadAbs = Math.abs(spread);
+      marketLag = Math.min(100, Math.max(0, heatScore - (spreadAbs * 5)));
+    }
+  }
+
   return {
     classification,
     heatScore,
+    pickConfidence,
+    heatScorePercentile,
     signalsHit,
+    sideConsistencyScore,
     marketLag,
     evidenceChart,
     matchup,
@@ -762,7 +1090,9 @@ async function computeHeatPicksClassification(
     teamB,
     matchPackV3,
     pickType,
-    pick
+    pick,
+    noHeatReason,
+    marketSanityFlags
   };
 }
 
@@ -770,6 +1100,31 @@ async function computeHeatPicksClassification(
  * Step 2: LLM as Renderer (LLM Explains)
  * LLM ONLY ADDS READABILITY - It does NOT control classification.
  */
+// Helper: Generate deterministic bullets from signals
+function generateDeterministicBullets(classified: ClassifiedMatchup): string[] {
+  const bullets: string[] = [];
+  const topSignals = classified.signalsHit.slice(0, 3);
+  
+  topSignals.forEach(signal => {
+    if (signal.signalKey === 'momentum') {
+      bullets.push(`${signal.evidence} - momentum divergence detected`);
+    } else if (signal.signalKey === 'availability') {
+      bullets.push(`${signal.evidence} - rotation advantage`);
+    } else if (signal.signalKey === 'closeGames') {
+      bullets.push(`${signal.evidence} - execution edge in tight games`);
+    } else if (signal.signalKey === 'comparisons') {
+      bullets.push(`${signal.evidence} - statistical advantage`);
+    }
+  });
+  
+  // Fill to 3 bullets if needed
+  while (bullets.length < 3) {
+    bullets.push(`Heat score ${classified.heatScore} (${classified.heatScorePercentile.toFixed(0)}th percentile) indicates elevated pressure`);
+  }
+  
+  return bullets.slice(0, 3);
+}
+
 async function renderHeatPicksWithLLM(
   classified: ClassifiedMatchup,
   narratives?: any[]
@@ -780,35 +1135,55 @@ async function renderHeatPicksWithLLM(
   riskNote: string;
   chartCaption: string;
 }> {
+  // Step 1: Generate deterministic "why hot" bullets from signalsHit
+  const deterministicBullets = generateDeterministicBullets(classified);
+  
+  // Step 2: Constrained LLM rewrite (readability only, no new claims)
   const allowedNarratives = ['revenge/return', 'role_surge/star_load', 'fatigue/travel/schedule', 'coach_bounce', 'rivalry', 'bounceback'];
   
-  const prompt = `You are the HeatChecks "Heat Picks" renderer. Your job is to explain what the algorithm decided, NOT to change it.
+  const prompt = `You are the HeatChecks "Heat Picks" renderer. Your job is to rewrite the provided bullets for readability, NOT to add new claims.
 
 CLASSIFICATION: ${classified.classification}
-HEAT SCORE: ${classified.heatScore}
+HEAT SCORE: ${classified.heatScore} (${classified.heatScorePercentile.toFixed(0)}th percentile)
+PICK CONFIDENCE: ${classified.pickConfidence}
 PICK: ${classified.pick || 'N/A'} (${classified.pickType || 'moneyline'})
 MATCHUP: ${classified.matchup}
-SIGNALS HIT: ${JSON.stringify(classified.signalsHit)}
-MARKET LAG (numeric): ${classified.marketLag ?? 'N/A'}
-EVIDENCE CHART: ${classified.evidenceChart ? JSON.stringify(classified.evidenceChart) : 'None'}
-${narratives && narratives.length > 0 ? `AVAILABLE NARRATIVES: ${JSON.stringify(narratives)}` : ''}
+SIDE CONSISTENCY: ${classified.sideConsistencyScore.toFixed(0)}/100
 
-IMPORTANT: The PICK is ${classified.pick || 'N/A'}. This means the algorithm favors ${classified.pick?.includes('+') ? 'the underdog' : classified.pick?.includes('-') ? 'the favorite' : classified.pick || 'one team'}. Your "why hot" bullets must explain why THIS SPECIFIC PICK is justified by the signals, NOT why the game is interesting in general.
+DETERMINISTIC BULLETS (rewrite these for readability, max 12 words each):
+${deterministicBullets.map((b, i) => `${i + 1}. ${b}`).join('\n')}
 
-Generate EXACTLY:
-1. Three "why hot" bullets (max 12 words each) - explain why THIS SPECIFIC PICK (${classified.pick || 'the pick'}) is justified by the signals. Focus on why the picked team has the edge.
-2. 1-2 narrative alignments (ONLY from this allowed list: ${allowedNarratives.join(', ')}) - if narratives match the data
-3. Market lag explanation in plain English (1-2 sentences)
-4. Risk note (1 sentence)
-5. Chart caption explaining "what this proves" in support of the pick (1 sentence)
+TOP 3 SIGNALS:
+${classified.signalsHit.slice(0, 3).map(s => `- ${s.signalKey}: ${s.evidence} (score: ${s.score})`).join('\n')}
+
+CHART: ${classified.evidenceChart ? `${classified.evidenceChart.questionAnswered} (effect size: ${classified.evidenceChart.effectSize.toFixed(2)})` : 'None'}
+
+MARKET CONTEXT:
+${classified.marketLag !== null ? `Market lag: ${classified.marketLag.toFixed(0)}` : 'No market lag data'}
+${classified.marketSanityFlags?.lineMoveAgainst ? `⚠️ Line moved ${classified.marketSanityFlags.lineMoveMagnitude?.toFixed(1)} points against pick` : ''}
+${classified.marketSanityFlags?.unrealisticPrice ? '⚠️ Price requires unrealistic edge' : ''}
+
+RISK FLAGS:
+${classified.sideConsistencyScore < 60 ? '⚠️ Signals show some conflict' : ''}
+${classified.evidenceChart && !classified.evidenceChart.isValid ? '⚠️ Chart effect size below threshold' : ''}
+
+${narratives && narratives.length > 0 ? `AVAILABLE NARRATIVES: ${JSON.stringify(narratives.slice(0, 3))}` : ''}
+
+CRITICAL RULES:
+1. You may ONLY rewrite the deterministic bullets for readability. Do NOT add new claims.
+2. All "why hot" bullets must be grounded in the provided signals.
+3. If narratives are provided, you may suggest 1-2 that align with the signals (from allowed list only).
+4. Market lag explanation must reference the provided market context.
+5. Risk note must reference the provided risk flags.
+6. Chart caption must reference the chart question and effect size.
 
 Return ONLY valid JSON:
 {
-  "whyHot": ["bullet1", "bullet2", "bullet3"],
-  "narrativesUsed": [{"type": "revenge/return", "strength": 0.7, "direction": "TeamA", "whyItFitsData": "explanation"}],
-  "marketLag": "plain English explanation",
-  "riskNote": "one sentence risk",
-  "chartCaption": "what this chart proves"
+  "whyHot": ["rewritten bullet 1", "rewritten bullet 2", "rewritten bullet 3"],
+  "narrativesUsed": [{"type": "revenge/return", "strength": 0.7, "direction": "TeamA", "whyItFitsData": "explanation based on signals"}],
+  "marketLag": "explanation based on provided market context",
+  "riskNote": "one sentence risk based on provided flags",
+  "chartCaption": "what this chart proves, referencing effect size"
 }`;
 
   try {
@@ -844,19 +1219,19 @@ Return ONLY valid JSON:
 
     const result = extractJson(response.text);
     return {
-      whyHot: result.whyHot || [],
+      whyHot: result.whyHot || deterministicBullets,
       narrativesUsed: result.narrativesUsed || [],
-      marketLag: result.marketLag || 'Market lag unclear',
-      riskNote: result.riskNote || 'Standard game risk applies',
+      marketLag: result.marketLag || 'Market conditions analyzed',
+      riskNote: result.riskNote || 'Standard betting risks apply',
       chartCaption: result.chartCaption || 'Chart supports the pressure signal'
     };
-  } catch (error: any) {
-    console.error('[renderHeatPicksWithLLM] Error:', error);
+  } catch (e) {
+    console.warn('[Heat Picks] LLM rendering failed, using deterministic bullets:', e);
     return {
-      whyHot: ['Algorithm detected pressure signals', 'Multiple data points align', 'Market may not be fully priced'],
+      whyHot: deterministicBullets,
       narrativesUsed: [],
-      marketLag: classified.marketLag !== null ? 'Market lag detected' : 'Market lag unclear',
-      riskNote: 'Standard game risk applies',
+      marketLag: 'Market conditions analyzed',
+      riskNote: 'Standard betting risks apply',
       chartCaption: 'Chart supports the pressure signal'
     };
   }
@@ -3341,21 +3716,26 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
 
       console.log(`[Heat Picks] Found ${posts.length} published posts for ${heatPicksLeague} on ${heatPicksDate}`);
 
-      // Step 1: Compute classifications for each matchup
-      const classifiedMatchups: ClassifiedMatchup[] = [];
-      const noHeatMatchups: Array<{ matchup: string; whyNot: string }> = [];
+      // Step 1: Compute ALL heat scores first (for percentile calculation)
+      const allHeatScores: number[] = [];
+      const postsWithScores: Array<{ post: HeatcheckPost; heatScore: number }> = [];
 
       for (const post of posts) {
-        // Support both V4 and V3 articles (V4 extends V3, so it has all V3 data)
-        const matchPackV4 = post.heatCheckData?.matchPackV4;
-        const matchPackV3 = post.heatCheckData?.matchPackV3;
-        const matchPack = matchPackV4 || matchPackV3;
-        
-        if (!matchPack) {
-          console.warn(`[Heat Picks] Post ${post.id} missing matchPackV3/V4, skipping`);
-          continue;
-        }
+        const matchPack = post.heatCheckData?.matchPackV4 || post.heatCheckData?.matchPackV3;
+        if (!matchPack) continue;
 
+        // Calculate heat score (quick version for percentile)
+        const result = calculateUnifiedHeatScoreV3(post);
+        const heatScore = result.heatScore;
+        allHeatScores.push(heatScore);
+        postsWithScores.push({ post, heatScore });
+      }
+
+      // Step 2: Compute classifications with percentile context
+      const classifiedMatchups: ClassifiedMatchup[] = [];
+      const noHeatMatchups: Array<{ matchup: string; whyNot: { category: string; details: string } }> = [];
+
+      for (const { post, heatScore } of postsWithScores) {
         // Try to fetch odds
         let oddsData: any = null;
         try {
@@ -3397,12 +3777,13 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
           // Continue without odds
         }
 
-        const classified = await computeHeatPicksClassification(post, oddsData);
+        // Pass slate heat scores for percentile calculation
+        const classified = await computeHeatPicksClassification(post, oddsData, allHeatScores);
         
         if (!classified) {
           noHeatMatchups.push({
             matchup: `${post.teamA} @ ${post.teamB}`,
-            whyNot: 'Missing matchPackV3 data'
+            whyNot: { category: 'MISSING_DATA', details: 'Missing matchPackV3 data' }
           });
           continue;
         }
@@ -3410,15 +3791,20 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         if (classified.classification === 'NO_HEAT') {
           noHeatMatchups.push({
             matchup: classified.matchup,
-            whyNot: `HeatScore ${classified.heatScore} below threshold or market already priced in`
+            whyNot: classified.noHeatReason || { category: 'LOW_HEAT_SCORE', details: 'Below thresholds' }
           });
         } else {
           classifiedMatchups.push(classified);
         }
       }
 
-      // Sort by heatScore (highest first) and limit to max 5 picks
-      classifiedMatchups.sort((a, b) => b.heatScore - a.heatScore);
+      // Step 3: Sort by composite ranking (60% pickConfidence, 30% heatScore, 10% marketLag)
+      classifiedMatchups.sort((a, b) => {
+        const aComposite = (a.pickConfidence * 0.6) + (a.heatScore * 0.3) + ((a.marketLag || 0) * 0.1);
+        const bComposite = (b.pickConfidence * 0.6) + (b.heatScore * 0.3) + ((b.marketLag || 0) * 0.1);
+        return bComposite - aComposite;
+      });
+
       const heatPicks = classifiedMatchups.filter(c => c.classification === 'HEAT_PICK').slice(0, 5);
       const warmLeans = classifiedMatchups.filter(c => c.classification === 'WARM_LEAN').slice(0, 3);
 
@@ -3469,29 +3855,25 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
 
       const noHeatZoneRendered = await Promise.all(
         noHeatMatchups.map(async (item) => {
-          // Simple LLM explanation for why not
-          try {
-            const response = await ai.models.generateContent({
-              model: 'gemini-2.5-pro',
-              contents: `Explain in one sentence why this matchup is in the No-Heat Zone: ${item.matchup}. Reason: ${item.whyNot}`,
-              config: {
-                responseSchema: {
-                  type: Type.OBJECT,
-                  properties: {
-                    whyNot: { type: Type.STRING }
-                  },
-                  required: ['whyNot']
-                }
-              }
-            });
-            const result = extractJson(response.text);
-            return {
-              matchup: item.matchup,
-              whyNot: result.whyNot || item.whyNot
-            };
-          } catch {
-            return item;
-          }
+          // Use structured taxonomy to generate human-readable text
+          const categoryMap: Record<string, string> = {
+            'SIGNALS_CONFLICTED': 'Signals point in conflicting directions',
+            'NO_EFFECT_SIZE': 'Chart effect size below minimum threshold',
+            'MARKET_CORRECTED': 'Market has already priced in the edge',
+            'SAMPLE_TOO_SMALL': 'Insufficient sample size for reliable signal',
+            'INJURIES_UNCERTAIN': 'Injury status too uncertain',
+            'LOW_HEAT_SCORE': 'Heat score below publication threshold',
+            'MISSING_DATA': 'Required data not available'
+          };
+          
+          const baseText = categoryMap[item.whyNot.category] || 'Below publication threshold';
+          const fullText = `${baseText}. ${item.whyNot.details}`;
+          
+          return {
+            matchup: item.matchup,
+            whyNot: fullText,
+            category: item.whyNot.category  // Keep for potential filtering
+          };
         })
       );
 

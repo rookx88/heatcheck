@@ -799,31 +799,6 @@ app.get('/api/odds/find-event', apiKeyAuth, async (req: express.Request, res: ex
         if (!teamA || !teamB) {
             return res.status(400).json({ message: 'Missing required query params: teamA and teamB' });
         }
-
-        // Try to map team names to OddsAPI official names first
-        const sportMapping = ODDSAPI_TEAM_MAPPING[sport] || {};
-        let mappedTeamA = sportMapping[teamA] || teamA;
-        let mappedTeamB = sportMapping[teamB] || teamB;
-        
-        // Also try case-insensitive lookup
-        if (mappedTeamA === teamA) {
-            const teamALower = teamA.toLowerCase();
-            for (const [internalName, oddsApiName] of Object.entries(sportMapping)) {
-                if (internalName.toLowerCase() === teamALower) {
-                    mappedTeamA = oddsApiName;
-                    break;
-                }
-            }
-        }
-        if (mappedTeamB === teamB) {
-            const teamBLower = teamB.toLowerCase();
-            for (const [internalName, oddsApiName] of Object.entries(sportMapping)) {
-                if (internalName.toLowerCase() === teamBLower) {
-                    mappedTeamB = oddsApiName;
-                    break;
-                }
-            }
-        }
         
         // Use mapped names for searching
         const searchTeamA = mappedTeamA;

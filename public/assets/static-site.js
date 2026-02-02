@@ -590,7 +590,7 @@ function generateHeatBreakdown(post) {
     ];
     
     let breakdownHtml = `
-        <div style="padding: 0.25rem; background: rgba(0, 0, 0, 0.95); border: 2px solid #ff0040; border-radius: 4px; font-family: 'Courier New', monospace; color: #fff; height: 100%; width: 100%; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; position: absolute; top: 0; left: 0;">
+        <div class="heat-breakdown-card" style="padding: 0.25rem; background: rgba(0, 0, 0, 0.95); border: 2px solid #ff0040; border-radius: 4px; font-family: 'Courier New', monospace; color: #fff; height: 100%; width: 100%; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; position: absolute; top: 0; left: 0;">
             <div style="margin-bottom: 0.15rem; padding-bottom: 0.12rem; border-bottom: 1px solid rgba(255, 0, 64, 0.5); flex-shrink: 0;">
                 <div style="font-size: 0.38rem; color: rgba(255, 255, 255, 0.7); margin-bottom: 0.03rem; line-height: 1;">HEAT BREAKDOWN</div>
                 <div style="font-size: 0.7rem; font-weight: 900; color: #ff1a1a; line-height: 1;">${total}/100</div>
@@ -638,6 +638,20 @@ function generateHeatBreakdownV4(post) {
         return generateHeatBreakdown(post);
     }
     
+    // Get team names for replacing placeholders in receipts
+    const teamA = post.teamA || 'Team A';
+    const teamB = post.teamB || 'Team B';
+    
+    // Helper: Replace team placeholders in receipt text
+    const replaceTeamPlaceholders = (text) => {
+        if (!text || typeof text !== 'string') return text;
+        return text
+            .replace(/Team A/gi, teamA)
+            .replace(/Team B/gi, teamB)
+            .replace(/team A/gi, teamA)
+            .replace(/team B/gi, teamB);
+    };
+    
     // Use V4 calculation to get proper 0-100 pillar scores
     let v4Result;
     try {
@@ -663,15 +677,14 @@ function generateHeatBreakdownV4(post) {
         return filled + empty;
     };
     
-    // Helper: Get receipts for a pillar (1-2 max)
-    const getReceipts = (receiptsObj, pillarType, controlStressData) => {
+    // Helper: Get the best receipt for a pillar (always returns at least one)
+    const getBestReceipt = (receiptsObj, pillarType, pillarData, inputs) => {
         const receipts = [];
-        if (!receiptsObj) return receipts;
+        if (!receiptsObj) receiptsObj = {};
         
         // Control Stress receipts
         if (pillarType === 'performance') {
-            // Check for momentum divergence receipt (may be stored directly in controlStress or receipts)
-            // The SQL function stores momentumDivergence receipts in the scalar, but they might be in receipts.momentum
+            // Prioritize momentum, then creation, then shotQuality
             if (Array.isArray(receiptsObj.momentum) && receiptsObj.momentum.length > 0) {
                 receipts.push(...receiptsObj.momentum.slice(0, 1));
             }
@@ -681,14 +694,24 @@ function generateHeatBreakdownV4(post) {
             if (Array.isArray(receiptsObj.shotQuality) && receiptsObj.shotQuality.length > 0) {
                 receipts.push(...receiptsObj.shotQuality.slice(0, 1));
             }
-            // If we have momentumDivergence > 0 but no receipt, create a generic one
-            if (receipts.length === 0 && controlStressData && controlStressData.momentumDivergence > 0) {
-                receipts.push('Momentum diverging: recent form shift detected');
+            
+            // Generate receipt from inputs if none available
+            if (receipts.length === 0 && inputs) {
+                if (inputs.momentumDivergence > 0) {
+                    receipts.push(`Momentum diverging: ${inputs.momentumDivergence.toFixed(1)} point gap in recent form`);
+                } else if (inputs.creationAsymmetry > 0) {
+                    receipts.push(`Creation asymmetry: ${inputs.creationAsymmetry.toFixed(1)} point difference in shot creation`);
+                } else if (inputs.shotQualityMismatch > 0) {
+                    receipts.push(`Shot quality mismatch: ${inputs.shotQualityMismatch.toFixed(1)} point gap in shot quality`);
+                } else {
+                    receipts.push('Control metrics are balanced');
+                }
             }
         }
         
         // Structural Instability receipts
         if (pillarType === 'situational') {
+            // Prioritize rotation, then availability, then schedule
             if (Array.isArray(receiptsObj.rotation) && receiptsObj.rotation.length > 0) {
                 receipts.push(...receiptsObj.rotation.slice(0, 1));
             }
@@ -698,90 +721,101 @@ function generateHeatBreakdownV4(post) {
             if (Array.isArray(receiptsObj.schedule) && receiptsObj.schedule.length > 0) {
                 receipts.push(...receiptsObj.schedule.slice(0, 1));
             }
+            
+            // Generate receipt from inputs if none available
+            if (receipts.length === 0 && inputs) {
+                if (inputs.rotationVolatility > 0) {
+                    receipts.push(`Rotation volatility: ${inputs.rotationVolatility.toFixed(1)} point instability in lineups`);
+                } else if (inputs.availabilityImbalance > 0) {
+                    receipts.push(`Availability imbalance: ${inputs.availabilityImbalance.toFixed(1)} point gap in key absences`);
+                } else if (inputs.scheduleStress > 0) {
+                    receipts.push(`Schedule stress: ${inputs.scheduleStress.toFixed(1)} point pressure from recent schedule`);
+                } else {
+                    receipts.push('Structural factors are stable');
+                }
+            }
         }
         
-        return receipts.slice(0, 2); // Max 2 receipts
+        // Return first receipt with team names replaced, or fallback
+        return receipts.length > 0 ? replaceTeamPlaceholders(receipts[0]) : null;
     };
     
-    // Helper: Get emotional load receipts
-    const getEmotionalReceipts = (components) => {
-        const receipts = [];
+    // Helper: Get emotional load receipt
+    const getEmotionalReceipt = (components) => {
         if (components.revenge && components.revenge.count > 0) {
-            receipts.push('Revenge spot vs former team');
+            return `Revenge spot: ${components.revenge.count} former player${components.revenge.count > 1 ? 's' : ''} facing old team`;
         }
         if (components.availabilityShock && components.availabilityShock.count > 0) {
-            receipts.push('Recent availability shock detected');
+            return `Availability shock: ${components.availabilityShock.count} recent major absence${components.availabilityShock.count > 1 ? 's' : ''} detected`;
         }
         if (components.history && components.history.count > 0) {
-            receipts.push('Strong vs opponent history');
+            return `Strong history: ${components.history.count} notable matchup${components.history.count > 1 ? 's' : ''} in recent meetings`;
         }
-        return receipts.slice(0, 1); // Limit to 1 receipt
+        return 'Emotional factors are minimal';
     };
     
-    // Determine if game is HOT+ (for showing receipts)
-    const isHot = total >= 70;
+    // Get receipts for each pillar (always get them, not just for HOT+)
+    const controlStressReceipt = getBestReceipt(
+        controlStress.receipts, 
+        'performance', 
+        controlStress, 
+        controlStress.inputs
+    );
+    const structuralInstabilityReceipt = getBestReceipt(
+        structuralInstability.receipts, 
+        'situational', 
+        structuralInstability, 
+        structuralInstability.inputs
+    );
+    const emotionalLoadReceipt = getEmotionalReceipt(emotionalLoad.components);
     
     const pillars = [
         {
             emoji: '🔴',
             label: 'Performance Stress',
-            description: 'Who\'s actually controlling games right now?',
+            description: controlStressReceipt || 'Who\'s actually controlling games right now?',
             score: controlStress.score, // 0-100 score
-            receipts: isHot ? getReceipts(controlStress.receipts, 'performance', controlStress) : []
         },
         {
             emoji: '🟠',
             label: 'Situational Pressure',
-            description: 'Is this a normal game… or a fragile one?',
+            description: structuralInstabilityReceipt || 'Is this a normal game… or a fragile one?',
             score: structuralInstability.score, // 0-100 score
-            receipts: isHot ? getReceipts(structuralInstability.receipts, 'situational') : []
         },
         {
             emoji: '🔥',
             label: 'Emotional Load',
-            description: 'Is emotion likely to affect behavior?',
+            description: emotionalLoadReceipt || 'Is emotion likely to affect behavior?',
             score: emotionalLoad.score, // 0-100 score
-            receipts: isHot ? getEmotionalReceipts(emotionalLoad.components) : []
         }
     ];
     
     let breakdownHtml = `
-        <div style="padding: 0.25rem; background: rgba(0, 0, 0, 0.98); border: 2px solid #ff0040; border-radius: 4px; font-family: 'Courier New', monospace; color: #fff; height: 100%; width: 100%; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; position: absolute; top: 0; left: 0; justify-content: space-between;">
+        <div class="heat-breakdown-card" style="padding: 0.3rem; background: rgba(0, 0, 0, 0.98); border: 2px solid #ff0040; border-radius: 4px; font-family: 'Courier New', monospace; color: #fff; height: 100%; width: 100%; display: flex; flex-direction: column; box-sizing: border-box; overflow: hidden; position: absolute; top: 0; left: 0; justify-content: space-between;">
             <!-- Pillars -->
-            <div style="flex: 1; display: flex; flex-direction: column; gap: 0.14rem; min-height: 0; overflow: hidden;">
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 0.16rem; min-height: 0; overflow: hidden;">
     `;
     
     pillars.forEach((pillar, index) => {
         const bar = renderBar(pillar.score); // score is 0-100, max is always 100
         
         breakdownHtml += `
-            <div style="flex-shrink: 0; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 2px; padding: 0.1rem 0.12rem; background: rgba(255, 255, 255, 0.02);">
+            <div style="flex-shrink: 0; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 2px; padding: 0.12rem 0.14rem; background: rgba(255, 255, 255, 0.02);">
                 <!-- Pillar Header and Bar - Text on left, bar on right -->
-                <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.2rem; margin-bottom: 0.05rem;">
+                <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.25rem; margin-bottom: 0.06rem;">
                     <div style="flex: 1; min-width: 0;">
-                        <div style="font-size: 0.5rem; color: rgba(255, 255, 255, 0.9); line-height: 1.2; margin-bottom: 0.03rem; font-weight: 700;">
+                        <div style="font-size: 0.6rem; color: rgba(255, 255, 255, 0.9); line-height: 1.2; margin-bottom: 0.04rem; font-weight: 700;">
                             ${pillar.emoji} ${pillar.label}
                         </div>
-                        <div style="font-size: 0.38rem; color: rgba(255, 255, 255, 0.6); line-height: 1.15;">
-                            ${pillar.description}
+                        <div style="font-size: 0.45rem; color: rgba(255, 255, 255, 0.6); line-height: 1.2;">
+                            ${escapeHtml(pillar.description)}
                         </div>
                     </div>
                     <!-- Bar on the right side - fixed width to ensure all bars are same size -->
-                    <span style="font-size: 0.7rem; color: rgba(255, 255, 255, 0.95); font-family: 'Courier New', monospace; letter-spacing: 0; flex-shrink: 0; line-height: 1; display: inline-block; text-align: right; white-space: nowrap; padding-left: 0.1rem; width: 2.5rem; min-width: 2.5rem; max-width: 2.5rem;">${bar}</span>
+                    <span style="font-size: 0.75rem; color: rgba(255, 255, 255, 0.95); font-family: 'Courier New', monospace; letter-spacing: 0; flex-shrink: 0; line-height: 1; display: inline-block; text-align: right; white-space: nowrap; padding-left: 0.12rem; width: 2.5rem; min-width: 2.5rem; max-width: 2.5rem;">${bar}</span>
                 </div>
+            </div>
         `;
-        
-        // Show receipts if available and game is HOT+ (limit to 1 receipt to save space)
-        if (pillar.receipts && pillar.receipts.length > 0) {
-            const receipt = pillar.receipts[0]; // Only show first receipt
-            breakdownHtml += `
-                    <div style="font-size: 0.32rem; color: rgba(255, 255, 255, 0.65); line-height: 1.25; margin-top: 0.04rem; padding-left: 0.1rem; border-left: 1px solid rgba(255, 255, 255, 0.2); font-style: italic;">
-                        "${escapeHtml(receipt)}"
-                    </div>
-            `;
-        }
-        
-        breakdownHtml += '</div>';
     });
     
     // Footer
@@ -789,8 +823,8 @@ function generateHeatBreakdownV4(post) {
             </div>
             
             <!-- Footer -->
-            <div style="margin-top: 0.1rem; padding-top: 0.08rem; border-top: 1px solid rgba(255, 0, 64, 0.3); flex-shrink: 0;">
-                <div style="font-size: 0.3rem; color: rgba(255, 255, 255, 0.5); line-height: 1.25; text-align: center; font-style: italic;">
+            <div style="margin-top: 0.12rem; padding-top: 0.1rem; border-top: 1px solid rgba(255, 0, 64, 0.3); flex-shrink: 0;">
+                <div style="font-size: 0.35rem; color: rgba(255, 255, 255, 0.5); line-height: 1.25; text-align: center; font-style: italic;">
                     Heat rises when control, context, and emotion collide.
                 </div>
             </div>
@@ -1421,10 +1455,10 @@ function getTemperatureSymbol(heatScore) {
         return `
             <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
                 <!-- Cloud shape - even larger to fill circle -->
-                <path d="M ${center - 32} ${center + 14} Q ${center - 40} ${center - 14} ${center - 18} ${center - 14} Q ${center - 12} ${center - 30} ${center + 10} ${center - 18} Q ${center + 16} ${center - 30} ${center + 32} ${center - 18} Q ${center + 40} ${center - 14} ${center + 32} ${center + 14} Z" 
+                <path d="M ${center - 38} ${center + 16} Q ${center - 42} ${center - 16} ${center - 20} ${center - 16} Q ${center - 14} ${center - 35} ${center + 12} ${center - 20} Q ${center + 18} ${center - 35} ${center + 38} ${center - 20} Q ${center + 42} ${center - 16} ${center + 38} ${center + 16} Z" 
                       fill="#b0b0b0" stroke="#888888" stroke-width="2" opacity="0.9"/>
-                <ellipse cx="${center - 18}" cy="${center - 10}" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
-                <ellipse cx="${center + 18}" cy="${center - 10}" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
+                <ellipse cx="${center - 20}" cy="${center - 12}" rx="20" ry="18" fill="#d0d0d0" opacity="0.8"/>
+                <ellipse cx="${center + 20}" cy="${center - 12}" rx="20" ry="18" fill="#d0d0d0" opacity="0.8"/>
             </svg>
         `;
     } else {
@@ -1561,7 +1595,7 @@ function generatePostCard(post) {
     return `
         <div class="post-card" data-heat-high="${isHeatHigh}" data-post-id="${post.id}" ${isHeatPicksArticle ? 'data-heat-picks-card="true"' : ''}>
             <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; box-sizing: border-box; overflow: hidden;">
-                <div style="padding: 0.5rem 0.6rem; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.35); margin-bottom: 0.75rem; text-align: center; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; width: 100%; box-sizing: border-box; overflow: hidden; border-radius: 4px;">
+                <div style="padding: 0.3rem 0.5rem; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.35); margin-bottom: 0.75rem; text-align: center; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; width: 100%; box-sizing: border-box; overflow: hidden; border-radius: 4px;">
                     <div style="width: 50px; height: 50px; min-width: 50px; border-radius: 50%; border: 2px solid #fff; background: #fff; box-shadow: 0 2px 8px rgba(255, 255, 255, 0.5), 0 0 12px rgba(255, 255, 255, 0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${dateStr}</div>
                     </div>
@@ -1996,25 +2030,25 @@ function generateMatchupButton(post) {
     // Tiers: ❄️ COOL (0–59), 🔥 WARM (60–69), 🔥🔥 HOT (70–79), 🔥🔥🔥 VOLATILE (80+)
     let scoreEmoji = '❄️';
     let scoreLabel = 'COOL';
-    let scoreColor = 'rgba(255, 255, 255, 0.5)';
+    let scoreColor = '#ffffff'; // Bright white for cool
     
     if (scoreTotal >= 80) {
         scoreEmoji = '🔥🔥🔥';
         scoreLabel = 'SCORCHING';
-        scoreColor = '#ff1a1a'; // Bright red for volatile
+        scoreColor = '#ff0000'; // Bright red for volatile
     } else if (scoreTotal >= 70) {
         scoreEmoji = '🔥🔥';
         scoreLabel = 'HOT';
-        scoreColor = '#ff3333'; // Red for hot
+        scoreColor = '#ff4444'; // Bright red for hot
     } else if (scoreTotal >= 60) {
         scoreEmoji = '🔥';
         scoreLabel = 'WARM';
-        scoreColor = '#ff8000'; // Orange for warm
+        scoreColor = '#ffaa00'; // Bright orange for warm
     } else {
         // 0-59: Cool
         scoreEmoji = '❄️';
         scoreLabel = 'COOL';
-        scoreColor = 'rgba(255, 255, 255, 0.6)'; // White for cool
+        scoreColor = '#ffffff'; // Bright white for cool
     }
     
     // Debug: log date issues
@@ -2035,7 +2069,7 @@ function generateMatchupButton(post) {
                 <div class="game-date">${dateMMDD} • ${league}</div>
             </div>
             <div class="game-heat-score" style="margin-left: 0.75rem; flex-shrink: 0; text-align: right;">
-                <div style="color: ${scoreColor}; font-family: 'Courier New', monospace; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em;">${scoreLabel}</div>
+                <div style="color: ${scoreColor}; font-family: 'Courier New', monospace; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.05em; text-shadow: none !important;">${scoreLabel}</div>
                 <div style="color: rgba(255, 255, 255, 0.6); font-family: 'Courier New', monospace; font-size: 0.6rem; margin-top: 0.15rem; display: flex; align-items: center; justify-content: flex-end; gap: 0.25rem;">
                     <span style="font-size: 0.6rem; line-height: 1;">${scoreEmoji}</span>
                     <span>${scoreTotal}</span>
@@ -3463,12 +3497,49 @@ async function init() {
 }
 
 /**
+ * Initialize tooltip positioning for "How Temps Work"
+ */
+function initTooltipPositioning() {
+    const triggers = document.querySelectorAll('.how-temps-work-trigger');
+    
+    triggers.forEach(trigger => {
+        const tooltip = trigger.querySelector('.heat-score-legend-tooltip');
+        if (!tooltip) return;
+        
+        trigger.addEventListener('mouseenter', () => {
+            // Ensure position and z-index are set first (for browser view)
+            // Only apply these on desktop/browser view (min-width: 1025px)
+            if (window.innerWidth >= 1025) {
+                tooltip.style.setProperty('position', 'fixed', 'important');
+                tooltip.style.setProperty('z-index', '999999', 'important');
+            }
+            
+            const rect = trigger.getBoundingClientRect();
+            const tooltipRect = tooltip.getBoundingClientRect();
+            
+            // Position tooltip above the trigger, aligned to the right
+            const top = rect.top - tooltipRect.height - 8; // 8px margin
+            const right = window.innerWidth - rect.right;
+            
+            tooltip.style.top = `${top}px`;
+            tooltip.style.right = `${right}px`;
+            tooltip.style.left = 'auto';
+            tooltip.style.bottom = 'auto';
+        });
+    });
+}
+
+/**
  * Initialize 3D reel navigation with position tracking
  */
 // Initialize when DOM is ready
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', () => {
+        init();
+        initTooltipPositioning();
+    });
 } else {
     init();
+    initTooltipPositioning();
 }
 

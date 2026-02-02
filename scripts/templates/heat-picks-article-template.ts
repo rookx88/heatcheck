@@ -11,7 +11,14 @@ export interface HeatPick {
     signalsHit: Array<{ signalKey: string; evidence: string }>;
     narrativesUsed: Array<{ type: string; strength: number; direction: string; whyItFitsData: string }>;
     marketLag: string;
-    evidenceChart: { chartId: string; chartType: string; dataSource: string; questionAnswered: string } | null;
+    evidenceChart: { 
+        chartId: string; 
+        chartType: string; 
+        dataSource: string; 
+        questionAnswered: string;
+        isValid?: boolean;  // Chart passes validity rules
+        effectSize?: number;  // Quantified effect size
+    } | null;
     whyHot: string[];
     riskNote: string;
     chartCaption?: string;
@@ -22,7 +29,7 @@ export interface HeatPicksData {
     sport: string;
     heatPicks: HeatPick[];
     warmLeans?: HeatPick[];
-    noHeatZone?: Array<{ matchup: string; whyNot: string }>;
+    noHeatZone?: Array<{ matchup: string; whyNot: string; category?: string }>;
 }
 
 export interface HeatPicksHeatcheckPost {

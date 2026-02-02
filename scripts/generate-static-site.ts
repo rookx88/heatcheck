@@ -632,7 +632,48 @@ async function generateAllPages(): Promise<void> {
         // Generate homepage (index.html)
         console.log('Generating homepage...');
         const homepageContent = `
-            <div class="content-area-title terminal-style"><span class="glitch-text" data-text="Temperature Forecasts">Temperature Forecasts</span></div>
+            <div class="content-area-title terminal-style" id="homepage-temp-forecast">
+                <span class="glitch-text" data-text="Temperature Forecasts">
+                    <span class="temp-forecast-full">Temperature Forecasts</span>
+                    <span class="temp-forecast-mobile" style="display: none;">Temp.Forecast</span>
+                </span>
+                <!-- ? functionality commented out - will work on later -->
+                <!-- <span style="margin-left: auto; display: flex; align-items: center;">
+                    <span class="how-temps-work-trigger" style="display: inline-flex; align-items: center; cursor: pointer; position: relative;">
+                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.1); font-size: 0.9rem; font-weight: bold; transition: all 0.3s ease;">?</span>
+                        <div class="heat-score-legend-tooltip" style="display: none; position: fixed !important; bottom: 100%; right: 0; margin-bottom: 0.5rem; z-index: 999999 !important; min-width: 450px; max-width: 500px;">
+                            <div style="background: rgba(180, 200, 240, 0.08); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(200, 200, 255, 0.5); border-left: 2px solid rgba(210, 210, 255, 0.6); border-radius: 8px; padding: 1rem; box-shadow: 0 0 20px rgba(180, 200, 240, 0.4), 0 0 40px rgba(200, 200, 255, 0.3), 0 0 60px rgba(210, 210, 255, 0.2), inset 0 0 30px rgba(200, 200, 255, 0.05), 0 0 2px rgba(210, 210, 255, 0.3), 0 0 4px rgba(180, 200, 240, 0.15); max-height: 600px; overflow-y: auto;">
+                                <div style="color: #ffffff !important; font-size: 0.95rem; font-weight: 900; margin-bottom: 0.75rem; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.1em; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">Heat Score Legend (Pressure Scale)</div>
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-family: 'Courier New', monospace; font-size: 0.7rem; line-height: 1.4; color: #ffffff !important;">
+                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
+                                        <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🔥🔥🔥 Extreme Heat (85–100)</strong>
+                                        <div style="font-size: 0.65rem; color: #ffffff !important;">Environment under maximum pressure. Structural strain, momentum stress, or emotional load is peaking. Roles, rotations, or decision-making are likely to break. Outcomes may swing sharply — volatility is high. High heat does not mean safe. It means unstable.</div>
+                                    </div>
+                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
+                                        <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🔥🔥 High Heat (70–84)</strong>
+                                        <div style="font-size: 0.65rem; color: #ffffff !important;">Pressure is clearly building. One or more stress factors are active. Teams may be operating outside comfort. Market often begins to lag or misprice here. This is where many Heat Picks are found — but not all.</div>
+                                    </div>
+                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
+                                        <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🔥 Warm (55–69)</strong>
+                                        <div style="font-size: 0.65rem; color: #ffffff !important;">Early signs of stress. Subtle momentum shifts or emerging strain. Narrative signals may be forming. Often informational, not actionable yet. Watch closely. Heat may rise quickly.</div>
+                                    </div>
+                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
+                                        <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">❄️ Cold (40–54)</strong>
+                                        <div style="font-size: 0.65rem; color: #ffffff !important;">Stable, controlled environment. Teams executing within expected ranges. Market generally efficient. Few pressure-driven deviations expected. Low volatility. Low opportunity.</div>
+                                    </div>
+                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
+                                        <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🧊 Deep Freeze (<40)</strong>
+                                        <div style="font-size: 0.65rem; color: #ffffff !important;">Minimal pressure detected. Strong structure and control. Predictable rotations and outcomes. Little incentive for behavior change. Usually not worth chasing.</div>
+                                    </div>
+                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem; grid-column: 1 / -1;">
+                                        <div style="font-style: italic; color: #ffffff !important; font-size: 0.65rem;">Heat Score measures pressure — not pick confidence.<br>Picks are made only when pressure misaligns with the market.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </span>
+                </span> -->
+            </div>
             <div class="post-list" id="recent-logs-list">
                 <!-- Post cards will be inserted here by static-site.js -->
             </div>

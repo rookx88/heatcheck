@@ -440,10 +440,10 @@ function getTemperatureSymbol(heatScore: number): string {
         return `
             <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
                 <!-- Cloud shape - even larger to fill circle -->
-                <path d="M ${center - 32} ${center + 14} Q ${center - 40} ${center - 14} ${center - 18} ${center - 14} Q ${center - 12} ${center - 30} ${center + 10} ${center - 18} Q ${center + 16} ${center - 30} ${center + 32} ${center - 18} Q ${center + 40} ${center - 14} ${center + 32} ${center + 14} Z" 
+                <path d="M ${center - 38} ${center + 16} Q ${center - 42} ${center - 16} ${center - 20} ${center - 16} Q ${center - 14} ${center - 35} ${center + 12} ${center - 20} Q ${center + 18} ${center - 35} ${center + 38} ${center - 20} Q ${center + 42} ${center - 16} ${center + 38} ${center + 16} Z" 
                       fill="#b0b0b0" stroke="#888888" stroke-width="2" opacity="0.9"/>
-                <ellipse cx="${center - 18}" cy="${center - 10}" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
-                <ellipse cx="${center + 18}" cy="${center - 10}" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
+                <ellipse cx="${center - 20}" cy="${center - 12}" rx="20" ry="18" fill="#d0d0d0" opacity="0.8"/>
+                <ellipse cx="${center + 20}" cy="${center - 12}" rx="20" ry="18" fill="#d0d0d0" opacity="0.8"/>
             </svg>
         `;
     } else {
@@ -649,7 +649,7 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
     return `
         <div class="post-card" data-heat-high="${isHeatHigh}" data-post-id="${post.id}" ${isHeatPicksArticle ? 'data-heat-picks-card="true"' : ''}>
             <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; box-sizing: border-box; overflow: hidden;">
-                <div style="padding: 0.5rem 0.6rem; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.35); margin-bottom: 0.75rem; text-align: center; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; width: 100%; box-sizing: border-box; overflow: hidden; border-radius: 4px;">
+                <div style="padding: 0.3rem 0.5rem; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.35); margin-bottom: 0.75rem; text-align: center; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; width: 100%; box-sizing: border-box; overflow: hidden; border-radius: 4px;">
                     <div style="width: 50px; height: 50px; min-width: 50px; border-radius: 50%; border: 2px solid #fff; background: #fff; box-shadow: 0 2px 8px rgba(255, 255, 255, 0.5), 0 0 12px rgba(255, 255, 255, 0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${dateStr}</div>
                     </div>

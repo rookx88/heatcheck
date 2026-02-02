@@ -440,10 +440,10 @@ function getTemperatureSymbol(heatScore: number): string {
         return `
             <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
                 <!-- Cloud shape - even larger to fill circle -->
-                <path d="M ${center - 32} ${center + 14} Q ${center - 40} ${center - 14} ${center - 18} ${center - 14} Q ${center - 12} ${center - 30} ${center + 10} ${center - 18} Q ${center + 16} ${center - 30} ${center + 32} ${center - 18} Q ${center + 40} ${center - 14} ${center + 32} ${center + 14} Z" 
+                <path d="M ${center - 38} ${center + 16} Q ${center - 42} ${center - 16} ${center - 20} ${center - 16} Q ${center - 14} ${center - 35} ${center + 12} ${center - 20} Q ${center + 18} ${center - 35} ${center + 38} ${center - 20} Q ${center + 42} ${center - 16} ${center + 38} ${center + 16} Z" 
                       fill="#b0b0b0" stroke="#888888" stroke-width="2" opacity="0.9"/>
-                <ellipse cx="${center - 18}" cy="${center - 10}" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
-                <ellipse cx="${center + 18}" cy="${center - 10}" rx="16" ry="14" fill="#d0d0d0" opacity="0.8"/>
+                <ellipse cx="${center - 20}" cy="${center - 12}" rx="20" ry="18" fill="#d0d0d0" opacity="0.8"/>
+                <ellipse cx="${center + 20}" cy="${center - 12}" rx="20" ry="18" fill="#d0d0d0" opacity="0.8"/>
             </svg>
         `;
     } else {
@@ -649,7 +649,7 @@ function generatePostCard(post: HeatcheckPost, baseUrl: string): string {
     return `
         <div class="post-card" data-heat-high="${isHeatHigh}" data-post-id="${post.id}" ${isHeatPicksArticle ? 'data-heat-picks-card="true"' : ''}>
             <div style="display: flex; flex-direction: column; flex: 1; min-height: 0; width: 100%; box-sizing: border-box; overflow: hidden;">
-                <div style="padding: 0.5rem 0.6rem; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.35); margin-bottom: 0.75rem; text-align: center; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; width: 100%; box-sizing: border-box; overflow: hidden; border-radius: 4px;">
+                <div style="padding: 0.3rem 0.5rem; background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.35); margin-bottom: 0.75rem; text-align: center; display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; width: 100%; box-sizing: border-box; overflow: hidden; border-radius: 4px;">
                     <div style="width: 50px; height: 50px; min-width: 50px; border-radius: 50%; border: 2px solid #fff; background: #fff; box-shadow: 0 2px 8px rgba(255, 255, 255, 0.5), 0 0 12px rgba(255, 255, 255, 0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0; box-sizing: border-box;">
                         <div style="color: #000; font-size: 0.85rem; font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif; font-weight: 900; line-height: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${dateStr}</div>
                     </div>
@@ -743,7 +743,45 @@ export function generateDatePage(
                 }
             }
         </style>
-        <div class="content-area-title">▶ ${leagueUpper} ${dateDisplay}</div>
+        <div class="content-area-title">
+            ▶ ${leagueUpper} ${dateDisplay}
+            <!-- ? functionality commented out - will work on later -->
+            <!-- <span style="margin-left: auto; display: flex; align-items: center;">
+                <span class="how-temps-work-trigger" style="display: inline-flex; align-items: center; cursor: pointer; position: relative;">
+                    <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.1); font-size: 0.9rem; font-weight: bold; transition: all 0.3s ease;">?</span>
+                    <div class="heat-score-legend-tooltip" style="display: none; position: fixed !important; bottom: 100%; right: 0; margin-bottom: 0.5rem; z-index: 999999 !important; min-width: 450px; max-width: 500px;">
+                        <div style="background: rgba(180, 200, 240, 0.08); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(200, 200, 255, 0.5); border-left: 2px solid rgba(210, 210, 255, 0.6); border-radius: 8px; padding: 1rem; box-shadow: 0 0 20px rgba(180, 200, 240, 0.4), 0 0 40px rgba(200, 200, 255, 0.3), 0 0 60px rgba(210, 210, 255, 0.2), inset 0 0 30px rgba(200, 200, 255, 0.05), 0 0 2px rgba(210, 210, 255, 0.3), 0 0 4px rgba(180, 200, 240, 0.15); max-height: 600px; overflow-y: auto;">
+                            <div style="color: #ffffff !important; font-size: 0.95rem; font-weight: 900; margin-bottom: 0.75rem; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.1em; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">Heat Score Legend (Pressure Scale)</div>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-family: 'Courier New', monospace; font-size: 0.7rem; line-height: 1.4; color: #ffffff !important;">
+                                <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
+                                    <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🔥🔥🔥 Extreme Heat (85–100)</strong>
+                                    <div style="font-size: 0.65rem; color: #ffffff !important;">Environment under maximum pressure. Structural strain, momentum stress, or emotional load is peaking. Roles, rotations, or decision-making are likely to break. Outcomes may swing sharply — volatility is high. High heat does not mean safe. It means unstable.</div>
+                                </div>
+                                <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
+                                    <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🔥🔥 High Heat (70–84)</strong>
+                                    <div style="font-size: 0.65rem; color: #ffffff !important;">Pressure is clearly building. One or more stress factors are active. Teams may be operating outside comfort. Market often begins to lag or misprice here. This is where many Heat Picks are found — but not all.</div>
+                                </div>
+                                <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
+                                    <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🔥 Warm (55–69)</strong>
+                                    <div style="font-size: 0.65rem; color: #ffffff !important;">Early signs of stress. Subtle momentum shifts or emerging strain. Narrative signals may be forming. Often informational, not actionable yet. Watch closely. Heat may rise quickly.</div>
+                                </div>
+                                <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
+                                    <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">❄️ Cold (40–54)</strong>
+                                    <div style="font-size: 0.65rem; color: #ffffff !important;">Stable, controlled environment. Teams executing within expected ranges. Market generally efficient. Few pressure-driven deviations expected. Low volatility. Low opportunity.</div>
+                                </div>
+                                <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
+                                    <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🧊 Deep Freeze (<40)</strong>
+                                    <div style="font-size: 0.65rem; color: #ffffff !important;">Minimal pressure detected. Strong structure and control. Predictable rotations and outcomes. Little incentive for behavior change. Usually not worth chasing.</div>
+                                </div>
+                                <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem; grid-column: 1 / -1;">
+                                    <div style="font-style: italic; color: #ffffff !important; font-size: 0.65rem;">Heat Score measures pressure — not pick confidence.<br>Picks are made only when pressure misaligns with the market.</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </span>
+            </span> -->
+        </div>
     `;
     content += '<div class="post-list" id="date-posts-list">';
     
