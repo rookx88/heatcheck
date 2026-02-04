@@ -426,21 +426,56 @@ function validateChartEffectSize(
 
   if (chart.chartId === 'rolling_margin_last10') {
     // Momentum chart: require minimum separation in trend
+    // Check if we have per-game arrays (soccer) or aggregated values (NBA)
     const aMargins = teamForm.A?.margins || teamForm.A?.xgDiff || [];
     const bMargins = teamForm.B?.margins || teamForm.B?.xgDiff || [];
     
-    if (aMargins.length < 5 || bMargins.length < 5) {
-      return { isValid: false, effectSize: 0 };
-    }
-
-    // Calculate slope difference
-    const aSlope = calculateSlope(aMargins.slice(-5));
-    const bSlope = calculateSlope(bMargins.slice(-5));
-    const slopeDiff = Math.abs(aSlope - bSlope);
+    // DEBUG: Log data structure
+    console.log(`[Chart Validation Debug] ${chart.chartId}:`, {
+      hasAMarginsArray: Array.isArray(aMargins),
+      aMarginsLength: Array.isArray(aMargins) ? aMargins.length : 0,
+      hasBMarginsArray: Array.isArray(bMargins),
+      bMarginsLength: Array.isArray(bMargins) ? bMargins.length : 0,
+      aMargin10: teamForm.A?.margin10,
+      aMargin3: teamForm.A?.margin3,
+      bMargin10: teamForm.B?.margin10,
+      bMargin3: teamForm.B?.margin3
+    });
     
-    // Minimum effect size: slope difference of 2.0
-    const isValid = slopeDiff >= 2.0;
-    return { isValid, effectSize: slopeDiff };
+    // If we have arrays with enough data, use slope calculation (soccer)
+    if (Array.isArray(aMargins) && Array.isArray(bMargins) && aMargins.length >= 5 && bMargins.length >= 5) {
+      // Calculate slope difference
+      const aSlope = calculateSlope(aMargins.slice(-5));
+      const bSlope = calculateSlope(bMargins.slice(-5));
+      const slopeDiff = Math.abs(aSlope - bSlope);
+      
+      // Minimum effect size: slope difference of 2.0
+      const isValid = slopeDiff >= 2.0;
+      console.log(`[Chart Validation Debug] Using slope calculation:`, { aSlope, bSlope, slopeDiff, isValid });
+      return { isValid, effectSize: slopeDiff };
+    }
+    
+    // Otherwise, use aggregated values (NBA) - calculate momentum divergence
+    const aMargin10 = teamForm.A?.margin10 || teamForm.A?.xgDiff10 || 0;
+    const aMargin3 = teamForm.A?.margin3 || teamForm.A?.xgDiff3 || 0;
+    const bMargin10 = teamForm.B?.margin10 || teamForm.B?.xgDiff10 || 0;
+    const bMargin3 = teamForm.B?.margin3 || teamForm.B?.xgDiff3 || 0;
+    
+    // Calculate momentum change for each team
+    const aMomentumChange = aMargin3 - aMargin10;
+    const bMomentumChange = bMargin3 - bMargin10;
+    const momentumDivergence = Math.abs(aMomentumChange - bMomentumChange);
+    
+    // Minimum effect size: momentum divergence of 2.0 (equivalent to slope difference threshold)
+    const isValid = momentumDivergence >= 2.0;
+    console.log(`[Chart Validation Debug] Using momentum divergence:`, { 
+      aMomentumChange, 
+      bMomentumChange, 
+      momentumDivergence, 
+      isValid,
+      threshold: 2.0
+    });
+    return { isValid, effectSize: momentumDivergence };
   }
 
   if (chart.chartId === 'rotation_availability') {
@@ -939,6 +974,16 @@ async function computeHeatPicksClassification(
 
   // 5. Chart Validity Check
   const chartCatalog = generateChartCatalog(matchPack);
+  
+  // DEBUG: Log chart catalog generation
+  console.log(`[HeatPicks Debug] ${matchup}:`, {
+    chartCatalogLength: chartCatalog.length,
+    chartCatalogIds: chartCatalog.map(c => c.chartId),
+    signalsHitCount: signalsHit.length,
+    signalsHitKeys: signalsHit.map(s => s.signalKey),
+    hasTeamForm: !!(factDrop.raw?.teamForm?.A && factDrop.raw?.teamForm?.B)
+  });
+  
   let evidenceChart: { 
     chartId: string; 
     chartType: string; 
@@ -957,8 +1002,34 @@ async function computeHeatPicksClassification(
       return true;
     }) || chartCatalog[0];
     
+    // DEBUG: Log chart selection
+    console.log(`[HeatPicks Debug] ${matchup} - Chart Selection:`, {
+      strongestSignal: strongestSignal.signalKey,
+      selectedChartId: relevantChart.chartId,
+      chartFound: !!relevantChart
+    });
+    
     // Validate chart effect size
     const chartValidation = validateChartEffectSize(relevantChart, matchPack, strongestSignal);
+    
+    // DEBUG: Log chart validation
+    console.log(`[HeatPicks Debug] ${matchup} - Chart Validation:`, {
+      chartId: relevantChart.chartId,
+      isValid: chartValidation.isValid,
+      effectSize: chartValidation.effectSize,
+      teamFormA: factDrop.raw?.teamForm?.A ? {
+        margin10: factDrop.raw.teamForm.A.margin10,
+        margin3: factDrop.raw.teamForm.A.margin3,
+        hasMargins: !!factDrop.raw.teamForm.A.margins,
+        marginsLength: factDrop.raw.teamForm.A.margins?.length || 0
+      } : null,
+      teamFormB: factDrop.raw?.teamForm?.B ? {
+        margin10: factDrop.raw.teamForm.B.margin10,
+        margin3: factDrop.raw.teamForm.B.margin3,
+        hasMargins: !!factDrop.raw.teamForm.B.margins,
+        marginsLength: factDrop.raw.teamForm.B.margins?.length || 0
+      } : null
+    });
     
     evidenceChart = {
       chartId: relevantChart.chartId,
@@ -968,6 +1039,13 @@ async function computeHeatPicksClassification(
       isValid: chartValidation.isValid,
       effectSize: chartValidation.effectSize
     };
+  } else {
+    // DEBUG: Log why chart wasn't assigned
+    console.log(`[HeatPicks Debug] ${matchup} - No Chart Assigned:`, {
+      chartCatalogEmpty: chartCatalog.length === 0,
+      noSignalsHit: signalsHit.length === 0,
+      reason: chartCatalog.length === 0 ? 'No charts in catalog' : 'No signals hit'
+    });
   }
 
   // 6. Market Sanity Checks
@@ -992,8 +1070,8 @@ async function computeHeatPicksClassification(
   if (heatScore >= 80 && heatScorePercentile >= 90 && pickConfidence >= 75) {
     classification = 'HEAT_PICK';
   }
-  // WARM_LEAN: raw ≥ 70 AND percentile ≥ 70th AND pickConfidence ≥ 60
-  else if (heatScore >= 70 && heatScorePercentile >= 70 && pickConfidence >= 60) {
+  // WARM_LEAN: raw ≥ 60 AND percentile ≥ 70th AND pickConfidence ≥ 52
+  else if (heatScore >= 60 && heatScorePercentile >= 70 && pickConfidence >= 52) {
     classification = 'WARM_LEAN';
   }
   // NO_HEAT: everything else
@@ -1018,10 +1096,10 @@ async function computeHeatPicksClassification(
           ? `Line moved ${marketSanityFlags.lineMoveMagnitude?.toFixed(1)} points against pick`
           : 'Price requires unrealistic edge'
       };
-    } else if (heatScore < 70) {
+    } else if (heatScore < 60) {
       noHeatReason = {
         category: 'LOW_HEAT_SCORE',
-        details: `Heat score ${heatScore} below minimum threshold (70)`
+        details: `Heat score ${heatScore} below minimum threshold (60)`
       };
     } else if (heatScorePercentile < 70) {
       noHeatReason = {
@@ -1031,7 +1109,7 @@ async function computeHeatPicksClassification(
     } else {
       noHeatReason = {
         category: 'LOW_HEAT_SCORE',
-        details: `Pick confidence ${pickConfidence.toFixed(0)} below threshold`
+        details: `Pick confidence ${pickConfidence.toFixed(0)} below threshold (52)`
       };
     }
   }
@@ -1088,7 +1166,7 @@ async function computeHeatPicksClassification(
     matchup,
     teamA,
     teamB,
-    matchPackV3,
+    matchPackV3: matchPack,  // Store the actual matchPack (could be V4 or V3), not just matchPackV3
     pickType,
     pick,
     noHeatReason,
@@ -3791,7 +3869,8 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         if (classified.classification === 'NO_HEAT') {
           noHeatMatchups.push({
             matchup: classified.matchup,
-            whyNot: classified.noHeatReason || { category: 'LOW_HEAT_SCORE', details: 'Below thresholds' }
+            whyNot: classified.noHeatReason || { category: 'LOW_HEAT_SCORE', details: 'Below thresholds' },
+            classified: classified  // Store full classified data for stats-based reasoning
           });
         } else {
           classifiedMatchups.push(classified);
@@ -3805,8 +3884,17 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         return bComposite - aComposite;
       });
 
-      const heatPicks = classifiedMatchups.filter(c => c.classification === 'HEAT_PICK').slice(0, 5);
-      const warmLeans = classifiedMatchups.filter(c => c.classification === 'WARM_LEAN').slice(0, 3);
+      let heatPicks = classifiedMatchups.filter(c => c.classification === 'HEAT_PICK').slice(0, 5);
+      let warmLeans = classifiedMatchups.filter(c => c.classification === 'WARM_LEAN').slice(0, 3);
+      
+      // If no heat picks exist, promote the best warm lean to a heat pick
+      if (heatPicks.length === 0 && warmLeans.length > 0) {
+        const bestWarmLean = warmLeans[0];
+        // Promote it by changing classification
+        bestWarmLean.classification = 'HEAT_PICK';
+        heatPicks = [bestWarmLean];
+        warmLeans = warmLeans.slice(1); // Remove the promoted one from warm leans
+      }
 
       // Step 2: Render with LLM
       const heatPicksRendered = await Promise.all(
@@ -3853,21 +3941,95 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         })
       );
 
+      // Helper function to generate stats-based reasoning for noHeatZone
+      const generateNoHeatReasoning = (item: { matchup: string; whyNot: any; classified?: ClassifiedMatchup }): string => {
+        const categoryMap: Record<string, string> = {
+          'SIGNALS_CONFLICTED': 'Signals point in conflicting directions',
+          'NO_EFFECT_SIZE': 'Chart effect size below minimum threshold',
+          'MARKET_CORRECTED': 'Market has already priced in the edge',
+          'SAMPLE_TOO_SMALL': 'Insufficient sample size for reliable signal',
+          'INJURIES_UNCERTAIN': 'Injury status too uncertain',
+          'LOW_HEAT_SCORE': 'Heat score below publication threshold',
+          'MISSING_DATA': 'Required data not available'
+        };
+        
+        const baseText = categoryMap[item.whyNot.category] || 'Below publication threshold';
+        
+        // If we have classified data, add stats-based details
+        // The matchPackV3 field now contains the actual matchPack (could be V4 or V3)
+        const matchPack = item.classified?.matchPackV3;
+        if (item.classified && matchPack?.factDrop) {
+          const factDrop = matchPack.factDrop;
+          const teamForm = factDrop.raw?.teamForm || {};
+          const availability = factDrop.raw?.availability;
+          const comparisons = factDrop.comparisons || [];
+          
+          const statsDetails: string[] = [];
+          
+          // Always add heat score context (this should always be available)
+          statsDetails.push(`Heat score: ${item.classified.heatScore} (${item.classified.heatScorePercentile.toFixed(0)}th percentile)`);
+          
+          // Add momentum stats
+          const aMargin10 = teamForm.A?.margin10 || teamForm.A?.xgDiff10 || 0;
+          const aMargin3 = teamForm.A?.margin3 || teamForm.A?.xgDiff3 || 0;
+          const bMargin10 = teamForm.B?.margin10 || teamForm.B?.xgDiff10 || 0;
+          const bMargin3 = teamForm.B?.margin3 || teamForm.B?.xgDiff3 || 0;
+          const aMomentumChange = aMargin3 - aMargin10;
+          const bMomentumChange = bMargin3 - bMargin10;
+          const momentumDivergence = Math.abs(aMomentumChange - bMomentumChange);
+          
+          // Always show momentum stats (not just when divergence is low)
+          statsDetails.push(`Momentum divergence: ${momentumDivergence.toFixed(1)} (L3 margins: ${aMargin3.toFixed(1)} vs ${bMargin3.toFixed(1)}, L10 margins: ${aMargin10.toFixed(1)} vs ${bMargin10.toFixed(1)})`);
+          
+          // Add availability stats
+          const aAbsences = availability?.majorAbsences?.A?.count || 0;
+          const bAbsences = availability?.majorAbsences?.B?.count || 0;
+          const absenceDiff = Math.abs(aAbsences - bAbsences);
+          
+          // Always show availability stats
+          statsDetails.push(`Availability gap: ${absenceDiff} player(s) (Team A: ${aAbsences}, Team B: ${bAbsences})`);
+          
+          // Add close games stats if available
+          const closeMarginComp = comparisons.find((c: any) => c?.key === 'closeMargin');
+          if (closeMarginComp) {
+            const aCloseW = teamForm.A?.closeW10 || 0;
+            const aCloseL = teamForm.A?.closeL10 || 0;
+            const bCloseW = teamForm.B?.closeW10 || 0;
+            const bCloseL = teamForm.B?.closeL10 || 0;
+            const totalClose = aCloseW + aCloseL + bCloseW + bCloseL;
+            const aCloseRate = aCloseW + aCloseL > 0 ? aCloseW / (aCloseW + aCloseL) : 0;
+            const bCloseRate = bCloseW + bCloseL > 0 ? bCloseW / (bCloseW + bCloseL) : 0;
+            const rateDiff = Math.abs(aCloseRate - bCloseRate);
+            
+            statsDetails.push(`Close game execution: ${(rateDiff * 100).toFixed(0)}% difference (Team A: ${(aCloseRate * 100).toFixed(0)}%, Team B: ${(bCloseRate * 100).toFixed(0)}%, sample: ${totalClose} games)`);
+          }
+          
+          // Always add pick confidence
+          statsDetails.push(`Pick confidence: ${item.classified.pickConfidence.toFixed(0)}/100`);
+          
+          // Add side consistency
+          statsDetails.push(`Side consistency: ${item.classified.sideConsistencyScore.toFixed(0)}/100`);
+          
+          // Combine base text with stats (statsDetails should always have at least heat score)
+          return `${baseText}. ${statsDetails.join(' | ')}`;
+        }
+        
+        // Fallback to original details if no classified data available
+        // Debug logging to help diagnose issues
+        if (process.env.NODE_ENV === 'development') {
+          console.warn('[NoHeatReasoning] Missing data for enhanced reasoning:', {
+            hasClassified: !!item.classified,
+            hasMatchPack: !!item.classified?.matchPackV3,
+            hasFactDrop: !!item.classified?.matchPackV3?.factDrop,
+            matchup: item.matchup
+          });
+        }
+        return `${baseText}. ${item.whyNot.details}`;
+      };
+      
       const noHeatZoneRendered = await Promise.all(
         noHeatMatchups.map(async (item) => {
-          // Use structured taxonomy to generate human-readable text
-          const categoryMap: Record<string, string> = {
-            'SIGNALS_CONFLICTED': 'Signals point in conflicting directions',
-            'NO_EFFECT_SIZE': 'Chart effect size below minimum threshold',
-            'MARKET_CORRECTED': 'Market has already priced in the edge',
-            'SAMPLE_TOO_SMALL': 'Insufficient sample size for reliable signal',
-            'INJURIES_UNCERTAIN': 'Injury status too uncertain',
-            'LOW_HEAT_SCORE': 'Heat score below publication threshold',
-            'MISSING_DATA': 'Required data not available'
-          };
-          
-          const baseText = categoryMap[item.whyNot.category] || 'Below publication threshold';
-          const fullText = `${baseText}. ${item.whyNot.details}`;
+          const fullText = generateNoHeatReasoning(item);
           
           return {
             matchup: item.matchup,
