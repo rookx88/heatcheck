@@ -2111,8 +2111,8 @@ app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request,
                     const homeTeam = match.home_team_name;
                     const awayTeam = match.away_team_name;
                     
-                    // Convert UTC date_utc to the league's local timezone for accurate date handling
-                    // European leagues use their local timezones, not America/New_York
+                    // Convert UTC date_utc to EST for consistent date/time display
+                    // All leagues use EST for scheduled_date and scheduled_time to match UI display
                     const dateUtc = new Date(match.date_utc);
                     if (isNaN(dateUtc.getTime())) {
                         console.warn(`[${frontendLeague}] Invalid date_utc for ${homeTeam} vs ${awayTeam}:`, match.date_utc);
@@ -2120,17 +2120,9 @@ app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request,
                         continue;
                     }
                     
-                    // Map each league to its local timezone
-                    const leagueTimezoneMap: Record<string, string> = {
-                        'EPL': 'Europe/London',
-                        'La Liga': 'Europe/Madrid',
-                        'Serie A': 'Europe/Rome',
-                        'Bundesliga': 'Europe/Berlin',
-                        'Ligue 1': 'Europe/Paris'
-                    };
-                    
-                    // Use league-specific timezone, fallback to America/New_York for consistency
-                    const tz = leagueTimezoneMap[frontendLeague] || "America/New_York";
+                    // Convert UTC to EST for all leagues (consistent with display endpoint)
+                    // This ensures imported dates match what users see in the UI
+                    const tz = "America/New_York";
                     const gameDate = formatYmdInTimeZone(dateUtc, tz);
                     const gameTime = formatHmInTimeZone(dateUtc, tz);
                     
