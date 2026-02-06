@@ -25,13 +25,13 @@
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/bundesliga/</loc>
+    <loc>https://heatchecks.io/ligue-1/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/dfs/bundesliga/</loc>
+    <loc>https://heatchecks.io/dfs/ligue-1/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
@@ -49,13 +49,25 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/</loc>
+    <loc>https://heatchecks.io/la-liga/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/dfs/nba/</loc>
+    <loc>https://heatchecks.io/dfs/la-liga/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/bundesliga/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/dfs/bundesliga/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
@@ -73,25 +85,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/la-liga/</loc>
+    <loc>https://heatchecks.io/nba/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/dfs/la-liga/</loc>
-    <lastmod>2026-02-06</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/ligue-1/</loc>
-    <lastmod>2026-02-06</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.7</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/dfs/ligue-1/</loc>
+    <loc>https://heatchecks.io/dfs/nba/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
@@ -109,7 +109,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/bundesliga/2026-02-07/</loc>
+    <loc>https://heatchecks.io/ligue-1/2026-02-07/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -121,13 +121,37 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/2026-02-06/</loc>
+    <loc>https://heatchecks.io/laliga/2026-02-07/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/bundesliga/2026-02-07/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/serie-a/2026-02-07/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/bundesliga/2026-02-06/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/epl/2026-02-06/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/serie-a/2026-02-06/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -157,6 +181,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/laliga/2026-02-02/</loc>
+    <lastmod>2026-02-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/epl/2026-02-02/</loc>
     <lastmod>2026-02-01</lastmod>
     <changefreq>weekly</changefreq>
@@ -169,12 +199,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/laliga/2026-02-02/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nba/2026-02-02/</loc>
     <lastmod>2026-02-02</lastmod>
     <changefreq>weekly</changefreq>
@@ -182,12 +206,6 @@
   </url>
   <url>
     <loc>https://heatchecks.io/ligue-1/2026-02-01/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/bundesliga/2026-02-01/</loc>
     <lastmod>2026-02-01</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -205,25 +223,25 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/bundesliga/2026-02-01/</loc>
+    <lastmod>2026-02-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/nba/2026-02-01/</loc>
     <lastmod>2026-02-01</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/bundesliga/2026-01-31/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/ligue-1/2026-01-31/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/epl/2026-01-31/</loc>
+    <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/bundesliga/2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -241,20 +259,14 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/ligue-1/2026-01-31/</loc>
+    <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/nba/2026-01-31/</loc>
     <lastmod>2026-01-31</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/bundesliga/2026-01-30/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/ligue-1/2026-01-30/</loc>
-    <lastmod>2026-01-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -266,6 +278,18 @@
   </url>
   <url>
     <loc>https://heatchecks.io/laliga/2026-01-30/</loc>
+    <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/bundesliga/2026-01-30/</loc>
+    <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/ligue-1/2026-01-30/</loc>
     <lastmod>2026-01-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -313,14 +337,14 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/2026-01-25/</loc>
-    <lastmod>2026-01-25</lastmod>
+    <loc>https://heatchecks.io/nfl/2026-01-25/</loc>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nfl/2026-01-25/</loc>
-    <lastmod>2026-01-24</lastmod>
+    <loc>https://heatchecks.io/epl/2026-01-25/</loc>
+    <lastmod>2026-01-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -367,19 +391,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/2026-01-19/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nba/2026-01-19/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nfl/2026-01-18/</loc>
+    <loc>https://heatchecks.io/epl/2026-01-19/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -391,13 +409,19 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nfl/2026-01-18/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/epl/2026-01-18/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/2026-01-17/</loc>
+    <loc>https://heatchecks.io/nfl/2026-01-17/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -409,7 +433,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nfl/2026-01-17/</loc>
+    <loc>https://heatchecks.io/epl/2026-01-17/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -439,13 +463,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/2026-01-12/</loc>
+    <loc>https://heatchecks.io/nfl/2026-01-12/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nfl/2026-01-12/</loc>
+    <loc>https://heatchecks.io/nba/2026-01-12/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -463,13 +487,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/2026-01-10/</loc>
+    <loc>https://heatchecks.io/nfl/2026-01-10/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nfl/2026-01-10/</loc>
+    <loc>https://heatchecks.io/nba/2026-01-10/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -487,25 +511,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/bundesliga/05-vs-augsburg-prediction-preview-2026-02-07/</loc>
-    <lastmod>2026-02-06</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/bundesliga/freiburg-vs-bremen-prediction-preview-2026-02-07/</loc>
-    <lastmod>2026-02-06</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/epl/wanderers-vs-chelsea-prediction-preview-2026-02-07/</loc>
-    <lastmod>2026-02-06</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/epl/bournemouth-vs-villa-prediction-preview-2026-02-07/</loc>
+    <loc>https://heatchecks.io/ligue-1/metz-vs-lille-prediction-preview-2026-02-07/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -517,13 +523,25 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/fulham-vs-everton-prediction-preview-2026-02-07/</loc>
+    <loc>https://heatchecks.io/epl/wanderers-vs-chelsea-prediction-preview-2026-02-07/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/bundesliga/heidenheim-vs-sv-prediction-preview-2026-02-07/</loc>
+    <loc>https://heatchecks.io/laliga/vigo-vs-osasuna-prediction-preview-2026-02-07/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/laliga/sevilla-vs-girona-prediction-preview-2026-02-07/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/laliga/barcelona-vs-mallorca-prediction-preview-2026-02-07/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -535,7 +553,13 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/burnley-vs-ham-prediction-preview-2026-02-07/</loc>
+    <loc>https://heatchecks.io/bundesliga/wolfsburg-vs-dortmund-prediction-preview-2026-02-07/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/bundesliga/heidenheim-vs-sv-prediction-preview-2026-02-07/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -547,13 +571,43 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/bundesliga/wolfsburg-vs-dortmund-prediction-preview-2026-02-07/</loc>
+    <loc>https://heatchecks.io/bundesliga/freiburg-vs-bremen-prediction-preview-2026-02-07/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/united-vs-forest-prediction-preview-2026-02-06/</loc>
+    <loc>https://heatchecks.io/epl/bournemouth-vs-villa-prediction-preview-2026-02-07/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/epl/burnley-vs-ham-prediction-preview-2026-02-07/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/epl/fulham-vs-everton-prediction-preview-2026-02-07/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/bundesliga/05-vs-augsburg-prediction-preview-2026-02-07/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/serie-a/genoa-vs-napoli-prediction-preview-2026-02-07/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/serie-a/fiorentina-vs-torino-prediction-preview-2026-02-07/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -565,25 +619,13 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/pelicans-vs-timberwolves-prediction-preview-2026-02-06/</loc>
+    <loc>https://heatchecks.io/epl/united-vs-forest-prediction-preview-2026-02-06/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/pacers-vs-bucks-prediction-preview-2026-02-06/</loc>
-    <lastmod>2026-02-06</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/clippers-vs-kings-prediction-preview-2026-02-06/</loc>
-    <lastmod>2026-02-06</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/grizzlies-vs-blazers-prediction-preview-2026-02-06/</loc>
+    <loc>https://heatchecks.io/serie-a/verona-vs-pisa-prediction-preview-2026-02-06/</loc>
     <lastmod>2026-02-06</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -595,8 +637,68 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nba/pacers-vs-bucks-prediction-preview-2026-02-06/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-02-06/multiple-vs/multiple-vs-pressure/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/nba/heat-vs-celtics-prediction-preview-2026-02-06/</loc>
     <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/clippers-vs-kings-prediction-preview-2026-02-06/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/pelicans-vs-timberwolves-prediction-preview-2026-02-06/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/grizzlies-vs-blazers-prediction-preview-2026-02-06/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/hornets-vs-rockets-prediction-preview-2026-02-05/</loc>
+    <lastmod>2026-02-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-02-05/multiple-vs/multiple-vs-pressure/</loc>
+    <lastmod>2026-02-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/wizards-vs-pistons-prediction-preview-2026-02-05/</loc>
+    <lastmod>2026-02-06</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/nets-vs-magic-prediction-preview-2026-02-05/</loc>
+    <lastmod>2026-02-05</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/jazz-vs-hawks-prediction-preview-2026-02-05/</loc>
+    <lastmod>2026-02-05</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
@@ -619,55 +721,13 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/wizards-vs-pistons-prediction-preview-2026-02-05/</loc>
-    <lastmod>2026-02-06</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/hornets-vs-rockets-prediction-preview-2026-02-05/</loc>
-    <lastmod>2026-02-05</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/2026-02-05/multiple-vs/multiple-vs-pressure/</loc>
-    <lastmod>2026-02-05</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nba/bulls-vs-raptors-prediction-preview-2026-02-05/</loc>
     <lastmod>2026-02-05</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/nets-vs-magic-prediction-preview-2026-02-05/</loc>
-    <lastmod>2026-02-05</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/jazz-vs-hawks-prediction-preview-2026-02-05/</loc>
-    <lastmod>2026-02-05</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/grizzlies-vs-kings-prediction-preview-2026-02-04/</loc>
-    <lastmod>2026-02-04</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/timberwolves-vs-raptors-prediction-preview-2026-02-04/</loc>
-    <lastmod>2026-02-04</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/nuggets-vs-knicks-prediction-preview-2026-02-04/</loc>
+    <loc>https://heatchecks.io/nba/pelicans-vs-bucks-prediction-preview-2026-02-04/</loc>
     <lastmod>2026-02-04</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -679,13 +739,25 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/pelicans-vs-bucks-prediction-preview-2026-02-04/</loc>
+    <loc>https://heatchecks.io/nba/thunder-vs-spurs-prediction-preview-2026-02-04/</loc>
     <lastmod>2026-02-04</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/thunder-vs-spurs-prediction-preview-2026-02-04/</loc>
+    <loc>https://heatchecks.io/nba/grizzlies-vs-kings-prediction-preview-2026-02-04/</loc>
+    <lastmod>2026-02-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/nuggets-vs-knicks-prediction-preview-2026-02-04/</loc>
+    <lastmod>2026-02-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/timberwolves-vs-raptors-prediction-preview-2026-02-04/</loc>
     <lastmod>2026-02-04</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -697,8 +769,50 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nba/76ers-vs-warriors-prediction-preview-2026-02-03/</loc>
+    <lastmod>2026-02-03</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/nba/jazz-vs-pacers-prediction-preview-2026-02-03/</loc>
     <lastmod>2026-02-03</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/nuggets-vs-pistons-prediction-preview-2026-02-03/</loc>
+    <lastmod>2026-02-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/knicks-vs-wizards-prediction-preview-2026-02-03/</loc>
+    <lastmod>2026-02-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/lakers-vs-nets-prediction-preview-2026-02-03/</loc>
+    <lastmod>2026-02-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/hawks-vs-heat-prediction-preview-2026-02-03/</loc>
+    <lastmod>2026-02-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/celtics-vs-mavericks-prediction-preview-2026-02-03/</loc>
+    <lastmod>2026-02-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/magic-vs-thunder-prediction-preview-2026-02-03/</loc>
+    <lastmod>2026-02-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
@@ -715,44 +829,8 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/celtics-vs-mavericks-prediction-preview-2026-02-03/</loc>
-    <lastmod>2026-02-02</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/hawks-vs-heat-prediction-preview-2026-02-03/</loc>
-    <lastmod>2026-02-02</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/lakers-vs-nets-prediction-preview-2026-02-03/</loc>
-    <lastmod>2026-02-02</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/knicks-vs-wizards-prediction-preview-2026-02-03/</loc>
-    <lastmod>2026-02-02</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/nuggets-vs-pistons-prediction-preview-2026-02-03/</loc>
-    <lastmod>2026-02-02</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/76ers-vs-warriors-prediction-preview-2026-02-03/</loc>
-    <lastmod>2026-02-03</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/magic-vs-thunder-prediction-preview-2026-02-03/</loc>
-    <lastmod>2026-02-02</lastmod>
+    <loc>https://heatchecks.io/laliga/mallorca-vs-sevilla-prediction-preview-2026-02-02/</loc>
+    <lastmod>2026-02-01</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
@@ -769,19 +847,7 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/laliga/mallorca-vs-sevilla-prediction-preview-2026-02-02/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/pelicans-vs-hornets-prediction-preview-2026-02-02/</loc>
-    <lastmod>2026-02-02</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/timberwolves-vs-grizzlies-prediction-preview-2026-02-02/</loc>
+    <loc>https://heatchecks.io/serie-a/udinese-vs-roma-prediction-preview-2026-02-02/</loc>
     <lastmod>2026-02-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -793,7 +859,13 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/serie-a/udinese-vs-roma-prediction-preview-2026-02-02/</loc>
+    <loc>https://heatchecks.io/nba/timberwolves-vs-grizzlies-prediction-preview-2026-02-02/</loc>
+    <lastmod>2026-02-02</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/pelicans-vs-hornets-prediction-preview-2026-02-02/</loc>
     <lastmod>2026-02-02</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -805,37 +877,31 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/ligue-1/strasbourg-vs-germain-prediction-preview-2026-02-01/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/bundesliga/stuttgart-vs-freiburg-prediction-preview-2026-02-01/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/serie-a/como-vs-atalanta-prediction-preview-2026-02-01/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/bundesliga/dortmund-vs-heidenheim-prediction-preview-2026-02-01/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/ligue-1/toulouse-vs-auxerre-prediction-preview-2026-02-01/</loc>
     <lastmod>2026-02-01</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/ligue-1/strasbourg-vs-germain-prediction-preview-2026-02-01/</loc>
+    <lastmod>2026-02-01</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/ligue-1/lyon-vs-lille-prediction-preview-2026-02-01/</loc>
+    <lastmod>2026-02-01</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/ligue-1/angers-vs-metz-prediction-preview-2026-02-01/</loc>
+    <lastmod>2026-02-01</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/serie-a/cremonese-vs-inter-prediction-preview-2026-02-01/</loc>
     <lastmod>2026-02-01</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -865,25 +931,61 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/bundesliga/stuttgart-vs-freiburg-prediction-preview-2026-02-01/</loc>
+    <lastmod>2026-02-01</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/epl/tottenham-vs-city-prediction-preview-2026-02-01/</loc>
     <lastmod>2026-02-01</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/serie-a/cremonese-vs-inter-prediction-preview-2026-02-01/</loc>
+    <loc>https://heatchecks.io/serie-a/como-vs-atalanta-prediction-preview-2026-02-01/</loc>
     <lastmod>2026-02-01</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/ligue-1/lyon-vs-lille-prediction-preview-2026-02-01/</loc>
+    <loc>https://heatchecks.io/bundesliga/dortmund-vs-heidenheim-prediction-preview-2026-02-01/</loc>
     <lastmod>2026-02-01</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/clippers-vs-suns-prediction-preview-2026-02-01/</loc>
+    <lastmod>2026-02-01</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/cavaliers-vs-blazers-prediction-preview-2026-02-01/</loc>
+    <lastmod>2026-02-01</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/2026-02-01/multiple-vs/multiple-vs-pressure/</loc>
+    <lastmod>2026-02-01</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/lakers-vs-knicks-prediction-preview-2026-02-01/</loc>
+    <lastmod>2026-02-01</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/thunder-vs-nuggets-prediction-preview-2026-02-01/</loc>
+    <lastmod>2026-02-01</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/magic-vs-spurs-prediction-preview-2026-02-01/</loc>
     <lastmod>2026-02-01</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -919,158 +1021,146 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/magic-vs-spurs-prediction-preview-2026-02-01/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/cavaliers-vs-blazers-prediction-preview-2026-02-01/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/2026-02-01/multiple-vs/multiple-vs-pressure/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/lakers-vs-knicks-prediction-preview-2026-02-01/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/thunder-vs-nuggets-prediction-preview-2026-02-01/</loc>
-    <lastmod>2026-02-01</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/bundesliga/augsburg-vs-pauli-prediction-preview-2026-01-31/</loc>
+    <loc>https://heatchecks.io/epl/brighton-vs-everton-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/ligue-1/monaco-vs-rennes-prediction-preview-2026-01-31/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/ligue-1/lorient-vs-nantes-prediction-preview-2026-01-31/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/epl/wanderers-vs-bournemouth-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/bundesliga/sv-vs-munich-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/bundesliga/leipzig-vs-05-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/laliga/elche-vs-barcelona-prediction-preview-2026-01-31/</loc>
+    <loc>https://heatchecks.io/bundesliga/augsburg-vs-pauli-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/laliga/levante-vs-madrid-prediction-preview-2026-01-31/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/bundesliga/frankfurt-vs-leverkusen-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/brighton-vs-everton-prediction-preview-2026-01-31/</loc>
+    <loc>https://heatchecks.io/laliga/levante-vs-madrid-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/laliga/osasuna-vs-villarreal-prediction-preview-2026-01-31/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/laliga/oviedo-vs-girona-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/serie-a/cagliari-vs-verona-prediction-preview-2026-02-01/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/serie-a/napoli-vs-fiorentina-prediction-preview-2026-02-01/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/epl/chelsea-vs-ham-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/epl/liverpool-vs-united-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/serie-a/pisa-vs-sassuolo-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/laliga/osasuna-vs-villarreal-prediction-preview-2026-01-31/</loc>
+    <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/epl/united-vs-arsenal-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/laliga/elche-vs-barcelona-prediction-preview-2026-01-31/</loc>
+    <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/bundesliga/bremen-vs-mgladbach-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/bundesliga/hoffenheim-vs-berlin-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/ligue-1/fc-vs-marseille-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/ligue-1/monaco-vs-rennes-prediction-preview-2026-01-31/</loc>
+    <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/ligue-1/lorient-vs-nantes-prediction-preview-2026-01-31/</loc>
+    <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/hawks-vs-pacers-prediction-preview-2026-01-31/</loc>
+    <lastmod>2026-01-31</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/timberwolves-vs-grizzlies-prediction-preview-2026-01-31/</loc>
+    <lastmod>2026-01-31</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/bulls-vs-heat-prediction-preview-2026-01-31/</loc>
+    <lastmod>2026-01-31</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
@@ -1081,7 +1171,7 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/bulls-vs-heat-prediction-preview-2026-01-31/</loc>
+    <loc>https://heatchecks.io/nba/mavericks-vs-rockets-prediction-preview-2026-01-31/</loc>
     <lastmod>2026-01-31</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
@@ -1099,36 +1189,6 @@
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/timberwolves-vs-grizzlies-prediction-preview-2026-01-31/</loc>
-    <lastmod>2026-01-31</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/mavericks-vs-rockets-prediction-preview-2026-01-31/</loc>
-    <lastmod>2026-01-31</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/hawks-vs-pacers-prediction-preview-2026-01-31/</loc>
-    <lastmod>2026-01-31</lastmod>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/bundesliga/cologne-vs-wolfsburg-prediction-preview-2026-01-30/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/ligue-1/lens-vs-havre-prediction-preview-2026-01-30/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/serie-a/lazio-vs-genoa-prediction-preview-2026-02-01/</loc>
     <lastmod>2026-01-30</lastmod>
     <changefreq>weekly</changefreq>
@@ -1141,31 +1201,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/nets-vs-jazz-prediction-preview-2026-01-30/</loc>
+    <loc>https://heatchecks.io/bundesliga/cologne-vs-wolfsburg-prediction-preview-2026-01-30/</loc>
     <lastmod>2026-01-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/clippers-vs-nuggets-prediction-preview-2026-01-30/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/lakers-vs-wizards-prediction-preview-2026-01-30/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/grizzlies-vs-pelicans-prediction-preview-2026-01-30/</loc>
-    <lastmod>2026-01-30</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/cavaliers-vs-suns-prediction-preview-2026-01-30/</loc>
+    <loc>https://heatchecks.io/ligue-1/lens-vs-havre-prediction-preview-2026-01-30/</loc>
     <lastmod>2026-01-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1201,14 +1243,32 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/heat-vs-bulls-prediction-preview-2026-01-29/</loc>
-    <lastmod>2026-01-29</lastmod>
+    <loc>https://heatchecks.io/nba/clippers-vs-nuggets-prediction-preview-2026-01-30/</loc>
+    <lastmod>2026-01-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/hornets-vs-mavericks-prediction-preview-2026-01-29/</loc>
-    <lastmod>2026-01-29</lastmod>
+    <loc>https://heatchecks.io/nba/grizzlies-vs-pelicans-prediction-preview-2026-01-30/</loc>
+    <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/cavaliers-vs-suns-prediction-preview-2026-01-30/</loc>
+    <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/nets-vs-jazz-prediction-preview-2026-01-30/</loc>
+    <lastmod>2026-01-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/lakers-vs-wizards-prediction-preview-2026-01-30/</loc>
+    <lastmod>2026-01-30</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1219,13 +1279,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/thunder-vs-timberwolves-prediction-preview-2026-01-29/</loc>
-    <lastmod>2026-01-29</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/pistons-vs-suns-prediction-preview-2026-01-29/</loc>
+    <loc>https://heatchecks.io/nba/hornets-vs-mavericks-prediction-preview-2026-01-29/</loc>
     <lastmod>2026-01-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1243,7 +1297,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/rockets-vs-hawks-prediction-preview-2026-01-29/</loc>
+    <loc>https://heatchecks.io/nba/thunder-vs-timberwolves-prediction-preview-2026-01-29/</loc>
     <lastmod>2026-01-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1255,13 +1309,37 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/magic-vs-heat-prediction-preview-2026-01-28/</loc>
-    <lastmod>2026-01-28</lastmod>
+    <loc>https://heatchecks.io/nba/rockets-vs-hawks-prediction-preview-2026-01-29/</loc>
+    <lastmod>2026-01-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/heat-vs-bulls-prediction-preview-2026-01-29/</loc>
+    <lastmod>2026-01-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/pistons-vs-suns-prediction-preview-2026-01-29/</loc>
+    <lastmod>2026-01-29</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/warriors-vs-jazz-prediction-preview-2026-01-28/</loc>
+    <lastmod>2026-01-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/knicks-vs-raptors-prediction-preview-2026-01-28/</loc>
+    <lastmod>2026-01-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/hornets-vs-grizzlies-prediction-preview-2026-01-28/</loc>
     <lastmod>2026-01-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1285,18 +1363,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/hornets-vs-grizzlies-prediction-preview-2026-01-28/</loc>
-    <lastmod>2026-01-28</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/knicks-vs-raptors-prediction-preview-2026-01-28/</loc>
-    <lastmod>2026-01-28</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nba/lakers-vs-cavaliers-prediction-preview-2026-01-28/</loc>
     <lastmod>2026-01-28</lastmod>
     <changefreq>weekly</changefreq>
@@ -1315,6 +1381,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nba/magic-vs-heat-prediction-preview-2026-01-28/</loc>
+    <lastmod>2026-01-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/bundesliga/pauli-vs-leipzig-prediction-preview-2026-01-27/</loc>
     <lastmod>2026-01-27</lastmod>
     <changefreq>weekly</changefreq>
@@ -1327,14 +1399,8 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/kings-vs-knicks-prediction-preview-2026-01-27/</loc>
+    <loc>https://heatchecks.io/nba/pistons-vs-nuggets-prediction-preview-2026-01-27/</loc>
     <lastmod>2026-01-28</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/clippers-vs-jazz-prediction-preview-2026-01-27/</loc>
-    <lastmod>2026-01-27</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1351,13 +1417,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/blazers-vs-wizards-prediction-preview-2026-01-27/</loc>
+    <loc>https://heatchecks.io/nba/kings-vs-knicks-prediction-preview-2026-01-27/</loc>
     <lastmod>2026-01-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/bucks-vs-76ers-prediction-preview-2026-01-27/</loc>
+    <loc>https://heatchecks.io/nba/blazers-vs-wizards-prediction-preview-2026-01-27/</loc>
     <lastmod>2026-01-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1369,13 +1435,25 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/pistons-vs-nuggets-prediction-preview-2026-01-27/</loc>
+    <loc>https://heatchecks.io/nba/bucks-vs-76ers-prediction-preview-2026-01-27/</loc>
     <lastmod>2026-01-28</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nba/clippers-vs-jazz-prediction-preview-2026-01-27/</loc>
+    <lastmod>2026-01-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/epl/everton-vs-leeds-united-prediction-preview-2026-01-26/</loc>
+    <lastmod>2026-01-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/memphis-grizzlies-vs-houston-rockets-prediction-preview-2026-01-26/</loc>
     <lastmod>2026-01-26</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1417,30 +1495,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/memphis-grizzlies-vs-houston-rockets-prediction-preview-2026-01-26/</loc>
-    <lastmod>2026-01-26</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/epl/crystal-palace-vs-chelsea-prediction-preview-2026-01-25/</loc>
-    <lastmod>2026-01-25</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/epl/brentford-vs-nottingham-forest-prediction-preview-2026-01-25/</loc>
-    <lastmod>2026-01-25</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nfl/seahawks-vs-rams-prediction-preview-2026-01-25/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nfl/denver-broncos-vs-new-england-patriots-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
@@ -1453,19 +1507,19 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/nets-vs-clippers-prediction-preview-2026-01-25/</loc>
+    <loc>https://heatchecks.io/epl/crystal-palace-vs-chelsea-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/toronto-raptors-vs-oklahoma-city-thunder-prediction-preview-2026-01-25/</loc>
-    <lastmod>2026-01-25</lastmod>
+    <loc>https://heatchecks.io/nfl/seahawks-vs-rams-prediction-preview-2026-01-25/</loc>
+    <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/dallas-mavericks-vs-milwaukee-bucks-prediction-preview-2026-01-25/</loc>
+    <loc>https://heatchecks.io/epl/brentford-vs-nottingham-forest-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1477,7 +1531,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/sacramento-kings-vs-detroit-pistons-prediction-preview-2026-01-25/</loc>
+    <loc>https://heatchecks.io/nba/nets-vs-clippers-prediction-preview-2026-01-25/</loc>
     <lastmod>2026-01-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1495,8 +1549,20 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/west-ham-united-vs-sunderland-prediction-preview-2026-01-24/</loc>
-    <lastmod>2026-01-24</lastmod>
+    <loc>https://heatchecks.io/nba/toronto-raptors-vs-oklahoma-city-thunder-prediction-preview-2026-01-25/</loc>
+    <lastmod>2026-01-25</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/dallas-mavericks-vs-milwaukee-bucks-prediction-preview-2026-01-25/</loc>
+    <lastmod>2026-01-25</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/sacramento-kings-vs-detroit-pistons-prediction-preview-2026-01-25/</loc>
+    <lastmod>2026-01-25</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
@@ -1519,7 +1585,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/new-york-knicks-vs-philadelphia-76ers-prediction-preview-2026-01-24/</loc>
+    <loc>https://heatchecks.io/epl/west-ham-united-vs-sunderland-prediction-preview-2026-01-24/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1531,19 +1597,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/los-angeles-lakers-vs-dallas-mavericks-prediction-preview-2026-01-24/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/celtics-vs-bulls-prediction-preview-2026-01-24/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/cavaliers-vs-magic-prediction-preview-2026-01-24/</loc>
+    <loc>https://heatchecks.io/nba/new-york-knicks-vs-philadelphia-76ers-prediction-preview-2026-01-24/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1561,7 +1615,37 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nba/cavaliers-vs-magic-prediction-preview-2026-01-24/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/celtics-vs-bulls-prediction-preview-2026-01-24/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/los-angeles-lakers-vs-dallas-mavericks-prediction-preview-2026-01-24/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/nba/sacramento-kings-vs-cleveland-cavaliers-prediction-preview-2026-01-23/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/boston-celtics-vs-brooklyn-nets-prediction-preview-2026-01-23/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/pelicans-vs-grizzlies-prediction-preview-2026-01-23/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1591,19 +1675,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/boston-celtics-vs-brooklyn-nets-prediction-preview-2026-01-23/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nba/pacers-vs-thunder-prediction-preview-2026-01-23/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/pelicans-vs-grizzlies-prediction-preview-2026-01-23/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1627,6 +1699,12 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nba/lakers-vs-clippers-prediction-preview-2026-01-22/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/nba/houston-rockets-vs-philadelphia-76ers-prediction-preview-2026-01-22/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
@@ -1639,19 +1717,25 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nba/miami-heat-vs-portland-trail-blazers-prediction-preview-2026-01-22/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/nba/spurs-vs-jazz-prediction-preview-2026-01-22/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/lakers-vs-clippers-prediction-preview-2026-01-22/</loc>
+    <loc>https://heatchecks.io/nba/oklahoma-city-thunder-vs-milwaukee-bucks-prediction-preview-2026-01-21/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/miami-heat-vs-portland-trail-blazers-prediction-preview-2026-01-22/</loc>
+    <loc>https://heatchecks.io/nba/brooklyn-nets-vs-new-york-knicks-prediction-preview-2026-01-21/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1681,18 +1765,6 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/brooklyn-nets-vs-new-york-knicks-prediction-preview-2026-01-21/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/oklahoma-city-thunder-vs-milwaukee-bucks-prediction-preview-2026-01-21/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nba/raptors-vs-kings-prediction-preview-2026-01-21/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
@@ -1717,25 +1789,13 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nba/atlanta-hawks-vs-milwaukee-bucks-prediction-preview-2026-01-19/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/epl/brighton-and-hove-albion-vs-bournemouth-prediction-preview-2026-01-19/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/philadelphia-76ers-vs-indiana-pacers-prediction-preview-2026-01-19/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/detroit-pistons-vs-boston-celtics-prediction-preview-2026-01-19/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/golden-state-warriors-vs-miami-heat-prediction-preview-2026-01-19/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1747,13 +1807,25 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/san-antonio-spurs-vs-utah-jazz-prediction-preview-2026-01-19/</loc>
+    <loc>https://heatchecks.io/nba/golden-state-warriors-vs-miami-heat-prediction-preview-2026-01-19/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/atlanta-hawks-vs-milwaukee-bucks-prediction-preview-2026-01-19/</loc>
+    <loc>https://heatchecks.io/nba/detroit-pistons-vs-boston-celtics-prediction-preview-2026-01-19/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/philadelphia-76ers-vs-indiana-pacers-prediction-preview-2026-01-19/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/san-antonio-spurs-vs-utah-jazz-prediction-preview-2026-01-19/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1765,37 +1837,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nfl/new-england-patriots-vs-houston-texans-prediction-preview-2026-01-18/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/memphis-grizzlies-vs-orlando-magic-prediction-preview-2026-01-18/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nba/bulls-vs-nets-prediction-preview-2026-01-18/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/denver-nuggets-vs-charlotte-hornets-prediction-preview-2026-01-18/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/sacramento-kings-vs-portland-trail-blazers-prediction-preview-2026-01-18/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/lakers-vs-raptors-prediction-preview-2026-01-18/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1819,91 +1861,31 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/chelsea-vs-brentford-prediction-preview-2026-01-17/</loc>
+    <loc>https://heatchecks.io/nfl/new-england-patriots-vs-houston-texans-prediction-preview-2026-01-18/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/sunderland-vs-crystal-palace-prediction-preview-2026-01-17/</loc>
+    <loc>https://heatchecks.io/nba/memphis-grizzlies-vs-orlando-magic-prediction-preview-2026-01-18/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/liverpool-vs-burnley-prediction-preview-2026-01-17/</loc>
+    <loc>https://heatchecks.io/nba/denver-nuggets-vs-charlotte-hornets-prediction-preview-2026-01-18/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/leeds-united-vs-fulham-prediction-preview-2026-01-17/</loc>
+    <loc>https://heatchecks.io/nba/sacramento-kings-vs-portland-trail-blazers-prediction-preview-2026-01-18/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/epl/nottingham-forest-vs-arsenal-prediction-preview-2026-01-17/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/epl/tottenham-hotspur-vs-west-ham-united-prediction-preview-2026-01-17/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/dallas-mavericks-vs-utah-jazz-prediction-preview-2026-01-17/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/detroit-pistons-vs-indiana-pacers-prediction-preview-2026-01-17/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/new-york-knicks-vs-phoenix-suns-prediction-preview-2026-01-17/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/san-antonio-spurs-vs-minnesota-timberwolves-prediction-preview-2026-01-17/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/golden-state-warriors-vs-charlotte-hornets-prediction-preview-2026-01-17/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/denver-nuggets-vs-washington-wizards-prediction-preview-2026-01-17/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/lakers-vs-trail-blazers-prediction-preview-2026-01-17/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/atlanta-hawks-vs-boston-celtics-prediction-preview-2026-01-17/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nfl/denver-broncos-vs-buffalo-bills-prediction-preview-2026-01-17/</loc>
+    <loc>https://heatchecks.io/nba/lakers-vs-raptors-prediction-preview-2026-01-18/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1915,19 +1897,109 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nfl/denver-broncos-vs-buffalo-bills-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/atlanta-hawks-vs-boston-celtics-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/lakers-vs-trail-blazers-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/denver-nuggets-vs-washington-wizards-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/golden-state-warriors-vs-charlotte-hornets-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/san-antonio-spurs-vs-minnesota-timberwolves-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/new-york-knicks-vs-phoenix-suns-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/detroit-pistons-vs-indiana-pacers-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/dallas-mavericks-vs-utah-jazz-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/epl/tottenham-hotspur-vs-west-ham-united-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/epl/nottingham-forest-vs-arsenal-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/epl/leeds-united-vs-fulham-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/epl/liverpool-vs-burnley-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/epl/sunderland-vs-crystal-palace-prediction-preview-2026-01-17/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/epl/manchester-united-vs-manchester-city-prediction-preview-2026-01-17/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/houston-rockets-vs-minnesota-timberwolves-prediction-preview-2026-01-16/</loc>
+    <loc>https://heatchecks.io/epl/chelsea-vs-brentford-prediction-preview-2026-01-17/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/toronto-raptors-vs-los-angeles-clippers-prediction-preview-2026-01-16/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/indiana-pacers-vs-new-orleans-pelicans-prediction-preview-2026-01-16/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1945,43 +2017,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/indiana-pacers-vs-new-orleans-pelicans-prediction-preview-2026-01-16/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nba/sacramento-kings-vs-washington-wizards-prediction-preview-2026-01-16/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/houston-rockets-vs-oklahoma-city-thunder-prediction-preview-2026-01-15/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/detroit-pistons-vs-phoenix-suns-prediction-preview-2026-01-15/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/miami-heat-vs-boston-celtics-prediction-preview-2026-01-15/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/dallas-mavericks-vs-utah-jazz-prediction-preview-2026-01-15/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/los-angeles-lakers-vs-charlotte-hornets-prediction-preview-2026-01-15/</loc>
+    <loc>https://heatchecks.io/nba/houston-rockets-vs-minnesota-timberwolves-prediction-preview-2026-01-16/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -1993,7 +2035,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/orlando-magic-vs-memphis-grizzlies-prediction-preview-2026-01-15/</loc>
+    <loc>https://heatchecks.io/nba/detroit-pistons-vs-phoenix-suns-prediction-preview-2026-01-15/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2011,13 +2053,55 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nba/dallas-mavericks-vs-utah-jazz-prediction-preview-2026-01-15/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/los-angeles-lakers-vs-charlotte-hornets-prediction-preview-2026-01-15/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/orlando-magic-vs-memphis-grizzlies-prediction-preview-2026-01-15/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/houston-rockets-vs-oklahoma-city-thunder-prediction-preview-2026-01-15/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/miami-heat-vs-boston-celtics-prediction-preview-2026-01-15/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/dfs/nba/2026-01-15/dfs-value-narratives-2026-01-15/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/philadelphia-76ers-vs-cleveland-cavaliers-prediction-preview-2026-01-14/</loc>
+    <loc>https://heatchecks.io/nba/los-angeles-clippers-vs-washington-wizards-prediction-preview-2026-01-14/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/pelicans-vs-nets-prediction-preview-2026-01-14/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/knicks-vs-kings-prediction-preview-2026-01-14/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2029,7 +2113,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/pelicans-vs-nets-prediction-preview-2026-01-14/</loc>
+    <loc>https://heatchecks.io/nba/philadelphia-76ers-vs-cleveland-cavaliers-prediction-preview-2026-01-14/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2047,25 +2131,13 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/los-angeles-clippers-vs-washington-wizards-prediction-preview-2026-01-14/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/knicks-vs-kings-prediction-preview-2026-01-14/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/dfs/nba/2026-01-14/dfs-value-narratives-2026-01-14/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/miami-heat-vs-phoenix-suns-prediction-preview-2026-01-13/</loc>
+    <loc>https://heatchecks.io/nba/thunder-vs-spurs-prediction-preview-2026-01-13/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2077,19 +2149,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/thunder-vs-spurs-prediction-preview-2026-01-13/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nba/lakers-vs-hawks-prediction-preview-2026-01-13/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/denver-nuggets-vs-new-orleans-pelicans-prediction-preview-2026-01-13/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2101,13 +2161,31 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/nba/miami-heat-vs-phoenix-suns-prediction-preview-2026-01-13/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/denver-nuggets-vs-new-orleans-pelicans-prediction-preview-2026-01-13/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/dfs/nba/2026-01-13/dfs-value-narratives-2026-01-13/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/lakers-vs-kings-prediction-preview-2026-01-12/</loc>
+    <loc>https://heatchecks.io/nfl/steelers-vs-texans-prediction-preview-2026-01-12/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/indiana-pacers-vs-boston-celtics-prediction-preview-2026-01-12/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2125,7 +2203,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nfl/steelers-vs-texans-prediction-preview-2026-01-12/</loc>
+    <loc>https://heatchecks.io/nba/lakers-vs-kings-prediction-preview-2026-01-12/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2137,49 +2215,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/indiana-pacers-vs-boston-celtics-prediction-preview-2026-01-12/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/knicks-vs-trail-blazers-prediction-preview-2026-01-11/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nba/orlando-magic-vs-new-orleans-pelicans-prediction-preview-2026-01-11/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/memphis-grizzlies-vs-brooklyn-nets-prediction-preview-2026-01-11/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/golden-state-warriors-vs-atlanta-hawks-prediction-preview-2026-01-11/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/philadelphia-76ers-vs-toronto-raptors-prediction-preview-2026-01-11/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/timberwolves-vs-spurs-prediction-preview-2026-01-11/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/oklahoma-city-thunder-vs-miami-heat-prediction-preview-2026-01-11/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2191,25 +2227,19 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/denver-nuggets-vs-milwaukee-bucks-prediction-preview-2026-01-11/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/sacramento-kings-vs-houston-rockets-prediction-preview-2026-01-11/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/nfl/new-england-patriots-vs-los-angeles-chargers-prediction-preview-2026-01-11/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nfl/philadelphia-eagles-vs-san-francisco-49ers-prediction-preview-2026-01-11/</loc>
+    <loc>https://heatchecks.io/nba/oklahoma-city-thunder-vs-miami-heat-prediction-preview-2026-01-11/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/knicks-vs-trail-blazers-prediction-preview-2026-01-11/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2221,13 +2251,49 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/detroit-pistons-vs-los-angeles-clippers-prediction-preview-2026-01-10/</loc>
+    <loc>https://heatchecks.io/nba/timberwolves-vs-spurs-prediction-preview-2026-01-11/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/boston-celtics-vs-san-antonio-spurs-prediction-preview-2026-01-10/</loc>
+    <loc>https://heatchecks.io/nba/philadelphia-76ers-vs-toronto-raptors-prediction-preview-2026-01-11/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/golden-state-warriors-vs-atlanta-hawks-prediction-preview-2026-01-11/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nfl/philadelphia-eagles-vs-san-francisco-49ers-prediction-preview-2026-01-11/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/sacramento-kings-vs-houston-rockets-prediction-preview-2026-01-11/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/memphis-grizzlies-vs-brooklyn-nets-prediction-preview-2026-01-11/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/denver-nuggets-vs-milwaukee-bucks-prediction-preview-2026-01-11/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nfl/chicago-bears-vs-green-bay-packers-prediction-preview-2026-01-10/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2245,19 +2311,25 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/cleveland-cavaliers-vs-minnesota-timberwolves-prediction-preview-2026-01-10/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nfl/chicago-bears-vs-green-bay-packers-prediction-preview-2026-01-10/</loc>
+    <loc>https://heatchecks.io/nba/boston-celtics-vs-san-antonio-spurs-prediction-preview-2026-01-10/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/bulls-vs-mavericks-prediction-preview-2026-01-10/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/cleveland-cavaliers-vs-minnesota-timberwolves-prediction-preview-2026-01-10/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/detroit-pistons-vs-los-angeles-clippers-prediction-preview-2026-01-10/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2275,25 +2347,7 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/los-angeles-lakers-vs-milwaukee-bucks-prediction-preview-2026-01-09/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/memphis-grizzlies-vs-oklahoma-city-thunder-prediction-preview-2026-01-09/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/boston-celtics-vs-toronto-raptors-prediction-preview-2026-01-09/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/brooklyn-nets-vs-los-angeles-clippers-prediction-preview-2026-01-09/</loc>
+    <loc>https://heatchecks.io/nba/wizards-vs-pelicans-prediction-preview-2026-01-09/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2305,13 +2359,19 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/wizards-vs-pelicans-prediction-preview-2026-01-09/</loc>
+    <loc>https://heatchecks.io/nba/brooklyn-nets-vs-los-angeles-clippers-prediction-preview-2026-01-09/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/denver-nuggets-vs-atlanta-hawks-prediction-preview-2026-01-09/</loc>
+    <loc>https://heatchecks.io/nba/memphis-grizzlies-vs-oklahoma-city-thunder-prediction-preview-2026-01-09/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/phoenix-suns-vs-new-york-knicks-prediction-preview-2026-01-09/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2329,19 +2389,25 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/nba/phoenix-suns-vs-new-york-knicks-prediction-preview-2026-01-09/</loc>
+    <loc>https://heatchecks.io/nba/los-angeles-lakers-vs-milwaukee-bucks-prediction-preview-2026-01-09/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/boston-celtics-vs-toronto-raptors-prediction-preview-2026-01-09/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/denver-nuggets-vs-atlanta-hawks-prediction-preview-2026-01-09/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/nba/minnesota-timberwolves-vs-cleveland-cavaliers-prediction-preview-2026-01-08/</loc>
-    <lastmod>2026-01-24</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://heatchecks.io/nba/utah-jazz-vs-dallas-mavericks-prediction-preview-2026-01-08/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
@@ -2360,6 +2426,12 @@
   </url>
   <url>
     <loc>https://heatchecks.io/nba/charlotte-hornets-vs-indiana-pacers-prediction-preview-2026-01-08/</loc>
+    <lastmod>2026-01-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/nba/utah-jazz-vs-dallas-mavericks-prediction-preview-2026-01-08/</loc>
     <lastmod>2026-01-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.8</priority>
