@@ -1219,6 +1219,17 @@ async function renderHeatPicksWithLLM(
   // Step 2: Constrained LLM rewrite (readability only, no new claims)
   const allowedNarratives = ['revenge/return', 'role_surge/star_load', 'fatigue/travel/schedule', 'coach_bounce', 'rivalry', 'bounceback'];
   
+  // Helper to validate narrative type
+  const validateNarrativeType = (type: string | undefined): string => {
+    if (!type) return 'general';
+    // Check if it matches one of the allowed narratives (case-insensitive, partial match)
+    const normalized = type.toLowerCase().trim();
+    const matched = allowedNarratives.find(allowed => 
+      normalized.includes(allowed.toLowerCase()) || allowed.toLowerCase().includes(normalized)
+    );
+    return matched || 'general';
+  };
+  
   const prompt = `You are the HeatChecks "Heat Picks" renderer. Your job is to rewrite the provided bullets for readability, NOT to add new claims.
 
 CLASSIFICATION: ${classified.classification}
@@ -1296,9 +1307,18 @@ Return ONLY valid JSON:
     });
 
     const result = extractJson(response.text);
+    
+    // Validate and normalize narrativesUsed to ensure all required properties exist
+    const validatedNarratives = (result.narrativesUsed || []).map((n: any) => ({
+      type: validateNarrativeType(n.type),
+      strength: typeof n.strength === 'number' ? n.strength : 0.5,
+      direction: n.direction || 'neutral',
+      whyItFitsData: n.whyItFitsData || 'Narrative aligns with the data signals'
+    })).filter((n: any) => n.whyItFitsData && n.whyItFitsData.trim() !== '');
+    
     return {
       whyHot: result.whyHot || deterministicBullets,
-      narrativesUsed: result.narrativesUsed || [],
+      narrativesUsed: validatedNarratives,
       marketLag: result.marketLag || 'Market conditions analyzed',
       riskNote: result.riskNote || 'Standard betting risks apply',
       chartCaption: result.chartCaption || 'Chart supports the pressure signal'
