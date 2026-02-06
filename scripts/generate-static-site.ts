@@ -633,8 +633,8 @@ async function generateAllPages(): Promise<void> {
         console.log('Generating homepage...');
         const homepageContent = `
             <div class="content-area-title terminal-style" id="homepage-temp-forecast">
-                <span class="glitch-text" data-text="Temperature Forecasts">
-                    <span class="temp-forecast-full">Temperature Forecasts</span>
+                <span class="glitch-text" data-text="Temperature Forecast">
+                    <span class="temp-forecast-full">Temperature Forecast</span>
                     <span class="temp-forecast-mobile" style="display: none;">Temp.Forecast</span>
                 </span>
                 <!-- ? functionality commented out - will work on later -->
