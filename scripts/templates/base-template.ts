@@ -23,6 +23,8 @@ export interface BaseTemplateOptions {
     robots?: string;
     twitterSite?: string;
     twitterCreator?: string;
+    twitterTitle?: string;  // Twitter-specific title (optimized for 70 chars)
+    twitterDescription?: string;  // Twitter-specific description (optimized for 200 chars)
 }
 
 /**
@@ -132,8 +134,8 @@ export function generateBaseHtml(
     
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="${escapeHtml(options.title)}">
-    <meta name="twitter:description" content="${escapeHtml(options.description)}">
+    <meta name="twitter:title" content="${escapeHtml(options.twitterTitle || options.title)}">
+    <meta name="twitter:description" content="${escapeHtml(options.twitterDescription || options.description)}">
     <meta name="twitter:image" content="${escapeHtml(ogImage)}">
     ${twitterSiteTag}${twitterCreatorTag}    
     ${articleMetaTags}${schemaOrgScript ? '\n    ' + schemaOrgScript : ''}

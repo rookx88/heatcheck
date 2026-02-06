@@ -916,6 +916,69 @@ export function generateHeatPicksArticlePage(
 
     const ogImageUrl = imagePath ? (imagePath.startsWith('http') ? imagePath : `${baseUrl}${imagePath}`) : `${baseUrl}/images/default-og-image.jpg`;
     
+    // Generate Twitter-optimized title and description
+    // Twitter title: concise, engaging, max 70 chars
+    const twitterTitle = (() => {
+        const leagueUpper = post.league.toUpperCase();
+        const pickCount = heatPicks.length;
+        const warmCount = warmLeans.length;
+        const totalPicks = pickCount + warmCount;
+        const shortDate = dateForTitle.replace(/-/g, '/');
+        
+        if (totalPicks > 0) {
+            // Format: "🔥 [League] Heat Picks [Date] - [X] Picks"
+            let twitterTitleText = `🔥 ${leagueUpper} Heat Picks ${shortDate}`;
+            const baseLength = twitterTitleText.length;
+            const pickSuffix = ` - ${totalPicks} Pick${totalPicks > 1 ? 's' : ''}`;
+            
+            // Add pick count if it fits
+            if (baseLength + pickSuffix.length <= 70) {
+                twitterTitleText += pickSuffix;
+            }
+            
+            // Ensure it's under 70 chars (truncate if needed)
+            if (twitterTitleText.length > 70) {
+                twitterTitleText = twitterTitleText.substring(0, 67) + '...';
+            }
+            return twitterTitleText;
+        } else {
+            // Fallback if no picks
+            let fallback = `🔥 ${leagueUpper} Heat Picks ${shortDate}`;
+            if (fallback.length > 70) {
+                fallback = fallback.substring(0, 67) + '...';
+            }
+            return fallback;
+        }
+    })();
+    
+    // Twitter description: compelling, max 200 chars, includes value prop
+    const twitterDescription = (() => {
+        const leagueUpper = post.league.toUpperCase();
+        const pickCount = heatPicks.length;
+        const warmCount = warmLeans.length;
+        const totalPicks = pickCount + warmCount;
+        
+        if (totalPicks > 0) {
+            let desc = `Get today's hottest ${leagueUpper} betting picks: `;
+            if (pickCount > 0 && warmCount > 0) {
+                desc += `${pickCount} Heat Pick${pickCount > 1 ? 's' : ''} + ${warmCount} Warm Lean${warmCount > 1 ? 's' : ''}. `;
+            } else if (pickCount > 0) {
+                desc += `${pickCount} Heat Pick${pickCount > 1 ? 's' : ''}. `;
+            } else if (warmCount > 0) {
+                desc += `${warmCount} Warm Lean${warmCount > 1 ? 's' : ''}. `;
+            }
+            desc += `Data-driven picks backed by momentum, narrative pressure & market lag analysis.`;
+            
+            // Ensure it's under 200 chars
+            if (desc.length > 200) {
+                desc = desc.substring(0, 197) + '...';
+            }
+            return desc;
+        } else {
+            return `Daily ${leagueUpper} Heat Picks for ${dateForTitle} - Data-driven betting picks backed by narrative analysis and market lag detection.`;
+        }
+    })();
+    
     const options: BaseTemplateOptions = {
         title: title,
         description: finalMetaDescription,
@@ -927,6 +990,8 @@ export function generateHeatPicksArticlePage(
         keywords: keywords,
         twitterSite: '@heatchecksio', // Add Twitter site
         twitterCreator: '@heatchecksio', // Add Twitter creator
+        twitterTitle: twitterTitle, // Twitter-optimized title
+        twitterDescription: twitterDescription, // Twitter-optimized description
         articleMeta: {
             publishedTime: post.createdAt,
             modifiedTime: post.updatedAt,
