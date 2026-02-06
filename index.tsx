@@ -4070,12 +4070,23 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
 
       // Generate chart catalog for all matchups
       const allChartCatalogs: Record<string, any[]> = {};
-      posts.forEach(post => {
-        // Support both V4 and V3 articles
-        const matchPack = post.heatCheckData?.matchPackV4 || post.heatCheckData?.matchPackV3;
+      // Use classifiedMatchups to get matchPackV3 (which correctly stores V3 or V4)
+      classifiedMatchups.forEach(classified => {
+        const matchPack = classified.matchPackV3;
         if (matchPack) {
-          const key = `${post.teamA}-${post.teamB}`;
+          const key = `${classified.teamA}-${classified.teamB}`;
           allChartCatalogs[key] = generateChartCatalog(matchPack);
+        }
+      });
+      // Also check original posts for any matchups not in classifiedMatchups (e.g., noHeatZone)
+      posts.forEach(post => {
+        const key = `${post.teamA}-${post.teamB}`;
+        if (!allChartCatalogs[key]) {
+          // Support both V4 and V3 articles
+          const matchPack = post.heatCheckData?.matchPackV4 || post.heatCheckData?.matchPackV3;
+          if (matchPack) {
+            allChartCatalogs[key] = generateChartCatalog(matchPack);
+          }
         }
       });
 
@@ -4119,11 +4130,22 @@ const ScannerConsole: React.FC<{ setEditingPost: (post: HeatcheckPost) => void }
         heatCheckData: {
           heatPicks: heatPicksJson,
           chartCatalog: allChartCatalogs,
-          matchPacks: posts.map(p => ({
-            teamA: p.teamA,
-            teamB: p.teamB,
-            matchPackV3: p.heatCheckData?.matchPackV3
-          }))
+          matchPacks: [
+            // First, use classifiedMatchups (which have matchPackV3 correctly stored)
+            ...classifiedMatchups.map(c => ({
+              teamA: c.teamA,
+              teamB: c.teamB,
+              matchPackV3: c.matchPackV3
+            })),
+            // Then, add any from posts that aren't in classifiedMatchups
+            ...posts
+              .filter(p => !classifiedMatchups.some(c => c.teamA === p.teamA && c.teamB === p.teamB))
+              .map(p => ({
+                teamA: p.teamA,
+                teamB: p.teamB,
+                matchPackV3: p.heatCheckData?.matchPackV4 || p.heatCheckData?.matchPackV3
+              }))
+          ]
         }
       });
 

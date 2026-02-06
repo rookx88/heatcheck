@@ -205,20 +205,42 @@ export function generateHeatPicksArticlePage(
             
             if (pick.evidenceChart.chartId === 'rolling_margin_last10') {
                 // Rolling margin trend
+                // First, try per-game arrays (soccer)
                 const aMargins = teamForm.A?.margins || teamForm.A?.xgDiff || [];
                 const bMargins = teamForm.B?.margins || teamForm.B?.xgDiff || [];
-                    if (aMargins.length > 0 || bMargins.length > 0) {
-                chartPayload = {
-                    momentumLine: {
-                        series: {
-                            A: { margins: aMargins, label: matchPack.teamA },
-                            B: { margins: bMargins, label: matchPack.teamB }
+                
+                if (aMargins.length > 0 || bMargins.length > 0) {
+                    // We have per-game arrays (soccer)
+                    chartPayload = {
+                        momentumLine: {
+                            series: {
+                                A: { margins: aMargins, label: matchPack.teamA },
+                                B: { margins: bMargins, label: matchPack.teamB }
+                            }
                         }
-                    }
-                };
+                    };
+                    hasData = true;
+                } else {
+                    // Fallback: Try aggregated values (NBA) - create a simple 2-point chart
+                    const aMargin10 = teamForm.A?.margin10 || teamForm.A?.xgDiff10 || 0;
+                    const aMargin3 = teamForm.A?.margin3 || teamForm.A?.xgDiff3 || 0;
+                    const bMargin10 = teamForm.B?.margin10 || teamForm.B?.xgDiff10 || 0;
+                    const bMargin3 = teamForm.B?.margin3 || teamForm.B?.xgDiff3 || 0;
+                    
+                    // Create a simple 2-point chart showing L10 vs L3
+                    if ((aMargin10 !== 0 || aMargin3 !== 0 || bMargin10 !== 0 || bMargin3 !== 0)) {
+                        chartPayload = {
+                            momentumLine: {
+                                series: {
+                                    A: { margins: [aMargin10, aMargin3], label: matchPack.teamA },
+                                    B: { margins: [bMargin10, bMargin3], label: matchPack.teamB }
+                                }
+                            }
+                        };
                         hasData = true;
                     }
                 }
+            }
             }
 
             if (hasData && chartPayload && chartPayload.momentumLine) {
