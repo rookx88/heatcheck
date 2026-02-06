@@ -1546,16 +1546,18 @@ app.get('/api/matchups/v3/soccer', async (req: express.Request, res: express.Res
 
         // Map database league format to timezone for date conversion
         // Filter by league timezone, but output dates/times in EST for consistency
+        // IMPORTANT: date_utc may be stored in league's local timezone, not true UTC
+        // Interpret as league local time, convert to UTC, then to EST for accurate conversion
         const sql = `
             select
                 m.match_id as id,
                 coalesce(m.league, 'ENG-Premier League') as league,
                 at.team_name_std as "teamA",
                 ht.team_name_std as "teamB",
-                -- Convert UTC to EST for date display (articles show EST)
-                to_char((m.date_utc AT TIME ZONE 'America/New_York')::date, 'YYYY-MM-DD') as "scheduledDate",
-                -- Convert UTC to EST for time display (articles show EST)
-                to_char(m.date_utc AT TIME ZONE 'America/New_York', 'HH24:MI') as "scheduledTime",
+                -- Convert directly from UTC to EST (date_utc is already in UTC or stored correctly)
+                to_char(((m.date_utc AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York')::date, 'YYYY-MM-DD') as "scheduledDate",
+                -- Convert directly from UTC to EST (date_utc is already in UTC or stored correctly)
+                to_char((m.date_utc AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York', 'HH24:MI') as "scheduledTime",
                 m.venue as venue,
                 coalesce(m.status, 'scheduled') as status
             from public.matches m
@@ -2080,13 +2082,17 @@ app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request,
             
             // Query soccer database for matches in date range
             // Use timezone conversion for date filtering to match the league's local timezone
+            // IMPORTANT: date_utc may be stored in league's local timezone, not true UTC
+            // Interpret as league local time, convert to UTC, then to EST for accurate conversion
             const sql = `
                 SELECT 
                     m.match_id,
                     m.league,
                     m.season,
                     m.date_utc,
-                    m.date_utc::date as game_date,
+                    -- Convert directly from UTC to EST (date_utc is already in UTC or stored correctly)
+                    to_char(((m.date_utc AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York')::date, 'YYYY-MM-DD') as game_date_est,
+                    to_char((m.date_utc AT TIME ZONE 'UTC') AT TIME ZONE 'America/New_York', 'HH24:MI') as game_time_est,
                     m.home_team_id,
                     m.away_team_id,
                     m.venue,
@@ -2111,28 +2117,22 @@ app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request,
                     const homeTeam = match.home_team_name;
                     const awayTeam = match.away_team_name;
                     
-                    // Convert UTC date_utc to EST for consistent date/time display
-                    // All leagues use EST for scheduled_date and scheduled_time to match UI display
-                    const dateUtc = new Date(match.date_utc);
-                    if (isNaN(dateUtc.getTime())) {
-                        console.warn(`[${frontendLeague}] Invalid date_utc for ${homeTeam} vs ${awayTeam}:`, match.date_utc);
+                    // Use the EST-converted date and time directly from SQL
+                    // This ensures accurate conversion and matches the display endpoint
+                    const gameDate = match.game_date_est;
+                    const gameTime = match.game_time_est;
+                    
+                    if (!gameDate) {
+                        console.warn(`[${frontendLeague}] Missing game_date_est for ${homeTeam} vs ${awayTeam}`);
                         totalSkipped++;
                         continue;
                     }
                     
-                    // Convert UTC to EST for all leagues (consistent with display endpoint)
-                    // This ensures imported dates match what users see in the UI
-                    const tz = "America/New_York";
-                    const gameDate = formatYmdInTimeZone(dateUtc, tz);
-                    const gameTime = formatHmInTimeZone(dateUtc, tz);
-                    
                     // Debug logging for date conversion
                     console.log(`[${frontendLeague}] Date conversion:`, {
                         dateUtc: match.date_utc,
-                        utcDate: dateUtc.toISOString(),
-                        localDate: gameDate,
-                        localTime: gameTime,
-                        timezone: tz
+                        gameDateEST: gameDate,
+                        gameTimeEST: gameTime
                     });
 
                     // Find or create teams in main database
