@@ -8,6 +8,8 @@ export interface BaseTemplateOptions {
     baseUrl?: string;
     ogImage?: string;
     ogImageAlt?: string;
+    ogImageWidth?: string;
+    ogImageHeight?: string;
     ogType?: 'website' | 'article';
     articleMeta?: {
         publishedTime?: string;
@@ -102,6 +104,12 @@ export function generateBaseHtml(
         ogImageAltTag = `    <meta property="og:image:alt" content="${escapeHtml(options.ogImageAlt)}">\n`;
     }
     
+    // Generate og:image dimensions (for better Twitter/social media support)
+    // Default to 1200x630 for summary_large_image cards if not specified
+    const ogImageWidth = options.ogImageWidth || '1200';
+    const ogImageHeight = options.ogImageHeight || '630';
+    const ogImageDimensions = `    <meta property="og:image:width" content="${ogImageWidth}">\n    <meta property="og:image:height" content="${ogImageHeight}">\n`;
+    
     // Generate Twitter meta tags
     let twitterSiteTag = '';
     let twitterCreatorTag = '';
@@ -125,7 +133,7 @@ export function generateBaseHtml(
     <meta property="og:title" content="${escapeHtml(options.title)}">
     <meta property="og:description" content="${escapeHtml(options.description)}">
     <meta property="og:image" content="${escapeHtml(ogImage)}">
-    ${ogImageAltTag}    <meta property="og:url" content="${escapeHtml(options.url)}">
+    ${ogImageDimensions}${ogImageAltTag}    <meta property="og:url" content="${escapeHtml(options.url)}">
     <meta property="og:type" content="${ogType}">
     <meta property="og:site_name" content="HeatChecks">
     
