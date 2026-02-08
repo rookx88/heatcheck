@@ -764,13 +764,24 @@ export function generateArticlePage(
             !!renderedOverride && /<\s*(div|section|span|canvas|table|p|ul|ol|h[1-6]|br)\b/i.test(renderedOverride);
         
         // If there's a rendered override, replace the TEMP line with unified heat score tier
+        // This ensures the temp tier matches the unified heat score calculation (63 = WARM, not SCORCHING)
         let processedRenderedOverride = renderedOverride;
         if (renderedOverride) {
             // Replace TEMP line in rendered markdown with unified heat score tier
-            // Match both formats: TEMP: <span>...</span> and TEMP: <span style="...">...</span>
-            const tempLineRegex = /<div[^>]*>TEMP:\s*<span[^>]*>([^<]*)<\/span>[^<]*<\/div>/i;
+            // Match the exact format from matchpack: <div style="...">TEMP: <span style="...">TIER</span></div>
+            // Use a more comprehensive regex that handles any div attributes and span attributes
+            const tempLineRegex = /<div[^>]*>TEMP:\s*<span[^>]*>(SCORCHING|HOT|WARM|COOL)<\/span>(\s*<[^>]*>)*[^<]*<\/div>/gi;
             const newTempLine = `<div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; color:rgba(255,255,255,0.78); font-family:'Courier New', monospace; font-size:0.8rem; letter-spacing:0.08em;"><span>TEMP: <span style="color:#00ff41; font-weight:900; text-shadow:0 0 10px rgba(0,255,65,0.25);">${escapeHtml(heatScoreTier)}</span></span>${hasEdge ? `<button onclick="document.getElementById('heatchecks-edge-section')?.scrollIntoView({behavior: 'smooth', block: 'start'}); return false;" style="margin-left: 0.75rem; padding: 0.3rem 0.6rem; background: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.4); color: rgba(255, 255, 255, 0.95); font-family: 'Courier New', monospace; font-size: 0.7rem; font-weight: bold; text-transform: uppercase; letter-spacing: 0.08em; cursor: pointer; transition: all 0.2s ease; border-radius: 3px; white-space: nowrap;" onmouseover="this.style.background='rgba(255,255,255,0.25)'; this.style.borderColor='rgba(255,255,255,0.6)'; this.style.color='#fff';" onmouseout="this.style.background='rgba(255,255,255,0.15)'; this.style.borderColor='rgba(255,255,255,0.4)'; this.style.color='rgba(255,255,255,0.95)';">See Prediction</button>` : ''}</div>`;
             processedRenderedOverride = renderedOverride.replace(tempLineRegex, newTempLine);
+            
+            // Fallback: if the main regex didn't match (shouldn't happen, but just in case)
+            // Try replacing just the tier text within the span
+            if (processedRenderedOverride === renderedOverride) {
+                processedRenderedOverride = renderedOverride.replace(
+                    /(TEMP:\s*<span[^>]*>)(SCORCHING|HOT|WARM|COOL)(<\/span>)/gi,
+                    `$1${escapeHtml(heatScoreTier)}$3`
+                );
+            }
         }
         
         const finalContentHtml = processedRenderedOverride
