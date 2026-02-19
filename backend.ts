@@ -113,7 +113,16 @@ const app = express();
 const port = 3001;
 
 // --- MIDDLEWARE ---
-app.use(cors());
+// CORS configuration: Allow all origins during development
+// In production, you should restrict this to specific domains
+app.use(cors({
+  origin: true, // Allow all origins
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+}));
 // Increase JSON payload limit to 50MB for large Heat Picks articles
 app.use(express.json({ limit: '50mb' }));
 
