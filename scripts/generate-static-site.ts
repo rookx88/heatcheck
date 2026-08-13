@@ -130,6 +130,7 @@ const NEW_SITE_IMAGES = [
     'mudpuppy-jersey.webp',
     'world-map.png',
     'world-map.webp',
+    'og-share-world-map.jpg',
 ];
 
 /**

@@ -32,7 +32,11 @@ interface ImageJob {
 const jobs: ImageJob[] = [
     { source: 'heatcheckslogo-new.svg', outName: 'heatchecks-logo', width: 500, blackBackground: true },
     { source: 'CheckNavBar.svg', outName: 'checknav', width: 140, blackBackground: true },
-    { source: 'HeatChecksWorldMap.svg', outName: 'world-map', width: 1600, blackBackground: true },
+    // 1120 = ~2x retina for its actual display context (waitlist-landing-template.ts's
+    // .hc-world-map sits inside .hc-page, capped at max-width: 560px) - was 1600, which
+    // is ~3x oversized for that container and made this the heaviest asset on the LCP
+    // path for no visual benefit, since it's never displayed anywhere near that wide.
+    { source: 'HeatChecksWorldMap.svg', outName: 'world-map', width: 1120, blackBackground: true },
     { source: 'MudPuppyDefault.svg', outName: 'mudpuppy-default', width: 800, blackBackground: true },
     { source: 'MudPuppyJersey.svg', outName: 'mudpuppy-jersey', width: 800, blackBackground: true },
     { source: 'MudPuppyFootball.svg', outName: 'mudpuppy-football', width: 800, blackBackground: true },
@@ -79,10 +83,39 @@ function extractEmbeddedPng(svgPath: string): Buffer {
     return largest;
 }
 
+/**
+ * The OG/Twitter share-card image (og-share-world-map.jpg) - separate from the `jobs`
+ * loop above since it needs a fixed-dimension cover-crop (1200x630, the standard OG
+ * card size) rather than a width-preserving resize. JPG (not WebP) deliberately -
+ * several link-unfurlers (historically including Twitter/X) handle WebP OG images
+ * inconsistently, so JPG is the safe universal choice here specifically.
+ */
+async function buildOgImage(): Promise<void> {
+    const svgPath = path.join(sourceDir, 'HeatChecksWorldMap.svg');
+    let pngBuffer = extractEmbeddedPng(svgPath);
+    pngBuffer = await deriveAlphaFromBrightness(pngBuffer);
+    pngBuffer = await sharp(pngBuffer).trim().toBuffer();
+
+    const outPath = path.join(outDir, 'og-share-world-map.jpg');
+    await sharp(pngBuffer)
+        // Flatten onto the same navy the page background uses, since the source has
+        // transparent padding and a JPG can't carry alpha - a transparent-turned-white
+        // background would look like a bug in every link preview.
+        .flatten({ background: '#0b1a45' })
+        .resize(1200, 630, { fit: 'cover', position: 'attention' })
+        .jpeg({ quality: 85 })
+        .toFile(outPath);
+
+    const size = fs.statSync(outPath).size;
+    console.log(`✓ og-share-world-map.jpg (${(size / 1024).toFixed(0)}KB) [1200x630]`);
+}
+
 async function run(): Promise<void> {
     if (!fs.existsSync(outDir)) {
         fs.mkdirSync(outDir, { recursive: true });
     }
+
+    await buildOgImage();
 
     for (const job of jobs) {
         const svgPath = path.join(sourceDir, job.source);
