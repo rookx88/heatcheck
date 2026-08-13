@@ -14,6 +14,12 @@ export interface CachedPick {
     slug: string;
     side: string;
     createdAt: string;
+    // Both optional/best-effort: older cached picks (written before these fields
+    // existed) simply won't have them, which just means re-showing the verify form
+    // once - never a hard failure. Persisting these is what lets a returning visit to
+    // any Tank page skip straight to "already confirmed" instead of asking again.
+    email?: string;
+    verified?: boolean;
 }
 
 export function getCachedPick(): CachedPick | null {

@@ -23,6 +23,10 @@ interface PickRow {
     created_at: string;
 }
 
+interface ExistingPickRow extends PickRow {
+    email_verified: boolean;
+}
+
 interface PropOdds {
     outcomes: string[];
     outcomePrices: number[];
@@ -144,10 +148,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         );
     } catch (err: any) {
         if (err.code === '23505') { // idx_picks_waitlist_id conflict - this account already has a pick
+            // Joins waitlist for email_verified so the client can cache verified
+            // status too - without it, a returning visit (e.g. following this same
+            // "you already made your call" conflict to view the existing pick) has no
+            // way to know verification already happened, and would show the confirm-
+            // your-email form again even for an already-verified account.
             const existing = await sql`
-                SELECT side, tank_slug, created_at FROM picks WHERE waitlist_id = ${waitlistId} LIMIT 1
+                SELECT p.side, p.tank_slug, p.created_at, w.email_verified
+                FROM picks p JOIN waitlist w ON w.id = p.waitlist_id
+                WHERE p.waitlist_id = ${waitlistId} LIMIT 1
             `;
-            const row = existing[0] as unknown as PickRow | undefined;
+            const row = existing[0] as unknown as ExistingPickRow | undefined;
 
             if (visitorId) {
                 try {
@@ -160,7 +171,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             return jsonResponse(
                 {
                     message: "You've already made your call.",
-                    pick: row ? { slug: row.tank_slug, side: row.side, createdAt: row.created_at } : null,
+                    pick: row ? { slug: row.tank_slug, side: row.side, createdAt: row.created_at, verified: row.email_verified } : null,
                 },
                 { status: 409 }
             );

@@ -378,12 +378,18 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
     const [showAllSet, setShowAllSet] = useState(false);
 
     // A cached pick means this browser already locked in - anywhere, not just this
-    // tank - so render locked immediately with no network round trip.
+    // tank - so render locked immediately with no network round trip. Restoring
+    // email/verified from that same cache (when present) is what stops a returning
+    // visit to any Tank page from re-asking an already-verified account to confirm
+    // their email again - verifyState otherwise always starts 'unverified' on mount,
+    // with nothing to tell it verification already happened in an earlier session.
     useEffect(() => {
         const cached = getCachedPick();
         if (cached) {
             setLockedPick(cached);
             setPickState('locked');
+            if (cached.email) setEmail(cached.email);
+            if (cached.verified) setVerifyState('verified');
         }
     }, []);
 
@@ -401,14 +407,21 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
         setErrorMessage(null);
         try {
             const pick = await submitPick(email, slug, selectedSide, selectedSideIndex);
-            setCachedPick(pick);
-            setLockedPick(pick);
+            const cached = { ...pick, email };
+            setCachedPick(cached);
+            setLockedPick(cached);
             setPickState('locked');
         } catch (err) {
             if (err instanceof PickConflictError) {
                 if (err.existingPick) {
-                    setCachedPick(err.existingPick);
-                    setLockedPick(err.existingPick);
+                    // The email that just triggered this conflict IS this account's
+                    // email (the conflict was resolved by looking up waitlist_id from
+                    // it), so it's safe to attach even though the 409 body doesn't
+                    // echo it back.
+                    const cached = { ...err.existingPick, email };
+                    setCachedPick(cached);
+                    setLockedPick(cached);
+                    if (err.existingPick.verified) setVerifyState('verified');
                 }
                 setPickState('locked');
                 return;
@@ -428,6 +441,11 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
             if (result.verified || result.alreadyVerified) {
                 setVerifyState('verified');
                 setShowAllSet(true);
+                if (lockedPick) {
+                    const cached = { ...lockedPick, email, verified: true };
+                    setCachedPick(cached);
+                    setLockedPick(cached);
+                }
             } else {
                 setVerifyState('verify-error');
             }
@@ -475,7 +493,9 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                 )}
 
                 {verifyState === 'verified' ? (
-                    <p style={{ color: '#2fe6d9', fontSize: '0.75rem', marginTop: '0.5rem' }}>&#10003; Email confirmed</p>
+                    <p style={{ color: '#2fe6d9', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+                        &#10003; {email ? `${email} confirmed` : 'Email confirmed'}
+                    </p>
                 ) : (
                     <form onSubmit={handleVerify} style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed rgba(255,255,255,0.15)' }}>
                         <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>
