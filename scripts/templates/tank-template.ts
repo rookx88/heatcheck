@@ -101,6 +101,16 @@ export function generateTankPageHtml(baseUrl: string, tanks: TankPageEntry[]): s
     <link rel="stylesheet" href="/assets/tank-page.css">
     <style>
         html, body { overflow: hidden; }
+        /* Covers .tank-fallback the instant this paints, before tank-page.js has even
+           loaded - otherwise the real (deliberately unstyled) crawlable fallback list
+           is visibly flashed on screen until React mounts .tank-screen on top of it,
+           which carries this same background. Matches TankScreen.css's .tank-screen
+           gradient exactly so there's no visible seam once that happens. */
+        #tank-page-root {
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(180deg, #060c22 0%, #0b1a45 55%, #14275f 100%);
+        }
     </style>
 </head>
 <body>

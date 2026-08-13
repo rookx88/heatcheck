@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   WORLD_MAP_REGIONS,
   WORLD_MAP_VIEWBOX,
@@ -58,6 +58,28 @@ export const WorldMap: React.FC<WorldMapProps> = ({
   const [lockedId, setLockedId] = useState<InteractionId>(null);
   const lastPointerType = useRef<string>('mouse');
   const navTimeout = useRef<number | undefined>(undefined);
+
+  // A click locks lockedId and schedules navigate() (window.location.href) a beat
+  // later, on the assumption that the real navigation which follows will tear the
+  // page down - so nothing else ever resets lockedId back to null. That assumption
+  // breaks under the browser's back-forward cache: hitting Back can restore this
+  // exact page (and this exact in-memory React state) from before the navigation
+  // ever fired, leaving lockedId permanently truthy with no pending navigation to
+  // resolve it - which makes handleClick's `if (lockedId) return` guard silently
+  // swallow every future click forever. `pageshow` with `persisted: true` is the
+  // specific signal a page was just restored from bfcache rather than freshly
+  // loaded, so that's the one moment this needs to reset.
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      window.clearTimeout(navTimeout.current);
+      setLockedId(null);
+      setHoveredId(null);
+      setFocusedId(null);
+    };
+    window.addEventListener('pageshow', onPageShow);
+    return () => window.removeEventListener('pageshow', onPageShow);
+  }, []);
 
   const showDebug = debugHotspots || DEBUG_HOTSPOTS;
   // Hover wins over a stale focus: a mouse click can leave a previous region
