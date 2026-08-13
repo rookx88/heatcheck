@@ -15,13 +15,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion, useMotionValue, useSpring } from 'motion/react';
 import { Flame, Zap, Swords } from 'lucide-react';
 import {
-    getCachedPick,
-    setCachedPick,
+    getCachedAccount,
+    setCachedAccount,
     submitPick,
+    getTodayStatus,
     verifyEmailCode,
     resendVerificationCode,
     PickConflictError,
-    type CachedPick,
+    DailyCapError,
+    type TodayStatus,
 } from '../tank-pick-client';
 import { trackEvent } from '../tank-analytics-client';
 import { AllSetModal } from './AllSetModal';
@@ -360,16 +362,75 @@ const linkButtonStyle: React.CSSProperties = {
     padding: 0,
 };
 
-type PickState = 'idle' | 'choosing' | 'submitting' | 'locked' | 'error';
+type SubmitState = 'idle' | 'choosing' | 'submitting' | 'error';
 type VerifyState = 'unverified' | 'verifying' | 'verified' | 'verify-error';
 
+const picksTodayLineStyle: React.CSSProperties = {
+    color: 'rgba(255,255,255,0.55)',
+    fontSize: '0.72rem',
+    marginTop: '0.5rem',
+    letterSpacing: '0.02em',
+};
+
+// Verification is account-level, not per-pick, so this shows the same regardless of
+// which of today's (up to 3) picks/tanks the reader is currently looking at - reachable
+// from every branch below where an account is known, not just the "locked on this tank"
+// one, so a not-yet-verified account can never end up stranded on a fully-picked tank
+// with no way back to the code form.
+const VerifyBlock: React.FC<{
+    email: string;
+    verifyState: VerifyState;
+    verifyCode: string;
+    setVerifyCode: (v: string) => void;
+    verifyError: string | null;
+    resendState: 'idle' | 'sending' | 'sent';
+    onVerify: (e: React.FormEvent) => void;
+    onResend: () => void;
+}> = ({ email, verifyState, verifyCode, setVerifyCode, verifyError, resendState, onVerify, onResend }) =>
+    verifyState === 'verified' ? (
+        <p style={{ color: '#2fe6d9', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+            &#10003; {email ? `${email} confirmed` : 'Email confirmed'}
+        </p>
+    ) : (
+        <form onSubmit={onVerify} style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed rgba(255,255,255,0.15)' }}>
+            <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>
+                Confirm your email — check your inbox for a code.
+            </p>
+            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="6-digit code"
+                    value={verifyCode}
+                    onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
+                    style={{ ...inputStyle, width: 110 }}
+                />
+                <button type="submit" style={submitButtonStyle} disabled={verifyState === 'verifying'}>
+                    {verifyState === 'verifying' ? 'Checking…' : 'Confirm'}
+                </button>
+                <button type="button" onClick={onResend} style={linkButtonStyle} disabled={resendState === 'sending'}>
+                    {resendState === 'sent' ? 'Code resent' : resendState === 'sending' ? 'Sending…' : 'Resend code'}
+                </button>
+            </div>
+            {verifyState === 'verify-error' && verifyError && (
+                <p style={{ color: '#f87171', fontSize: '0.75rem', marginTop: '0.4rem' }}>{verifyError}</p>
+            )}
+        </form>
+    );
+
 const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ call, slug }) => {
-    const [pickState, setPickState] = useState<PickState>('idle');
+    const [submitState, setSubmitState] = useState<SubmitState>('idle');
     const [selectedSide, setSelectedSide] = useState<string | null>(null);
     const [selectedSideIndex, setSelectedSideIndex] = useState<number | null>(null);
     const [email, setEmail] = useState('');
-    const [lockedPick, setLockedPick] = useState<CachedPick | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+    // The account's full picture for TODAY - which tanks (including this one) are
+    // already picked, and how many of the daily cap remain. Null until an account is
+    // known (nothing cached yet, and this reader hasn't picked in this session either).
+    const [todayStatus, setTodayStatus] = useState<TodayStatus | null>(null);
+    const [statusLoaded, setStatusLoaded] = useState(false);
 
     const [verifyState, setVerifyState] = useState<VerifyState>('unverified');
     const [verifyCode, setVerifyCode] = useState('');
@@ -377,63 +438,108 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
     const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle');
     const [showAllSet, setShowAllSet] = useState(false);
 
-    // A cached pick means this browser already locked in - anywhere, not just this
-    // tank - so render locked immediately with no network round trip. Restoring
-    // email/verified from that same cache (when present) is what stops a returning
-    // visit to any Tank page from re-asking an already-verified account to confirm
-    // their email again - verifyState otherwise always starts 'unverified' on mount,
-    // with nothing to tell it verification already happened in an earlier session.
+    // A cached account means this browser already has a real pick history - fetch
+    // today's actual server-side status (not a client cache, which would drift across
+    // days/devices the way a single cached pick object could get away with under the
+    // old one-pick-ever model) so this specific tank knows whether it's already picked
+    // and the reader can see how many of today's picks remain.
     useEffect(() => {
-        const cached = getCachedPick();
-        if (cached) {
-            setLockedPick(cached);
-            setPickState('locked');
-            if (cached.email) setEmail(cached.email);
-            if (cached.verified) setVerifyState('verified');
+        const cached = getCachedAccount();
+        if (!cached) {
+            setStatusLoaded(true);
+            return;
         }
+        setEmail(cached.email);
+        if (cached.verified) setVerifyState('verified');
+        getTodayStatus(cached.email)
+            .then((status) => {
+                setTodayStatus(status);
+                if (status.verified) setVerifyState('verified');
+            })
+            .catch(() => {
+                // Best-effort - if this fails, fall back to treating today as unknown
+                // (full cap available); the next real submit/conflict response is what
+                // actually enforces the cap server-side regardless.
+            })
+            .finally(() => setStatusLoaded(true));
     }, []);
 
+    const myPickHere = todayStatus?.picks.find((p) => p.slug === slug) ?? null;
+    const remaining = todayStatus?.remaining ?? 3;
+
+    const submitPickFor = async (side: string, sideIndex: number, submitterEmail: string) => {
+        setSubmitState('submitting');
+        setErrorMessage(null);
+        try {
+            const res = await submitPick(submitterEmail, slug, side, sideIndex);
+            setCachedAccount({ email: submitterEmail, verified: res.verified });
+            if (res.verified) setVerifyState('verified');
+            setTodayStatus((prev) => ({
+                picks: [...(prev?.picks ?? []), res.pick],
+                picksToday: res.picksToday,
+                remaining: res.remaining,
+                verified: res.verified,
+            }));
+            setSubmitState('idle');
+            setSelectedSide(null);
+            setSelectedSideIndex(null);
+        } catch (err) {
+            if (err instanceof PickConflictError) {
+                if (err.existingPick) {
+                    const verified = Boolean(err.existingPick.verified);
+                    setCachedAccount({ email: submitterEmail, verified });
+                    if (verified) setVerifyState('verified');
+                    setTodayStatus((prev) => ({
+                        picks: [...(prev?.picks ?? []).filter((p) => p.slug !== slug), err.existingPick!],
+                        picksToday: prev?.picksToday ?? 1,
+                        remaining: prev?.remaining ?? 2,
+                        verified,
+                    }));
+                }
+                setSubmitState('idle');
+                return;
+            }
+            if (err instanceof DailyCapError) {
+                setTodayStatus((prev) => ({
+                    picks: prev?.picks ?? [],
+                    picksToday: err.picksToday,
+                    remaining: err.remaining,
+                    verified: prev?.verified ?? verifyState === 'verified',
+                }));
+                setErrorMessage(err.message);
+                setSubmitState('error');
+                return;
+            }
+            setErrorMessage(err instanceof Error ? err.message : 'Something went wrong. Try again.');
+            setSubmitState('error');
+        }
+    };
+
     const chooseSide = (side: string, index: number) => {
-        if (pickState === 'submitting' || pickState === 'locked') return;
+        if (submitState === 'submitting' || myPickHere || remaining <= 0) return;
+        // A known account (already picked at least once - email is cached) doesn't
+        // need to re-type its email for pick 2 or 3 - submit immediately. A brand new
+        // reader still needs the email form below to establish the account at all.
+        if (email) {
+            setSelectedSide(side);
+            setSelectedSideIndex(index);
+            void submitPickFor(side, index, email);
+            return;
+        }
         setSelectedSide(side);
         setSelectedSideIndex(index);
-        setPickState('choosing');
+        setSubmitState('choosing');
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!selectedSide || selectedSideIndex === null) return;
-        setPickState('submitting');
-        setErrorMessage(null);
-        try {
-            const pick = await submitPick(email, slug, selectedSide, selectedSideIndex);
-            const cached = { ...pick, email };
-            setCachedPick(cached);
-            setLockedPick(cached);
-            setPickState('locked');
-        } catch (err) {
-            if (err instanceof PickConflictError) {
-                if (err.existingPick) {
-                    // The email that just triggered this conflict IS this account's
-                    // email (the conflict was resolved by looking up waitlist_id from
-                    // it), so it's safe to attach even though the 409 body doesn't
-                    // echo it back.
-                    const cached = { ...err.existingPick, email };
-                    setCachedPick(cached);
-                    setLockedPick(cached);
-                    if (err.existingPick.verified) setVerifyState('verified');
-                }
-                setPickState('locked');
-                return;
-            }
-            setErrorMessage(err instanceof Error ? err.message : 'Something went wrong. Try again.');
-            setPickState('error');
-        }
+        await submitPickFor(selectedSide, selectedSideIndex, email);
     };
 
     const handleVerify = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!lockedPick || !verifyCode) return;
+        if (!email || !verifyCode) return;
         setVerifyState('verifying');
         setVerifyError(null);
         try {
@@ -441,11 +547,8 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
             if (result.verified || result.alreadyVerified) {
                 setVerifyState('verified');
                 setShowAllSet(true);
-                if (lockedPick) {
-                    const cached = { ...lockedPick, email, verified: true };
-                    setCachedPick(cached);
-                    setLockedPick(cached);
-                }
+                setCachedAccount({ email, verified: true });
+                setTodayStatus((prev) => (prev ? { ...prev, verified: true } : prev));
             } else {
                 setVerifyState('verify-error');
             }
@@ -466,69 +569,57 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
         }
     };
 
-    if (pickState === 'locked' && lockedPick) {
-        const onThisTank = lockedPick.slug === slug;
+    const verifyBlock = (
+        <VerifyBlock
+            email={email}
+            verifyState={verifyState}
+            verifyCode={verifyCode}
+            setVerifyCode={setVerifyCode}
+            verifyError={verifyError}
+            resendState={resendState}
+            onVerify={handleVerify}
+            onResend={handleResend}
+        />
+    );
+
+    // Already picked this specific tank - show the lock-in state for it, regardless of
+    // whether today's cap is otherwise used up.
+    if (myPickHere) {
         return (
             <div>
                 <p style={{ fontWeight: 600, color: '#f1f5f9', marginTop: 0 }}>{call.question}</p>
                 <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
-                    {call.sides.map(side => (
-                        <div key={side} style={pillButtonStyle(onThisTank && lockedPick.side === side, true)}>
+                    {call.sides.map((side) => (
+                        <div key={side} style={pillButtonStyle(myPickHere.side === side, true)}>
                             {side}
                         </div>
                     ))}
                 </div>
-                {onThisTank ? (
-                    <p style={{ color: '#2fe6d9', fontSize: '0.8rem', marginTop: '0.6rem' }}>
-                        You're locked in on &ldquo;{lockedPick.side}&rdquo;.
-                    </p>
-                ) : (
-                    <p style={{ color: '#cbd5e1', fontSize: '0.8rem', marginTop: '0.6rem' }}>
-                        You already made your call on another Tank —{' '}
-                        <a href={`/the-tank/articles/${lockedPick.slug}/`} style={{ color: '#22d3ee' }}>
-                            view it
-                        </a>
-                        .
+                <p style={{ color: '#2fe6d9', fontSize: '0.8rem', marginTop: '0.6rem' }}>
+                    You're locked in on &ldquo;{myPickHere.side}&rdquo;.
+                </p>
+                {todayStatus && (
+                    <p style={picksTodayLineStyle}>
+                        {todayStatus.picksToday} of 3 picks used today{remaining > 0 ? ` · ${remaining} left` : ''}
                     </p>
                 )}
+                {verifyBlock}
+                {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} />}
+            </div>
+        );
+    }
 
-                {verifyState === 'verified' ? (
-                    <p style={{ color: '#2fe6d9', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-                        &#10003; {email ? `${email} confirmed` : 'Email confirmed'}
-                    </p>
-                ) : (
-                    <form onSubmit={handleVerify} style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed rgba(255,255,255,0.15)' }}>
-                        <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>
-                            Confirm your email — check your inbox for a code.
-                        </p>
-                        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                            <input
-                                type="text"
-                                inputMode="numeric"
-                                maxLength={6}
-                                placeholder="6-digit code"
-                                value={verifyCode}
-                                onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, ''))}
-                                style={{ ...inputStyle, width: 110 }}
-                            />
-                            <button type="submit" style={submitButtonStyle} disabled={verifyState === 'verifying'}>
-                                {verifyState === 'verifying' ? 'Checking…' : 'Confirm'}
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleResend}
-                                style={linkButtonStyle}
-                                disabled={resendState === 'sending'}
-                            >
-                                {resendState === 'sent' ? 'Code resent' : resendState === 'sending' ? 'Sending…' : 'Resend code'}
-                            </button>
-                        </div>
-                        {verifyState === 'verify-error' && verifyError && (
-                            <p style={{ color: '#f87171', fontSize: '0.75rem', marginTop: '0.4rem' }}>{verifyError}</p>
-                        )}
-                    </form>
-                )}
-
+    // Not picked here, but today's cap is used up elsewhere - no point offering a
+    // choice that would just 429.
+    if (statusLoaded && remaining <= 0) {
+        return (
+            <div>
+                <p style={{ fontWeight: 600, color: '#f1f5f9', marginTop: 0 }}>{call.question}</p>
+                <p style={{ color: '#cbd5e1', fontSize: '0.85rem', marginTop: '0.75rem' }}>
+                    You've used today's picks — back tomorrow.
+                </p>
+                {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of 3 picks used today</p>}
+                {verifyBlock}
                 {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} />}
             </div>
         );
@@ -543,13 +634,16 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                         key={side}
                         onClick={(e) => { e.stopPropagation(); chooseSide(side, index); }}
                         style={pillButtonStyle(selectedSide === side)}
+                        disabled={submitState === 'submitting'}
                     >
                         {side}
                     </button>
                 ))}
             </div>
+            {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of 3 picks used today · {remaining} left</p>}
 
-            {(pickState === 'choosing' || pickState === 'submitting' || pickState === 'error') && selectedSide && (
+            {/* Email form only for a brand new account (chooseSide auto-submits once email is known). */}
+            {submitState === 'choosing' && selectedSide && !email && (
                 <form
                     onSubmit={handleSubmit}
                     onClick={(e) => e.stopPropagation()}
@@ -563,14 +657,22 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                         onChange={(e) => setEmail(e.target.value)}
                         style={{ ...inputStyle, flex: '1 1 180px' }}
                     />
-                    <button type="submit" style={submitButtonStyle} disabled={pickState === 'submitting'}>
-                        {pickState === 'submitting' ? 'Locking in…' : 'Lock it in'}
+                    <button type="submit" style={submitButtonStyle} disabled={submitState === 'submitting'}>
+                        Lock it in
                     </button>
-                    {pickState === 'error' && errorMessage && (
-                        <p style={{ color: '#f87171', fontSize: '0.75rem', width: '100%', margin: 0 }}>{errorMessage}</p>
-                    )}
                 </form>
             )}
+            {submitState === 'submitting' && (
+                <p style={{ color: 'rgba(255,255,255,0.6)', fontSize: '0.8rem', marginTop: '0.6rem' }}>Locking in…</p>
+            )}
+            {submitState === 'error' && errorMessage && (
+                <p style={{ color: '#f87171', fontSize: '0.75rem', marginTop: '0.5rem' }}>{errorMessage}</p>
+            )}
+
+            {/* Nothing to verify until an account actually exists (first pick made) -
+                a brand new reader with no email yet has no business seeing this. */}
+            {email && verifyBlock}
+            {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} />}
         </div>
     );
 };

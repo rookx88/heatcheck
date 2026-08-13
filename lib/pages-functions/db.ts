@@ -17,6 +17,8 @@ import { neon, type NeonQueryFunction } from '@neondatabase/serverless';
 export interface Env {
     DATABASE_URL: string;
     RESEND_API_KEY: string;
+    RESEND_AUDIENCE_ID: string;
+    NEWSLETTER_TOKEN_SECRET: string;
     SETTLE_SECRET: string;
     CURATE_SECRET: string;
     ANTHROPIC_API_KEY: string;
@@ -31,6 +33,10 @@ export interface Env {
     CURATE_MAX_MATCHES_PER_RUN?: string;
     CURATE_WEB_SEARCH_MAX_USES?: string;
     CURATE_MATCH_MAX_TOKENS?: string;
+    // Gates the daily pick volume separately from code deploys - defaults to 1 (see
+    // functions/api/picks.ts) until explicitly raised via this env var when Phase 1
+    // is actually ready to go, no redeploy needed to flip it.
+    DAILY_PICK_CAP?: string;
 }
 
 export function getSql(env: Env): NeonQueryFunction<false, false> {

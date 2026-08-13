@@ -13,6 +13,9 @@ export const EVENT_TYPES = [
     'pick_conflict',
     'email_verified',
     'newsletter_opt_in',
+    'newsletter_sent',
+    'newsletter_exclusive_pick',
+    'pick_settled',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

@@ -16,7 +16,12 @@ export type EntryType = 'earn' | 'spend' | 'reversal' | 'adjustment';
 interface RuleRow {
     version: number;
     kind: 'source' | 'sink';
-    config: { amount: number };
+    // correct_call's config is {base, cap} (difficulty-scaled formula); every other
+    // rule (participation, and whatever post()/spend() get used for later) is a flat
+    // {amount}. Left as a loose record rather than a union so post()/spend() - which
+    // only ever handle the flat shape - don't need to know about the formula shape at
+    // all; settleCall() is the only caller that narrows per rule key.
+    config: Record<string, number>;
 }
 
 async function getActiveRule(sql: NeonQueryFunction<false, false>, ruleKey: string): Promise<RuleRow> {
@@ -116,6 +121,34 @@ export interface SettleCallInput {
     pickId: string;
     userId: string;
     result: CallResult;
+    // The pick's difficulty stamp, frozen at submission time (functions/api/picks.ts) -
+    // settlement reads it, never recomputes it. Only actually used on a 'correct'
+    // result (see correctCallPayout below); still required either way so a caller
+    // can't accidentally settle a win without it.
+    impliedProbAtLock: number;
+}
+
+export interface SettleCallResult {
+    payoutAmount: number;
+}
+
+// correct_call's payout scales with how unlikely the pick was: round(base * min(1/p, cap)).
+// A 50% favorite pays base; a longshot pays proportionally more, capped at base*cap so an
+// extreme longshot doesn't pay absurdly more (see update_ember_rules_payout_formula.sql for
+// why cap is tuned to 2.5, not the spec's original 6 - the stress simulation showed 6 lets
+// longshot-chasing beat honest play).
+function correctCallPayout(config: Record<string, number>, impliedProbAtLock: number): number {
+    const base = config.base;
+    const cap = config.cap;
+    if (!Number.isFinite(impliedProbAtLock) || impliedProbAtLock <= 0 || impliedProbAtLock > 1) {
+        // Defensive only - the settle.ts query casts ::float8 and picks.ts already
+        // guarantees a valid (0,1] probability at write time, this should never
+        // actually trip. Fall back to `base` (the formula's true minimum, at p=1) -
+        // not base*cap (the true maximum) - so a malformed value degrades to the
+        // smallest legitimate payout rather than the largest.
+        return Math.round(base);
+    }
+    return Math.round(base * Math.min(1 / impliedProbAtLock, cap));
 }
 
 // Settles one pick: sets picks.result/settled_at and pays out correct_call (win) or
@@ -125,18 +158,34 @@ export interface SettleCallInput {
 // (e.g. a retried settle run) is a safe no-op, not an error. Unlike post()/spend(), this
 // genuinely is two independently-idempotent statements, so Neon's sql.transaction([...])
 // array form is the right (and safe) tool here.
-export async function settleCall(sql: NeonQueryFunction<false, false>, input: SettleCallInput): Promise<void> {
+export async function settleCall(sql: NeonQueryFunction<false, false>, input: SettleCallInput): Promise<SettleCallResult> {
     const ruleKey = input.result === 'correct' ? 'correct_call' : 'participation';
     const idempotencyKey = buildIdempotencyKey(ruleKey, input.userId, `call:${input.pickId}`);
     const rule = await getActiveRule(sql, ruleKey);
+
+    const payoutAmount = input.result === 'correct'
+        ? correctCallPayout(rule.config, input.impliedProbAtLock)
+        : rule.config.amount;
+
+    // Written into ember_ledger.metadata (below) so a payout is auditable after the
+    // fact without re-deriving it from the formula + whatever rule_version was active
+    // at the time.
+    const metadata =
+        input.result === 'correct'
+            ? {
+                  pickId: input.pickId,
+                  implied_prob_at_lock: input.impliedProbAtLock,
+                  cap_applied: 1 / input.impliedProbAtLock > rule.config.cap,
+              }
+            : { pickId: input.pickId };
 
     await sql.transaction([
         sql`UPDATE picks SET result = ${input.result}, settled_at = NOW() WHERE id = ${input.pickId} AND result IS NULL`,
         sql`
             WITH ins AS (
                 INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
-                VALUES (${input.userId}, ${rule.config.amount}, 'earn', ${ruleKey}, ${rule.version},
-                        ${idempotencyKey}, ${JSON.stringify({ pickId: input.pickId })})
+                VALUES (${input.userId}, ${payoutAmount}, 'earn', ${ruleKey}, ${rule.version},
+                        ${idempotencyKey}, ${JSON.stringify(metadata)})
                 ON CONFLICT (idempotency_key) DO NOTHING
                 RETURNING amount
             )
@@ -146,6 +195,8 @@ export async function settleCall(sql: NeonQueryFunction<false, false>, input: Se
                 SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
         `,
     ]);
+
+    return { payoutAmount };
 }
 
 // Fast-path read of the cached balance.

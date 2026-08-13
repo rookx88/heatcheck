@@ -18,6 +18,8 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { settleCall, type CallResult } from '../../lib/pages-functions/ledger';
+import { sendSettlementEmail } from '../../lib/pages-functions/email';
+import { logEvent } from '../../lib/pages-functions/events';
 
 const GAMMA_BASE_URL = 'https://gamma-api.polymarket.com';
 
@@ -32,6 +34,9 @@ interface UnresolvedPick {
     waitlist_id: string;
     outcome_index: number;
     market_id: string | null;
+    implied_prob_at_lock: number;
+    email: string;
+    call_question: string | null;
 }
 
 interface GammaMarketLite {
@@ -67,20 +72,25 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // Belt-and-suspenders on `t.provider = 'polymarket'`: functions/api/picks.ts already
     // refuses to create picks on non-polymarket Tanks, but this keeps settlement correct
-    // even if that invariant is ever bypassed by a future code path.
+    // even if that invariant is ever bypassed by a future code path. email + call_question
+    // are only for the settlement notification below, not resolution itself.
     const rows = await sql`
-        SELECT p.id, p.waitlist_id, p.outcome_index, t.game_snapshot->'prop'->>'id' AS market_id
+        SELECT p.id, p.waitlist_id, p.outcome_index, p.implied_prob_at_lock::float8 AS implied_prob_at_lock,
+               t.game_snapshot->'prop'->>'id' AS market_id,
+               w.email, t.model_output->'call'->>'question' AS call_question
         FROM picks p
         JOIN tank_pages t ON t.id = p.tank_page_id
+        JOIN waitlist w ON w.id = p.waitlist_id
         WHERE p.result IS NULL AND t.provider = 'polymarket'
     `;
     const unresolved = rows as unknown as UnresolvedPick[];
 
-    const results: Array<{ pickId: string; status: string }> = [];
+    const results: Array<{ pickId: string; status: string; payoutAmount?: number }> = [];
 
-    // Sequential, not Promise.all: current pick volume is tiny (at most one pick per
-    // account today), and Polymarket's Gamma API has rate limits (see polymarket.ts's
-    // existing throttle/backoff handling for the bulk sync path).
+    // Sequential, not Promise.all: current pick volume is small (up to DAILY_PICK_CAP
+    // picks per account per day - functions/api/picks.ts), and Polymarket's Gamma API
+    // has rate limits (see polymarket.ts's existing throttle/backoff handling for the
+    // bulk sync path).
     for (const pick of unresolved) {
         if (!pick.market_id) {
             results.push({ pickId: pick.id, status: 'missing_market_id' });
@@ -109,8 +119,43 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 continue;
             }
             const result: CallResult = pick.outcome_index === winningIndex ? 'correct' : 'incorrect';
-            await settleCall(sql, { pickId: pick.id, userId: pick.waitlist_id, result });
-            results.push({ pickId: pick.id, status: `settled_${result}` });
+            const { payoutAmount } = await settleCall(sql, {
+                pickId: pick.id,
+                userId: pick.waitlist_id,
+                result,
+                impliedProbAtLock: pick.implied_prob_at_lock,
+            });
+            results.push({ pickId: pick.id, status: `settled_${result}`, payoutAmount });
+
+            // Both fire-and-forget - settlement itself already committed above, so
+            // neither a Resend failure nor an analytics-insert failure should surface
+            // as this pick having failed to settle. Same pattern as the verification
+            // email in functions/api/picks.ts.
+            try {
+                const balanceRows = await sql`SELECT balance FROM ember_balances WHERE user_id = ${pick.waitlist_id} LIMIT 1`;
+                const newBalance = balanceRows.length ? (balanceRows[0].balance as number) : payoutAmount;
+                await sendSettlementEmail(context.env, pick.email, {
+                    tankQuestion: pick.call_question || 'Your Tank call',
+                    result,
+                    payoutAmount,
+                    newBalance,
+                });
+            } catch (emailErr) {
+                console.error(`[POST /api/settle] Settlement email failed for pick ${pick.id}:`, emailErr);
+            }
+            try {
+                // No real "visitor" for a cron-triggered settlement - a fresh random id
+                // per event (rather than a fixed shared constant) avoids falsely
+                // clustering unrelated settlement events under one synthetic visitor.
+                await logEvent(sql, {
+                    visitorId: crypto.randomUUID(),
+                    waitlistId: pick.waitlist_id,
+                    eventType: 'pick_settled',
+                    metadata: { pickId: pick.id, result, payoutAmount },
+                });
+            } catch (eventErr) {
+                console.error(`[POST /api/settle] Failed to log pick_settled event for pick ${pick.id}:`, eventErr);
+            }
         } catch (err) {
             console.error(`[POST /api/settle] Failed to settle pick ${pick.id}:`, err);
             results.push({ pickId: pick.id, status: 'error' });

@@ -1,8 +1,10 @@
 // POST /api/picks - combined email + pick submission. The email IS the account
-// identity (a row in the existing `waitlist` table, upserted here); the pick is
-// enforced to one-per-account by a unique constraint on picks.waitlist_id, not by
-// anything client-supplied. A verification code is sent on success, but the pick
-// itself is saved and returned regardless of whether that email send succeeds.
+// identity (a row in the existing `waitlist` table, upserted here). Up to
+// DAILY_PICK_CAP picks per account per UTC day, one pick per Tank per account
+// (idx_picks_waitlist_tank, add_daily_pick_cap.sql) - not one pick ever, that changed
+// with the settlement finalization's daily-cap spec. A verification code is sent on
+// success, but the pick itself is saved and returned regardless of whether that email
+// send succeeds.
 //
 // Only polymarket-sourced Tanks accept picks: settlement (functions/api/settle.ts)
 // resolves outcomes against Polymarket's Gamma API, and mock/custom-provider Tanks have
@@ -16,6 +18,16 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, EMAIL_RE, UUID_RE, type Env } from '../../lib/pages-functions/db';
 import { sendVerificationEmail, generateVerificationCode } from '../../lib/pages-functions/email';
 import { logEvent } from '../../lib/pages-functions/events';
+
+// Defaults to 1/day (Phase 0) rather than the eventual 3/day Phase 1 standard -
+// deliberately gated behind DAILY_PICK_CAP (see lib/pages-functions/db.ts's Env) so
+// raising it to 3 is a Cloudflare dashboard env var change, not a code deploy. Same
+// numEnv() pattern functions/api/curate.ts already uses for its own tunables.
+function numEnv(value: string | undefined, fallback: number): number {
+    if (!value) return fallback;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+}
 
 interface PickRow {
     side: string;
@@ -57,10 +69,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (sideIndex === null) return jsonResponse({ message: 'Missing sideIndex.' }, { status: 400 });
 
     const sql = getSql(context.env);
+    const DAILY_PICK_CAP = numEnv(context.env.DAILY_PICK_CAP, 1);
 
     const tankRows = await sql`
         SELECT id, provider, game_snapshot, model_output->'call'->'sides' AS sides
-        FROM tank_pages WHERE slug = ${slug} AND status = 'published' LIMIT 1
+        FROM tank_pages WHERE slug = ${slug} AND status = 'published' AND visibility = 'app' LIMIT 1
     `;
     if (tankRows.length === 0) {
         return jsonResponse({ message: 'Unknown or unpublished Tank.' }, { status: 400 });
@@ -110,6 +123,29 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         return jsonResponse({ message: 'Internal server error' }, { status: 500 });
     }
 
+    // Daily volume cap: count-then-insert, not a DB constraint (Postgres can't express
+    // "at most N rows" declaratively). Accepted, documented race window - two
+    // near-simultaneous requests could both read a count under the cap and both
+    // insert, landing one extra pick. Not worth a SELECT ... FOR UPDATE / advisory
+    // lock at pilot scale: picks pay out nothing by themselves (only settlement does,
+    // later, and settleCall() is idempotent regardless of how many picks exist), so
+    // the actual blast radius is "one extra pick slips through," not an extra payout
+    // beyond what a legitimate Nth pick would have earned anyway.
+    // source = 'app' excludes newsletter-exclusive picks (functions/api/newsletter/pick.ts)
+    // from the daily cap - they're capped by "once per issue" (a DB unique index)
+    // instead, and each issue only ever has one exclusive Tank to begin with.
+    const capRows = await sql`
+        SELECT COUNT(*)::int AS count FROM picks
+        WHERE waitlist_id = ${waitlistId} AND created_at >= CURRENT_DATE AND source = 'app'
+    `;
+    const picksToday = (capRows[0] as unknown as { count: number }).count;
+    if (picksToday >= DAILY_PICK_CAP) {
+        return jsonResponse(
+            { message: "You've used today's picks — back tomorrow.", picksToday, remaining: 0 },
+            { status: 429 }
+        );
+    }
+
     try {
         const inserted = await sql`
             INSERT INTO picks (waitlist_id, tank_page_id, tank_slug, side, outcome_index, implied_prob_at_lock)
@@ -120,16 +156,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
         // Fire off a verification code, but never let a Resend failure fail the pick
         // itself - the pick is already committed at this point.
+        let verified = false;
         try {
-            const code = generateVerificationCode();
-            await sql`
-                UPDATE waitlist
-                SET verification_code = ${code},
-                    verification_code_expires_at = NOW() + INTERVAL '15 minutes',
-                    verification_attempts = 0
-                WHERE id = ${waitlistId}
-            `;
-            await sendVerificationEmail(context.env, email, code);
+            const waitlistRow = await sql`SELECT email_verified FROM waitlist WHERE id = ${waitlistId}`;
+            verified = Boolean((waitlistRow[0] as unknown as { email_verified: boolean } | undefined)?.email_verified);
+            if (!verified) {
+                const code = generateVerificationCode();
+                await sql`
+                    UPDATE waitlist
+                    SET verification_code = ${code},
+                        verification_code_expires_at = NOW() + INTERVAL '15 minutes',
+                        verification_attempts = 0
+                    WHERE id = ${waitlistId}
+                `;
+                await sendVerificationEmail(context.env, email, code);
+            }
         } catch (emailErr) {
             console.error('[POST /api/picks] Verification email failed to send:', emailErr);
         }
@@ -142,21 +183,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             }
         }
 
+        const newPicksToday = picksToday + 1;
         return jsonResponse(
-            { pick: { slug: row.tank_slug, side: row.side, createdAt: row.created_at } },
+            {
+                pick: { slug: row.tank_slug, side: row.side, createdAt: row.created_at },
+                verified,
+                picksToday: newPicksToday,
+                remaining: DAILY_PICK_CAP - newPicksToday,
+            },
             { status: 201 }
         );
     } catch (err: any) {
-        if (err.code === '23505') { // idx_picks_waitlist_id conflict - this account already has a pick
-            // Joins waitlist for email_verified so the client can cache verified
-            // status too - without it, a returning visit (e.g. following this same
-            // "you already made your call" conflict to view the existing pick) has no
-            // way to know verification already happened, and would show the confirm-
-            // your-email form again even for an already-verified account.
+        if (err.code === '23505') { // idx_picks_waitlist_tank conflict - already picked THIS tank
             const existing = await sql`
                 SELECT p.side, p.tank_slug, p.created_at, w.email_verified
                 FROM picks p JOIN waitlist w ON w.id = p.waitlist_id
-                WHERE p.waitlist_id = ${waitlistId} LIMIT 1
+                WHERE p.waitlist_id = ${waitlistId} AND p.tank_page_id = ${tankPageId} LIMIT 1
             `;
             const row = existing[0] as unknown as ExistingPickRow | undefined;
 
@@ -170,7 +212,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
             return jsonResponse(
                 {
-                    message: "You've already made your call.",
+                    message: 'You already made this call.',
                     pick: row ? { slug: row.tank_slug, side: row.side, createdAt: row.created_at, verified: row.email_verified } : null,
                 },
                 { status: 409 }
