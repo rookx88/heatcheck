@@ -15,6 +15,36 @@
 /assets/*.css
   Cache-Control: public, max-age=31536000, immutable
 
+# The two wildcard rules above are only safe for genuinely content-hashed filenames
+# (esbuild's tank-shared-<HASH>.js chunks - a new build gets a new URL, so a stale
+# cache is never actually reachable). These specific entry bundles are NOT hashed -
+# they build to the same filename every time - so `immutable, max-age=31536000` on
+# them means a browser that visited once will keep running whatever code was live on
+# its first visit for up to a year, silently missing every future fix, exactly what
+# happened with the WorldMap/Tank navigation fix. More specific paths win over the
+# wildcard rules above, so these force revalidation on every request instead - still
+# cacheable (a 304 skips the re-download when nothing changed), just never stale.
+/assets/world-map.js
+  Cache-Control: public, no-cache
+/assets/world-map.css
+  Cache-Control: public, no-cache
+/assets/tank-page.js
+  Cache-Control: public, no-cache
+/assets/tank-page.css
+  Cache-Control: public, no-cache
+/assets/tank-article-deck.js
+  Cache-Control: public, no-cache
+/assets/tank-article-deck.css
+  Cache-Control: public, no-cache
+/assets/analytics-beacon.js
+  Cache-Control: public, no-cache
+/assets/static-site.js
+  Cache-Control: public, no-cache
+/assets/heat-score-v4.js
+  Cache-Control: public, no-cache
+/assets/public-site.css
+  Cache-Control: public, no-cache
+
 /assets/images/*
   Cache-Control: public, max-age=31536000, immutable
 
