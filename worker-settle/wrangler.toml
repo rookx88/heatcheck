@@ -1,0 +1,15 @@
+name = "heatchecks-settle-cron"
+main = "src/index.ts"
+compatibility_date = "2026-08-12"
+
+# Once daily. 9am UTC is a placeholder chosen to land after West Coast games finish -
+# retune once real game-finality timing matters.
+[triggers]
+crons = ["0 9 * * *"]
+
+[vars]
+SETTLE_URL = "https://heatchecks.io/api/settle"
+
+# SETTLE_SECRET is a real secret, not a plaintext var - set it with:
+#   npx wrangler secret put SETTLE_SECRET --config worker-settle/wrangler.toml
+# using the same value configured as SETTLE_SECRET for the Pages project.

@@ -1,0 +1,16 @@
+name = "heatchecks-curate-cron"
+main = "src/index.ts"
+compatibility_date = "2026-08-12"
+
+# Once daily, before typical same-day human review of overnight drafts. Distinct from
+# worker-settle's 0 9 * * * so the two don't compete for the same window - retune once
+# real review timing matters.
+[triggers]
+crons = ["0 12 * * *"]
+
+[vars]
+CURATE_URL = "https://heatchecks.io/api/curate"
+
+# CURATE_SECRET is a real secret, not a plaintext var - set it with:
+#   npx wrangler secret put CURATE_SECRET --config worker-curate/wrangler.toml
+# using the same value configured as CURATE_SECRET for the Pages project.

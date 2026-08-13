@@ -31,5 +31,11 @@
     "**/*.ts",
     "**/*.tsx",
     "vite-env.d.ts"
+  ],
+  "exclude": [
+    "functions",
+    "lib/pages-functions",
+    "worker-settle",
+    "worker-curate"
   ]
 }

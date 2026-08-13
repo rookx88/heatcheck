@@ -1,0 +1,30 @@
+// ===================================================================================
+// HEATCHECKS TANK — ARTICLE DECK CLIENT (tank-article-deck-client.tsx)
+// ===================================================================================
+// Small standalone bundle (built via scripts/build-tank-article-deck.ts, not the main
+// Vite app) that hydrates on top of the server-rendered Tank article body. Reads the
+// embedded #tank-article-deck-data JSON and renders the shared Fishtank artifact
+// (components/Fishtank.tsx - also reused by the-tank page's carousel).
+// ===================================================================================
+
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { Fishtank, type DeckPayload } from './components/Fishtank';
+
+function mount() {
+    const root = document.getElementById('tank-article-deck-root');
+    const dataEl = document.getElementById('tank-article-deck-data');
+    if (!root || !dataEl || !dataEl.textContent) return;
+    try {
+        const { slug, ...payload } = JSON.parse(dataEl.textContent) as DeckPayload & { slug: string };
+        createRoot(root).render(<Fishtank payload={payload} slug={slug} />);
+    } catch (err) {
+        console.error('[Tank Article Deck] Failed to parse deck payload:', err);
+    }
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mount);
+} else {
+    mount();
+}

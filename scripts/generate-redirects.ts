@@ -50,7 +50,28 @@ export async function generateRedirectsFile(
         `);
 
         const posts: HeatcheckPost[] = result.rows.map(row => row.data);
-        const redirects: string[] = [];
+
+        // Heatchecks is relaunching as a beta-waitlist landing page at "/".
+        // The old sports-analysis site (league hubs, articles, archive, about)
+        // stays on disk untouched, but every visitor hitting those URLs should
+        // land on the new homepage instead. These fixed rules are prepended
+        // ahead of the DB-driven slug redirects below (which become redundant
+        // now, but are harmless to keep for anyone with an old bookmark).
+        const redirects: string[] = [
+            '/nba/*         /  301',
+            '/nfl/*         /  301',
+            '/epl/*         /  301',
+            '/laliga/*      /  301',
+            '/serie-a/*     /  301',
+            '/bundesliga/*  /  301',
+            '/ligue-1/*     /  301',
+            '/dfs/*         /  301',
+            '/heat-picks/*  /  301',
+            '/about/*       /  301',
+            '/about         /  301',
+            '/archive/*     /  301',
+            '/archive       /  301',
+        ];
 
         for (const post of posts) {
             const currentSlug = post.websiteStory?.seo?.slug || '';

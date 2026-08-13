@@ -1,0 +1,339 @@
+.tank-screen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(180deg, #060c22 0%, #0b1a45 55%, #14275f 100%);
+}
+
+/* Mobile (default): the frame IS the full screen - "take over the whole screen". */
+.tank-screen__frame {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Desktop/wide browsers: the source art is portrait (810x1440); cover-fitting it
+   into a wide viewport would crop most of the scene away. Instead, size the frame
+   itself to the largest box of the SAME aspect ratio that fits the viewport (the
+   standard no-JS "min(vw, vh*ratio)" formula), so the SVG's cover-fit inside it
+   needs to crop nothing, and center it as a card against the navy background. */
+@media (min-width: 700px) {
+  .tank-screen__frame {
+    inset: auto;
+    top: 50%;
+    left: 50%;
+    width: min(100vw, calc(100vh * 0.5625));
+    height: min(100vh, calc(100vw / 0.5625));
+    max-width: 640px;
+    transform: translate(-50%, -50%);
+    border-radius: 18px;
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(47, 230, 217, 0.15);
+  }
+}
+
+.tank-screen__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.tank-screen__background {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ---------------------------------------------------------------------- */
+/* "Tanks Available" screen hotspot                                       */
+/* ---------------------------------------------------------------------- */
+
+.tank-screen__hotspot {
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tank-screen__glow,
+.tank-screen__outline {
+  pointer-events: none;
+  fill: none;
+  stroke-linejoin: round;
+}
+
+.tank-screen__glow {
+  stroke: #2fe6d9;
+  stroke-width: 10;
+  opacity: 0;
+  filter: blur(10px);
+  transition: opacity 0.35s ease;
+}
+
+.tank-screen__outline {
+  stroke: #2fe6d9;
+  stroke-width: 2.5;
+  opacity: 0;
+  filter: drop-shadow(0 0 6px #2fe6d9);
+  transition: opacity 0.3s ease;
+}
+
+.tank-screen__brighten {
+  pointer-events: none;
+  fill: #7fe9ff;
+  mix-blend-mode: screen;
+  opacity: 0;
+  filter: blur(2px);
+  transition: opacity 0.4s ease;
+}
+
+.tank-screen__scanline-clip {
+  pointer-events: none;
+}
+
+.tank-screen__scanline {
+  fill: url(#tank-screen-scanline-gradient);
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.tank-screen__hit {
+  fill: rgba(0, 0, 0, 0.001);
+  stroke: none;
+}
+
+.tank-screen__hotspot.is-active .tank-screen__glow {
+  opacity: 0.8;
+  animation: tank-hotspot-pulse 1.8s ease-in-out infinite;
+}
+
+.tank-screen__hotspot.is-active .tank-screen__outline {
+  opacity: 1;
+}
+
+.tank-screen__hotspot.is-active .tank-screen__brighten {
+  opacity: 0.22;
+}
+
+.tank-screen__hotspot.is-active .tank-screen__scanline {
+  opacity: 0.4;
+  animation: tank-scanline-sweep 2.6s linear infinite;
+}
+
+@keyframes tank-hotspot-pulse {
+  0%, 100% { stroke-width: 8; opacity: 0.6; }
+  50% { stroke-width: 13; opacity: 0.9; }
+}
+
+@keyframes tank-scanline-sweep {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(480px); }
+}
+
+/* ---------------------------------------------------------------------- */
+/* Back-to-home checkmark button - must stay above the modal              */
+/* ---------------------------------------------------------------------- */
+
+.tank-screen__back {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2200;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tank-screen__back-box {
+  width: 56px;
+  height: 56px;
+  border: 2px solid rgba(47, 230, 217, 0.6);
+  border-radius: 12px;
+  background: rgba(5, 7, 15, 0.55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 18px rgba(47, 230, 217, 0.25);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.tank-screen__back:hover .tank-screen__back-box,
+.tank-screen__back:focus-visible .tank-screen__back-box {
+  box-shadow: 0 0 26px rgba(47, 230, 217, 0.45);
+  transform: translateY(-1px);
+}
+
+.tank-screen__back-box img {
+  width: 34px;
+  height: 34px;
+}
+
+/* ---------------------------------------------------------------------- */
+/* Modal - styled like a screen                                           */
+/* ---------------------------------------------------------------------- */
+
+.tank-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(3, 5, 12, 0.82);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  animation: tank-modal-fade-in 0.2s ease-out;
+}
+
+@keyframes tank-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.tank-modal-panel {
+  width: 100%;
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: linear-gradient(180deg, #0b1a45 0%, #060c22 100%);
+  border: 2px solid rgba(47, 230, 217, 0.5);
+  border-radius: 20px;
+  box-shadow: 0 0 0 6px rgba(5, 7, 15, 0.6), 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(47, 230, 217, 0.15);
+  animation: tank-modal-pop-in 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes tank-modal-pop-in {
+  from { opacity: 0; transform: scale(0.94) translateY(8px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.tank-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(47, 230, 217, 0.25);
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #2fe6d9;
+  text-shadow: 0 0 10px rgba(47, 230, 217, 0.5);
+}
+
+.tank-modal-close {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+}
+
+.tank-modal-close:hover,
+.tank-modal-close:focus-visible {
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+
+.tank-modal-body {
+  padding: 1.25rem;
+  text-align: center;
+}
+
+.tank-modal-matchup {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.75);
+  margin-bottom: 0.5rem;
+}
+
+.tank-modal-empty {
+  padding: 3rem 1rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-family: 'Nunito', sans-serif;
+  font-size: 1rem;
+  line-height: 1.6;
+}
+
+.tank-modal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  margin-top: 0.5rem;
+}
+
+.tank-modal-arrow {
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  border: 1.5px solid rgba(47, 230, 217, 0.5);
+  background: rgba(47, 230, 217, 0.08);
+  color: #2fe6d9;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.tank-modal-arrow:hover,
+.tank-modal-arrow:focus-visible {
+  background: rgba(47, 230, 217, 0.2);
+  outline: none;
+}
+
+.tank-modal-arrow:active {
+  transform: scale(0.92);
+}
+
+.tank-modal-count {
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+  min-width: 3.5em;
+}
+
+.tank-modal-view-story {
+  display: inline-block;
+  margin-top: 1.25rem;
+  background: var(--hc-gold, #ffc72c);
+  color: #1a1200;
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1rem;
+  text-decoration: none;
+  padding: 0.7rem 1.75rem;
+  border-radius: 14px;
+  box-shadow: 0 5px 0 var(--hc-gold-dark, #e8a800), 0 8px 18px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s ease;
+}
+
+.tank-modal-view-story:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 var(--hc-gold-dark, #e8a800);
+}
+
+@media (max-width: 420px) {
+  .tank-modal-header {
+    padding: 0.85rem 1rem;
+    font-size: 0.95rem;
+  }
+  .tank-modal-body {
+    padding: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tank-screen__glow,
+  .tank-modal-overlay,
+  .tank-modal-panel {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -18,12 +18,47 @@ public/nba/
 public/nfl/
 public/epl/
 public/archive/
+public/laliga/
+public/la-liga/
+public/serie-a/
+public/bundesliga/
+public/ligue-1/
+public/dfs/
+public/heat-picks/
 public/*/index.html
 !public/about/index.html
 !public/preview.html
 # public/robots.txt - Generated during build, but we commit it for Cloudflare Pages
 # public/sitemap.xml - Generated during build, but we commit it for Cloudflare Pages
 public/assets/images/
+
+# Legacy prediction-app source images (copied into public/assets/images only when
+# LEGACY_BUILD=true). Not part of the live Heatchecks world/Tank site.
+# NOTE: must be "assets/images/*" not "assets/images/" - excluding the directory
+# itself (rather than its contents) stops git from descending into it at all, which
+# silently breaks the file-level negations below (a documented git gitignore gotcha).
+assets/images/*
+# Exceptions: these specific files are the new-site source images that
+# copyNewSiteImages() (scripts/generate-static-site.ts) copies into every build
+# unconditionally (landing page, world map, AllSetModal mascot art) - must stay
+# tracked even though the rest of this folder is legacy and ignored.
+!assets/images/checknav.webp
+!assets/images/heatchecks-logo.png
+!assets/images/heatchecks-logo.webp
+!assets/images/mudpuppy-default.png
+!assets/images/mudpuppy-default.webp
+!assets/images/mudpuppy-football.png
+!assets/images/mudpuppy-football.webp
+!assets/images/mudpuppy-jersey.png
+!assets/images/mudpuppy-jersey.webp
+!assets/images/world-map.png
+!assets/images/world-map.webp
+
+# Retired prediction-app content, relocated out of public/ so Cloudflare Pages
+# doesn't upload it and it stays out of the live site's build. Preserved here
+# on disk (and in git history via the legacy-snapshot tag) rather than deleted -
+# regenerate any of it with LEGACY_BUILD=true if it's ever needed again.
+legacy/
 
 # Environment variables - protect all .env files
 .env
@@ -33,6 +68,10 @@ public/assets/images/
 .env.development
 .env.test
 .env.*
+
+# Wrangler (Cloudflare Pages Functions local dev)
+.dev.vars
+.wrangler/
 
 # Editor directories and files
 .vscode/*

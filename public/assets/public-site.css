@@ -1337,6 +1337,23 @@ body {
     overflow: hidden;
 }
 
+/* World Cup Village */
+.wc-village-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    min-height: 300px;
+}
+
+@media screen and (max-width: 768px) {
+    .wc-village-grid {
+        grid-template-columns: 1fr;
+    }
+    #wc-copa-card {
+        min-height: 220px !important;
+    }
+}
+
 /* Loading state fixed height */
 .radar-loading-state {
     min-height: 200px;

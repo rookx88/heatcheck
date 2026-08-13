@@ -9,7 +9,15 @@ import { generateDFSArticlePage } from './templates/dfs-article-template';
 import { generateHeatPicksArticlePage } from './templates/heat-picks-article-template';
 import { generateDFSHubPage } from './templates/dfs-hub-template';
 import { generateHeatPicksHubPage } from './templates/heat-picks-hub-template';
+import { generateTankArticlePage, TankPageRecord } from './templates/tank-article-template';
+import { buildTankBundles } from './build-tank-bundles';
+import { formatMarketLabel, formatOddsLabel, formatSettleDate, deriveTaglineFallback, truncateHeaderLabel } from '../tank-deck-format';
+import { buildWorldMap } from './build-world-map';
+import { buildAnalyticsBeacon } from './build-analytics-beacon';
 import { generateBaseHtml } from './templates/base-template';
+import { generateLandingPageHtml, generateBetaInfoPageHtml } from './templates/waitlist-landing-template';
+import { generateClaimYourSpotPageHtml } from './templates/claim-your-spot-template';
+import { generateTankPageHtml, TankPageEntry } from './templates/tank-template';
 import { formatDateISO, normalizeLeague } from './utils/date-formatter';
 import { generateSlug, ensureUniqueSlug, generateNarrativeSlug, generateMatchupSlug } from './utils/slug-generator';
 import { getShortTeamName } from './utils/date-formatter';
@@ -103,6 +111,52 @@ function copyImages(): void {
         }
     }
     console.log(`✓ Copied ${imageFiles.length} image(s) to public/assets/images`);
+}
+
+// The only assets/images/* files the NEW site (homepage, claim-your-spot, the-tank)
+// actually references - everything else in that folder is legacy matchup-thumbnail
+// art used solely by the legacy article pages, which are gated behind LEGACY_BUILD.
+// Keeping this an explicit allowlist (rather than copying the whole folder) keeps
+// those ~400 unused legacy images out of every normal deploy.
+const NEW_SITE_IMAGES = [
+    'checknav.webp',
+    'heatchecks-logo.png',
+    'heatchecks-logo.webp',
+    'mudpuppy-default.png',
+    'mudpuppy-default.webp',
+    'mudpuppy-football.png',
+    'mudpuppy-football.webp',
+    'mudpuppy-jersey.png',
+    'mudpuppy-jersey.webp',
+    'world-map.png',
+    'world-map.webp',
+];
+
+/**
+ * Copy just the new-site images (see NEW_SITE_IMAGES) - this runs unconditionally,
+ * unlike copyImages() (the full legacy folder), since the new homepage/claim-your-spot/
+ * the-tank pages need these regardless of LEGACY_BUILD.
+ */
+function copyNewSiteImages(): void {
+    if (!fs.existsSync(assetsImagesDir)) {
+        console.log('⚠ No assets/images directory found, skipping new-site image copy');
+        return;
+    }
+
+    ensureDir(distImagesDir);
+    ensureDir(publicImagesDir);
+    let copied = 0;
+    for (const file of NEW_SITE_IMAGES) {
+        const src = path.join(assetsImagesDir, file);
+        if (!fs.existsSync(src)) {
+            console.warn(`⚠ Expected new-site image not found: assets/images/${file}`);
+            continue;
+        }
+        fs.copyFileSync(src, path.join(distImagesDir, file));
+        fs.copyFileSync(src, path.join(publicImagesDir, file));
+        copied++;
+    }
+    console.log(`✓ Copied ${copied} new-site image(s) to dist/assets/images and public/assets/images`);
 }
 
 /**
@@ -299,19 +353,37 @@ async function generateAllPages(): Promise<void> {
     const pool = new Pool({
         connectionString: databaseUrl,
     });
-    
+
+    // Legacy prediction-app pages (articles, DFS, Heat Picks, league hubs, date pages,
+    // archive) are opt-in only — the site is pivoting to Tank/landing as primary.
+    // Set LEGACY_BUILD=true to regenerate them (e.g. a one-off legacy refresh).
+    const LEGACY_BUILD = process.env.LEGACY_BUILD === 'true';
+    let posts: HeatcheckPost[] = [];
+
     try {
+      // CSS/JS bundles, the new site's own images, and Cloudflare config files are
+      // shared by every page (legacy and new), so these copy unconditionally. The
+      // full legacy assets/images/ folder (~400 matchup thumbnails) is copied further
+      // below, only when LEGACY_BUILD actually needs it.
+      console.log('Copying assets...');
+      copyAssets();
+      copyPublicAssets();
+      copyNewSiteImages();
+      copyConfigFiles();
+      console.log('');
+
+      if (LEGACY_BUILD) {
         // Fetch all published posts
         // Order by matchupScheduledDate (game date) first, then updatedAt, then createdAt
         // This ensures articles about upcoming/recent games appear first
         console.log('Fetching published posts from database...');
         const result = await pool.query(
-            `SELECT data FROM posts 
-             WHERE (data->>'status') = 'published' 
-             ORDER BY 
+            `SELECT data FROM posts
+             WHERE (data->>'status') = 'published'
+             ORDER BY
                  COALESCE((data->>'matchupScheduledDate')::timestamp, (data->>'updatedAt')::timestamp, (data->>'createdAt')::timestamp) DESC`
         );
-        const posts: HeatcheckPost[] = result.rows.map(row => row.data);
+        posts = result.rows.map(row => row.data);
         console.log(`Found ${posts.length} published posts\n`);
         
         // Debug: Log posts with/without images
@@ -337,10 +409,9 @@ async function generateAllPages(): Promise<void> {
         console.log('');
         
         if (posts.length === 0) {
-            console.log('No published posts found. Exiting.');
-            return;
-        }
-        
+            console.log('No published posts found. Skipping legacy page generation.\n');
+        } else {
+
         // Generate unique slugs with new URL structure: {league}/{date}/{matchup}/{narrative-slug}/
         // Track uniqueness per matchup to avoid conflicts
         const matchupSlugMap = new Map<string, Set<string>>(); // Key: "{league}/{date}/{matchup}", Value: Set of narrative slugs
@@ -402,15 +473,13 @@ async function generateAllPages(): Promise<void> {
             // If slug exists (even if not in prediction format), leave it alone
             // The migration script will handle converting old format slugs to new format
         });
-        
-        // Copy assets first (before generating pages that reference them)
-        console.log('Copying assets...');
+
+        // Full legacy image folder (~400 matchup thumbnails) - only the legacy article
+        // pages generated below reference these, so this stays LEGACY_BUILD-gated.
+        console.log('Copying legacy images...');
         copyImages();
-        copyAssets();
-        copyPublicAssets();
-        copyConfigFiles();
         console.log('');
-        
+
         // Generate article pages (excluding DFS and Heat Picks articles which are handled separately)
         console.log('Generating article pages...');
         const postsByLeague = groupPostsByLeague(posts);
@@ -628,242 +697,49 @@ async function generateAllPages(): Promise<void> {
             }
         }
         console.log(`✓ Generated ${totalPages} archive page(s)\n`);
-        
-        // Generate homepage (index.html)
-        console.log('Generating homepage...');
-        const homepageContent = `
-            <div class="content-area-title terminal-style" id="homepage-temp-forecast">
-                <span class="glitch-text" data-text="Temperature Forecast">
-                    <span class="temp-forecast-full">Temperature Forecast</span>
-                    <span class="temp-forecast-mobile" style="display: none;">Temp.Forecast</span>
-                </span>
-                <!-- ? functionality commented out - will work on later -->
-                <!-- <span style="margin-left: auto; display: flex; align-items: center;">
-                    <span class="how-temps-work-trigger" style="display: inline-flex; align-items: center; cursor: pointer; position: relative;">
-                        <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.1); font-size: 0.9rem; font-weight: bold; transition: all 0.3s ease;">?</span>
-                        <div class="heat-score-legend-tooltip" style="display: none; position: fixed !important; bottom: 100%; right: 0; margin-bottom: 0.5rem; z-index: 999999 !important; min-width: 450px; max-width: 500px;">
-                            <div style="background: rgba(180, 200, 240, 0.08); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid rgba(200, 200, 255, 0.5); border-left: 2px solid rgba(210, 210, 255, 0.6); border-radius: 8px; padding: 1rem; box-shadow: 0 0 20px rgba(180, 200, 240, 0.4), 0 0 40px rgba(200, 200, 255, 0.3), 0 0 60px rgba(210, 210, 255, 0.2), inset 0 0 30px rgba(200, 200, 255, 0.05), 0 0 2px rgba(210, 210, 255, 0.3), 0 0 4px rgba(180, 200, 240, 0.15); max-height: 600px; overflow-y: auto;">
-                                <div style="color: #ffffff !important; font-size: 0.95rem; font-weight: 900; margin-bottom: 0.75rem; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 0.1em; -webkit-text-stroke: 1px #000000; text-stroke: 1px #000000;">Heat Score Legend (Pressure Scale)</div>
-                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; font-family: 'Courier New', monospace; font-size: 0.7rem; line-height: 1.4; color: #ffffff !important;">
-                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
-                                        <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🔥🔥🔥 Extreme Heat (85–100)</strong>
-                                        <div style="font-size: 0.65rem; color: #ffffff !important;">Environment under maximum pressure. Structural strain, momentum stress, or emotional load is peaking. Roles, rotations, or decision-making are likely to break. Outcomes may swing sharply — volatility is high. High heat does not mean safe. It means unstable.</div>
-                                    </div>
-                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
-                                        <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🔥🔥 High Heat (70–84)</strong>
-                                        <div style="font-size: 0.65rem; color: #ffffff !important;">Pressure is clearly building. One or more stress factors are active. Teams may be operating outside comfort. Market often begins to lag or misprice here. This is where many Heat Picks are found — but not all.</div>
-                                    </div>
-                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
-                                        <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🔥 Warm (55–69)</strong>
-                                        <div style="font-size: 0.65rem; color: #ffffff !important;">Early signs of stress. Subtle momentum shifts or emerging strain. Narrative signals may be forming. Often informational, not actionable yet. Watch closely. Heat may rise quickly.</div>
-                                    </div>
-                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
-                                        <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">❄️ Cold (40–54)</strong>
-                                        <div style="font-size: 0.65rem; color: #ffffff !important;">Stable, controlled environment. Teams executing within expected ranges. Market generally efficient. Few pressure-driven deviations expected. Low volatility. Low opportunity.</div>
-                                    </div>
-                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem;">
-                                        <strong style="color: #ffffff !important; display: block; margin-bottom: 0.4rem;">🧊 Deep Freeze (<40)</strong>
-                                        <div style="font-size: 0.65rem; color: #ffffff !important;">Minimal pressure detected. Strong structure and control. Predictable rotations and outcomes. Little incentive for behavior change. Usually not worth chasing.</div>
-                                    </div>
-                                    <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 4px; padding: 0.75rem; grid-column: 1 / -1;">
-                                        <div style="font-style: italic; color: #ffffff !important; font-size: 0.65rem;">Heat Score measures pressure — not pick confidence.<br>Picks are made only when pressure misaligns with the market.</div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </span>
-                </span> -->
-            </div>
-            <div class="post-list" id="recent-logs-list">
-                <!-- Post cards will be inserted here by static-site.js -->
-            </div>
-            <div style="margin-top: 2rem; padding: 1rem; display: flex; gap: 1rem; justify-content: center; align-items: center; color: #fff; font-family: 'Courier New', monospace;">
-                <span style="margin-right: 1rem;" id="pagination-info">PAGE 1 / 1</span>
-                <a href="#" id="next-page-link" style="color: #fff; text-decoration: none; border: 1px solid #fff; padding: 0.5rem 1rem; transition: all 0.3s ease; display: none;" onmouseover="this.style.background='rgba(255, 255, 255, 0.1)';" onmouseout="this.style.background='transparent';">NEXT &gt;</a>
-            </div>
-        `;
-        
-        // Sort posts by date (latest first) before filtering
-        // Priority: matchupScheduledDate (game date) > updatedAt > createdAt
-        // This ensures articles about upcoming/recent games appear first
-        const sortedPosts = [...posts].sort((a, b) => {
-            // Get the most relevant date for each post (game date takes priority)
-            const getSortDate = (post: HeatcheckPost): number => {
-                if (post.matchupScheduledDate) {
-                    return new Date(post.matchupScheduledDate).getTime();
-                }
-                if (post.updatedAt) {
-                    return new Date(post.updatedAt).getTime();
-                }
-                if (post.createdAt) {
-                    return new Date(post.createdAt).getTime();
-                }
-                return 0;
-            };
-            
-            const dateA = getSortDate(a);
-            const dateB = getSortDate(b);
-            return dateB - dateA; // Descending order (latest first)
-        });
-        
-        // Filter posts to only include fields needed by homepage JavaScript
-        // This significantly reduces JSON size by excluding:
-        // - Full markdown content (theBackstory, long_form_markdown, etc.)
-        // - Detailed evidence bundle content (full quote objects, source objects, timeline events)
-        // - heatchecksEdge objects
-        // - Other unused websiteStory fields
-        const filteredPosts = sortedPosts.map(post => ({
-            id: post.id,
-            league: post.league,
-            teamA: post.teamA,
-            teamB: post.teamB,
-            matchupScheduledDate: post.matchupScheduledDate,
-            updatedAt: post.updatedAt || post.createdAt,
-            createdAt: post.createdAt,
-            storyType: post.storyType,
-            status: post.status, // Include status for radar modal filtering
-            websiteStory: {
-                slug: post.websiteStory?.seo?.slug || '', // Keep for backward compatibility
-                headline: post.websiteStory?.headline || '',
-                imageUrl: post.websiteStory?.imageUrl,
-                image: post.websiteStory?.image,
-                seo: {
-                    slug: post.websiteStory?.seo?.slug || '', // Include full SEO object for URL generation
-                    metaTitle: post.websiteStory?.seo?.metaTitle || '',
-                    metaDescription: post.websiteStory?.seo?.metaDescription || ''
-                }
-            },
-            // Only include heatCheckData fields needed for heat score calculation and hover breakdown
-            heatCheckData: post.heatCheckData ? {
-                fact_pack: post.heatCheckData.fact_pack || post.heatCheckData.factPack,
-                factPack: post.heatCheckData.factPack,
-                evidence_bundle: post.heatCheckData.evidence_bundle || post.heatCheckData.evidenceBundle,
-                evidenceBundle: post.heatCheckData.evidenceBundle,
-                narratives: post.heatCheckData.narratives,
-                // Include matchPackV3 for unified temperature model heat score calculation
-                matchPackV3: post.heatCheckData.matchPackV3,
-                // Include matchPackV4 for V4 hover breakdown (3-pillar heat score)
-                matchPackV4: post.heatCheckData.matchPackV4,
-                // For DFS articles, include dfsPlayers
-                dfsPlayers: post.heatCheckData.dfsPlayers
-            } : undefined
-        }));
-        
-        // Generate Organization schema
-        const organizationSchema = {
-            "@context": "https://schema.org",
-            "@type": "Organization",
-            "name": "HeatChecks",
-            "url": baseUrl,
-            "logo": {
-                "@type": "ImageObject",
-                "url": `${baseUrl}/images/HeatChecksMainLogo.svg`
-            },
-            "description": "Measure the emotion behind every matchup. HeatChecks tracks revenge, rivalry, narrative momentum, and psychological pressure in sports.",
-            "sameAs": [
-                // Add social media profiles if available
-            ]
-        };
-        
-        // Generate WebSite schema
-        const websiteSchema = {
-            "@context": "https://schema.org",
-            "@type": "WebSite",
-            "name": "HeatChecks",
-            "url": baseUrl,
-            "description": "Measure the emotion behind every matchup. HeatChecks tracks revenge, rivalry, narrative momentum, and psychological pressure in sports.",
-            "publisher": {
-                "@type": "Organization",
-                "name": "HeatChecks"
-            },
-            "potentialAction": {
-                "@type": "SearchAction",
-                "target": {
-                    "@type": "EntryPoint",
-                    "urlTemplate": `${baseUrl}/?q={search_term_string}`
-                },
-                "query-input": "required name=search_term_string"
-            }
-        };
-        
-        // Generate ItemList schema for recent posts
-        const itemListSchema = {
-            "@context": "https://schema.org",
-            "@type": "ItemList",
-            "name": "Recent Sports Analysis Articles",
-            "description": "Latest HeatChecks articles covering NBA, NFL, and DFS analysis",
-            "numberOfItems": Math.min(filteredPosts.length, 20),
-            "itemListElement": filteredPosts.slice(0, 20).map((post, index) => {
-                const league = normalizeLeague(post.league);
-                const date = post.matchupScheduledDate 
-                    ? formatDateISO(post.matchupScheduledDate)
-                    : formatDateISO(post.createdAt);
-                
-                let articleUrl = '';
-                if (post.storyType === 'dfs_article') {
-                    articleUrl = `${baseUrl}/dfs/${league}/${date}/dfs-value-narratives-${date}/`;
-                } else {
-                    // Check if SEO slug is in prediction format (new SEO-optimized format)
-                    const storedSlug = post.websiteStory?.seo?.slug || post.websiteStory?.slug || '';
-                    const isPredictionFormat = storedSlug && storedSlug.includes('-prediction-preview-') && storedSlug.match(/\d{4}-\d{2}-\d{2}$/);
-                    
-                    if (isPredictionFormat) {
-                        // Use prediction format: /{league}/{prediction-slug}/
-                        articleUrl = `${baseUrl}/${league}/${storedSlug}/`;
-                    } else {
-                        // Fallback to old format: /{league}/{date}/{matchup}/{narrative-slug}/
-                        const matchupSlug = generateMatchupSlug(post.teamA || '', post.teamB || '', getShortTeamName);
-                        const narratives = post.heatCheckData?.narratives || {};
-                        const candidateCards = narratives.candidate_cards || [];
-                        const primaryNarrativeId = narratives.selected?.primary_narrative_id || '';
-                        const activeCard = candidateCards.find(card => card.narrative_id === primaryNarrativeId);
-                        const emotionTags = activeCard?.emotion_tags || [];
-                        const narrativeSlug = generateNarrativeSlug(
-                            post.websiteStory?.headline || '',
-                            post.teamA || '',
-                            post.teamB || '',
-                            emotionTags
-                        );
-                        articleUrl = `${baseUrl}/${league}/${date}/${matchupSlug}/${narrativeSlug}/`;
-                    }
-                }
-                
-                return {
-                    "@type": "ListItem",
-                    "position": index + 1,
-                    "item": {
-                        "@type": "Article",
-                        "headline": post.websiteStory?.headline || 'Untitled',
-                        "url": articleUrl
-                    }
-                };
-            })
-        };
-        
-        const homepageKeywords = 'sports betting, DFS picks, daily fantasy sports, NBA betting, NFL betting, sports analysis, matchup preview, betting picks, DFS strategy, sports predictions';
-        
-        const homepageHtml = generateBaseHtml(homepageContent, {
-            title: 'HeatChecks | Sports Analysis & Heat Intelligence',
-            description: 'Measure the emotion behind every matchup. HeatChecks tracks revenge, rivalry, narrative momentum, and psychological pressure in sports. Expert betting picks and DFS analysis.',
-            url: baseUrl,
-            baseUrl,
-            keywords: homepageKeywords,
-            schemaOrg: [organizationSchema, websiteSchema, itemListSchema],
-            posts: filteredPosts
-        });
+        } // end posts.length > 0
+      } else {
+        console.log('Skipping legacy static site generation (set LEGACY_BUILD=true to include it).\n');
+      }
+
+        // Generate homepage (index.html) - beta waitlist landing page
+        console.log('Generating homepage (beta waitlist landing page)...');
+        const homepageHtml = generateLandingPageHtml(baseUrl);
         // Generate index.html (homepage) - allow it to be written to public
         const homepageDistPath = path.join(distDir, 'index.html');
         ensureDir(path.dirname(homepageDistPath));
         fs.writeFileSync(homepageDistPath, homepageHtml, 'utf-8');
         console.log(`✓ Generated: ${homepageDistPath}`);
-        
+
         // Also write to public for dev server access
         const homepagePublicPath = path.join(publicDir, 'index.html');
         ensureDir(path.dirname(homepagePublicPath));
         fs.writeFileSync(homepagePublicPath, homepageHtml, 'utf-8');
         console.log(`✓ Generated: ${homepagePublicPath}`);
         console.log('✓ Generated homepage\n');
-        
+
+        // Generate beta info ("learn more") placeholder page
+        console.log('Generating beta info page...');
+        writeHtmlFile('beta/index.html', generateBetaInfoPageHtml(baseUrl));
+        console.log('✓ Generated beta info page\n');
+
+        // Build the interactive world map bundle before generating any page that embeds it.
+        // No DB dependency, so this runs unconditionally here.
+        console.log('Building world map bundle...');
+        await buildWorldMap();
+        console.log('✓ Built world map bundle\n');
+
+        // Sitewide page-view beacon, referenced by every renderHead()-based page. No DB
+        // dependency, so this runs unconditionally too.
+        console.log('Building analytics beacon...');
+        await buildAnalyticsBeacon();
+        console.log('✓ Built analytics beacon\n');
+
+        // Generate claim-your-spot page (interactive world map, all islands disabled)
+        console.log('Generating claim-your-spot page...');
+        writeHtmlFile('claim-your-spot/index.html', generateClaimYourSpotPageHtml(baseUrl));
+        console.log('✓ Generated claim-your-spot page\n');
+
         // Generate about page (comprehensive SEO-optimized version)
         console.log('Generating about page...');
         const aboutContent = `
@@ -1169,6 +1045,92 @@ async function generateAllPages(): Promise<void> {
         writeHtmlFile(aboutPath, aboutHtml);
         console.log('✓ Generated about page\n');
         
+        // Build both Tank client bundles together (shared chunk extraction - see
+        // build-tank-bundles.ts) before either piece of Tank HTML that references them.
+        // Caught separately so a bundler failure doesn't take down the rest of the
+        // static build (matches the existing warn-and-continue behavior below).
+        console.log('Building Tank bundles...');
+        try {
+            await buildTankBundles();
+        } catch (error: any) {
+            console.warn('⚠ Warning: Failed to build Tank bundles:', error.message);
+        }
+
+        // Generate Tank article pages (published only)
+        console.log('Generating Tank articles...');
+        const tankArticleUrls: Array<{ loc: string; lastmod: string; changefreq: string; priority: string }> = [];
+        // Populated below if the tank_pages query succeeds; stays empty otherwise so
+        // the-tank page still generates (with its empty state) even if that table
+        // isn't ready yet - it's a primary nav destination from the world map and
+        // must never 404.
+        let tankEntries: TankPageEntry[] = [];
+        try {
+            const tankPagesResult = await pool.query(
+                `SELECT id, slug, league, angle, game_snapshot, model_output, created_at, published_at
+                 FROM tank_pages WHERE status = 'published' AND slug IS NOT NULL AND model_output IS NOT NULL`
+            );
+            const tankPages: TankPageRecord[] = [];
+            for (const row of tankPagesResult.rows) {
+                const tankPage: TankPageRecord = {
+                    id: row.id,
+                    slug: row.slug,
+                    league: row.league,
+                    angle: row.angle,
+                    game_snapshot: row.game_snapshot,
+                    model_output: row.model_output,
+                    created_at: row.created_at,
+                    published_at: row.published_at,
+                };
+                tankPages.push(tankPage);
+                const html = generateTankArticlePage(tankPage, baseUrl);
+                writeHtmlFile(`the-tank/articles/${row.slug}/index.html`, html);
+                tankArticleUrls.push({
+                    loc: `${baseUrl}/the-tank/articles/${row.slug}/`,
+                    lastmod: new Date(row.published_at || row.created_at).toISOString().split('T')[0],
+                    changefreq: 'weekly',
+                    priority: '0.6',
+                });
+            }
+            console.log(`✓ Generated ${tankPagesResult.rows.length} Tank articles\n`);
+
+            // Active feed for the-tank's carousel: published pages whose game hasn't
+            // happened yet, soonest first. Reuses the rows already fetched above.
+            const now = Date.now();
+            const activeTankPages = tankPages.filter(p => {
+                const kickoff = new Date(p.game_snapshot?.game?.kickoff || '').getTime();
+                return !isNaN(kickoff) && kickoff > now;
+            });
+            tankEntries = activeTankPages.map(p => {
+                const { prop, game } = p.game_snapshot;
+                return {
+                    slug: p.slug,
+                    league: p.league,
+                    matchup: `${game.away} @ ${game.home}`,
+                    payload: {
+                        hook: p.model_output.hook,
+                        cards: p.model_output.cards,
+                        call: p.model_output.call,
+                        tagline: truncateHeaderLabel(p.model_output.tagline || deriveTaglineFallback(p.model_output.hook)),
+                        contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
+                        oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
+                        settleDateLabel: truncateHeaderLabel(formatSettleDate(game.settleDate ?? game.kickoff)),
+                    },
+                };
+            });
+        } catch (error: any) {
+            console.warn('⚠ Warning: Failed to generate Tank articles (tank_pages table may not exist yet):', error.message);
+        }
+
+        // Generate the-tank page (unconditionally - it's a primary nav destination
+        // from the world map, so it must exist even if tankEntries came back empty).
+        // This is also the site's one real, crawlable Tank hub - see
+        // generateFallbackSection() inside tank-template.ts.
+        console.log('Generating the-tank page...');
+        writeHtmlFile('the-tank/index.html', generateTankPageHtml(baseUrl, tankEntries));
+        // Note: /the-tank/ itself is already a hardcoded sitemap entry in sitemap.ts -
+        // not pushed here too, to avoid a duplicate <url> entry.
+        console.log(`✓ Generated the-tank page with ${tankEntries.length} tank(s)\n`);
+
         // Generate redirects file (for Cloudflare Pages)
         console.log('Generating redirects...');
         try {
@@ -1187,9 +1149,9 @@ async function generateAllPages(): Promise<void> {
         
         // Generate sitemap.xml (write to dist/ for Cloudflare Pages)
         console.log('Generating sitemap...');
-        generateSitemap(posts, baseUrl, 'dist/sitemap.xml');
+        generateSitemap(posts, baseUrl, 'dist/sitemap.xml', tankArticleUrls);
         // Also write to public/ for local development
-        generateSitemap(posts, baseUrl, 'public/sitemap.xml');
+        generateSitemap(posts, baseUrl, 'public/sitemap.xml', tankArticleUrls);
         console.log('');
         
         // Generate robots.txt (write to dist/ for Cloudflare Pages)
