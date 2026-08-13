@@ -32,11 +32,16 @@
 /assets/*.css
   Cache-Control: public, no-cache
 
+# Unlike the JS chunks above, nothing under either of these two paths has a
+# content-hashed filename - it's all fixed names (logo, Mud Puppy art, world map,
+# the OG share image, banners) that CAN be updated in place, exactly like world-map.png
+# /webp and og-share-world-map.jpg just were tonight. No hashed subset to carve out
+# here, so no precedence question either - just no-cache outright.
 /assets/images/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, no-cache
 
 /images/*
-  Cache-Control: public, max-age=31536000, immutable
+  Cache-Control: public, no-cache
 
 /
   Cache-Control: public, max-age=300, stale-while-revalidate=3600
