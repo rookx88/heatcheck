@@ -9,40 +9,27 @@
   Content-Type: text/plain; charset=utf-8
   Cache-Control: public, max-age=3600, stale-while-revalidate=86400
 
-/assets/*.js
+# Confirmed live tonight: a more-specific literal-path rule placed AFTER a wildcard
+# rule for the same header does NOT reliably override it on Cloudflare Pages - a
+# deployment with /assets/world-map.js etc. explicitly set to `no-cache`, placed right
+# after this exact /assets/*.js block, still served the wildcard's `immutable` value
+# from origin (verified via a live response header + confirming that deployment really
+# was the active one, ruling out a stale/failed deploy). Rather than depend on
+# undocumented precedence behavior, the wildcard itself now only matches the one
+# pattern that's actually safe to cache forever - esbuild's content-hashed
+# tank-shared-<HASH>.js chunks, where a new build means a new URL, so a stale cache is
+# never reachable. Every other .js/.css under /assets/ (world-map.js, tank-page.js,
+# tank-article-deck.js, analytics-beacon.js, static-site.js, heat-score-v4.js,
+# public-site.css, and all *.css) builds to the same filename every deploy, so it
+# defaults to no-cache - still cacheable (a 304 skips the re-download when nothing
+# changed), just never able to go stale for a year the way tonight's bugs did twice.
+/assets/tank-shared-*.js
   Cache-Control: public, max-age=31536000, immutable
+
+/assets/*.js
+  Cache-Control: public, no-cache
 
 /assets/*.css
-  Cache-Control: public, max-age=31536000, immutable
-
-# The two wildcard rules above are only safe for genuinely content-hashed filenames
-# (esbuild's tank-shared-<HASH>.js chunks - a new build gets a new URL, so a stale
-# cache is never actually reachable). These specific entry bundles are NOT hashed -
-# they build to the same filename every time - so `immutable, max-age=31536000` on
-# them means a browser that visited once will keep running whatever code was live on
-# its first visit for up to a year, silently missing every future fix, exactly what
-# happened with the WorldMap/Tank navigation fix. More specific paths win over the
-# wildcard rules above, so these force revalidation on every request instead - still
-# cacheable (a 304 skips the re-download when nothing changed), just never stale.
-/assets/world-map.js
-  Cache-Control: public, no-cache
-/assets/world-map.css
-  Cache-Control: public, no-cache
-/assets/tank-page.js
-  Cache-Control: public, no-cache
-/assets/tank-page.css
-  Cache-Control: public, no-cache
-/assets/tank-article-deck.js
-  Cache-Control: public, no-cache
-/assets/tank-article-deck.css
-  Cache-Control: public, no-cache
-/assets/analytics-beacon.js
-  Cache-Control: public, no-cache
-/assets/static-site.js
-  Cache-Control: public, no-cache
-/assets/heat-score-v4.js
-  Cache-Control: public, no-cache
-/assets/public-site.css
   Cache-Control: public, no-cache
 
 /assets/images/*
