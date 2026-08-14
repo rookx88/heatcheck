@@ -131,6 +131,8 @@ const NEW_SITE_IMAGES = [
     'world-map.png',
     'world-map.webp',
     'og-share-world-map.jpg',
+    'tank-email-correct.jpg',
+    'tank-email-incorrect.jpg',
 ];
 
 /**

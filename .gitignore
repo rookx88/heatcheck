@@ -54,6 +54,8 @@ assets/images/*
 !assets/images/mudpuppy-jersey.webp
 !assets/images/world-map.png
 !assets/images/world-map.webp
+!assets/images/tank-email-correct.jpg
+!assets/images/tank-email-incorrect.jpg
 
 # Retired prediction-app content, relocated out of public/ so Cloudflare Pages
 # doesn't upload it and it stays out of the live site's build. Preserved here

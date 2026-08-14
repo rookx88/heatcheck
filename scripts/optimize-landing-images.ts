@@ -110,12 +110,43 @@ async function buildOgImage(): Promise<void> {
     console.log(`✓ og-share-world-map.jpg (${(size / 1024).toFixed(0)}KB) [1200x630]`);
 }
 
+/**
+ * The two settlement-email hero images (tank-email-correct/incorrect.jpg) - unlike
+ * every other job here, these sources aren't SVG-wrapped exports from assets/new-
+ * website/, they're plain flat 1080x1080 PNGs (no alpha channel) sitting at the repo
+ * root, so no extractEmbeddedPng/deriveAlphaFromBrightness step applies. JPG (not
+ * WebP or PNG) for the same reason buildOgImage() uses JPG - email clients
+ * (Outlook desktop especially) have much worse WebP support than browsers do, and a
+ * photographic/gradient scene like this gets little benefit from PNG's lossless
+ * compression. 600px is 2x-retina-safe against the ~424px display width the email
+ * template uses (see lib/pages-functions/email.ts's settlementEmailHtml).
+ */
+async function buildSettlementEmailImages(): Promise<void> {
+    const emailImageJobs = [
+        { source: 'Tank_correct_pick_email_conf.png', outName: 'tank-email-correct' },
+        { source: 'Tank_incorrect_pick_email_conf.png', outName: 'tank-email-incorrect' },
+    ];
+
+    for (const job of emailImageJobs) {
+        const srcPath = path.join(process.cwd(), job.source);
+        const outPath = path.join(outDir, `${job.outName}.jpg`);
+        await sharp(srcPath)
+            .resize({ width: 600 })
+            .jpeg({ quality: 82 })
+            .toFile(outPath);
+
+        const size = fs.statSync(outPath).size;
+        console.log(`✓ ${job.outName}.jpg (${(size / 1024).toFixed(0)}KB) [600px wide]`);
+    }
+}
+
 async function run(): Promise<void> {
     if (!fs.existsSync(outDir)) {
         fs.mkdirSync(outDir, { recursive: true });
     }
 
     await buildOgImage();
+    await buildSettlementEmailImages();
 
     for (const job of jobs) {
         const svgPath = path.join(sourceDir, job.source);
