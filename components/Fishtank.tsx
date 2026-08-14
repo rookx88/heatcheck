@@ -426,6 +426,16 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
     const [email, setEmail] = useState('');
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+    // Whether `email` represents a REAL, server-confirmed account (from a cached
+    // account, or any response - success, conflict, or cap-reached - that resolved a
+    // waitlist row) as opposed to just whatever text currently sits in the brand-new-
+    // account email input while the reader is still typing it. These must be two
+    // separate flags: `email` alone going truthy mid-keystroke ("j", "ja", "jam"...)
+    // must NOT be read as "this is a known account" - that bug swapped the email input
+    // out for the verify-code block (and made chooseSide auto-submit whatever partial
+    // text was typed) the instant a reader typed their first character.
+    const [accountKnown, setAccountKnown] = useState(false);
+
     // The account's full picture for TODAY - which tanks (including this one) are
     // already picked, and how many of the daily cap remain. Null until an account is
     // known (nothing cached yet, and this reader hasn't picked in this session either).
@@ -450,6 +460,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
             return;
         }
         setEmail(cached.email);
+        setAccountKnown(true);
         setVerifyState(cached.verified ? 'verified' : 'unverified');
         getTodayStatus(cached.email)
             .then((status) => {
@@ -496,6 +507,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
         try {
             const res = await submitPick(submitterEmail, slug, side, sideIndex);
             setCachedAccount({ email: submitterEmail, verified: res.verified });
+            setAccountKnown(true);
             if (res.verified) setVerifyState('verified');
             setTodayStatus((prev) => ({
                 picks: [...(prev?.picks ?? []), res.pick],
@@ -511,6 +523,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                 if (err.existingPick) {
                     const verified = Boolean(err.existingPick.verified);
                     setCachedAccount({ email: submitterEmail, verified });
+                    setAccountKnown(true);
                     if (verified) setVerifyState('verified');
                     setTodayStatus((prev) => ({
                         picks: [...(prev?.picks ?? []).filter((p) => p.slug !== slug), err.existingPick!],
@@ -530,6 +543,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                 // new device/incognito session gets stuck showing the code prompt
                 // indefinitely, since nothing else would ever correct verifyState.
                 setCachedAccount({ email: submitterEmail, verified: err.verified });
+                setAccountKnown(true);
                 if (err.verified) setVerifyState('verified');
                 setTodayStatus((prev) => ({
                     picks: prev?.picks ?? [],
@@ -551,7 +565,8 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
         // A known account (already picked at least once - email is cached) doesn't
         // need to re-type its email for pick 2 or 3 - submit immediately. A brand new
         // reader still needs the email form below to establish the account at all.
-        if (email) {
+        // Gated on accountKnown, not on `email` being non-empty - see its declaration.
+        if (accountKnown) {
             setSelectedSide(side);
             setSelectedSideIndex(index);
             void submitPickFor(side, index, email);
@@ -634,7 +649,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                         {todayStatus.picksToday} of 3 picks used today{remaining > 0 ? ` · ${remaining} left` : ''}
                     </p>
                 )}
-                {verifyBlock}
+                {accountKnown && verifyBlock}
                 {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} />}
             </div>
         );
@@ -650,7 +665,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                     You've used today's picks — back tomorrow.
                 </p>
                 {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of 3 picks used today</p>}
-                {verifyBlock}
+                {accountKnown && verifyBlock}
                 {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} />}
             </div>
         );
@@ -673,8 +688,8 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
             </div>
             {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of 3 picks used today · {remaining} left</p>}
 
-            {/* Email form only for a brand new account (chooseSide auto-submits once email is known). */}
-            {submitState === 'choosing' && selectedSide && !email && (
+            {/* Email form only for a brand new account (chooseSide auto-submits once account is known). */}
+            {submitState === 'choosing' && selectedSide && !accountKnown && (
                 <form
                     onSubmit={handleSubmit}
                     onClick={(e) => e.stopPropagation()}
@@ -702,7 +717,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
 
             {/* Nothing to verify until an account actually exists (first pick made) -
                 a brand new reader with no email yet has no business seeing this. */}
-            {email && verifyBlock}
+            {accountKnown && verifyBlock}
             {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} />}
         </div>
     );
