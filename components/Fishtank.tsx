@@ -11,7 +11,7 @@
 // hand-written as inline styles instead of utility classes.
 // ===================================================================================
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useMotionValue, useSpring } from 'motion/react';
 import { Flame, Zap, Swords } from 'lucide-react';
 import {
@@ -443,14 +443,14 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
     // days/devices the way a single cached pick object could get away with under the
     // old one-pick-ever model) so this specific tank knows whether it's already picked
     // and the reader can see how many of today's picks remain.
-    useEffect(() => {
+    const hydrateAccount = useCallback(() => {
         const cached = getCachedAccount();
         if (!cached) {
             setStatusLoaded(true);
             return;
         }
         setEmail(cached.email);
-        if (cached.verified) setVerifyState('verified');
+        setVerifyState(cached.verified ? 'verified' : 'unverified');
         getTodayStatus(cached.email)
             .then((status) => {
                 setTodayStatus(status);
@@ -463,6 +463,29 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
             })
             .finally(() => setStatusLoaded(true));
     }, []);
+
+    useEffect(() => {
+        hydrateAccount();
+    }, [hydrateAccount]);
+
+    // The mount effect above only ever runs once per real navigation - it does NOT
+    // re-run when the browser's back-forward cache restores this exact page (and this
+    // exact in-memory React state) from before the navigation away, since bfcache
+    // resurrects everything frozen exactly as it was rather than remounting. That
+    // leaves email/verifyState/todayStatus stuck at whatever they were the moment the
+    // user navigated away - stale if verification or a pick happened elsewhere (another
+    // tab, another device, or server-side) since then. Same fix as WorldMap.tsx's
+    // identical bfcache issue: `pageshow` with `persisted: true` is the specific signal
+    // a page was just restored from bfcache rather than freshly loaded, so that's the
+    // one moment this needs to re-hydrate from scratch.
+    useEffect(() => {
+        const onPageShow = (e: PageTransitionEvent) => {
+            if (!e.persisted) return;
+            hydrateAccount();
+        };
+        window.addEventListener('pageshow', onPageShow);
+        return () => window.removeEventListener('pageshow', onPageShow);
+    }, [hydrateAccount]);
 
     const myPickHere = todayStatus?.picks.find((p) => p.slug === slug) ?? null;
     const remaining = todayStatus?.remaining ?? 3;
