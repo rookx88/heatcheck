@@ -68,6 +68,7 @@ export async function fetchLiveGames(
                         event_end_date: event.endDate || null,
                         event_teams: event.teams ?? null,
                         market_id: market.id,
+                        market_end_date: market.endDate || null,
                         subject_name: subjectName,
                         market_type: market.sportsMarketType || null,
                         market_line: market.line !== undefined && market.line !== null ? String(market.line) : null,

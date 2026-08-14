@@ -19,6 +19,13 @@ export interface Prop {
     line: number | null;        // null = yes/no market (e.g. Anytime TD)
     prominence: number;         // 0-99, used only for pre-filtering
     odds: PropOdds | null;
+    // ISO 8601 - this specific market's own resolution deadline (Polymarket's per-market
+    // endDate), when known. Prefer this over Game.settleDate for display: the event can
+    // bundle markets with very different resolution windows (e.g. a same-night totals
+    // prop next to a moneyline market Polymarket keeps open for a week), so the event-
+    // level date doesn't reliably describe any one prop's actual settle time. Falls back
+    // to Game.settleDate when absent (mock data, season futures with no discrete game).
+    settleDate?: string;
 }
 
 export interface Game {

@@ -88,6 +88,10 @@ export interface GammaMarket {
     sportsMarketType?: string | null; // canonical stat key, e.g. "baseball_player_home_runs"
     line?: number | string | null;
     marketMetadata?: Record<string, any> | null;
+    // This market's own resolution deadline - distinct from the parent event's endDate,
+    // which Polymarket sets per-event (e.g. keeping a moneyline market open longer for
+    // disputes) and does NOT reflect when this specific market actually resolves.
+    endDate?: string;
 }
 
 export interface GammaEventTeam {

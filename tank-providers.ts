@@ -100,6 +100,11 @@ export interface PolymarketPropsRow {
     event_end_date: string | null;
     event_teams: { name: string; abbreviation?: string; ordering?: string }[] | null;
     market_id: string;
+    // This market's own endDate, distinct from event_end_date above - see Prop.settleDate
+    // in tank-types.ts for why the distinction matters. Optional: the cached-DB provider
+    // path (createPolymarketPropProvider) doesn't currently select this column, so it
+    // falls back to the event-level date same as before for that path.
+    market_end_date?: string | null;
     subject_name: string | null;
     market_type: string | null;
     market_line: string | null;
@@ -205,6 +210,7 @@ export function buildGamesFromFlatProps(rows: PolymarketPropsRow[]): Game[] {
             odds: row.outcomes && row.outcome_prices
                 ? { outcomes: row.outcomes, outcomePrices: row.outcome_prices.map(Number) }
                 : null,
+            settleDate: row.market_end_date || undefined,
         }));
 
         games.push({

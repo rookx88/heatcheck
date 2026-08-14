@@ -1114,7 +1114,7 @@ async function generateAllPages(): Promise<void> {
                         tagline: truncateHeaderLabel(p.model_output.tagline || deriveTaglineFallback(p.model_output.hook)),
                         contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
                         oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
-                        settleDateLabel: truncateHeaderLabel(formatSettleDate(game.settleDate ?? game.kickoff)),
+                        settleDateLabel: truncateHeaderLabel(formatSettleDate(prop.settleDate ?? game.settleDate ?? game.kickoff)),
                     },
                 };
             });
