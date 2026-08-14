@@ -39,7 +39,7 @@ const Sparkleburst: React.FC = () => (
             '--delay': `${delay}s`,
             background: color,
             boxShadow: `0 0 ${size * 1.5}px ${size * 0.5}px ${color}`,
-          }}
+          } as React.CSSProperties}
         />
       );
     })}
@@ -51,9 +51,13 @@ type SubscribeState = 'idle' | 'subscribing' | 'subscribed' | 'error';
 export interface AllSetModalProps {
   email: string;
   onClose: () => void;
+  // The side just picked, when the caller has it - lets the explainer reference the
+  // actual call ("You called {side}"). Optional: callers that show this modal without a
+  // fresh pick in scope (e.g. the "cap used up" branch) just omit it.
+  side?: string;
 }
 
-export const AllSetModal: React.FC<AllSetModalProps> = ({ email, onClose }) => {
+export const AllSetModal: React.FC<AllSetModalProps> = ({ email, onClose, side }) => {
   const [subscribeState, setSubscribeState] = useState<SubscribeState>('idle');
 
   useEffect(() => {
@@ -84,7 +88,7 @@ export const AllSetModal: React.FC<AllSetModalProps> = ({ email, onClose }) => {
         className="allset-modal-panel"
         role="dialog"
         aria-modal="true"
-        aria-label="You're all set"
+        aria-label="Pick locked in"
         onClick={(e) => e.stopPropagation()}
       >
         <button className="allset-modal-close" onClick={onClose} aria-label="Close">
@@ -100,8 +104,20 @@ export const AllSetModal: React.FC<AllSetModalProps> = ({ email, onClose }) => {
             width={120}
             height={180}
           />
-          <h2 className="allset-modal-headline">You're all set!</h2>
-          <p className="allset-modal-twist">But wait&hellip; before you go.</p>
+          <h2 className="allset-modal-headline">Pick Locked In</h2>
+          <p className="allset-modal-twist">Here&rsquo;s what that gets you.</p>
+        </div>
+
+        <div className="allset-modal-explainer">
+          {side && <p className="allset-modal-explainer-lead">You called <strong>{side}</strong>.</p>}
+          <p>
+            Right or wrong, that call earns Ember toward your Mud Puppy once it settles &mdash;
+            more if you nail it, something either way if you don&rsquo;t. This game doesn&rsquo;t
+            punish you for playing. It punishes you for sitting out.
+          </p>
+          <p className="allset-modal-explainer-cta">
+            New Tanks drop daily &mdash; come back and stack more before this launches.
+          </p>
         </div>
 
         <div className="allset-modal-newsletter">

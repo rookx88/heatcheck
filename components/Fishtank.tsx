@@ -12,7 +12,7 @@
 // ===================================================================================
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { motion, useMotionValue, useSpring } from 'motion/react';
+import { motion, useMotionValue, useSpring, AnimatePresence, useReducedMotion } from 'motion/react';
 import { Flame, Zap, Swords } from 'lucide-react';
 import {
     getCachedAccount,
@@ -31,7 +31,11 @@ import { AllSetModal } from './AllSetModal';
 export interface DeckPayload {
     hook: string;
     cards: string[];
-    call: { question: string; sides: string[] };
+    // sidesImpliedProb is positionally parallel to sides (same convention
+    // functions/api/picks.ts's sideIndex relies on) - the raw market implied
+    // probability per side, straight from the frozen game_snapshot's prop.odds.
+    // Optional because older, pre-rebuild payloads won't carry it yet.
+    call: { question: string; sides: string[]; sidesImpliedProb?: number[] };
     // Wall-header content, below. All pre-formatted strings computed server-side (never
     // client-side) so this component stays purely presentational. tagline is the one
     // model-generated field; the rest are real facts pulled from the frozen game_snapshot
@@ -129,7 +133,12 @@ const Face3D: React.FC<{
 const WallPanel: React.FC<{
     wall: Wall;
     content: React.ReactNode;
-}> = ({ wall, content }) => {
+    // 0-based position and total wall count - drives the "N / total" page number
+    // tag, the one piece of the magazine metaphor that needs to know where this
+    // wall sits among the others.
+    index: number;
+    total: number;
+}> = ({ wall, content, index, total }) => {
     const Icon = wall.icon;
     // The Call wall is where the pick actually happens - give it a fiery-orange glow
     // so it reads as "check this side out" against the other panels' cyan.
@@ -142,9 +151,13 @@ const WallPanel: React.FC<{
                     width: '100%', height: '100%',
                     position: 'relative',
                     display: 'flex', flexDirection: 'column',
-                    background: 'rgba(15,23,42,0.2)',
-                    backdropFilter: 'blur(3px)',
-                    WebkitBackdropFilter: 'blur(3px)',
+                    // No backdrop-filter here (deliberately) - combined with
+                    // backfaceVisibility below on an element inside this preserve-3d
+                    // tree, Firefox fails to actually hide the backface, so the mirrored
+                    // back of the panel bleeds through the front. Chrome's compositor
+                    // doesn't have this bug, which is why it only showed up in Firefox.
+                    // A more opaque flat background keeps the panel readable without it.
+                    background: 'rgba(15,23,42,0.55)',
                     border: isCall ? '1.5px solid rgba(251,146,60,0.85)' : '1px solid rgba(0,0,0,0.6)',
                     borderRadius: 12,
                     overflow: 'hidden',
@@ -162,13 +175,40 @@ const WallPanel: React.FC<{
                     <h4 style={{
                         fontSize: '0.68rem', fontWeight: 700, color: '#f1f5f9', letterSpacing: '0.06em',
                         textTransform: 'uppercase', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.7)',
-                        minWidth: 0, lineHeight: 1.35,
+                        minWidth: 0, lineHeight: 1.35, flex: 1,
                         display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
                         overflow: 'hidden',
                     } as React.CSSProperties}>{wall.label}</h4>
+                    {/* Masthead mark - the same wordmark used in the page chrome around
+                        the artifact, printed small on every wall like a magazine running
+                        its nameplate on every page. */}
+                    <img
+                        src="/assets/images/heatchecks-logo.webp"
+                        alt=""
+                        aria-hidden="true"
+                        style={{ height: 13, width: 'auto', flexShrink: 0, opacity: 0.8, filter: 'drop-shadow(0 1px 3px rgba(0,0,0,0.6))' }}
+                    />
                 </div>
+                {/* Rule line under the masthead row - the print "kicker rule" that
+                    separates nameplate from body copy on every wall. */}
+                <div style={{
+                    height: 2, flexShrink: 0,
+                    background: 'linear-gradient(90deg, transparent, var(--hc-gold, #ffc72c), transparent)',
+                    opacity: 0.55,
+                }} />
                 <div style={{ padding: '1.25rem', color: '#e2e8f0', fontSize: '0.9rem', lineHeight: 1.6, overflowY: 'auto', textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>
                     {content}
+                </div>
+                {/* Page number - "this is one page of a set," readable on every wall,
+                    not just Call. */}
+                <div style={{
+                    position: 'absolute', bottom: 6, left: 10,
+                    fontFamily: "'Courier New', monospace",
+                    fontSize: '0.55rem', letterSpacing: '0.1em',
+                    color: 'rgba(226,232,240,0.45)',
+                    pointerEvents: 'none',
+                }}>
+                    {index + 1} / {total}
                 </div>
                 {isCall && (
                     <>
@@ -320,6 +360,54 @@ const Embers: React.FC = () => (
     </>
 );
 
+// Visual proportion only, 0 (favorite) to 1 (max-clamped longshot) - the same shape
+// of quantity lib/pages-functions/ledger.ts's correctCallPayout() scales a win's
+// payout by (1/impliedProb, capped), but deliberately not a reproduction of its
+// exact base/cap formula (those live in the tunable ember_rules table). Since the
+// burst never prints a number, this can't drift out of sync with the real payout -
+// it only has to feel proportionally bigger for a bolder pick.
+function emberBurstStrength(prob: number | undefined): number {
+    if (typeof prob !== 'number' || !Number.isFinite(prob) || prob <= 0 || prob > 1) return 0.5;
+    const underdogFactor = Math.min(1 / prob, 3);
+    return (underdogFactor - 1) / 2;
+}
+
+// Fires once from the pressed pill button the instant a side is picked - more and
+// faster-flying particles for a bolder (more underdog) pick, so pressing a longshot
+// side reads as heavier than pressing the favorite.
+const EmberBurst: React.FC<{ strength: number }> = ({ strength }) => {
+    const reduceMotion = useReducedMotion();
+    if (reduceMotion) return null;
+    const count = Math.round(6 + strength * 8);
+    const distance = 34 + strength * 30;
+    return (
+        <div style={{ position: 'absolute', top: '50%', left: '50%', width: 0, height: 0, pointerEvents: 'none' }} aria-hidden="true">
+            {Array.from({ length: count }).map((_, i) => {
+                const angle = (360 / count) * i + (i % 2) * 12;
+                const rad = (angle * Math.PI) / 180;
+                const dist = distance * (0.75 + (i % 3) * 0.15);
+                const size = 3 + strength * 3 + (i % 3);
+                const color = EMBER_COLORS[i % EMBER_COLORS.length];
+                return (
+                    <motion.span
+                        key={i}
+                        initial={{ x: 0, y: 0, opacity: 1, scale: 0.4 }}
+                        animate={{ x: Math.cos(rad) * dist, y: Math.sin(rad) * dist, opacity: 0, scale: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.75 + strength * 0.2, ease: 'easeOut' }}
+                        style={{
+                            position: 'absolute', top: 0, left: 0,
+                            width: size, height: size, borderRadius: '50%',
+                            background: color,
+                            boxShadow: `0 0 ${size * 2}px ${size * 0.8}px ${color}`,
+                        }}
+                    />
+                );
+            })}
+        </div>
+    );
+};
+
 const pillButtonStyle = (active: boolean, disabled?: boolean): React.CSSProperties => ({
     padding: '0.5rem 0.9rem',
     borderRadius: 8,
@@ -447,6 +535,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
     const [verifyError, setVerifyError] = useState<string | null>(null);
     const [resendState, setResendState] = useState<'idle' | 'sending' | 'sent'>('idle');
     const [showAllSet, setShowAllSet] = useState(false);
+    const [burst, setBurst] = useState<{ key: string; side: string; strength: number } | null>(null);
 
     // A cached account means this browser already has a real pick history - fetch
     // today's actual server-side status (not a client cache, which would drift across
@@ -562,6 +651,14 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
 
     const chooseSide = (side: string, index: number) => {
         if (submitState === 'submitting' || myPickHere || remaining <= 0) return;
+        // Fires on the tap itself, independent of whether the submit call below
+        // succeeds immediately or waits on the email-capture form - it's feedback
+        // for the choice, not for the network result.
+        const burstKey = `${side}-${Date.now()}`;
+        setBurst({ key: burstKey, side, strength: emberBurstStrength(call.sidesImpliedProb?.[index]) });
+        window.setTimeout(() => {
+            setBurst((prev) => (prev?.key === burstKey ? null : prev));
+        }, 950);
         // A known account (already picked at least once - email is cached) doesn't
         // need to re-type its email for pick 2 or 3 - submit immediately. A brand new
         // reader still needs the email form below to establish the account at all.
@@ -650,7 +747,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                     </p>
                 )}
                 {accountKnown && verifyBlock}
-                {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} />}
+                {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} side={myPickHere.side} />}
             </div>
         );
     }
@@ -666,7 +763,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                 </p>
                 {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of {todayStatus.picksToday + todayStatus.remaining} picks used today</p>}
                 {accountKnown && verifyBlock}
-                {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} />}
+                {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} side={selectedSide ?? undefined} />}
             </div>
         );
     }
@@ -676,14 +773,18 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
             <p style={{ fontWeight: 600, color: '#f1f5f9', marginTop: 0 }}>{call.question}</p>
             <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
                 {call.sides.map((side, index) => (
-                    <button
-                        key={side}
-                        onClick={(e) => { e.stopPropagation(); chooseSide(side, index); }}
-                        style={pillButtonStyle(selectedSide === side)}
-                        disabled={submitState === 'submitting'}
-                    >
-                        {side}
-                    </button>
+                    <span key={side} style={{ position: 'relative', display: 'inline-flex' }}>
+                        <button
+                            onClick={(e) => { e.stopPropagation(); chooseSide(side, index); }}
+                            style={pillButtonStyle(selectedSide === side)}
+                            disabled={submitState === 'submitting'}
+                        >
+                            {side}
+                        </button>
+                        <AnimatePresence>
+                            {burst?.side === side && <EmberBurst key={burst.key} strength={burst.strength} />}
+                        </AnimatePresence>
+                    </span>
                 ))}
             </div>
             {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of {todayStatus.picksToday + todayStatus.remaining} picks used today · {remaining} left</p>}
@@ -718,7 +819,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
             {/* Nothing to verify until an account actually exists (first pick made) -
                 a brand new reader with no email yet has no business seeing this. */}
             {accountKnown && verifyBlock}
-            {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} />}
+            {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} side={selectedSide ?? undefined} />}
         </div>
     );
 };
@@ -798,6 +899,17 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string }> = ({ pay
                         pointerEvents: 'none',
                     }} />
 
+                    {/* Grounding shadow - a flat dark ellipse sitting just under the base,
+                        so the tank reads as resting on a surface instead of floating in a
+                        void. Same radial-gradient-blob technique as the glow above it. */}
+                    <Face3D width={TANK_W * 1.3} height={TANK_D * 1.3} rotateX={-90} translateZ={Z_H + 2}>
+                        <div style={{
+                            width: '100%', height: '100%', borderRadius: '50%',
+                            background: 'radial-gradient(ellipse, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.25) 45%, transparent 72%)',
+                            pointerEvents: 'none',
+                        }} />
+                    </Face3D>
+
                     {/* Base */}
                     <Face3D width={TANK_W} height={TANK_D} rotateX={-90} translateZ={Z_H}>
                         <div style={{ width: '100%', height: '100%', background: 'rgba(15,23,42,0.35)', backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', border: '1px solid rgba(51,65,85,0.6)', borderRadius: 12, boxShadow: '0 0 60px rgba(0,0,0,0.8)' }} />
@@ -825,7 +937,7 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string }> = ({ pay
                     <Embers />
 
                     {walls.map((wall, i) => (
-                        <WallPanel key={i} wall={wall} content={contentByKind(wall, i)} />
+                        <WallPanel key={i} wall={wall} content={contentByKind(wall, i)} index={i} total={walls.length} />
                     ))}
                 </motion.div>
             </motion.div>

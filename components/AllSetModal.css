@@ -129,6 +129,46 @@
 }
 
 /* ---------------------------------------------------------------------- */
+/* Explainer - what the pick just made means (teal = "explains", vs the    */
+/* newsletter box's solid gold = "asks"), matching the teal-accent left-   */
+/* border convention tank-article-template.ts uses for narrative body text */
+/* ---------------------------------------------------------------------- */
+
+.allset-modal-explainer {
+  text-align: left;
+  background: rgba(47, 230, 217, 0.06);
+  border-left: 2px solid rgba(47, 230, 217, 0.4);
+  border-radius: 4px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+}
+
+.allset-modal-explainer p {
+  margin: 0 0 0.6rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.allset-modal-explainer p:last-child {
+  margin-bottom: 0;
+}
+
+.allset-modal-explainer-lead {
+  color: #fff !important;
+  font-weight: 700;
+}
+
+.allset-modal-explainer-lead strong {
+  color: var(--hc-teal, #2fe6d9);
+}
+
+.allset-modal-explainer-cta {
+  color: var(--hc-gold, #ffc72c) !important;
+  font-weight: 800 !important;
+}
+
+/* ---------------------------------------------------------------------- */
 /* Newsletter - the primary CTA, visually dominant                        */
 /* ---------------------------------------------------------------------- */
 
