@@ -2,11 +2,13 @@ name = "heatchecks-curate-cron"
 main = "src/index.ts"
 compatibility_date = "2026-08-12"
 
-# Once daily, before typical same-day human review of overnight drafts. Distinct from
-# worker-settle's 0 9 * * * so the two don't compete for the same window - retune once
-# real review timing matters.
+# Once daily, timed so drafts are waiting at 6:00 AM Eastern for morning review. Cloudflare
+# Cron Triggers run on fixed UTC time with no timezone/DST awareness: 10:00 UTC is 6 AM during
+# EDT (spring-fall); once the US falls back to EST in November this drifts to 5:00 AM Eastern
+# unless nudged to "0 11 * * *" for the winter months. Distinct from worker-settle's 0 9 * * *
+# so the two don't compete for the same window.
 [triggers]
-crons = ["0 12 * * *"]
+crons = ["0 10 * * *"]
 
 [vars]
 CURATE_URL = "https://heatchecks.io/api/curate"

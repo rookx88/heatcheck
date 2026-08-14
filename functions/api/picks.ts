@@ -17,6 +17,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, EMAIL_RE, UUID_RE, type Env } from '../../lib/pages-functions/db';
 import { sendVerificationEmail, generateVerificationCode } from '../../lib/pages-functions/email';
+import { getSession } from '../../lib/pages-functions/session';
 import { logEvent } from '../../lib/pages-functions/events';
 
 // Defaults to 1/day (Phase 0) rather than the eventual 3/day Phase 1 standard -
@@ -52,7 +53,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         return jsonResponse({ message: 'Invalid JSON body.' }, { status: 400 });
     }
 
-    const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
     const slug = typeof body?.slug === 'string' ? body.slug.trim() : '';
     const side = typeof body?.side === 'string' ? body.side.trim() : '';
     const sideIndex = Number.isInteger(body?.sideIndex) ? (body.sideIndex as number) : null;
@@ -61,7 +61,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // never a reason to fail the pick itself.
     const visitorId = typeof body?.visitorId === 'string' && UUID_RE.test(body.visitorId) ? body.visitorId : null;
 
-    if (!EMAIL_RE.test(email)) {
+    // Session-preferred identity: with a valid session cookie, the session decides who
+    // this pick belongs to and any body email is ignored (a logged-in user must not be
+    // able to submit picks onto some other address). Without a session, the body email
+    // is still accepted - that's the deliberate first-ever-pick funnel entry point,
+    // where email doubles as account creation.
+    const session = await getSession(context.request, context.env);
+    const email = session
+        ? session.email.toLowerCase()
+        : (typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '');
+
+    if (!session && !EMAIL_RE.test(email)) {
         return jsonResponse({ message: 'Please enter a valid email address.' }, { status: 400 });
     }
     if (!slug) return jsonResponse({ message: 'Missing slug.' }, { status: 400 });
@@ -111,17 +121,27 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     let waitlistId: string;
-    try {
-        const waitlistRows = await sql`
-            INSERT INTO waitlist (email) VALUES (${email})
-            ON CONFLICT ((LOWER(email))) DO UPDATE SET email = waitlist.email
-            RETURNING id
-        `;
-        waitlistId = waitlistRows[0].id as string;
-    } catch (err) {
-        console.error('[POST /api/picks] Error upserting waitlist row:', err);
-        return jsonResponse({ message: 'Internal server error' }, { status: 500 });
+    if (session) {
+        // Identity already established - no upsert, the account row necessarily exists.
+        waitlistId = session.userId;
+    } else {
+        try {
+            const waitlistRows = await sql`
+                INSERT INTO waitlist (email) VALUES (${email})
+                ON CONFLICT ((LOWER(email))) DO UPDATE SET email = waitlist.email
+                RETURNING id
+            `;
+            waitlistId = waitlistRows[0].id as string;
+        } catch (err) {
+            console.error('[POST /api/picks] Error upserting waitlist row:', err);
+            return jsonResponse({ message: 'Internal server error' }, { status: 500 });
+        }
     }
+
+    // Sliding-session refresh (lib/pages-functions/session.ts): when getSession slid
+    // the expiry this request, the re-signed cookie rides back on whichever response
+    // this handler ends up returning.
+    const authHeaders = session?.refreshedSetCookie ? { 'Set-Cookie': session.refreshedSetCookie } : undefined;
 
     // Daily volume cap: count-then-insert, not a DB constraint (Postgres can't express
     // "at most N rows" declaratively). Accepted, documented race window - two
@@ -150,7 +170,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         // would see a confusing "confirm your email" prompt it doesn't need.
         return jsonResponse(
             { message: "You've used today's picks — back tomorrow.", picksToday, remaining: 0, verified: Boolean(capRow.email_verified) },
-            { status: 429 }
+            { status: 429, headers: authHeaders }
         );
     }
 
@@ -163,11 +183,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         const row = inserted[0] as unknown as PickRow;
 
         // Fire off a verification code, but never let a Resend failure fail the pick
-        // itself - the pick is already committed at this point.
-        let verified = false;
+        // itself - the pick is already committed at this point. session.verified is
+        // fresh (getSession joins waitlist on every request), so a verified session
+        // skips the extra read entirely.
+        let verified = session?.verified ?? false;
         try {
-            const waitlistRow = await sql`SELECT email_verified FROM waitlist WHERE id = ${waitlistId}`;
-            verified = Boolean((waitlistRow[0] as unknown as { email_verified: boolean } | undefined)?.email_verified);
+            if (!verified) {
+                const waitlistRow = await sql`SELECT email_verified FROM waitlist WHERE id = ${waitlistId}`;
+                verified = Boolean((waitlistRow[0] as unknown as { email_verified: boolean } | undefined)?.email_verified);
+            }
             if (!verified) {
                 const code = generateVerificationCode();
                 await sql`
@@ -199,7 +223,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 picksToday: newPicksToday,
                 remaining: DAILY_PICK_CAP - newPicksToday,
             },
-            { status: 201 }
+            { status: 201, headers: authHeaders }
         );
     } catch (err: any) {
         if (err.code === '23505') { // idx_picks_waitlist_tank conflict - already picked THIS tank
@@ -223,7 +247,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                     message: 'You already made this call.',
                     pick: row ? { slug: row.tank_slug, side: row.side, createdAt: row.created_at, verified: row.email_verified } : null,
                 },
-                { status: 409 }
+                { status: 409, headers: authHeaders }
             );
         }
         console.error('[POST /api/picks] Error inserting pick:', err);

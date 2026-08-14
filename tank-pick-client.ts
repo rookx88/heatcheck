@@ -108,13 +108,62 @@ export async function submitPick(email: string, slug: string, side: string, side
 }
 
 // The client's source of truth for "which tanks have I picked today / how many
-// remain" - re-fetched on every CallContent mount (once an account is known) rather
-// than trusting a client cache that could drift across days/devices.
-export async function getTodayStatus(email: string): Promise<TodayStatus> {
-    const res = await fetch(`/api/picks/today?email=${encodeURIComponent(email)}`);
+// remain" - re-fetched on every CallContent mount rather than trusting a client cache
+// that could drift across days/devices. Cookie-authed since the magic-link auth
+// rollout (the hc_session cookie rides along automatically on same-origin fetches);
+// 401 just means "not logged in" - a normal state, returned as null rather than
+// thrown, so callers render the logged-out UI instead of an error.
+export async function getTodayStatus(): Promise<TodayStatus | null> {
+    const res = await fetch('/api/picks/today');
+    if (res.status === 401) return null;
     const data = await parseJsonSafe(res);
     if (!res.ok) throw new Error(data.message || `GET /api/picks/today failed: ${res.status}`);
     return data as TodayStatus;
+}
+
+export interface SessionInfo {
+    userId: string;
+    email: string;
+    verified: boolean;
+}
+
+// "Am I logged in?" - the identity source of truth on load, replacing the old role of
+// the hc_account localStorage cache (which survives only as a best-effort prefill
+// hint for logged-out states). 401 -> null, same reasoning as getTodayStatus.
+export async function getSessionInfo(): Promise<SessionInfo | null> {
+    const res = await fetch('/api/session');
+    if (res.status === 401) return null;
+    const data = await parseJsonSafe(res);
+    if (!res.ok) throw new Error(data.message || `GET /api/session failed: ${res.status}`);
+    return data as SessionInfo;
+}
+
+// Request a magic login link (POST /api/login). The server enforces the real rate
+// limit (1/60s, 10/day per email); callers surface its message on 429.
+export async function requestLoginLink(email: string): Promise<{ sent: boolean }> {
+    const res = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+    });
+    const data = await parseJsonSafe(res);
+    if (!res.ok) throw new Error(data.message || `POST /api/login failed: ${res.status}`);
+    return data as { sent: boolean };
+}
+
+export async function logout(): Promise<void> {
+    const res = await fetch('/api/logout', { method: 'POST' });
+    if (!res.ok) {
+        const data = await parseJsonSafe(res);
+        throw new Error(data.message || `POST /api/logout failed: ${res.status}`);
+    }
+    // The cache is only a prefill hint, but a hint pointing at an account the person
+    // just logged out of is worse than none.
+    try {
+        window.localStorage.removeItem(ACCOUNT_CACHE_KEY);
+    } catch {
+        // best-effort, same as setCachedAccount
+    }
 }
 
 export async function verifyEmailCode(email: string, code: string): Promise<{ verified?: boolean; alreadyVerified?: boolean }> {

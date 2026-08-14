@@ -31,6 +31,17 @@ export function formatOddsLabel(odds: PropOdds | null): string | null {
     return odds.outcomes.map((o, i) => `${o} ${(odds.outcomePrices[i] * 100).toFixed(1)}%`).join(' / ');
 }
 
+// Positionally parallel to a call's `sides` array, straight from the frozen odds -
+// same trust-the-generation-order convention functions/api/picks.ts's sideIndex
+// already relies on (odds.outcomes/outcomePrices are written in the same order
+// call.sides was), so no name-matching, just a length check. Undefined when odds
+// are absent or don't line up (mock/custom providers, or a mismatched outcome
+// count) - the Fishtank ember-burst animation falls back to a fixed strength then.
+export function deriveSidesImpliedProb(odds: PropOdds | null, sidesLength: number): number[] | undefined {
+    if (!odds || odds.outcomes.length !== sidesLength) return undefined;
+    return odds.outcomePrices;
+}
+
 // "Resolves Dec 31, 2026"
 export function formatSettleDate(iso: string): string {
     const date = new Date(iso);
@@ -40,12 +51,15 @@ export function formatSettleDate(iso: string): string {
     return `Resolves ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
 }
 
-// All four wall headers get clamped through this. The model's "2 to 6 words" prompt
-// guidance is a target, not a guarantee - and contextLabel/oddsOrMarketLabel are built
-// from real team/player names of unpredictable length (e.g. "New York Giants vs. New
-// York Jets"). A hard character cap, enforced here rather than left to CSS truncation
-// alone, is what actually guarantees every header fits the wall's fixed width.
-const HEADER_LABEL_MAX_CHARS = 34;
+// All four wall headers get clamped through this. It's a safety ceiling against a
+// genuinely pathological, unbounded string (the model's "2 to 6 words" tagline
+// guidance is a target, not a guarantee) - NOT a fit-to-width limit; the wall panel
+// wraps headers to as many lines as they need instead of clipping them (see
+// WallPanel's <h4> in components/Fishtank.tsx), so real content is never trimmed.
+// 80 comfortably covers the longest realistic case: a whole-game market's
+// contextLabel/oddsOrMarketLabel is built from real team names (e.g.
+// "Bundesliga · Borussia Mönchengladbach vs. Bayern München" is ~57 chars).
+const HEADER_LABEL_MAX_CHARS = 80;
 
 export function truncateHeaderLabel(text: string, maxChars: number = HEADER_LABEL_MAX_CHARS): string {
     const trimmed = text.trim();

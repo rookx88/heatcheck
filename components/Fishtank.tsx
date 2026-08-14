@@ -19,6 +19,8 @@ import {
     setCachedAccount,
     submitPick,
     getTodayStatus,
+    getSessionInfo,
+    requestLoginLink,
     verifyEmailCode,
     resendVerificationCode,
     PickConflictError,
@@ -102,6 +104,19 @@ function nearestWallIndex(walls: Wall[], containerRotateY: number): number {
     return bestIndex;
 }
 
+// "3h 24m" / "24m" until the daily pick cap resets at UTC midnight - matches the
+// server's own reset boundary (functions/api/picks.ts's `created_at >= CURRENT_DATE`,
+// evaluated in the DB's UTC session timezone), not the reader's local midnight.
+function formatTimeUntilReset(nowMs: number): string {
+    const now = new Date(nowMs);
+    const nextResetMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0);
+    const diffMinutes = Math.max(0, Math.round((nextResetMs - nowMs) / 60_000));
+    const hours = Math.floor(diffMinutes / 60);
+    const minutes = diffMinutes % 60;
+    if (hours <= 0) return `${minutes}m`;
+    return `${hours}h ${minutes}m`;
+}
+
 const Face3D: React.FC<{
     width: number;
     height: number;
@@ -172,13 +187,17 @@ const WallPanel: React.FC<{
                     <div style={{ padding: '0.3rem', background: isCall ? 'rgba(251,146,60,0.18)' : 'rgba(6,182,212,0.15)', borderRadius: 6, flexShrink: 0, marginTop: 1 }}>
                         <Icon size={13} style={{ color: isCall ? '#fb923c' : '#22d3ee' }} />
                     </div>
+                    {/* No line clamp - wraps to as many lines as the title needs so it's
+                        never cut off (real matchup/odds labels routinely run well past
+                        what 2 lines could hold at this width). The header row is
+                        flexShrink:0 above a scrollable body div, so a taller header just
+                        pushes the body down instead of breaking the panel's layout. */}
                     <h4 style={{
                         fontSize: '0.68rem', fontWeight: 700, color: '#f1f5f9', letterSpacing: '0.06em',
                         textTransform: 'uppercase', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.7)',
                         minWidth: 0, lineHeight: 1.35, flex: 1,
-                        display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-                        overflow: 'hidden',
-                    } as React.CSSProperties}>{wall.label}</h4>
+                        overflowWrap: 'break-word',
+                    }}>{wall.label}</h4>
                     {/* Masthead mark - the same wordmark used in the page chrome around
                         the artifact, printed small on every wall like a magazine running
                         its nameplate on every page. */}
@@ -530,6 +549,16 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
     const [todayStatus, setTodayStatus] = useState<TodayStatus | null>(null);
     const [statusLoaded, setStatusLoaded] = useState(false);
 
+    // Ticks once a minute so the "next pick in Xh Ym" countdown (cap-used-up branch,
+    // below) stays live without re-rendering every second - the daily cap resets at
+    // UTC midnight (functions/api/picks.ts's `created_at >= CURRENT_DATE`, evaluated
+    // in the DB's UTC session timezone), not the reader's local midnight.
+    const [now, setNow] = useState(() => Date.now());
+    useEffect(() => {
+        const id = window.setInterval(() => setNow(Date.now()), 60_000);
+        return () => window.clearInterval(id);
+    }, []);
+
     const [verifyState, setVerifyState] = useState<VerifyState>('unverified');
     const [verifyCode, setVerifyCode] = useState('');
     const [verifyError, setVerifyError] = useState<string | null>(null);
@@ -537,24 +566,43 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
     const [showAllSet, setShowAllSet] = useState(false);
     const [burst, setBurst] = useState<{ key: string; side: string; strength: number } | null>(null);
 
-    // A cached account means this browser already has a real pick history - fetch
-    // today's actual server-side status (not a client cache, which would drift across
-    // days/devices the way a single cached pick object could get away with under the
-    // old one-pick-ever model) so this specific tank knows whether it's already picked
-    // and the reader can see how many of today's picks remain.
+    // Whether a real session cookie backs this browser - as opposed to accountKnown,
+    // which can also come from the localStorage prefill hint. Only a session can read
+    // /api/picks/today now; a hint-only account submits via the email path and gets
+    // offered a login link instead.
+    const [hasSession, setHasSession] = useState(false);
+    const [loginLinkState, setLoginLinkState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle');
+    const [loginLinkError, setLoginLinkError] = useState<string | null>(null);
+
+    // Session-first hydration: GET /api/session is the identity source of truth. The
+    // hc_account localStorage cache is demoted to a best-effort prefill hint for the
+    // logged-out case (a user who picked with their email but never logged in, or
+    // anyone from before sessions existed) - its `verified` flag only shapes initial
+    // paint and today's status now requires a session (the endpoint 401s without one;
+    // the next submit/conflict response still enforces everything server-side).
     const hydrateAccount = useCallback(() => {
-        const cached = getCachedAccount();
-        if (!cached) {
-            setStatusLoaded(true);
-            return;
-        }
-        setEmail(cached.email);
-        setAccountKnown(true);
-        setVerifyState(cached.verified ? 'verified' : 'unverified');
-        getTodayStatus(cached.email)
-            .then((status) => {
-                setTodayStatus(status);
-                if (status.verified) setVerifyState('verified');
+        getSessionInfo()
+            .then((session) => {
+                if (session) {
+                    setHasSession(true);
+                    setEmail(session.email);
+                    setAccountKnown(true);
+                    setVerifyState(session.verified ? 'verified' : 'unverified');
+                    setCachedAccount({ email: session.email, verified: session.verified });
+                    return getTodayStatus().then((status) => {
+                        if (status) {
+                            setTodayStatus(status);
+                            if (status.verified) setVerifyState('verified');
+                        }
+                    });
+                }
+                const cached = getCachedAccount();
+                if (cached) {
+                    setEmail(cached.email);
+                    setAccountKnown(true);
+                    setVerifyState(cached.verified ? 'verified' : 'unverified');
+                }
+                return undefined;
             })
             .catch(() => {
                 // Best-effort - if this fails, fall back to treating today as unknown
@@ -692,6 +740,10 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                 setShowAllSet(true);
                 setCachedAccount({ email, verified: true });
                 setTodayStatus((prev) => (prev ? { ...prev, verified: true } : prev));
+                // A correct code (not alreadyVerified - that branch proves nothing and
+                // gets no cookie) also set a session cookie on the response, so this
+                // browser is now logged in without a magic-link round-trip.
+                if (result.verified) setHasSession(true);
             } else {
                 setVerifyState('verify-error');
             }
@@ -711,6 +763,40 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
             setResendState('idle');
         }
     };
+
+    const handleLoginLink = async () => {
+        if (!email || loginLinkState === 'sending') return;
+        setLoginLinkState('sending');
+        setLoginLinkError(null);
+        try {
+            await requestLoginLink(email);
+            setLoginLinkState('sent');
+        } catch (err) {
+            setLoginLinkError(err instanceof Error ? err.message : 'Could not send a login link.');
+            setLoginLinkState('error');
+        }
+    };
+
+    // Known account without a session (prefill hint only, or the session expired):
+    // picks still work via the email path, but today's status and balance need a real
+    // login - offer the magic link inline rather than routing through /login/.
+    const loginBlock = accountKnown && !hasSession ? (
+        <p style={{ marginTop: '0.5rem', fontSize: '0.75rem', color: 'rgba(255,255,255,0.55)' }}>
+            {loginLinkState === 'sent' ? (
+                'Login link sent — check your inbox.'
+            ) : (
+                <>
+                    Been here before?{' '}
+                    <button type="button" onClick={handleLoginLink} style={linkButtonStyle} disabled={loginLinkState === 'sending'}>
+                        {loginLinkState === 'sending' ? 'Sending…' : 'Get a login link'}
+                    </button>
+                    {loginLinkState === 'error' && loginLinkError && (
+                        <span style={{ color: '#f87171' }}> {loginLinkError}</span>
+                    )}
+                </>
+            )}
+        </p>
+    ) : null;
 
     const verifyBlock = (
         <VerifyBlock
@@ -747,6 +833,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                     </p>
                 )}
                 {accountKnown && verifyBlock}
+                {loginBlock}
                 {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} side={myPickHere.side} />}
             </div>
         );
@@ -759,10 +846,15 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
             <div>
                 <p style={{ fontWeight: 600, color: '#f1f5f9', marginTop: 0 }}>{call.question}</p>
                 <p style={{ color: '#cbd5e1', fontSize: '0.85rem', marginTop: '0.75rem' }}>
-                    You've used today's picks — back tomorrow.
+                    {(() => {
+                        const cap = todayStatus ? todayStatus.picksToday + todayStatus.remaining : null;
+                        return `Sorry, you used your ${cap ?? ''} pick${cap === 1 ? '' : 's'} for today.`;
+                    })()}
+                    {' '}You can make another pick in {formatTimeUntilReset(now)}.
                 </p>
                 {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of {todayStatus.picksToday + todayStatus.remaining} picks used today</p>}
                 {accountKnown && verifyBlock}
+                {loginBlock}
                 {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} side={selectedSide ?? undefined} />}
             </div>
         );
@@ -819,6 +911,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
             {/* Nothing to verify until an account actually exists (first pick made) -
                 a brand new reader with no email yet has no business seeing this. */}
             {accountKnown && verifyBlock}
+            {loginBlock}
             {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} side={selectedSide ?? undefined} />}
         </div>
     );

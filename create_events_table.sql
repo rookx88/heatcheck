@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS events (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     visitor_id UUID NOT NULL,
     waitlist_id UUID REFERENCES waitlist(id) ON DELETE SET NULL,
-    event_type VARCHAR(50) NOT NULL,   -- 'page_view' | 'tank_opened' | 'wall_viewed' | 'pick_submitted' | 'pick_conflict' | 'email_verified' | 'newsletter_opt_in'
+    event_type VARCHAR(50) NOT NULL,   -- 'page_view' | 'tank_opened' | 'wall_viewed' | 'pick_submitted' | 'pick_conflict' | 'email_verified' | 'newsletter_opt_in' | 'newsletter_sent' | 'newsletter_exclusive_pick' | 'pick_settled'
     path VARCHAR(255),                 -- URL path, for page_view
     tank_slug VARCHAR(255),            -- which tank, when applicable
     wall_kind VARCHAR(20),             -- 'hook' | 'card' | 'call', for wall_viewed

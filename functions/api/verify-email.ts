@@ -1,9 +1,14 @@
-// POST /api/verify-email - checks the 6-digit code sent by POST /api/picks. Purely
-// confirms the email is real/reachable; never gates the pick itself (that's already
-// saved and locked in by the time this runs).
+// POST /api/verify-email - checks the 6-digit code sent by POST /api/picks. Confirms
+// the email is real/reachable; never gates the pick itself (that's already saved and
+// locked in by the time this runs). A correct code also issues a session cookie -
+// typing the emailed code is the same proof of inbox ownership as clicking a magic
+// link, so both paths converge on the same logged-in state without a second email
+// round-trip. Deliberately NOT on the alreadyVerified branch below: that one is
+// reachable by anyone who merely knows the email, with no proof of ownership.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, EMAIL_RE, UUID_RE, type Env } from '../../lib/pages-functions/db';
+import { createSession } from '../../lib/pages-functions/session';
 import { logEvent } from '../../lib/pages-functions/events';
 
 const MAX_ATTEMPTS = 5;
@@ -64,6 +69,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         WHERE id = ${row.id}
     `;
 
+    const { setCookie } = await createSession(sql, context.env, row.id as string, context.request.url);
+
     if (visitorId) {
         try {
             await logEvent(sql, { visitorId, waitlistId: row.id as string, eventType: 'email_verified' });
@@ -72,5 +79,5 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
     }
 
-    return jsonResponse({ verified: true });
+    return jsonResponse({ verified: true }, { headers: { 'Set-Cookie': setCookie } });
 };

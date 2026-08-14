@@ -17,6 +17,9 @@
     "backend": "tsx backend.ts",
     "dev:backend": "tsx watch backend.ts",
     "dev:api": "tsx watch backend.ts",
+    "email:dev": "email dev --dir emails",
+    "email:preview": "tsx scripts/preview-newsletter-email.ts",
+    "newsletter:send": "tsx scripts/send-newsletter-issue.ts",
     "db:setup": "node -e \"const {execSync} = require('child_process'); const url = process.env.DATABASE_URL || 'postgresql://localhost/heatcheck'; execSync(`psql '${url}' -f schema.sql`, {stdio: 'inherit'})\""
   },
   "dependencies": {
@@ -38,12 +41,17 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260812.1",
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.1.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/node": "^22.19.3",
     "@types/pg": "^8.16.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^5.0.0",
     "esbuild": "^0.28.2",
+    "react-email": "^6.9.2",
     "sharp": "^0.35.3",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",

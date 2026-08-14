@@ -1,7 +1,7 @@
 import { renderHead, topbar, footer } from './waitlist-landing-template';
 import { escapeHtml } from '../utils/html-escape';
 import type { Prop, Game, TankArticle } from '../../tank-types';
-import { formatMarketLabel, formatOddsLabel, formatSettleDate, deriveTaglineFallback, truncateHeaderLabel } from '../../tank-deck-format';
+import { formatMarketLabel, formatOddsLabel, formatSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../../tank-deck-format';
 
 export interface TankPageRecord {
     id: string;
@@ -86,7 +86,8 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
     const cardsHtml = cards.map(card => `<li>${escapeHtml(card)}</li>`).join('\n                    ');
 
     const deckPayload = JSON.stringify({
-        hook, cards, call, slug: page.slug,
+        hook, cards, slug: page.slug,
+        call: { ...call, sidesImpliedProb: deriveSidesImpliedProb(prop.odds, call.sides.length) },
         tagline,
         contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
         oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),

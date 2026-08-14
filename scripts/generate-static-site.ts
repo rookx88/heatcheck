@@ -11,12 +11,16 @@ import { generateDFSHubPage } from './templates/dfs-hub-template';
 import { generateHeatPicksHubPage } from './templates/heat-picks-hub-template';
 import { generateTankArticlePage, TankPageRecord } from './templates/tank-article-template';
 import { buildTankBundles } from './build-tank-bundles';
-import { formatMarketLabel, formatOddsLabel, formatSettleDate, deriveTaglineFallback, truncateHeaderLabel } from '../tank-deck-format';
+import { formatMarketLabel, formatOddsLabel, formatSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../tank-deck-format';
 import { buildWorldMap } from './build-world-map';
+import { buildNewsletterPick } from './build-newsletter-pick';
+import { buildLogin } from './build-login';
 import { buildAnalyticsBeacon } from './build-analytics-beacon';
 import { generateBaseHtml } from './templates/base-template';
 import { generateLandingPageHtml, generateBetaInfoPageHtml } from './templates/waitlist-landing-template';
 import { generateClaimYourSpotPageHtml } from './templates/claim-your-spot-template';
+import { generateNewsletterPickPageHtml } from './templates/newsletter-pick-template';
+import { generateLoginPageHtml } from './templates/login-template';
 import { generateTankPageHtml, TankPageEntry } from './templates/tank-template';
 import { formatDateISO, normalizeLeague } from './utils/date-formatter';
 import { generateSlug, ensureUniqueSlug, generateNarrativeSlug, generateMatchupSlug } from './utils/slug-generator';
@@ -133,6 +137,7 @@ const NEW_SITE_IMAGES = [
     'og-share-world-map.jpg',
     'tank-email-correct.jpg',
     'tank-email-incorrect.jpg',
+    'heatchecks-logo-email.png',
 ];
 
 /**
@@ -743,6 +748,21 @@ async function generateAllPages(): Promise<void> {
         writeHtmlFile('claim-your-spot/index.html', generateClaimYourSpotPageHtml(baseUrl));
         console.log('✓ Generated claim-your-spot page\n');
 
+        // Build the newsletter-pick bundle and generate its static shell. No DB
+        // dependency (all real content is fetched client-side via the signed token in
+        // the URL), so this runs unconditionally too.
+        console.log('Building newsletter-pick bundle...');
+        await buildNewsletterPick();
+        writeHtmlFile('newsletter-pick/index.html', generateNewsletterPickPageHtml(baseUrl));
+        console.log('✓ Built newsletter-pick bundle and page\n');
+
+        // Build the magic-link login bundle and its static shell (same pattern as
+        // newsletter-pick: no DB dependency, all behavior client-side).
+        console.log('Building login bundle...');
+        await buildLogin();
+        writeHtmlFile('login/index.html', generateLoginPageHtml(baseUrl));
+        console.log('✓ Built login bundle and page\n');
+
         // Generate about page (comprehensive SEO-optimized version)
         console.log('Generating about page...');
         const aboutContent = `
@@ -1070,7 +1090,8 @@ async function generateAllPages(): Promise<void> {
         try {
             const tankPagesResult = await pool.query(
                 `SELECT id, slug, league, angle, game_snapshot, model_output, created_at, published_at
-                 FROM tank_pages WHERE status = 'published' AND slug IS NOT NULL AND model_output IS NOT NULL`
+                 FROM tank_pages
+                 WHERE status = 'published' AND visibility = 'app' AND slug IS NOT NULL AND model_output IS NOT NULL`
             );
             const tankPages: TankPageRecord[] = [];
             for (const row of tankPagesResult.rows) {
@@ -1112,7 +1133,10 @@ async function generateAllPages(): Promise<void> {
                     payload: {
                         hook: p.model_output.hook,
                         cards: p.model_output.cards,
-                        call: p.model_output.call,
+                        call: {
+                            ...p.model_output.call,
+                            sidesImpliedProb: deriveSidesImpliedProb(prop.odds, p.model_output.call.sides.length),
+                        },
                         tagline: truncateHeaderLabel(p.model_output.tagline || deriveTaglineFallback(p.model_output.hook)),
                         contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
                         oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),

@@ -12,6 +12,8 @@ import { generateViralContentFromNarrative } from './scripts/services/viralConte
 import { rewriteArticleForSEO, SEORewriteOutput } from './scripts/services/seoRewriteService';
 import { markdownToHtml } from './scripts/utils/markdown-converter';
 import { calculateV4HeatScore } from './scripts/shared/heat-score-v4';
+import type { Game, Prop, SelectedProp } from './tank-types';
+import type { TankPageRow, NewsletterIssueRow } from './apiClient';
 
 // ===================================================================================
 // TYPE DEFINITIONS (Unchanged, but now shared with backend)
@@ -13829,11 +13831,689 @@ Be clinical and decisive.
 const getWebsiteReadySchema = () => ({ type: Type.OBJECT, properties: { websiteStory: { type: Type.OBJECT, required: ["formatStyle", "headline", "dek", "whyItMatters", "theBackstory", "theData", "keyMomentsTimeline", "theReceipts", "pressurePoints", "whatToWatch", "edgeAngle", "tags", "sources", "seo"], properties: { formatStyle: { type: Type.STRING, enum: ["QUOTE_LEDE", "TIMELINE", "UNSPOKEN", "TRAP_GAME"] }, headline: { type: Type.STRING }, dek: { type: Type.STRING }, whyItMatters: { type: Type.ARRAY, items: { type: Type.STRING } }, theBackstory: { type: Type.STRING }, theData: { type: Type.ARRAY, items: { type: Type.STRING } }, keyMomentsTimeline: { type: Type.ARRAY, items: { type: Type.OBJECT, required: ["date", "event"], properties: { date: { type: Type.STRING }, event: { type: Type.STRING } } } }, theReceipts: { type: Type.ARRAY, items: { type: Type.OBJECT, required: ["quote"], properties: { quote: { type: Type.STRING }, speaker: { type: Type.STRING }, context: { type: Type.STRING }, sourceUrl: { type: Type.STRING } } } }, pressurePoints: { type: Type.ARRAY, items: { type: Type.STRING } }, whatToWatch: { type: Type.ARRAY, items: { type: Type.STRING } }, edgeAngle: { type: Type.STRING }, tags: { type: Type.ARRAY, items: { type: Type.STRING } }, sources: { type: Type.ARRAY, items: { type: Type.OBJECT, required: ["title", "url"], properties: { title: { type: Type.STRING }, url: { type: Type.STRING }, publisher: { type: Type.STRING }, publishedAt: { type: Type.STRING } } } }, seo: { type: Type.OBJECT, required: ["slug", "metaTitle", "metaDescription"], properties: { slug: { type: Type.STRING }, metaTitle: { type: Type.STRING }, metaDescription: { type: Type.STRING } } } } }, heatchecksEdge: { type: Type.OBJECT, required: ["subjectType", "subjectName", "game", "marketSnapshot", "lines", "lean", "confidence", "rationaleBullets", "riskCounterpoints", "historicalAnalog", "finalCall"], properties: { subjectType: { type: Type.STRING, enum: ["player", "team"] }, subjectName: { type: Type.STRING }, game: { type: Type.STRING }, marketSnapshot: { type: Type.OBJECT, required: ["retrievedAt", "books"], properties: { retrievedAt: { type: Type.STRING }, books: { type: Type.ARRAY, items: { type: Type.OBJECT, required: ["book"], properties: { book: { type: Type.STRING }, url: { type: Type.STRING } } } } } }, lines: { type: Type.ARRAY, items: { type: Type.OBJECT, required: ["marketType", "label", "line", "book", "sourceUrl"], properties: { marketType: { type: Type.STRING }, label: { type: Type.STRING }, line: { type: Type.STRING }, price: { type: Type.STRING }, book: { type: Type.STRING }, sourceUrl: { type: Type.STRING } } } }, lean: { type: Type.STRING, enum: ["FAVOR", "FADE", "NO_EDGE"] }, confidence: { type: Type.STRING, enum: ["low", "medium", "high"] }, rationaleBullets: { type: Type.ARRAY, items: { type: Type.STRING } }, riskCounterpoints: { type: Type.ARRAY, items: { type: Type.STRING } }, historicalAnalog: { type: Type.OBJECT, required: ["claim"], properties: { claim: { type: Type.STRING }, sourceUrl: { type: Type.STRING } } }, finalCall: { type: Type.STRING } } } }, required: ["websiteStory", "heatchecksEdge"]});
 
 // ===================================================================================
+// TANK CURATOR
+// ===================================================================================
+// Stage 3 of the Tank pipeline: browse pre-filtered props (Stage 1 provider + Stage 2
+// filter both run server-side via GET /api/tank/props), select ones worth a story,
+// write a required one-line angle for each, generate narrative drafts, then
+// review/publish. Publishing triggers the same static-site regeneration used by the
+// rest of the content pipeline (see backend.ts PUT /api/tank/pages/:id).
+
+const DEFAULT_MARKET_WHITELIST = [
+  'basketball_player_points', 'basketball_player_rebounds', 'basketball_player_assists', 'basketball_player_triple_double',
+  'football_player_passing_yards', 'football_player_rushing_yards', 'football_player_anytime_td',
+  'baseball_player_home_runs', 'baseball_player_hits',
+  'soccer_player_anytime_scorer', 'soccer_player_shots_on_target',
+  'moneyline', 'spreads', 'totals', 'team_totals',
+  'season_futures',
+];
+
+// Friendly grouping/labels for the raw market keys, so the filter UI reads as
+// "NBA: Points" instead of a wall of "basketball_player_points"-style checkboxes.
+const MARKET_INFO: Record<string, { league: string; label: string }> = {
+  basketball_player_points: { league: 'NBA', label: 'Points' },
+  basketball_player_rebounds: { league: 'NBA', label: 'Rebounds' },
+  basketball_player_assists: { league: 'NBA', label: 'Assists' },
+  basketball_player_triple_double: { league: 'NBA', label: 'Triple-Double' },
+  football_player_passing_yards: { league: 'NFL', label: 'Passing Yards' },
+  football_player_rushing_yards: { league: 'NFL', label: 'Rushing Yards' },
+  football_player_anytime_td: { league: 'NFL', label: 'Anytime TD' },
+  baseball_player_home_runs: { league: 'MLB', label: 'Home Runs' },
+  baseball_player_hits: { league: 'MLB', label: 'Hits' },
+  soccer_player_anytime_scorer: { league: 'Soccer', label: 'Anytime Scorer' },
+  soccer_player_shots_on_target: { league: 'Soccer', label: 'Shots on Target' },
+  // Team/game-level lines - generic across every league (disambiguated by the League
+  // filter above, not by these keys), so they get their own pseudo-league bucket here.
+  moneyline: { league: 'Game Lines', label: 'Moneyline' },
+  spreads: { league: 'Game Lines', label: 'Spread' },
+  totals: { league: 'Game Lines', label: 'Total' },
+  team_totals: { league: 'Game Lines', label: 'Team Total' },
+  // Season-long player futures (award races, season stat totals) - not tied to a single
+  // kickoff, so they only surface with a wide "Kickoff date range" (e.g. No limit).
+  season_futures: { league: 'Season Futures', label: 'Season Futures' },
+};
+const MARKET_LEAGUE_ORDER = ['NBA', 'NFL', 'MLB', 'Soccer', 'Game Lines', 'Season Futures'];
+
+// The real leagues Game.league can take (see tank-providers.ts / polymarket.ts) -
+// distinct from MARKET_LEAGUE_ORDER above, which buckets stat *types*, not leagues
+// (all 5 soccer competitions share the same market keys).
+const ALL_LEAGUES = ['NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
+
+const DATE_RANGE_PRESETS: { label: string; days: number | null }[] = [
+  { label: 'Today', days: 0 },
+  { label: '7 days', days: 7 },
+  { label: '14 days', days: 14 },
+  { label: '30 days', days: 30 },
+  { label: 'No limit', days: null },
+];
+
+function formatDateInput(d: Date): string {
+  return d.toISOString().split('T')[0];
+}
+
+const TankCurator: React.FC = () => {
+  const [games, setGames] = useState<Game[]>([]);
+  const [providerName, setProviderName] = useState<string>('mock');
+  const [isLoadingProps, setIsLoadingProps] = useState(false);
+  const [propsError, setPropsError] = useState<string | null>(null);
+
+  const [marketWhitelist, setMarketWhitelist] = useState<string[]>(DEFAULT_MARKET_WHITELIST);
+  const [minProminence, setMinProminence] = useState<number>(0);
+  const [perGameCap, setPerGameCap] = useState<number>(3);
+  const [selectedLeagues, setSelectedLeagues] = useState<string[]>(ALL_LEAGUES);
+  const [fromDate, setFromDate] = useState<string>(() => formatDateInput(new Date()));
+  const [toDate, setToDate] = useState<string>(() => formatDateInput(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)));
+
+  const [angles, setAngles] = useState<Record<string, string>>({});
+  const [selectedPropIds, setSelectedPropIds] = useState<Set<string>>(new Set());
+
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
+
+  const [draftPages, setDraftPages] = useState<TankPageRow[]>([]);
+  const [isLoadingPages, setIsLoadingPages] = useState(false);
+  const [pagesError, setPagesError] = useState<string | null>(null);
+  // Distribution choice per draft, made at publish time - locked in once published (see
+  // backend.ts's PUT /api/tank/pages/:id, which rejects a visibility change afterward).
+  const [publishVisibility, setPublishVisibility] = useState<Record<string, 'app' | 'newsletter_only'>>({});
+
+  const [activePages, setActivePages] = useState<TankPageRow[]>([]);
+  const [isLoadingActive, setIsLoadingActive] = useState(false);
+  const [activeError, setActiveError] = useState<string | null>(null);
+  const [tankView, setTankView] = useState<'drafts' | 'active'>('drafts');
+
+  const fetchProps = useCallback(async () => {
+    setIsLoadingProps(true); setPropsError(null);
+    try {
+      const result = await apiClient.getTankProps({
+        marketWhitelist, minProminence, perGameCap,
+        leagues: selectedLeagues, fromDate, toDate: toDate || null,
+      });
+      setGames(result.games);
+      setProviderName(result.provider);
+    } catch (e: any) {
+      setPropsError(e.message || 'Failed to load props.');
+    } finally {
+      setIsLoadingProps(false);
+    }
+  }, [marketWhitelist, minProminence, perGameCap, selectedLeagues, fromDate, toDate]);
+
+  const fetchDraftPages = useCallback(async () => {
+    setIsLoadingPages(true); setPagesError(null);
+    try {
+      const result = await apiClient.listTankPages('draft');
+      setDraftPages(result.pages);
+    } catch (e: any) {
+      setPagesError(e.message || 'Failed to load draft pages.');
+    } finally {
+      setIsLoadingPages(false);
+    }
+  }, []);
+
+  const fetchActivePages = useCallback(async () => {
+    setIsLoadingActive(true); setActiveError(null);
+    try {
+      const result = await apiClient.listActiveTankPages();
+      setActivePages(result.pages);
+    } catch (e: any) {
+      setActiveError(e.message || 'Failed to load active pages.');
+    } finally {
+      setIsLoadingActive(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchProps(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchDraftPages(); }, [fetchDraftPages]);
+  useEffect(() => { fetchActivePages(); }, [fetchActivePages]);
+
+  const toggleMarket = (market: string) => {
+    setMarketWhitelist(prev => prev.includes(market) ? prev.filter(m => m !== market) : [...prev, market]);
+  };
+
+  const toggleLeague = (league: string) => {
+    setSelectedLeagues(prev => prev.includes(league) ? prev.filter(l => l !== league) : [...prev, league]);
+  };
+
+  const applyDatePreset = (days: number | null) => {
+    setFromDate(formatDateInput(new Date()));
+    setToDate(days === null ? '' : formatDateInput(new Date(Date.now() + days * 24 * 60 * 60 * 1000)));
+  };
+
+  const marketsByLeague = MARKET_LEAGUE_ORDER.map(league => ({
+    league,
+    markets: DEFAULT_MARKET_WHITELIST.filter(m => MARKET_INFO[m]?.league === league),
+  })).filter(g => g.markets.length > 0);
+
+  const toggleLeagueMarkets = (leagueMarkets: string[], selectAll: boolean) => {
+    setMarketWhitelist(prev => {
+      const withoutLeague = prev.filter(m => !leagueMarkets.includes(m));
+      return selectAll ? [...withoutLeague, ...leagueMarkets] : withoutLeague;
+    });
+  };
+
+  const togglePropSelection = (propId: string) => {
+    setSelectedPropIds(prev => {
+      const next = new Set(prev);
+      if (next.has(propId)) next.delete(propId); else next.add(propId);
+      return next;
+    });
+  };
+
+  const selectedCount = selectedPropIds.size;
+  const totalPropCount = games.reduce((sum, g) => sum + g.props.length, 0);
+
+  const handleGenerate = async () => {
+    const selections: SelectedProp[] = [];
+    for (const game of games) {
+      for (const prop of game.props) {
+        if (selectedPropIds.has(prop.id)) {
+          const angle = (angles[prop.id] || '').trim();
+          if (!angle) {
+            setGenerateError(`"${prop.player} — ${prop.market}" is missing an angle. Every selected prop needs a one-line reason it has a story.`);
+            return;
+          }
+          selections.push({ prop, game, angle });
+        }
+      }
+    }
+    if (selections.length === 0) {
+      setGenerateError('Select at least one prop first.');
+      return;
+    }
+    setIsGenerating(true); setGenerateError(null);
+    try {
+      await apiClient.generateTankArticles(selections);
+      setSelectedPropIds(new Set());
+      setAngles({});
+      await fetchDraftPages();
+    } catch (e: any) {
+      setGenerateError(e.message || 'Generation failed.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handlePublish = async (id: string) => {
+    try {
+      const visibility = publishVisibility[id] || 'app';
+      await apiClient.updateTankPage(id, { status: 'published', visibility });
+      await fetchDraftPages();
+      await fetchActivePages();
+    } catch (e: any) {
+      setPagesError(e.message || 'Failed to publish.');
+    }
+  };
+
+  const handleRevertToDraft = async (id: string) => {
+    try {
+      await apiClient.updateTankPage(id, { status: 'draft' });
+      await fetchActivePages();
+      await fetchDraftPages();
+    } catch (e: any) {
+      setActiveError(e.message || 'Failed to revert to draft.');
+    }
+  };
+
+  const handleDiscard = async (id: string) => {
+    if (!window.confirm('Discard this draft? This cannot be undone.')) return;
+    try {
+      await apiClient.deleteTankPage(id);
+      await fetchDraftPages();
+    } catch (e: any) {
+      setPagesError(e.message || 'Failed to discard.');
+    }
+  };
+
+  const formatOdds = (prop: Prop): string => {
+    if (!prop.odds) return '—';
+    return prop.odds.outcomes.map((o, i) => `${o} ${(prop.odds!.outcomePrices[i] * 100).toFixed(0)}%`).join(' / ');
+  };
+
+  return (
+    <div style={{ padding: '1.5rem', maxWidth: '1100px', margin: '0 auto' }}>
+      <h2 style={{ marginTop: 0 }}>The Tank Curator</h2>
+      <p style={{ color: '#666' }}>
+        Provider: <strong>{providerName}</strong>. Pick props worth a story, write a one-line angle, then generate.
+      </p>
+
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Filters</h3>
+
+        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.85rem' }}>Leagues</label>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.1rem' }}>
+          {ALL_LEAGUES.map(league => (
+            <label key={league} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+              <input
+                type="checkbox"
+                checked={selectedLeagues.includes(league)}
+                onChange={() => toggleLeague(league)}
+                style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+              />
+              <span>{league}</span>
+            </label>
+          ))}
+        </div>
+
+        <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 'bold', fontSize: '0.85rem' }}>Kickoff date range</label>
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.6rem' }}>
+          <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} style={{ padding: '0.45rem' }} />
+          <span style={{ color: '#666' }}>to</span>
+          <input
+            type="date" value={toDate} onChange={e => setToDate(e.target.value)}
+            placeholder="No limit" style={{ padding: '0.45rem' }}
+          />
+          {DATE_RANGE_PRESETS.map(preset => (
+            <button key={preset.label} className="cancel" onClick={() => applyDatePreset(preset.days)} style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}>
+              {preset.label}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '1.25rem', paddingBottom: '1.25rem', borderBottom: '1px solid #eee' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 'bold', fontSize: '0.85rem' }}>
+              Min prominence: <span style={{ fontWeight: 'normal' }}>{minProminence}</span>
+            </label>
+            <input
+              type="range" min={0} max={99} value={minProminence}
+              onChange={e => setMinProminence(Number(e.target.value))}
+              style={{ width: '160px' }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 'bold', fontSize: '0.85rem' }}>Per-game cap</label>
+            <input
+              type="number" min={1} max={20} value={perGameCap}
+              onChange={e => setPerGameCap(Number(e.target.value))}
+              style={{ width: '70px', padding: '0.45rem' }}
+            />
+          </div>
+          <button className="action-button" onClick={fetchProps} disabled={isLoadingProps}>
+            {isLoadingProps ? 'Loading...' : 'Apply Filters'}
+          </button>
+          {!isLoadingProps && games.length > 0 && (
+            <span style={{ color: '#666', fontSize: '0.85rem' }}>{games.length} game{games.length === 1 ? '' : 's'} &middot; {totalPropCount} prop{totalPropCount === 1 ? '' : 's'}</span>
+          )}
+        </div>
+
+        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.85rem' }}>Markets</label>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+          {marketsByLeague.map(({ league, markets }) => {
+            const allChecked = markets.every(m => marketWhitelist.includes(m));
+            return (
+              <div key={league} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#888', minWidth: '60px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{league}</span>
+                <button
+                  className="cancel"
+                  onClick={() => toggleLeagueMarkets(markets, !allChecked)}
+                  style={{ padding: '0.15rem 0.5rem', fontSize: '0.7rem' }}
+                >
+                  {allChecked ? 'Clear' : 'All'}
+                </button>
+                {markets.map(market => (
+                  <label key={market} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer', fontSize: '0.85rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={marketWhitelist.includes(market)}
+                      onChange={() => toggleMarket(market)}
+                      style={{ width: '15px', height: '15px', cursor: 'pointer' }}
+                    />
+                    <span>{MARKET_INFO[market]?.label || market}</span>
+                  </label>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {propsError && (
+        <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ffebee', color: '#c62828', borderRadius: '4px' }}>
+          {propsError}
+        </div>
+      )}
+
+      {games.map(game => (
+        <div className="card" key={game.id} style={{ marginBottom: '1rem' }}>
+          <h4 style={{ marginTop: 0 }}>
+            {game.league}: {game.away} @ {game.home}
+            <span style={{ fontWeight: 'normal', color: '#666', marginLeft: '0.5rem' }}>
+              {new Date(game.kickoff).toLocaleString()}
+            </span>
+          </h4>
+          {game.props.map(prop => (
+            <div key={prop.id} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', padding: '0.5rem 0', borderTop: '1px solid #eee' }}>
+              <input
+                type="checkbox"
+                checked={selectedPropIds.has(prop.id)}
+                onChange={() => togglePropSelection(prop.id)}
+                style={{ width: '18px', height: '18px', marginTop: '0.3rem', cursor: 'pointer' }}
+              />
+              <div style={{ flex: 1 }}>
+                <div>
+                  <strong>{prop.player}</strong> {prop.team ? `(${prop.team})` : ''} — {MARKET_INFO[prop.market]?.label || prop.market}
+                  {prop.line !== null ? ` ${prop.line}` : ''}
+                  <span style={{ marginLeft: '0.75rem', color: '#666', fontSize: '0.85rem' }}>
+                    odds: {formatOdds(prop)} · prominence: {prop.prominence}
+                  </span>
+                </div>
+                {selectedPropIds.has(prop.id) && (
+                  <textarea
+                    placeholder="Angle (required): why does this prop have a story?"
+                    value={angles[prop.id] || ''}
+                    onChange={e => setAngles(prev => ({ ...prev, [prop.id]: e.target.value }))}
+                    style={{ width: '100%', marginTop: '0.5rem', padding: '0.5rem', minHeight: '50px' }}
+                  />
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {games.length === 0 && !isLoadingProps && (
+        <p style={{ color: '#666' }}>No props match the current filters.</p>
+      )}
+
+      {generateError && (
+        <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ffebee', color: '#c62828', borderRadius: '4px' }}>
+          {generateError}
+        </div>
+      )}
+
+      <div style={{ position: 'sticky', bottom: 0, background: '#fff', padding: '1rem 0', borderTop: '1px solid #ddd' }}>
+        <button className="action-button" onClick={handleGenerate} disabled={isGenerating || selectedCount === 0}>
+          {isGenerating ? 'Generating...' : `Generate (${selectedCount} selected)`}
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '2rem', marginBottom: '1rem' }}>
+        <h3 style={{ margin: 0 }}>{tankView === 'drafts' ? 'Draft Pages' : 'Active Pages'}</h3>
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          <button
+            className={tankView === 'drafts' ? 'action-button' : 'cancel'}
+            onClick={() => setTankView('drafts')}
+          >
+            Drafts ({draftPages.length})
+          </button>
+          <button
+            className={tankView === 'active' ? 'action-button' : 'cancel'}
+            onClick={() => setTankView('active')}
+          >
+            Active ({activePages.length})
+          </button>
+        </div>
+      </div>
+
+      {tankView === 'drafts' && (
+        <>
+          {pagesError && (
+            <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ffebee', color: '#c62828', borderRadius: '4px' }}>
+              {pagesError}
+            </div>
+          )}
+          {isLoadingPages && <p>Loading drafts...</p>}
+          {!isLoadingPages && draftPages.length === 0 && <p style={{ color: '#666' }}>No drafts yet.</p>}
+          {draftPages.map(page => (
+            <div className="card" key={page.id} style={{ marginBottom: '1rem' }}>
+              {page.model_output ? (
+                <>
+                  <h4 style={{ marginTop: 0 }}>{page.model_output.seo.title}</h4>
+                  <p style={{ color: '#666' }}>{page.model_output.seo.meta_description}</p>
+                  <p><em>Hook:</em> {page.model_output.hook}</p>
+                  <p>{page.model_output.body}</p>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <select
+                      value={publishVisibility[page.id] || 'app'}
+                      onChange={(e) => setPublishVisibility(prev => ({ ...prev, [page.id]: e.target.value as 'app' | 'newsletter_only' }))}
+                      style={{ padding: '0.4rem', fontSize: '0.85rem' }}
+                    >
+                      <option value="app">App</option>
+                      <option value="newsletter_only">Newsletter Only</option>
+                    </select>
+                    <button className="action-button" onClick={() => handlePublish(page.id)}>Publish</button>
+                    <button className="cancel" onClick={() => handleDiscard(page.id)}>Discard</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p style={{ color: '#c62828' }}>Generation failed: {page.generation_error}</p>
+                  {page.raw_output && <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.8rem', background: '#f5f5f5', padding: '0.5rem' }}>{page.raw_output}</pre>}
+                  <button className="cancel" onClick={() => handleDiscard(page.id)}>Discard</button>
+                </>
+              )}
+            </div>
+          ))}
+        </>
+      )}
+
+      {tankView === 'active' && (
+        <>
+          {activeError && (
+            <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ffebee', color: '#c62828', borderRadius: '4px' }}>
+              {activeError}
+            </div>
+          )}
+          {isLoadingActive && <p>Loading active pages...</p>}
+          {!isLoadingActive && activePages.length === 0 && <p style={{ color: '#666' }}>No active pages yet — published pages whose game is still upcoming will show here.</p>}
+          {activePages.map(page => {
+            const kickoff = page.game_snapshot?.game?.kickoff;
+            return (
+              <div className="card" key={page.id} style={{ marginBottom: '1rem' }}>
+                <h4 style={{ marginTop: 0 }}>{page.model_output?.seo.title || page.slug}</h4>
+                <p style={{ color: '#666' }}>
+                  {page.league}
+                  {kickoff ? ` · Kickoff: ${new Date(kickoff).toLocaleString()}` : ''}
+                </p>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  {page.slug && (
+                    <a href={`/the-tank/articles/${page.slug}/`} target="_blank" rel="noopener noreferrer">View live</a>
+                  )}
+                  <button className="cancel" onClick={() => handleRevertToDraft(page.id)}>Revert to Draft</button>
+                </div>
+              </div>
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+};
+
+// ===================================================================================
+// NEWSLETTER CURATOR
+// ===================================================================================
+// Minimal admin surface for the weekly newsletter's editorial content. The exclusive
+// Tank pick itself is chosen via the App/Newsletter Only selector in TankCurator above
+// (publishing a Tank with visibility='newsletter_only' creates/claims this week's
+// newsletter_issues row) - this panel is only for the recap + lore spotlight copy that
+// has nowhere else to live, plus the human-approval gate send-issue checks before it
+// will send.
+
+const NewsletterCurator: React.FC = () => {
+  const [issues, setIssues] = useState<NewsletterIssueRow[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const [recap, setRecap] = useState('');
+  const [loreTitle, setLoreTitle] = useState('');
+  const [loreBody, setLoreBody] = useState('');
+  const [loreTopic, setLoreTopic] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDrafting, setIsDrafting] = useState(false);
+  const [isApproving, setIsApproving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const fetchIssues = useCallback(async () => {
+    setIsLoading(true); setError(null);
+    try {
+      const rows = await apiClient.listNewsletterIssues();
+      setIssues(rows);
+      if (!selectedId && rows.length > 0) setSelectedId(rows[0].id);
+    } catch (e: any) {
+      setError(e.message || 'Failed to load newsletter issues.');
+    } finally {
+      setIsLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => { fetchIssues(); }, [fetchIssues]);
+
+  const selected = issues.find(i => i.id === selectedId) || null;
+
+  useEffect(() => {
+    setRecap(selected?.this_week_recap || '');
+    setLoreTitle(selected?.lore_title || '');
+    setLoreBody(selected?.lore_body || '');
+    setActionError(null);
+  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleSave = async () => {
+    if (!selected) return;
+    setIsSaving(true); setActionError(null);
+    try {
+      const updated = await apiClient.updateNewsletterIssue(selected.id, {
+        thisWeekRecap: recap, loreTitle, loreBody,
+      });
+      setIssues(prev => prev.map(i => i.id === updated.id ? updated : i));
+    } catch (e: any) {
+      setActionError(e.message || 'Failed to save.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDraftLore = async () => {
+    if (!selected) return;
+    if (!loreTopic.trim()) { setActionError('Enter a topic for the AI draft first.'); return; }
+    setIsDrafting(true); setActionError(null);
+    try {
+      const draft = await apiClient.draftLoreSpotlight(selected.id, loreTopic.trim());
+      setLoreTitle(draft.title);
+      setLoreBody(draft.body);
+    } catch (e: any) {
+      setActionError(e.message || 'Lore draft generation failed.');
+    } finally {
+      setIsDrafting(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!selected) return;
+    setIsApproving(true); setActionError(null);
+    try {
+      const updated = await apiClient.approveNewsletterIssue(selected.id);
+      setIssues(prev => prev.map(i => i.id === updated.id ? updated : i));
+    } catch (e: any) {
+      setActionError(e.message || 'Failed to approve.');
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const isSent = !!selected?.sent_at;
+  const isLocked = isSent;
+
+  return (
+    <div style={{ padding: '1.5rem', maxWidth: '900px', margin: '0 auto' }}>
+      <h2 style={{ marginTop: 0 }}>Newsletter Issues</h2>
+      <p style={{ color: '#666' }}>
+        Issues are created automatically when a Tank is published as "Newsletter Only" in The Tank tab.
+        Fill in the recap and lore spotlight here, then approve before sending.
+      </p>
+
+      {error && <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ffebee', color: '#c62828', borderRadius: '4px' }}>{error}</div>}
+      {isLoading && <p>Loading issues...</p>}
+      {!isLoading && issues.length === 0 && <p style={{ color: '#666' }}>No newsletter issues yet — publish a Tank as "Newsletter Only" to create one.</p>}
+
+      {issues.length > 0 && (
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '1.5rem' }}>
+          {issues.map(issue => (
+            <button
+              key={issue.id}
+              className={issue.id === selectedId ? 'action-button' : 'cancel'}
+              onClick={() => setSelectedId(issue.id)}
+            >
+              {issue.week_key}{issue.sent_at ? ' (sent)' : issue.content_approved_at ? ' (approved)' : ''}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {selected && (
+        <div className="card">
+          <p style={{ color: '#666', marginTop: 0 }}>
+            Exclusive Tank: <strong>{selected.tank_slug}</strong>
+            {isLocked && <span style={{ color: '#c62828' }}> — sent, locked</span>}
+            {!isLocked && selected.content_approved_at && <span style={{ color: '#2e7d32' }}> — approved</span>}
+          </p>
+
+          <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.35rem' }}>This Week (recap)</label>
+          <textarea
+            value={recap}
+            onChange={(e) => setRecap(e.target.value)}
+            disabled={isLocked}
+            rows={4}
+            style={{ width: '100%', marginBottom: '1rem', padding: '0.5rem' }}
+          />
+
+          <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Character/Lore Spotlight — AI draft topic</label>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <input
+              type="text"
+              value={loreTopic}
+              onChange={(e) => setLoreTopic(e.target.value)}
+              disabled={isLocked}
+              placeholder="e.g. the Warriors-Grizzlies rivalry"
+              style={{ flex: 1, padding: '0.5rem' }}
+            />
+            <button className="cancel" onClick={handleDraftLore} disabled={isLocked || isDrafting}>
+              {isDrafting ? 'Drafting...' : 'AI Draft'}
+            </button>
+          </div>
+
+          <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Lore Title</label>
+          <input
+            type="text"
+            value={loreTitle}
+            onChange={(e) => setLoreTitle(e.target.value)}
+            disabled={isLocked}
+            style={{ width: '100%', marginBottom: '1rem', padding: '0.5rem' }}
+          />
+
+          <label style={{ display: 'block', fontWeight: 'bold', fontSize: '0.85rem', marginBottom: '0.35rem' }}>Lore Body</label>
+          <textarea
+            value={loreBody}
+            onChange={(e) => setLoreBody(e.target.value)}
+            disabled={isLocked}
+            rows={6}
+            style={{ width: '100%', marginBottom: '1rem', padding: '0.5rem' }}
+          />
+
+          {actionError && <div style={{ marginBottom: '1rem', padding: '0.75rem', background: '#ffebee', color: '#c62828', borderRadius: '4px' }}>{actionError}</div>}
+
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button className="action-button" onClick={handleSave} disabled={isLocked || isSaving}>
+              {isSaving ? 'Saving...' : 'Save'}
+            </button>
+            <button className="action-button" onClick={handleApprove} disabled={isLocked || isApproving || !!selected.content_approved_at}>
+              {isApproving ? 'Approving...' : selected.content_approved_at ? 'Approved' : 'Approve'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ===================================================================================
 // ROOT APP COMPONENT
 // ===================================================================================
 
 const App: React.FC = () => {
-  type Tab = 'scanner' | 'feed' | 'preview';
+  type Tab = 'scanner' | 'feed' | 'tank' | 'newsletter' | 'preview';
   const [activeTab, setActiveTab] = useState<Tab>('scanner');
   const [editingPost, setEditingPost] = useState<HeatcheckPost | null>(null);
   const [refreshFeed, setRefreshFeed] = useState(false);
@@ -13854,6 +14534,8 @@ const App: React.FC = () => {
           <nav className="tab-nav">
               <button className={`tab-button ${activeTab === 'scanner' ? 'active' : ''}`} onClick={() => setActiveTab('scanner')}>Scanner Console</button>
               <button className={`tab-button ${activeTab === 'feed' ? 'active' : ''}`} onClick={() => setActiveTab('feed')}>Content Feed</button>
+              <button className={`tab-button ${activeTab === 'tank' ? 'active' : ''}`} onClick={() => setActiveTab('tank')}>The Tank</button>
+              <button className={`tab-button ${activeTab === 'newsletter' ? 'active' : ''}`} onClick={() => setActiveTab('newsletter')}>Newsletter</button>
               <button className={`tab-button ${activeTab === 'preview' ? 'active' : ''}`} onClick={() => setActiveTab('preview')}>Website Preview</button>
           </nav>
         </>
@@ -13862,6 +14544,8 @@ const App: React.FC = () => {
       <main style={activeTab === 'preview' ? { position: 'relative', width: '100vw', height: '100vh', margin: 0, padding: 0 } : {}}>
         {activeTab === 'scanner' && <ScannerConsole setEditingPost={setEditingPost} />}
         {activeTab === 'feed' && <HeatchecksFeed refreshKey={refreshFeed} setEditingPost={setEditingPost} />}
+        {activeTab === 'tank' && <TankCurator />}
+        {activeTab === 'newsletter' && <NewsletterCurator />}
         {activeTab === 'preview' && <PublicHomePage onExit={() => setActiveTab('scanner')} />}
       </main>
 

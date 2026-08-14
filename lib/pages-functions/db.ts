@@ -19,6 +19,10 @@ export interface Env {
     RESEND_API_KEY: string;
     RESEND_AUDIENCE_ID: string;
     NEWSLETTER_TOKEN_SECRET: string;
+    // Signs login-link + session-cookie tokens (lib/pages-functions/auth-tokens.ts).
+    // Deliberately separate from NEWSLETTER_TOKEN_SECRET: tokens signed under one
+    // secret can never verify under the other, on top of the purpose-claim check.
+    SESSION_TOKEN_SECRET: string;
     SETTLE_SECRET: string;
     CURATE_SECRET: string;
     ANTHROPIC_API_KEY: string;

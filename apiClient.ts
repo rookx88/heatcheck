@@ -1,4 +1,34 @@
 import type { HeatcheckPost } from './index';
+import type { Game, SelectedProp, TankArticle } from './tank-types';
+
+export interface TankPageRow {
+    id: string;
+    slug: string | null;
+    provider: string;
+    league: string;
+    angle: string;
+    game_snapshot: { prop: any; game: any };
+    model_output: TankArticle | null;
+    raw_output: string | null;
+    generation_error: string | null;
+    status: 'draft' | 'published';
+    visibility: 'app' | 'newsletter_only';
+    created_at: string;
+    updated_at: string;
+    published_at: string | null;
+}
+
+export interface NewsletterIssueRow {
+    id: string;
+    week_key: string;
+    tank_slug: string;
+    this_week_recap: string | null;
+    lore_title: string | null;
+    lore_body: string | null;
+    content_approved_at: string | null;
+    sent_at: string | null;
+    created_at: string;
+}
 
 // ===================================================================================
 // BACKEND API CLIENT
@@ -326,5 +356,85 @@ export const apiClient = {
             }
             throw error;
         }
+    },
+
+    async getTankProps(filters?: { marketWhitelist?: string[]; minProminence?: number; perGameCap?: number; leagues?: string[]; fromDate?: string; toDate?: string | null }): Promise<{ provider: string; games: Game[] }> {
+        const params = new URLSearchParams();
+        if (filters?.marketWhitelist?.length) params.set('marketWhitelist', filters.marketWhitelist.join(','));
+        if (filters?.minProminence !== undefined) params.set('minProminence', String(filters.minProminence));
+        if (filters?.perGameCap !== undefined) params.set('perGameCap', String(filters.perGameCap));
+        if (filters?.leagues?.length) params.set('leagues', filters.leagues.join(','));
+        if (filters?.fromDate) params.set('fromDate', filters.fromDate);
+        if (filters?.toDate) params.set('toDate', filters.toDate);
+        const qs = params.toString();
+        const response = await apiRequest(`/api/tank/props${qs ? `?${qs}` : ''}`);
+        return response.json();
+    },
+
+    async generateTankArticles(selections: SelectedProp[]): Promise<{ count: number; pages: TankPageRow[] }> {
+        const response = await apiRequest('/api/tank/generate', {
+            method: 'POST',
+            body: JSON.stringify({ selections }),
+        });
+        return response.json();
+    },
+
+    async listTankPages(status?: string): Promise<{ count: number; pages: TankPageRow[] }> {
+        const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+        const response = await apiRequest(`/api/tank/pages${qs}`);
+        return response.json();
+    },
+
+    async listActiveTankPages(): Promise<{ count: number; pages: TankPageRow[] }> {
+        const response = await apiRequest('/api/tank/pages?active=true');
+        return response.json();
+    },
+
+    async getTankPage(id: string): Promise<TankPageRow> {
+        const response = await apiRequest(`/api/tank/pages/${id}`);
+        return response.json();
+    },
+
+    async updateTankPage(id: string, data: { angle?: string; modelOutput?: TankArticle; status?: 'draft' | 'published'; visibility?: 'app' | 'newsletter_only' }): Promise<TankPageRow> {
+        const response = await apiRequest(`/api/tank/pages/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        });
+        return response.json();
+    },
+
+    async deleteTankPage(id: string): Promise<{ message: string }> {
+        const response = await apiRequest(`/api/tank/pages/${id}`, {
+            method: 'DELETE',
+        });
+        return response.json();
+    },
+
+    async listNewsletterIssues(): Promise<NewsletterIssueRow[]> {
+        const response = await apiRequest('/api/newsletter/issues');
+        return response.json();
+    },
+
+    async updateNewsletterIssue(id: string, data: { thisWeekRecap?: string; loreTitle?: string; loreBody?: string }): Promise<NewsletterIssueRow> {
+        const response = await apiRequest(`/api/newsletter/issues/${id}`, {
+            method: 'PUT',
+            body: JSON.stringify(data),
+        });
+        return response.json();
+    },
+
+    async draftLoreSpotlight(id: string, topic: string, facts: string[] = []): Promise<{ title: string; body: string }> {
+        const response = await apiRequest(`/api/newsletter/issues/${id}/draft-lore`, {
+            method: 'POST',
+            body: JSON.stringify({ topic, facts }),
+        });
+        return response.json();
+    },
+
+    async approveNewsletterIssue(id: string): Promise<NewsletterIssueRow> {
+        const response = await apiRequest(`/api/newsletter/issues/${id}/approve`, {
+            method: 'POST',
+        });
+        return response.json();
     }
 };

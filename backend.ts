@@ -29,7 +29,21 @@ import fs from 'fs';
 import path from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { generatePredictionSlug } from './scripts/utils/slug-generator';
+import { generatePredictionSlug, generateSlug, ensureUniqueSlug } from './scripts/utils/slug-generator';
+import {
+    ensurePolymarketTable,
+    startPolymarketScheduler,
+    syncAllLeagues,
+    lastSyncResults,
+    isSyncInProgress,
+    SUPPORTED_LEAGUES,
+} from './polymarket';
+import { getPropProvider } from './tank-providers';
+import { filterProps } from './tank-filter';
+import { ensureTankPagesTable, generateTankArticle } from './tank-generate';
+import type { SelectedProp } from './tank-types';
+import { getISOWeekKey } from './lib/iso-week';
+import { generateLoreSpotlight } from './newsletter-generate';
 
 const execAsync = promisify(exec);
 
@@ -146,6 +160,10 @@ const soccerDataPool: Pool | null = process.env.SOCCER_DATA_DATABASE_URL
 
 const SECRET_API_KEY = process.env.API_KEY || 'your-secret-api-key';
 const ODDS_API_KEY = process.env.THE_ODDS_API_KEY;
+// Cloudflare Pages Deploy Hook URL - triggers a real redeploy of the live site when a
+// Tank page is published, without needing a git push. See the PUT /api/tank/pages/:id
+// route below. Optional: unset just means publishing doesn't trigger a redeploy yet.
+const DEPLOY_HOOK_URL = process.env.DEPLOY_HOOK_URL || '';
 
 // --- AUTHENTICATION MIDDLEWARE ---
 const apiKeyAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -1168,6 +1186,29 @@ app.post('/api/posts', apiKeyAuth, async (req: express.Request, res: express.Res
     }
 });
 
+// POST /api/waitlist - Add an email to the beta waitlist
+app.post('/api/waitlist', async (req: express.Request, res: express.Response) => {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const isValidEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+    if (!isValidEmail) {
+        res.status(400).json({ message: 'Please enter a valid email address.' });
+        return;
+    }
+
+    try {
+        await pool.query('INSERT INTO waitlist (email) VALUES ($1)', [email]);
+        res.status(201).json({ message: "You're on the list! We'll email you when the beta opens." });
+    } catch (err: any) {
+        if (err.code === '23505') { // unique_violation
+            res.status(409).json({ message: "You're already on the waitlist." });
+            return;
+        }
+        console.error('Error adding to waitlist:', err);
+        res.status(500).json({ message: 'Internal server error' });
+    }
+});
+
 // PUT /api/posts/:id - Update a post (status or content)
 app.put('/api/posts/:id', apiKeyAuth, async (req: express.Request, res: express.Response) => {
     const { id } = req.params;
@@ -2024,6 +2065,539 @@ app.get('/api/odds/sports', apiKeyAuth, async (req: express.Request, res: expres
     }
 });
 
+// --- POLYMARKET PROP ODDS ---
+// These endpoints only ever read from the polymarket_props cache table; a
+// background poller (started at the bottom of this file) is the sole thing
+// that talks to Polymarket, so client traffic here can never trigger rate
+// limiting from Polymarket no matter how many requests hit this API.
+
+// GET /api/polymarket/props - List cached prop markets (auth required)
+app.get('/api/polymarket/props', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const league = req.query.league ? String(req.query.league).trim() : '';
+        const subject = req.query.subject ? String(req.query.subject).trim() : '';
+        const search = req.query.search ? String(req.query.search).trim() : '';
+        const propsOnly = String(req.query.propsOnly || 'true') !== 'false';
+        const activeOnly = String(req.query.activeOnly || 'true') !== 'false';
+        const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || '200'), 10) || 200));
+        const offset = Math.max(0, parseInt(String(req.query.offset || '0'), 10) || 0);
+
+        if (league && !SUPPORTED_LEAGUES.includes(league)) {
+            return res.status(400).json({
+                message: `Unsupported league "${league}". Supported: ${SUPPORTED_LEAGUES.join(', ')}`,
+            });
+        }
+
+        const conditions: string[] = [];
+        const params: any[] = [];
+
+        if (league) {
+            params.push(league);
+            conditions.push(`league = $${params.length}`);
+        }
+        if (subject) {
+            params.push(`%${subject}%`);
+            conditions.push(`subject_name ILIKE $${params.length}`);
+        }
+        if (search) {
+            params.push(`%${search}%`);
+            conditions.push(`question ILIKE $${params.length}`);
+        }
+        if (propsOnly) {
+            conditions.push(`is_player_prop = TRUE`);
+        }
+        if (activeOnly) {
+            conditions.push(`closed IS DISTINCT FROM TRUE`);
+        }
+
+        const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+        params.push(limit);
+        params.push(offset);
+
+        const result = await pool.query(
+            `SELECT league, event_slug, event_title, event_end_date, market_slug, question,
+                    subject_name, is_player_prop, outcomes, outcome_prices, best_bid, best_ask,
+                    volume, liquidity, active, closed, synced_at
+             FROM polymarket_props
+             ${whereClause}
+             ORDER BY event_end_date ASC NULLS LAST, subject_name ASC
+             LIMIT $${params.length - 1} OFFSET $${params.length}`,
+            params
+        );
+
+        res.json({ count: result.rows.length, props: result.rows });
+    } catch (error: any) {
+        console.error('[GET /api/polymarket/props] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// GET /api/polymarket/props/event/:eventSlug - All cached props for one event (auth required)
+app.get('/api/polymarket/props/event/:eventSlug', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const eventSlug = String(req.params.eventSlug || '').trim();
+        if (!eventSlug) {
+            return res.status(400).json({ message: 'Missing required param: eventSlug' });
+        }
+
+        const result = await pool.query(
+            `SELECT league, event_slug, event_title, event_end_date, market_slug, question,
+                    subject_name, is_player_prop, outcomes, outcome_prices, best_bid, best_ask,
+                    volume, liquidity, active, closed, synced_at
+             FROM polymarket_props
+             WHERE event_slug = $1
+             ORDER BY subject_name ASC`,
+            [eventSlug]
+        );
+
+        res.json({ count: result.rows.length, props: result.rows });
+    } catch (error: any) {
+        console.error('[GET /api/polymarket/props/event/:eventSlug] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// GET /api/polymarket/status - Sync health/freshness per league (auth required)
+app.get('/api/polymarket/status', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const result = await pool.query(
+            `SELECT league, COUNT(*)::int AS row_count, MAX(synced_at) AS last_synced_at
+             FROM polymarket_props GROUP BY league`
+        );
+        res.json({
+            supportedLeagues: SUPPORTED_LEAGUES,
+            syncInProgress: isSyncInProgress(),
+            lastSyncResults,
+            cacheCounts: result.rows,
+        });
+    } catch (error: any) {
+        console.error('[GET /api/polymarket/status] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// POST /api/polymarket/sync - Manually trigger a refresh from Polymarket (auth required)
+// Guarded by the same single-flight lock as the scheduled sync, so this can't be
+// abused to hammer Polymarket even under repeated calls.
+app.post('/api/polymarket/sync', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const leagueParam = req.body?.league ? String(req.body.league).trim() : '';
+        if (leagueParam && !SUPPORTED_LEAGUES.includes(leagueParam)) {
+            return res.status(400).json({
+                message: `Unsupported league "${leagueParam}". Supported: ${SUPPORTED_LEAGUES.join(', ')}`,
+            });
+        }
+        const leagues = leagueParam ? [leagueParam] : SUPPORTED_LEAGUES;
+
+        if (isSyncInProgress()) {
+            return res.status(409).json({ message: 'A Polymarket sync is already in progress.' });
+        }
+
+        // Run in the background; respond immediately so the client isn't blocked
+        // on a multi-league sync that can take tens of seconds.
+        syncAllLeagues(pool, leagues).catch(err => console.error('[Polymarket] Manual sync error:', err));
+        res.status(202).json({ message: 'Sync started', leagues });
+    } catch (error: any) {
+        console.error('[POST /api/polymarket/sync] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// --- HEATCHECKS THE TANK ---
+// Curator picks a prop + writes an angle, one Anthropic call turns it into a short
+// narrative article. Stage 1 (provider) and Stage 2 (filter) both run server-side here,
+// same as the Polymarket routes above never call out on a client request directly -
+// GET /api/tank/props reads the already-synced polymarket_props cache (or the mock
+// fixture), it never talks to Polymarket itself.
+
+// GET /api/tank/props - Fetch + pre-filter props for the curator UI (auth required)
+app.get('/api/tank/props', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const marketWhitelist = req.query.marketWhitelist
+            ? String(req.query.marketWhitelist).split(',').map(s => s.trim()).filter(Boolean)
+            : (process.env.MARKET_WHITELIST || '').split(',').map(s => s.trim()).filter(Boolean);
+        const minProminence = req.query.minProminence !== undefined
+            ? Number(req.query.minProminence)
+            : Number(process.env.MIN_PROMINENCE || '0');
+        const perGameCap = req.query.perGameCap !== undefined
+            ? Number(req.query.perGameCap)
+            : Number(process.env.PER_GAME_CAP || '3');
+        // Explicit query controls: which leagues, and what kickoff window. Both
+        // optional - omitting leagues means "any league"; omitting fromDate/toDate
+        // means "now onward" / "no upper bound" respectively. This is a direct
+        // league + date-range query rather than a vague "next N days" relative
+        // window, so the curator can jump straight to e.g. "MLB, Aug 19 - Aug 26"
+        // instead of scrolling past everything happening sooner across every league.
+        const leagues = req.query.leagues
+            ? String(req.query.leagues).split(',').map(s => s.trim()).filter(Boolean)
+            : [];
+        const fromDate = req.query.fromDate ? new Date(String(req.query.fromDate)) : new Date();
+        const toDate = req.query.toDate ? new Date(String(req.query.toDate)) : null;
+        if (isNaN(fromDate.getTime()) || (toDate && isNaN(toDate.getTime()))) {
+            return res.status(400).json({ message: 'Invalid fromDate/toDate.' });
+        }
+
+        const provider = getPropProvider(pool);
+        const allGames = await provider.fetchProps();
+
+        const fromMs = fromDate.getTime();
+        const toMs = toDate ? toDate.getTime() : null;
+        const windowedGames = allGames
+            .filter(g => {
+                if (leagues.length > 0 && !leagues.includes(g.league)) return false;
+                const kickoff = new Date(g.kickoff).getTime();
+                if (isNaN(kickoff) || kickoff < fromMs) return false;
+                if (toMs !== null && kickoff > toMs) return false;
+                return true;
+            })
+            .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
+
+        const filtered = filterProps(windowedGames, { marketWhitelist, minProminence, perGameCap });
+
+        res.json({ provider: (process.env.PROP_PROVIDER || 'mock'), games: filtered });
+    } catch (error: any) {
+        console.error('[GET /api/tank/props] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// POST /api/tank/generate - Generate TankArticle drafts from curator selections (auth required)
+app.post('/api/tank/generate', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const selections: SelectedProp[] = Array.isArray(req.body?.selections) ? req.body.selections : [];
+        if (selections.length === 0) {
+            return res.status(400).json({ message: 'Missing required body field: selections (non-empty array)' });
+        }
+        for (const s of selections) {
+            if (!s.prop || !s.game || !s.angle || !s.angle.trim()) {
+                return res.status(400).json({ message: 'Each selection requires prop, game, and a non-empty angle.' });
+            }
+        }
+
+        const providerName = process.env.PROP_PROVIDER || 'mock';
+        const existingSlugsResult = await pool.query('SELECT slug FROM tank_pages WHERE slug IS NOT NULL');
+        const existingSlugs = new Set<string>(existingSlugsResult.rows.map(r => r.slug));
+
+        const created: any[] = [];
+        // Sequential, not parallel: predictable cost/rate per call, same philosophy as
+        // the throttled Polymarket sync.
+        for (const selection of selections) {
+            const { prop, game, angle } = selection;
+            const result = await generateTankArticle(prop, angle, game, [], {
+                apiKey: process.env.ANTHROPIC_API_KEY!,
+                model: process.env.MODEL,
+                maxTokens: process.env.MAX_TOKENS ? Number(process.env.MAX_TOKENS) : undefined,
+            });
+
+            let slug: string | null = null;
+            if (result.parsed) {
+                const baseSlug = result.parsed.seo.slug ? generateSlug(result.parsed.seo.slug) : generateSlug(result.parsed.seo.title);
+                slug = ensureUniqueSlug(baseSlug, existingSlugs);
+                existingSlugs.add(slug);
+            }
+
+            const insertResult = await pool.query(
+                `INSERT INTO tank_pages (
+                    slug, provider, league, angle, game_snapshot, model_output, raw_output,
+                    generation_error, status
+                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft')
+                RETURNING *`,
+                [
+                    slug, providerName, game.league, angle,
+                    JSON.stringify({ prop, game }),
+                    result.parsed ? JSON.stringify(result.parsed) : null,
+                    result.parsed ? null : result.rawText,
+                    result.error,
+                ]
+            );
+            created.push(insertResult.rows[0]);
+        }
+
+        res.status(201).json({ count: created.length, pages: created });
+    } catch (error: any) {
+        console.error('[POST /api/tank/generate] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// GET /api/tank/pages - List Tank pages (auth required)
+app.get('/api/tank/pages', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const active = req.query.active === 'true';
+
+        if (active) {
+            // "Active" = published AND the underlying game hasn't happened yet. The
+            // IS NOT NULL guard matters: without it, one row missing/malformed
+            // kickoff data throws a cast error and 500s the whole endpoint.
+            const result = await pool.query(
+                `SELECT * FROM tank_pages
+                 WHERE status = 'published'
+                   AND game_snapshot->'game'->>'kickoff' IS NOT NULL
+                   AND (game_snapshot->'game'->>'kickoff')::timestamptz > NOW()
+                 ORDER BY (game_snapshot->'game'->>'kickoff')::timestamptz ASC
+                 LIMIT 200`
+            );
+            return res.json({ count: result.rows.length, pages: result.rows });
+        }
+
+        const status = req.query.status ? String(req.query.status).trim() : '';
+        const params: any[] = [];
+        let where = '';
+        if (status) {
+            params.push(status);
+            where = 'WHERE status = $1';
+        }
+        const result = await pool.query(
+            `SELECT * FROM tank_pages ${where} ORDER BY created_at DESC LIMIT 200`,
+            params
+        );
+        res.json({ count: result.rows.length, pages: result.rows });
+    } catch (error: any) {
+        console.error('[GET /api/tank/pages] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// GET /api/tank/pages/:id - Fetch one Tank page (auth required)
+app.get('/api/tank/pages/:id', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const result = await pool.query('SELECT * FROM tank_pages WHERE id = $1', [req.params.id]);
+        if (result.rowCount === 0) {
+            return res.status(404).json({ message: 'Tank page not found' });
+        }
+        res.json(result.rows[0]);
+    } catch (error: any) {
+        console.error('[GET /api/tank/pages/:id] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// PUT /api/tank/pages/:id - Edit / publish a Tank page (auth required)
+app.put('/api/tank/pages/:id', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const id = req.params.id;
+        const existing = await pool.query('SELECT * FROM tank_pages WHERE id = $1', [id]);
+        if (existing.rowCount === 0) {
+            return res.status(404).json({ message: 'Tank page not found' });
+        }
+        const previousStatus = existing.rows[0].status;
+        const previousVisibility = existing.rows[0].visibility;
+
+        const angle = req.body?.angle !== undefined ? req.body.angle : existing.rows[0].angle;
+        const modelOutput = req.body?.modelOutput !== undefined ? req.body.modelOutput : existing.rows[0].model_output;
+        const status = req.body?.status !== undefined ? req.body.status : existing.rows[0].status;
+        const visibility = req.body?.visibility !== undefined ? req.body.visibility : previousVisibility;
+        const isNowPublished = status === 'published';
+        const wasPublished = previousStatus === 'published';
+        const statusChangedToPublished = isNowPublished && !wasPublished;
+        const statusChangedAwayFromPublished = wasPublished && !isNowPublished;
+
+        // Distribution (app vs newsletter_only) is a publish-time decision, not something
+        // toggled after the fact - a Tank shouldn't flip from public to exclusive or back
+        // once people may have already seen or picked it. Once a Tank has been published
+        // at least once, its visibility is locked.
+        if (wasPublished && visibility !== previousVisibility) {
+            return res.status(400).json({
+                message: 'Cannot change distribution (app / newsletter_only) after a Tank has been published.',
+            });
+        }
+        if (visibility !== 'app' && visibility !== 'newsletter_only') {
+            return res.status(400).json({ message: "visibility must be 'app' or 'newsletter_only'." });
+        }
+
+        // publishedAt is a "first published" timestamp, not a live/not-live flag - it
+        // deliberately does NOT get cleared on unpublish, so re-publishing later doesn't
+        // look like a brand new page.
+        const publishedAt = statusChangedToPublished && !existing.rows[0].published_at
+            ? new Date().toISOString()
+            : existing.rows[0].published_at;
+
+        const result = await pool.query(
+            `UPDATE tank_pages
+             SET angle = $1, model_output = $2, status = $3, visibility = $4, updated_at = NOW(), published_at = $5
+             WHERE id = $6
+             RETURNING *`,
+            [angle, JSON.stringify(modelOutput), status, visibility, publishedAt, id]
+        );
+
+        // Publishing a newsletter_only Tank claims this week's newsletter_issues slot.
+        // ON CONFLICT only updates tank_slug while the issue hasn't been sent yet, so
+        // re-publishing (or swapping which draft is "this week's" pick) can't clobber an
+        // issue that already went out.
+        if (statusChangedToPublished && visibility === 'newsletter_only') {
+            const weekKey = getISOWeekKey(new Date());
+            await pool.query(
+                `INSERT INTO newsletter_issues (week_key, tank_slug)
+                 VALUES ($1, $2)
+                 ON CONFLICT (week_key) DO UPDATE
+                     SET tank_slug = EXCLUDED.tank_slug
+                     WHERE newsletter_issues.sent_at IS NULL`,
+                [weekKey, result.rows[0].slug]
+            );
+        }
+
+        if (statusChangedToPublished || statusChangedAwayFromPublished) {
+            const verb = statusChangedToPublished ? 'published' : 'unpublished';
+            console.log(`[Static Site] Tank page ${id} was just ${verb}. Regenerating static site...`);
+            execAsync('npm run build:static', {
+                cwd: process.cwd(),
+                maxBuffer: 10 * 1024 * 1024,
+                env: { ...process.env }
+            }).then(({ stdout, stderr }) => {
+                if (stdout) console.log('[Static Site] Generation output:', stdout.substring(0, 1000));
+                if (stderr && !stderr.includes('WARN')) console.warn('[Static Site] Generation warnings:', stderr.substring(0, 500));
+                console.log('[Static Site] ✓ Static site regeneration completed successfully');
+            }).catch((error: any) => {
+                console.error('[Static Site] ✗ Error regenerating static site:', error.message);
+            });
+
+            // The build:static run above only rewrites this machine's local dist/ -
+            // Cloudflare Pages only rebuilds the deployed site on its own git-push-
+            // triggered build. Firing the project's Deploy Hook (a webhook URL from the
+            // Cloudflare Pages dashboard: Workers & Pages -> project -> Settings ->
+            // Builds & deployments -> Deploy hooks) triggers a real redeploy from the
+            // latest commit on the connected branch, without needing a git push. Not
+            // configured locally is a no-op, not an error - publishing still works.
+            if (DEPLOY_HOOK_URL) {
+                fetch(DEPLOY_HOOK_URL, { method: 'POST' })
+                    .then(async (res) => {
+                        if (!res.ok) {
+                            console.error(`[Deploy Hook] Trigger failed: ${res.status} ${await res.text()}`);
+                        } else {
+                            console.log('[Deploy Hook] ✓ Cloudflare Pages redeploy triggered');
+                        }
+                    })
+                    .catch((error: any) => {
+                        console.error('[Deploy Hook] ✗ Error triggering redeploy:', error.message);
+                    });
+            } else {
+                console.warn('[Deploy Hook] DEPLOY_HOOK_URL is not configured - published page will not go live until the next git-push-triggered Cloudflare build.');
+            }
+        }
+
+        res.json(result.rows[0]);
+    } catch (error: any) {
+        console.error('[PUT /api/tank/pages/:id] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// DELETE /api/tank/pages/:id - Delete a Tank page (auth required)
+app.delete('/api/tank/pages/:id', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const result = await pool.query('DELETE FROM tank_pages WHERE id = $1', [req.params.id]);
+        if (result.rowCount === 0) {
+            return res.status(404).json({ message: 'Tank page not found' });
+        }
+        res.json({ message: 'Tank page deleted' });
+    } catch (error: any) {
+        console.error('[DELETE /api/tank/pages/:id] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// GET /api/newsletter/issues - List newsletter issues, most recent week first (auth required)
+app.get('/api/newsletter/issues', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const result = await pool.query('SELECT * FROM newsletter_issues ORDER BY week_key DESC');
+        res.json(result.rows);
+    } catch (error: any) {
+        console.error('[GET /api/newsletter/issues] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// GET /api/newsletter/issues/:id - One newsletter issue (auth required)
+app.get('/api/newsletter/issues/:id', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const result = await pool.query('SELECT * FROM newsletter_issues WHERE id = $1', [req.params.id]);
+        if (result.rowCount === 0) {
+            return res.status(404).json({ message: 'Newsletter issue not found' });
+        }
+        res.json(result.rows[0]);
+    } catch (error: any) {
+        console.error('[GET /api/newsletter/issues/:id] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// PUT /api/newsletter/issues/:id - Edit recap/lore copy for an issue (auth required). Locked
+// once sent - the human-approval discipline only means something if content can't shift
+// after go-ahead was given, and definitely not after it's already in someone's inbox.
+app.put('/api/newsletter/issues/:id', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const existing = await pool.query('SELECT * FROM newsletter_issues WHERE id = $1', [req.params.id]);
+        if (existing.rowCount === 0) {
+            return res.status(404).json({ message: 'Newsletter issue not found' });
+        }
+        if (existing.rows[0].sent_at) {
+            return res.status(400).json({ message: 'This issue has already been sent and can no longer be edited.' });
+        }
+
+        const thisWeekRecap = req.body?.thisWeekRecap !== undefined ? req.body.thisWeekRecap : existing.rows[0].this_week_recap;
+        const loreTitle = req.body?.loreTitle !== undefined ? req.body.loreTitle : existing.rows[0].lore_title;
+        const loreBody = req.body?.loreBody !== undefined ? req.body.loreBody : existing.rows[0].lore_body;
+
+        const result = await pool.query(
+            `UPDATE newsletter_issues SET this_week_recap = $1, lore_title = $2, lore_body = $3 WHERE id = $4 RETURNING *`,
+            [thisWeekRecap, loreTitle, loreBody, req.params.id]
+        );
+        res.json(result.rows[0]);
+    } catch (error: any) {
+        console.error('[PUT /api/newsletter/issues/:id] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// POST /api/newsletter/issues/:id/draft-lore - AI-draft the lore spotlight for review (auth
+// required). Never writes to the issue directly - returns a draft for the admin to edit and
+// save via PUT, same "always draft, human approves" discipline as /api/tank/generate.
+app.post('/api/newsletter/issues/:id/draft-lore', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const topic = typeof req.body?.topic === 'string' ? req.body.topic.trim() : '';
+        const facts: string[] = Array.isArray(req.body?.facts) ? req.body.facts : [];
+        if (!topic) {
+            return res.status(400).json({ message: 'Missing required body field: topic' });
+        }
+        const result = await generateLoreSpotlight(topic, facts, {
+            apiKey: process.env.ANTHROPIC_API_KEY!,
+            model: process.env.MODEL,
+            maxTokens: process.env.MAX_TOKENS ? Number(process.env.MAX_TOKENS) : undefined,
+        });
+        if (!result.parsed) {
+            return res.status(502).json({ message: result.error || 'Lore generation failed.', rawText: result.rawText });
+        }
+        res.json(result.parsed);
+    } catch (error: any) {
+        console.error('[POST /api/newsletter/issues/:id/draft-lore] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// POST /api/newsletter/issues/:id/approve - Set the human-check gate. send-issue refuses to
+// send without this. Requires recap + lore to actually be filled in first - an empty
+// "approved" issue would just move the gap from "unapproved" to "approved-but-blank."
+app.post('/api/newsletter/issues/:id/approve', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const existing = await pool.query('SELECT * FROM newsletter_issues WHERE id = $1', [req.params.id]);
+        if (existing.rowCount === 0) {
+            return res.status(404).json({ message: 'Newsletter issue not found' });
+        }
+        const row = existing.rows[0];
+        if (!row.this_week_recap?.trim() || !row.lore_title?.trim() || !row.lore_body?.trim()) {
+            return res.status(400).json({ message: 'this_week_recap, lore_title, and lore_body must all be filled in before approving.' });
+        }
+        const result = await pool.query(
+            'UPDATE newsletter_issues SET content_approved_at = NOW() WHERE id = $1 RETURNING *',
+            [req.params.id]
+        );
+        res.json(result.rows[0]);
+    } catch (error: any) {
+        console.error('[POST /api/newsletter/issues/:id/approve] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
 // POST /api/matchups/import-soccer - Import soccer matchups from soccerdata DB
 app.post('/api/matchups/import-soccer', apiKeyAuth, async (req: express.Request, res: express.Response) => {
     if (!soccerDataPool) {
@@ -2242,6 +2816,27 @@ app.get('/robots.txt', (req: express.Request, res: express.Response) => {
 // --- SERVER START ---
 app.listen(port, () => {
     console.log(`Heatchecks Backend API listening at http://localhost:${port}`);
+
+    // Set up the Polymarket props cache table, then start the background poller.
+    // Runs after listen() so a slow/unavailable DB never delays the server coming up.
+    ensurePolymarketTable(pool)
+        .then(() => {
+            const intervalMs = process.env.POLYMARKET_SYNC_INTERVAL_MS
+                ? parseInt(process.env.POLYMARKET_SYNC_INTERVAL_MS, 10)
+                : undefined;
+            if (process.env.POLYMARKET_SYNC_ENABLED === 'false') {
+                console.log('[Polymarket] Sync disabled via POLYMARKET_SYNC_ENABLED=false');
+            } else {
+                startPolymarketScheduler(pool, intervalMs);
+                console.log(`[Polymarket] Background sync scheduled every ${intervalMs ?? 180000}ms for: ${SUPPORTED_LEAGUES.join(', ')}`);
+            }
+        })
+        .catch(err => console.error('[Polymarket] Failed to set up polymarket_props table:', err));
+
+    ensureTankPagesTable(pool)
+        .then(() => console.log(`[Tank] tank_pages table ready. PROP_PROVIDER=${process.env.PROP_PROVIDER || 'mock'}`))
+        .catch(err => console.error('[Tank] Failed to set up tank_pages table:', err));
+
     console.log('Registered routes:');
     console.log('  GET    /api/images');
     console.log('  GET    /api/posts');
@@ -2251,6 +2846,7 @@ app.listen(port, () => {
     console.log('  GET    /api/odds/game/:eventId (auth required)');
     console.log('  GET    /api/odds/find-event (auth required)');
     console.log('  POST   /api/posts (auth required)');
+    console.log('  POST   /api/waitlist');
     console.log('  PUT    /api/posts/:id (auth required)');
     console.log('  DELETE /api/posts/:id (auth required)');
     console.log('  GET    /api/matchups');
@@ -2260,6 +2856,16 @@ app.listen(port, () => {
     console.log('  PUT    /api/matchups/:id (auth required)');
     console.log('  POST   /api/matchups/import (auth required)');
     console.log('  POST   /api/matchups/import-soccer (auth required)');
+    console.log('  GET    /api/polymarket/props (auth required)');
+    console.log('  GET    /api/polymarket/props/event/:eventSlug (auth required)');
+    console.log('  GET    /api/polymarket/status (auth required)');
+    console.log('  POST   /api/polymarket/sync (auth required)');
+    console.log('  GET    /api/tank/props (auth required)');
+    console.log('  POST   /api/tank/generate (auth required)');
+    console.log('  GET    /api/tank/pages?status=&active=true (auth required)');
+    console.log('  GET    /api/tank/pages/:id (auth required)');
+    console.log('  PUT    /api/tank/pages/:id (auth required)');
+    console.log('  DELETE /api/tank/pages/:id (auth required)');
     console.log('  GET    /sitemap.xml');
     console.log('  GET    /robots.txt');
     console.log(`API Key configured: ${SECRET_API_KEY ? 'YES (***' + SECRET_API_KEY.slice(-4) + ')' : 'NO (using default)'}`);
