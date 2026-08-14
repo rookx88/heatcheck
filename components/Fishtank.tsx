@@ -523,11 +523,19 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                 return;
             }
             if (err instanceof DailyCapError) {
+                // A fresh session (no cached account) never called GET /api/picks/today
+                // before this submit, so this 429 may be the very first real signal
+                // about verification status this component has ever seen - without
+                // consuming it here, an already-verified account hitting the cap on a
+                // new device/incognito session gets stuck showing the code prompt
+                // indefinitely, since nothing else would ever correct verifyState.
+                setCachedAccount({ email: submitterEmail, verified: err.verified });
+                if (err.verified) setVerifyState('verified');
                 setTodayStatus((prev) => ({
                     picks: prev?.picks ?? [],
                     picksToday: err.picksToday,
                     remaining: err.remaining,
-                    verified: prev?.verified ?? verifyState === 'verified',
+                    verified: err.verified,
                 }));
                 setErrorMessage(err.message);
                 setSubmitState('error');
@@ -680,7 +688,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                         onChange={(e) => setEmail(e.target.value)}
                         style={{ ...inputStyle, flex: '1 1 180px' }}
                     />
-                    <button type="submit" style={submitButtonStyle} disabled={submitState === 'submitting'}>
+                    <button type="submit" style={submitButtonStyle}>
                         Lock it in
                     </button>
                 </form>

@@ -70,11 +70,18 @@ export class PickConflictError extends Error {
 export class DailyCapError extends Error {
     picksToday: number;
     remaining: number;
-    constructor(picksToday: number, remaining: number) {
+    // Whether this email is already verified - a 429 is purely a volume rejection,
+    // unrelated to verification, but it's often the first server response a fresh
+    // session ever sees (no cached account => no earlier GET /api/picks/today to learn
+    // this from), so the caller needs it to avoid showing a stale "confirm your email"
+    // prompt to an account that's actually already verified.
+    verified: boolean;
+    constructor(picksToday: number, remaining: number, verified: boolean) {
         super("You've used today's picks — back tomorrow.");
         this.name = 'DailyCapError';
         this.picksToday = picksToday;
         this.remaining = remaining;
+        this.verified = verified;
     }
 }
 
@@ -95,7 +102,7 @@ export async function submitPick(email: string, slug: string, side: string, side
     });
     const data = await parseJsonSafe(res);
     if (res.status === 409) throw new PickConflictError(data.pick ?? null);
-    if (res.status === 429) throw new DailyCapError(data.picksToday ?? 3, data.remaining ?? 0);
+    if (res.status === 429) throw new DailyCapError(data.picksToday ?? 3, data.remaining ?? 0, Boolean(data.verified));
     if (!res.ok) throw new Error(data.message || `POST /api/picks failed: ${res.status}`);
     return data as SubmitPickResponse;
 }

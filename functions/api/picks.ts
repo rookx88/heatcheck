@@ -135,13 +135,21 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // from the daily cap - they're capped by "once per issue" (a DB unique index)
     // instead, and each issue only ever has one exclusive Tank to begin with.
     const capRows = await sql`
-        SELECT COUNT(*)::int AS count FROM picks
-        WHERE waitlist_id = ${waitlistId} AND created_at >= CURRENT_DATE AND source = 'app'
+        SELECT
+            (SELECT COUNT(*)::int FROM picks WHERE waitlist_id = ${waitlistId} AND created_at >= CURRENT_DATE AND source = 'app') AS count,
+            (SELECT email_verified FROM waitlist WHERE id = ${waitlistId}) AS email_verified
     `;
-    const picksToday = (capRows[0] as unknown as { count: number }).count;
+    const capRow = capRows[0] as unknown as { count: number; email_verified: boolean };
+    const picksToday = capRow.count;
     if (picksToday >= DAILY_PICK_CAP) {
+        // A 429 here has nothing to do with whether the email is verified - it's purely
+        // a volume rejection - but the client has no other signal to learn verification
+        // status from on a brand new session (no cached account => it never called
+        // GET /api/picks/today before this). Without `verified` here, an
+        // already-verified account hitting the cap on a fresh device/incognito session
+        // would see a confusing "confirm your email" prompt it doesn't need.
         return jsonResponse(
-            { message: "You've used today's picks — back tomorrow.", picksToday, remaining: 0 },
+            { message: "You've used today's picks — back tomorrow.", picksToday, remaining: 0, verified: Boolean(capRow.email_verified) },
             { status: 429 }
         );
     }
