@@ -646,7 +646,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                 </p>
                 {todayStatus && (
                     <p style={picksTodayLineStyle}>
-                        {todayStatus.picksToday} of 3 picks used today{remaining > 0 ? ` · ${remaining} left` : ''}
+                        {todayStatus.picksToday} of {todayStatus.picksToday + todayStatus.remaining} picks used today{remaining > 0 ? ` · ${remaining} left` : ''}
                     </p>
                 )}
                 {accountKnown && verifyBlock}
@@ -664,7 +664,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                 <p style={{ color: '#cbd5e1', fontSize: '0.85rem', marginTop: '0.75rem' }}>
                     You've used today's picks — back tomorrow.
                 </p>
-                {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of 3 picks used today</p>}
+                {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of {todayStatus.picksToday + todayStatus.remaining} picks used today</p>}
                 {accountKnown && verifyBlock}
                 {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} />}
             </div>
@@ -686,7 +686,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                     </button>
                 ))}
             </div>
-            {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of 3 picks used today · {remaining} left</p>}
+            {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of {todayStatus.picksToday + todayStatus.remaining} picks used today · {remaining} left</p>}
 
             {/* Email form only for a brand new account (chooseSide auto-submits once account is known). */}
             {submitState === 'choosing' && selectedSide && !accountKnown && (
