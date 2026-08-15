@@ -270,7 +270,14 @@ export async function sendLoginLinkEmail(env: Env, email: string, loginUrl: stri
 }
 
 export function generateVerificationCode(): string {
+    // Rejection sampling to avoid the modulo bias a bare `% 900000` over a Uint32 range
+    // introduces (it skews ~0.004% toward low codes). Immaterial alone, but this is the
+    // brute-force target, so keep the distribution flat.
+    const RANGE = 900000;
+    const limit = Math.floor(0xffffffff / RANGE) * RANGE; // largest unbiased multiple
     const bytes = new Uint32Array(1);
-    crypto.getRandomValues(bytes);
-    return String(100000 + (bytes[0] % 900000)); // 6 digits, no leading zero
+    do {
+        crypto.getRandomValues(bytes);
+    } while (bytes[0] >= limit);
+    return String(100000 + (bytes[0] % RANGE)); // 6 digits, no leading zero
 }

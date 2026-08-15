@@ -10,11 +10,18 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, UUID_RE, type Env } from '../../../lib/pages-functions/db';
 import { verifyAuthToken } from '../../../lib/pages-functions/auth-tokens';
-import { createSession } from '../../../lib/pages-functions/session';
+import { createSession, requireSameOrigin } from '../../../lib/pages-functions/session';
 import { logEvent } from '../../../lib/pages-functions/events';
 import type { LoginTokenPayload } from '../../../lib/auth-token-payloads';
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
+    // CSRF guard (H3): without this, a cross-origin form/fetch could silently drive a
+    // victim's browser through consumption and set them a session for the ATTACKER's
+    // account (session fixation) - SameSite=Lax doesn't help, since the attack is about
+    // the response SETTING a cookie, not sending one.
+    const csrf = requireSameOrigin(context.request);
+    if (csrf) return csrf;
+
     let body: any;
     try {
         body = await context.request.json();
@@ -37,29 +44,37 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(context.env);
 
-    // Atomic single-use consumption: the nonce match is the guard. A second click
-    // (nonce already NULLed) or a superseded link (nonce rotated by a newer request)
-    // matches zero rows.
-    const rows = await sql`
-        UPDATE waitlist
-        SET login_nonce = NULL,
-            login_nonce_expires_at = NULL,
-            email_verified = true
-        WHERE id = ${payload.userId}
-          AND login_nonce = ${payload.nonce}
-          AND login_nonce_expires_at > NOW()
-        RETURNING id, email
-    `;
-    if (rows.length === 0) {
-        return jsonResponse(
-            { message: 'This login link has already been used or replaced. Request a fresh one to log in.' },
-            { status: 400 }
-        );
-    }
-    const userId = rows[0].id as string;
-    const userEmail = rows[0].email as string;
+    let userId: string;
+    let userEmail: string;
+    let setCookie: string;
+    try {
+        // Atomic single-use consumption: the nonce match is the guard. A second click
+        // (nonce already NULLed) or a superseded link (nonce rotated by a newer request)
+        // matches zero rows.
+        const rows = await sql`
+            UPDATE waitlist
+            SET login_nonce = NULL,
+                login_nonce_expires_at = NULL,
+                email_verified = true
+            WHERE id = ${payload.userId}
+              AND login_nonce = ${payload.nonce}
+              AND login_nonce_expires_at > NOW()
+            RETURNING id, email
+        `;
+        if (rows.length === 0) {
+            return jsonResponse(
+                { message: 'This login link has already been used or replaced. Request a fresh one to log in.' },
+                { status: 400 }
+            );
+        }
+        userId = rows[0].id as string;
+        userEmail = rows[0].email as string;
 
-    const { setCookie } = await createSession(sql, context.env, userId, context.request.url);
+        ({ setCookie } = await createSession(sql, context.env, userId, context.request.url));
+    } catch (err) {
+        console.error('[POST /api/login/consume] Error consuming link / issuing session:', err);
+        return jsonResponse({ message: 'Could not complete login. Request a fresh link.' }, { status: 500 });
+    }
 
     if (visitorId) {
         try {

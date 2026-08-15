@@ -67,6 +67,20 @@ export async function signToken<T extends TokenPayload>(
  * untrusted input.
  */
 export async function verifyToken<T extends TokenPayload>(token: string, secret: string): Promise<T | null> {
+    const body = await verifyTokenBody<T>(token, secret);
+    return body ? body.payload : null;
+}
+
+/**
+ * Like verifyToken(), but returns the whole signed body ({ payload, exp? }) rather
+ * than just the payload - so a caller that needs to enforce "this token MUST carry an
+ * exp" (the auth-token wrapper) can actually see whether one was present, which
+ * verifyToken()'s payload-only return structurally hides. Same never-throws contract.
+ */
+export async function verifyTokenBody<T extends TokenPayload>(
+    token: string,
+    secret: string
+): Promise<SignedTokenBody<T> | null> {
     const parts = token.split('.');
     if (parts.length !== 2) return null;
     const [bodyB64, sigB64] = parts;
@@ -78,7 +92,7 @@ export async function verifyToken<T extends TokenPayload>(token: string, secret:
 
         const body = JSON.parse(new TextDecoder().decode(fromBase64Url(bodyB64))) as SignedTokenBody<T>;
         if (body.exp !== undefined && body.exp < Math.floor(Date.now() / 1000)) return null;
-        return body.payload;
+        return body;
     } catch {
         return null;
     }

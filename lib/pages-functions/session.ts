@@ -12,12 +12,35 @@
 // while the DB row slid forward, silently breaking the sliding guarantee.
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
-import { getSql, type Env } from './db';
+import { getSql, jsonResponse, type Env } from './db';
 import { signAuthToken, verifyAuthToken } from './auth-tokens';
 import type { SessionTokenPayload } from '../auth-token-payloads';
 
+// Over HTTPS the cookie carries the __Host- prefix: browsers enforce that a __Host-
+// cookie has Secure, Path=/, and NO Domain attribute - which makes it impossible for
+// any *.heatchecks.io subdomain to set or overwrite it (cookie-tossing / session
+// fixation). Over plain http (wrangler pages dev) the prefix is illegal, so the bare
+// name is used there. getSession/logout read the name matching the request's scheme,
+// so in production only the un-spoofable __Host- cookie is ever trusted.
 export const SESSION_COOKIE = 'hc_session';
+const HOST_SESSION_COOKIE = '__Host-hc_session';
+function sessionCookieName(secure: boolean): string {
+    return secure ? HOST_SESSION_COOKIE : SESSION_COOKIE;
+}
+
 const SESSION_TTL_SECONDS = 30 * 24 * 3600;
+
+// Host shapes allowed to originate a login link and to count as same-origin. Preview
+// and branch aliases are *.heatcheck.pages.dev; production is heatchecks.io; dev is
+// localhost/127.0.0.1.
+function isTrustedHost(hostname: string): boolean {
+    return (
+        hostname === 'heatchecks.io' ||
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.endsWith('.heatcheck.pages.dev')
+    );
+}
 
 // Structural request type rather than @cloudflare/workers-types' Request, so this
 // stays importable from Node-checked programs (same motivation as
@@ -38,16 +61,54 @@ export interface Session {
 }
 
 // wrangler pages dev serves plain http on localhost, where a Secure cookie is
-// rejected by some browsers (Safari, even for localhost); production is always
-// https://heatchecks.io. Derived from the request rather than an env flag so there's
-// nothing to misconfigure.
+// rejected by some browsers (Safari, even for localhost); prod/preview are always
+// https. Keyed on the scheme itself rather than a hostname allowlist - that's what
+// actually determines whether a Secure cookie is valid, and it fails secure on a
+// malformed URL.
 export function isSecureRequest(requestUrl: string): boolean {
     try {
-        const { hostname } = new URL(requestUrl);
-        return hostname !== 'localhost' && hostname !== '127.0.0.1';
+        return new URL(requestUrl).protocol === 'https:';
     } catch {
         return true;
     }
+}
+
+// The login link's origin, hardened against Host-header injection (F1): only a
+// trusted request Host is echoed back; anything else falls back to the canonical
+// origin, so an attacker who slips a spoofed Host past Cloudflare's routing can never
+// get a victim emailed a valid token pointed at an attacker domain.
+export function resolveLoginOrigin(requestUrl: string, env: Env): string {
+    try {
+        const u = new URL(requestUrl);
+        if (isTrustedHost(u.hostname)) return u.origin;
+    } catch {
+        /* fall through to canonical */
+    }
+    return (env.BASE_URL || 'https://heatchecks.io').replace(/\/$/, '');
+}
+
+// CSRF guard for state-changing POST endpoints. Returns a 403 Response when the
+// request shows positive evidence of being cross-origin, else null (allow). Blocks the
+// login-CSRF / session-fixation class: a cross-site form or fetch carries either
+// Sec-Fetch-Site != same-origin or an Origin whose host isn't ours. Non-browser
+// clients (no Sec-Fetch-Site, no Origin) are allowed through - CSRF is strictly a
+// browser-driven attack, and gating those would break curl-based tooling for no gain.
+export function requireSameOrigin(request: RequestLike): Response | null {
+    const secFetchSite = request.headers.get('Sec-Fetch-Site');
+    if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
+        return jsonResponse({ message: 'Cross-origin request rejected.' }, { status: 403 });
+    }
+    const origin = request.headers.get('Origin');
+    if (origin) {
+        try {
+            if (!isTrustedHost(new URL(origin).hostname)) {
+                return jsonResponse({ message: 'Cross-origin request rejected.' }, { status: 403 });
+            }
+        } catch {
+            return jsonResponse({ message: 'Cross-origin request rejected.' }, { status: 403 });
+        }
+    }
+    return null;
 }
 
 export function getCookieValue(cookieHeader: string | null, name: string): string | null {
@@ -61,13 +122,20 @@ export function getCookieValue(cookieHeader: string | null, name: string): strin
 }
 
 // httpOnly: the session is a real credential (it replaces raw-email trust on
-// balance/picks-today), so it must never be reachable from client-side JS.
+// balance/picks-today), so it must never be reachable from client-side JS. Name and
+// Secure flag both track the request scheme (see sessionCookieName / __Host- note).
 export function buildSessionCookie(token: string, secure: boolean): string {
-    return `${SESSION_COOKIE}=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+    return `${sessionCookieName(secure)}=${token}; Path=/; Max-Age=${SESSION_TTL_SECONDS}; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
 }
 
 export function buildClearSessionCookie(secure: boolean): string {
-    return `${SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+    return `${sessionCookieName(secure)}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
+}
+
+// Reads the session cookie under the name matching the request scheme, so production
+// (https) only ever trusts the un-spoofable __Host- cookie.
+export function readSessionCookie(request: RequestLike): string | null {
+    return getCookieValue(request.headers.get('Cookie'), sessionCookieName(isSecureRequest(request.url)));
 }
 
 export async function createSession(
@@ -91,7 +159,7 @@ export async function createSession(
 }
 
 export async function getSession(request: RequestLike, env: Env): Promise<Session | null> {
-    const raw = getCookieValue(request.headers.get('Cookie'), SESSION_COOKIE);
+    const raw = readSessionCookie(request);
     if (!raw) return null;
 
     const payload = await verifyAuthToken<SessionTokenPayload>(raw, env.SESSION_TOKEN_SECRET, 'session');

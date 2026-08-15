@@ -23,6 +23,11 @@ export interface Env {
     // Deliberately separate from NEWSLETTER_TOKEN_SECRET: tokens signed under one
     // secret can never verify under the other, on top of the purpose-claim check.
     SESSION_TOKEN_SECRET: string;
+    // Canonical site origin (e.g. https://heatchecks.io), set per Cloudflare
+    // environment. Used as the fallback when a login-link request arrives with an
+    // untrusted Host, so the emailed link can never point at an attacker domain
+    // (see resolveLoginOrigin in session.ts). Optional so local/dev still works.
+    BASE_URL?: string;
     SETTLE_SECRET: string;
     CURATE_SECRET: string;
     ANTHROPIC_API_KEY: string;
@@ -49,9 +54,18 @@ export function getSql(env: Env): NeonQueryFunction<false, false> {
 }
 
 export function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
+    // no-store + nosniff by default: these are all dynamic API responses, several of
+    // them authenticated (session/balance/picks-today), so they must never be cached
+    // by a proxy or a future Cloudflare Cache Rule and must not be MIME-sniffed. A
+    // caller can still override via init.headers (spread last).
     return new Response(JSON.stringify(body), {
         status: init.status ?? 200,
-        headers: { 'Content-Type': 'application/json', ...(init.headers as Record<string, string> | undefined) },
+        headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-store',
+            'X-Content-Type-Options': 'nosniff',
+            ...(init.headers as Record<string, string> | undefined),
+        },
     });
 }
 

@@ -107,6 +107,13 @@ function ConsumeToken({ token }: { token: string }) {
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.message || 'This login link is invalid or has expired. Request a new one.');
+                // Scrub ?token= from the URL immediately (before any navigation) so the
+                // consumed token doesn't linger in browser history or a shared/copied URL.
+                // The token is single-use and already consumed, but there's no reason to
+                // leave it lying around.
+                try {
+                    window.history.replaceState(null, '', '/login/');
+                } catch { /* non-fatal */ }
                 setEmail(data.email as string);
                 setCachedAccount({ email: data.email as string, verified: true });
                 window.setTimeout(() => {

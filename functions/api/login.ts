@@ -14,12 +14,16 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, EMAIL_RE, type Env } from '../../lib/pages-functions/db';
 import { sendLoginLinkEmail } from '../../lib/pages-functions/email';
 import { signAuthToken } from '../../lib/pages-functions/auth-tokens';
+import { resolveLoginOrigin, requireSameOrigin } from '../../lib/pages-functions/session';
 import type { LoginTokenPayload } from '../../lib/auth-token-payloads';
 
 const LOGIN_TOKEN_TTL_SECONDS = 15 * 60;
 const DAILY_LINK_CAP = 10;
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
+    const csrf = requireSameOrigin(context.request);
+    if (csrf) return csrf;
+
     let body: any;
     try {
         body = await context.request.json();
@@ -92,8 +96,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         context.env.SESSION_TOKEN_SECRET,
         LOGIN_TOKEN_TTL_SECONDS
     );
-    // Request-origin derivation makes local-dev links land on localhost automatically.
-    const loginUrl = `${new URL(context.request.url).origin}/login/?token=${encodeURIComponent(token)}`;
+    // Trusted origin only (F1): a spoofed Host can never redirect the emailed link to
+    // an attacker domain - resolveLoginOrigin echoes the request origin only for known
+    // hosts and otherwise falls back to the canonical BASE_URL.
+    const loginUrl = `${resolveLoginOrigin(context.request.url, context.env)}/login/?token=${encodeURIComponent(token)}`;
 
     try {
         await sendLoginLinkEmail(context.env, email, loginUrl);

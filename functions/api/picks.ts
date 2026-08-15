@@ -17,7 +17,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, EMAIL_RE, UUID_RE, type Env } from '../../lib/pages-functions/db';
 import { sendVerificationEmail, generateVerificationCode } from '../../lib/pages-functions/email';
-import { getSession } from '../../lib/pages-functions/session';
+import { getSession, requireSameOrigin } from '../../lib/pages-functions/session';
 import { logEvent } from '../../lib/pages-functions/events';
 
 // Defaults to 1/day (Phase 0) rather than the eventual 3/day Phase 1 standard -
@@ -46,6 +46,9 @@ interface PropOdds {
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
+    const csrf = requireSameOrigin(context.request);
+    if (csrf) return csrf;
+
     let body: any;
     try {
         body = await context.request.json();
@@ -129,8 +132,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             const waitlistRows = await sql`
                 INSERT INTO waitlist (email) VALUES (${email})
                 ON CONFLICT ((LOWER(email))) DO UPDATE SET email = waitlist.email
-                RETURNING id
+                RETURNING id, email_verified
             `;
+            // H2: the email path is the first-ever-pick funnel entry only. Once an
+            // account is claimed (email_verified - which both login paths set), it can no
+            // longer be picked-for by anyone who merely knows the address; a real session
+            // is required. This blocks the write-side hijack (submitting picks as a
+            // verified victim, burning their daily cap, locking them out of Tanks) while
+            // leaving brand-new/unverified accounts free to make their first pick.
+            if (waitlistRows[0].email_verified) {
+                return jsonResponse(
+                    { message: 'Please log in to make a pick.', loginRequired: true },
+                    { status: 401 }
+                );
+            }
             waitlistId = waitlistRows[0].id as string;
         } catch (err) {
             console.error('[POST /api/picks] Error upserting waitlist row:', err);

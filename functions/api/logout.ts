@@ -8,15 +8,18 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { verifyAuthToken } from '../../lib/pages-functions/auth-tokens';
 import {
-    SESSION_COOKIE,
-    getCookieValue,
+    readSessionCookie,
     buildClearSessionCookie,
     isSecureRequest,
+    requireSameOrigin,
 } from '../../lib/pages-functions/session';
 import type { SessionTokenPayload } from '../../lib/auth-token-payloads';
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
-    const raw = getCookieValue(context.request.headers.get('Cookie'), SESSION_COOKIE);
+    const csrf = requireSameOrigin(context.request);
+    if (csrf) return csrf;
+
+    const raw = readSessionCookie(context.request);
     if (raw) {
         const payload = await verifyAuthToken<SessionTokenPayload>(raw, context.env.SESSION_TOKEN_SECRET, 'session');
         if (payload) {

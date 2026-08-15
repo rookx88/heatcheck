@@ -15,15 +15,27 @@
 // NEWSLETTER_TOKEN_SECRET - different secret, so no cross-verification risk and no
 // need to migrate its outstanding 30-day links.
 
-import { signToken, verifyToken, type TokenPayload } from './tokens';
+import { signToken, verifyTokenBody, type TokenPayload } from './tokens';
 
 type AuthPayload = TokenPayload & { purpose: string };
+
+// A missing or too-short SESSION_TOKEN_SECRET must fail loudly, not silently run the
+// whole auth system on an empty (publicly-known) HMAC key: TextEncoder.encode(undefined)
+// yields a zero-length key and crypto.subtle.importKey accepts it without complaint, so
+// without this guard a deployment missing the binding would look fine while being
+// forgeable. 32 hex chars = the `openssl rand -hex 32` convention's floor.
+function assertSecret(secret: string): void {
+    if (!secret || secret.length < 32) {
+        throw new Error('SESSION_TOKEN_SECRET is missing or too short - refusing to sign/verify auth tokens.');
+    }
+}
 
 export async function signAuthToken<T extends AuthPayload>(
     payload: T,
     secret: string,
     expiresInSeconds: number
 ): Promise<string> {
+    assertSecret(secret);
     return signToken(payload, secret, expiresInSeconds);
 }
 
@@ -32,7 +44,13 @@ export async function verifyAuthToken<T extends AuthPayload>(
     secret: string,
     expectedPurpose: T['purpose']
 ): Promise<T | null> {
-    const payload = await verifyToken<T>(token, secret);
-    if (!payload || payload.purpose !== expectedPurpose) return null;
-    return payload;
+    assertSecret(secret);
+    const body = await verifyTokenBody<T>(token, secret);
+    // exp is mandatory for auth tokens: reject any token that carries none, so a
+    // never-expiring token minted by a future raw-signToken caller under this secret
+    // can't be accepted here. Turns the sign-time TypeScript guarantee into a
+    // verify-time invariant.
+    if (!body || body.exp === undefined) return null;
+    if (body.payload.purpose !== expectedPurpose) return null;
+    return body.payload;
 }

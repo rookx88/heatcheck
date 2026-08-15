@@ -17,6 +17,9 @@ export function generateLoginPageHtml(baseUrl: string): string {
 <head>
     ${head}
     <meta name="robots" content="noindex">
+    <!-- The URL can carry ?token=; never leak it via Referer to any cross-origin
+         subresource (defense-in-depth on top of the browser default). -->
+    <meta name="referrer" content="no-referrer">
     <style>
         .hc-login {
             max-width: 480px; margin: 3rem auto; padding: 0 1.5rem; font-family: Georgia, 'Times New Roman', serif;

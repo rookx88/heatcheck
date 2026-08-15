@@ -1,14 +1,23 @@
 // POST /api/resend-verification - issues a fresh 6-digit code if the first email
 // didn't land (or expired). A light per-email cooldown guards against accidental
 // double-click spam without needing any new infra.
+//
+// Non-enumerating (M3): unknown email, already-verified account, and within-cooldown
+// all return the same generic { sent: true } WITHOUT sending, so this endpoint can't be
+// used to probe which addresses have an account or are verified. Only an existing,
+// unverified, past-cooldown account actually gets a new code.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, EMAIL_RE, type Env } from '../../lib/pages-functions/db';
 import { sendVerificationEmail, generateVerificationCode } from '../../lib/pages-functions/email';
+import { requireSameOrigin } from '../../lib/pages-functions/session';
 
 const RESEND_COOLDOWN_MS = 60_000;
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
+    const csrf = requireSameOrigin(context.request);
+    if (csrf) return csrf;
+
     let body: any;
     try {
         body = await context.request.json();
@@ -27,20 +36,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         SELECT id, email_verified, verification_code_expires_at
         FROM waitlist WHERE LOWER(email) = ${email} LIMIT 1
     `;
-    if (rows.length === 0) {
-        return jsonResponse({ message: 'No signup found for that email.' }, { status: 404 });
+    // Unknown email or already-verified: report success without doing anything, so the
+    // response is identical to the real send path (no account-existence/verified oracle).
+    if (rows.length === 0 || rows[0].email_verified) {
+        return jsonResponse({ sent: true });
     }
     const row = rows[0];
 
-    if (row.email_verified) {
-        return jsonResponse({ alreadyVerified: true });
-    }
-
     // A fresh code is issued 15 minutes ahead of expiry each time, so "issued <60s
-    // ago" is equivalent to "expires >14min from now".
+    // ago" is equivalent to "expires >14min from now". Within cooldown: report success
+    // without re-sending (also non-enumerating).
     const expiresAt = row.verification_code_expires_at ? new Date(row.verification_code_expires_at as string) : null;
     if (expiresAt && expiresAt.getTime() - Date.now() > 15 * 60_000 - RESEND_COOLDOWN_MS) {
-        return jsonResponse({ message: 'A code was just sent - check your inbox (or spam folder).' }, { status: 429 });
+        return jsonResponse({ sent: true });
     }
 
     const code = generateVerificationCode();
