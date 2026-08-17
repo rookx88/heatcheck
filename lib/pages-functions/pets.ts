@@ -40,10 +40,16 @@ function clamp(n: number, lo: number, hi: number): number {
     return Math.max(lo, Math.min(hi, n));
 }
 
-// current = clamp(satisfaction_at_last_feed - decay_rate * hours_since(last_fed_at), 0, max)
+// current = clamp(satisfaction_at_last_feed - decay_rate * hours_since(last_fed_at), 0, max).
+// Rounded to the integer scale satisfaction conceptually lives on (food points and the
+// stored value are whole; the REAL column only exists to carry the decay arithmetic).
+// Rounding is also what makes the hard ceiling real: a pet just fed to max has decayed a
+// hair by the time a request reads it (~99.999), and without rounding `current >= max`
+// would never fire, letting an immediate re-feed waste food. Rounded, 99.999 -> 100 and
+// the feed is correctly rejected, while anything well below still reads as feedable.
 export function computeSatisfaction(pet: Pick<PetRow, 'satisfaction_at_last_feed' | 'last_fed_at'>, cfg: FeedingConfig): number {
     const hours = (Date.now() - new Date(pet.last_fed_at).getTime()) / 3_600_000;
-    return clamp(pet.satisfaction_at_last_feed - cfg.decay_rate_per_hour * hours, 0, cfg.max_satisfaction);
+    return Math.round(clamp(pet.satisfaction_at_last_feed - cfg.decay_rate_per_hour * hours, 0, cfg.max_satisfaction));
 }
 
 export function petState(value: number, cfg: FeedingConfig): PetState {
