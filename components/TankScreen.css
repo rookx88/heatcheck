@@ -242,6 +242,43 @@
   text-align: center;
 }
 
+.tank-modal-filters {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+
+.tank-modal-filter {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(47, 230, 217, 0.3);
+  border-radius: 999px;
+  padding: 0.35rem 0.9rem;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.tank-modal-filter:hover,
+.tank-modal-filter:focus-visible {
+  background: rgba(47, 230, 217, 0.12);
+  color: #2fe6d9;
+  outline: none;
+}
+
+.tank-modal-filter.is-active {
+  background: rgba(47, 230, 217, 0.18);
+  border-color: rgba(47, 230, 217, 0.85);
+  color: #2fe6d9;
+  text-shadow: 0 0 8px rgba(47, 230, 217, 0.5);
+}
+
 .tank-modal-matchup {
   font-family: 'Nunito', sans-serif;
   font-weight: 700;
