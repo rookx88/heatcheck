@@ -22,6 +22,29 @@ export interface TankEntry {
   payload: DeckPayload;
 }
 
+type SportFilter = 'All' | 'Baseball' | 'Basketball' | 'Football' | 'Soccer';
+
+// League → filter category. A league not listed here simply gets no chip of its own
+// and shows only under All - the filter row is built from the sports that actually
+// have a live tank, never a fixed list.
+const SPORT_BY_LEAGUE: Record<string, Exclude<SportFilter, 'All'>> = {
+  MLB: 'Baseball',
+  NBA: 'Basketball',
+  NCAAB: 'Basketball',
+  WNBA: 'Basketball',
+  NFL: 'Football',
+  NCAAF: 'Football',
+  EPL: 'Soccer',
+  'Premier League': 'Soccer',
+  'La Liga': 'Soccer',
+  'Serie A': 'Soccer',
+  'Ligue 1': 'Soccer',
+  Bundesliga: 'Soccer',
+  MLS: 'Soccer',
+  Soccer: 'Soccer',
+};
+const SPORT_ORDER: Exclude<SportFilter, 'All'>[] = ['Baseball', 'Basketball', 'Football', 'Soccer'];
+
 interface TankScreenProps {
   tanks: TankEntry[];
   backHref?: string;
@@ -32,15 +55,20 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' })
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [index, setIndex] = useState(0);
+  const [sportFilter, setSportFilter] = useState<SportFilter>('All');
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const hotspotRef = useRef<SVGGElement>(null);
 
-  const hasTanks = tanks.length > 0;
+  // Only sports with at least one live tank get a chip; a chip can therefore never
+  // select an empty list.
+  const liveSports = SPORT_ORDER.filter((s) => tanks.some((t) => SPORT_BY_LEAGUE[t.league] === s));
+  const visibleTanks = sportFilter === 'All' ? tanks : tanks.filter((t) => SPORT_BY_LEAGUE[t.league] === sportFilter);
+  const hasTanks = visibleTanks.length > 0;
 
   const open = useCallback(() => {
     setIsOpen(true);
-    trackEvent('tank_opened', { tankSlug: tanks[index]?.slug });
-  }, [tanks, index]);
+    trackEvent('tank_opened', { tankSlug: visibleTanks[index]?.slug });
+  }, [visibleTanks, index]);
 
   const close = useCallback(() => {
     setIsOpen(false);
@@ -48,12 +76,19 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' })
   }, []);
 
   const prev = useCallback(() => {
-    setIndex((i) => (hasTanks ? (i - 1 + tanks.length) % tanks.length : 0));
-  }, [hasTanks, tanks.length]);
+    setIndex((i) => (hasTanks ? (i - 1 + visibleTanks.length) % visibleTanks.length : 0));
+  }, [hasTanks, visibleTanks.length]);
 
   const next = useCallback(() => {
-    setIndex((i) => (hasTanks ? (i + 1) % tanks.length : 0));
-  }, [hasTanks, tanks.length]);
+    setIndex((i) => (hasTanks ? (i + 1) % visibleTanks.length : 0));
+  }, [hasTanks, visibleTanks.length]);
+
+  // Filter change restarts the carousel - index positions are meaningless across
+  // different filtered lists.
+  const selectFilter = useCallback((f: SportFilter) => {
+    setSportFilter(f);
+    setIndex(0);
+  }, []);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -78,7 +113,7 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' })
     }
   }, [open]);
 
-  const current = hasTanks ? tanks[index] : null;
+  const current = hasTanks ? visibleTanks[index] : null;
 
   return (
     <div className="tank-screen">
@@ -142,7 +177,10 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' })
       </div>
 
       {isOpen && (
-        <div className="tank-modal-overlay" onClick={close}>
+        // Deliberately NOT closed by overlay clicks: dragging the 3D cube often ends
+        // with the pointer over the overlay, which used to dismiss the whole modal
+        // mid-interaction. Only the X button (and Escape) closes it now.
+        <div className="tank-modal-overlay">
           <div
             className="tank-modal-panel"
             role="dialog"
@@ -158,6 +196,20 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' })
             </div>
 
             <div className="tank-modal-body">
+              {tanks.length > 0 && liveSports.length > 0 && (
+                <div className="tank-modal-filters" aria-label="Filter tanks by sport">
+                  {(['All', ...liveSports] as SportFilter[]).map((f) => (
+                    <button
+                      key={f}
+                      className={`tank-modal-filter${sportFilter === f ? ' is-active' : ''}`}
+                      onClick={() => selectFilter(f)}
+                      aria-pressed={sportFilter === f}
+                    >
+                      {f}
+                    </button>
+                  ))}
+                </div>
+              )}
               {!current ? (
                 <div className="tank-modal-empty">
                   <p>No tanks available yet.</p>
@@ -167,12 +219,12 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' })
                 <>
                   <div className="tank-modal-matchup">{current.league} &middot; {current.matchup}</div>
                   <Fishtank key={current.slug} payload={current.payload} slug={current.slug} />
-                  {tanks.length > 1 && (
+                  {visibleTanks.length > 1 && (
                     <div className="tank-modal-nav">
                       <button className="tank-modal-arrow" onClick={prev} aria-label="Previous tank">
                         &lsaquo;
                       </button>
-                      <span className="tank-modal-count">{index + 1} / {tanks.length}</span>
+                      <span className="tank-modal-count">{index + 1} / {visibleTanks.length}</span>
                       <button className="tank-modal-arrow" onClick={next} aria-label="Next tank">
                         &rsaquo;
                       </button>
