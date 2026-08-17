@@ -427,15 +427,24 @@ const EmberBurst: React.FC<{ strength: number }> = ({ strength }) => {
     );
 };
 
-const pillButtonStyle = (active: boolean, disabled?: boolean): React.CSSProperties => ({
+// Visual grammar: ember = considering (selected but not yet locked, matching the Call
+// wall's fiery chrome), teal = committed (locked). 'idle' is the unselected pill.
+const pillButtonStyle = (state: 'idle' | 'selected' | 'locked', disabled?: boolean): React.CSSProperties => ({
     padding: '0.5rem 0.9rem',
     borderRadius: 8,
-    border: active ? '2px solid #2fe6d9' : '1px solid rgba(255,255,255,0.25)',
-    background: active ? 'rgba(47,230,217,0.15)' : 'transparent',
-    color: active ? '#2fe6d9' : '#cbd5e1',
+    border:
+        state === 'selected' ? '2px solid #fb923c'
+        : state === 'locked' ? '2px solid #2fe6d9'
+        : '1px solid rgba(255,255,255,0.25)',
+    background:
+        state === 'selected' ? 'rgba(255,199,44,0.14)'
+        : state === 'locked' ? 'rgba(47,230,217,0.15)'
+        : 'transparent',
+    color: state === 'selected' ? '#ffc72c' : state === 'locked' ? '#2fe6d9' : '#cbd5e1',
+    boxShadow: state === 'selected' ? '0 0 12px rgba(251,146,60,0.55)' : 'none',
     cursor: disabled ? 'default' : 'pointer',
     fontSize: '0.85rem',
-    opacity: disabled && !active ? 0.4 : 1,
+    opacity: disabled && state === 'idle' ? 0.4 : 1,
 });
 
 const inputStyle: React.CSSProperties = {
@@ -717,16 +726,11 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
         window.setTimeout(() => {
             setBurst((prev) => (prev?.key === burstKey ? null : prev));
         }, 950);
-        // A known account (already picked at least once - email is cached) doesn't
-        // need to re-type its email for pick 2 or 3 - submit immediately. A brand new
-        // reader still needs the email form below to establish the account at all.
-        // Gated on accountKnown, not on `email` being non-empty - see its declaration.
-        if (accountKnown) {
-            setSelectedSide(side);
-            setSelectedSideIndex(index);
-            void submitPickFor(side, index, email);
-            return;
-        }
+        // Tapping only SELECTS - never submits. The reader can shuffle freely between
+        // sides (each tap replays that side's ember burst, whose strength encodes the
+        // implied probability) and nothing is committed until the explicit "Lock it in"
+        // button below. A known account gets a bare Lock button; a brand new reader
+        // gets the email form, which doubles as their Lock step.
         setSelectedSide(side);
         setSelectedSideIndex(index);
         setSubmitState('choosing');
@@ -829,7 +833,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                 <p style={{ fontWeight: 600, color: '#f1f5f9', marginTop: 0 }}>{call.question}</p>
                 <div style={{ display: 'flex', gap: '0.6rem', marginTop: '0.75rem', flexWrap: 'wrap' }}>
                     {call.sides.map((side) => (
-                        <div key={side} style={pillButtonStyle(myPickHere.side === side, true)}>
+                        <div key={side} style={pillButtonStyle(myPickHere.side === side ? 'locked' : 'idle', true)}>
                             {side}
                         </div>
                     ))}
@@ -878,7 +882,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                     <span key={side} style={{ position: 'relative', display: 'inline-flex' }}>
                         <button
                             onClick={(e) => { e.stopPropagation(); chooseSide(side, index); }}
-                            style={pillButtonStyle(selectedSide === side)}
+                            style={pillButtonStyle(selectedSide === side ? 'selected' : 'idle')}
                             disabled={submitState === 'submitting'}
                         >
                             {side}
@@ -891,7 +895,21 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
             </div>
             {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of {todayStatus.picksToday + todayStatus.remaining} picks used today · {remaining} left</p>}
 
-            {/* Email form only for a brand new account (chooseSide auto-submits once account is known). */}
+            {/* The explicit lock step. Known account: bare Lock button (email already
+                cached/session-backed). Brand new reader: the email form IS the lock
+                step - establishing the account and locking in one submit. */}
+            {submitState === 'choosing' && selectedSide && accountKnown && (
+                <button
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (selectedSideIndex === null) return;
+                        void submitPickFor(selectedSide, selectedSideIndex, email);
+                    }}
+                    style={{ ...submitButtonStyle, marginTop: '0.75rem' }}
+                >
+                    Lock it in
+                </button>
+            )}
             {submitState === 'choosing' && selectedSide && !accountKnown && (
                 <form
                     onSubmit={handleSubmit}
