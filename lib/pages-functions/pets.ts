@@ -128,7 +128,10 @@ export async function feed(sql: NeonQueryFunction<false, false>, input: FeedInpu
             RETURNING id
         )
         UPDATE pets SET
-            satisfaction_at_last_feed = LEAST(${input.max}, GREATEST(0, ${input.currentSatisfaction} + ${input.points})),
+            -- Explicit ::real casts are required: the Neon HTTP driver binds params as
+            -- untyped unknowns, so adding two param values with no column to anchor the
+            -- type is an ambiguous unknown-plus-unknown operator without them.
+            satisfaction_at_last_feed = LEAST(${input.max}::real, GREATEST(0::real, ${input.currentSatisfaction}::real + ${input.points}::real)),
             last_fed_at = NOW(),
             last_feed_token = ${input.feedToken}
         WHERE user_id = ${input.userId} AND EXISTS (SELECT 1 FROM consumed)
