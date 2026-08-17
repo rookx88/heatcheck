@@ -115,6 +115,70 @@ export async function spend(sql: NeonQueryFunction<false, false>, input: SpendIn
     return { ok: row.already_recorded || row.newly_spent };
 }
 
+export interface PurchaseConsumableInput {
+    userId: string;
+    priceRuleKey: string;   // an ember_rules `sink` key; its config.amount is the Ember price
+    catalogKey: string;     // the items_catalog SKU to grant (e.g. 'egg_slate', 'food_basic')
+    itemType: string;       // 'egg' | 'food' - stamped on the inventory row
+    purchaseScope: string;  // client-supplied idempotency token, so a double-submit is a safe no-op
+}
+
+export interface PurchaseResult {
+    ok: boolean;              // false only means insufficient balance (nothing written)
+    reason?: 'insufficient';
+}
+
+// Atomic spend-and-grant: debit Ember AND grant one unit of a consumable inventory item
+// in a SINGLE statement, so a debit can never happen without the grant (or vice versa).
+// Lives here, not in a shop module, because it INSERTs ember_ledger and this file is the
+// one sanctioned Ember write path.
+//
+// Extends spend()'s CTE with a `grant` leg that selects FROM `led` (the ledger insert),
+// so the inventory upsert fires ONLY on a fresh spend: a retried purchaseToken hits the
+// idempotency key, `led` is empty, and neither the ledger nor the quantity moves again.
+// Insufficient balance fails the `bal` guard, so `led` and `grant` both no-op and nothing
+// is written. The inventory upsert relies on idx_inventory_user_consumable (the partial
+// unique on (user_id, catalog_key) for consumables).
+export async function purchaseConsumable(
+    sql: NeonQueryFunction<false, false>,
+    input: PurchaseConsumableInput
+): Promise<PurchaseResult> {
+    const rule = await getActiveRule(sql, input.priceRuleKey);
+    const amount = rule.config.amount;
+    const idempotencyKey = buildIdempotencyKey(input.priceRuleKey, input.userId, input.purchaseScope);
+    const rows = await sql`
+        WITH precheck AS (
+            SELECT 1 FROM ember_ledger WHERE idempotency_key = ${idempotencyKey}
+        ), bal AS (
+            UPDATE ember_balances
+            SET balance = balance - ${amount}, updated_at = NOW()
+            WHERE user_id = ${input.userId}
+              AND balance >= ${amount}
+              AND NOT EXISTS (SELECT 1 FROM precheck)
+            RETURNING user_id
+        ), led AS (
+            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
+            SELECT ${input.userId}, ${-amount}, 'spend', ${input.priceRuleKey}, ${rule.version},
+                   ${idempotencyKey}, ${JSON.stringify({ catalogKey: input.catalogKey })}
+            FROM bal
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING 1
+        ), grant AS (
+            INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
+            SELECT ${input.userId}, ${input.catalogKey}, ${input.itemType}, 1
+            FROM led
+            ON CONFLICT (user_id, catalog_key) WHERE item_type IN ('egg', 'food')
+                DO UPDATE SET quantity = inventory_items.quantity + 1
+            RETURNING 1
+        )
+        SELECT EXISTS (SELECT 1 FROM precheck) AS already_recorded,
+               EXISTS (SELECT 1 FROM led) AS newly_spent
+    `;
+    const row = rows[0] as unknown as { already_recorded: boolean; newly_spent: boolean };
+    const ok = row.already_recorded || row.newly_spent;
+    return ok ? { ok: true } : { ok: false, reason: 'insufficient' };
+}
+
 export type CallResult = 'correct' | 'incorrect';
 
 export interface SettleCallInput {
@@ -179,6 +243,16 @@ export async function settleCall(sql: NeonQueryFunction<false, false>, input: Se
               }
             : { pickId: input.pickId };
 
+    // Toolbar notification for this settlement - a 'claimable' row so the reader can tap
+    // to reveal the payoff. The Ember is already paid here; claiming (claimed_at) is
+    // presentational only. Idempotent on 'settle:call:<pickId>', so a re-run no-ops it
+    // alongside the picks UPDATE and the payout - all three guarded independently.
+    const notificationMessage =
+        input.result === 'correct'
+            ? `You called it — +${payoutAmount} Ember.`
+            : `Your call settled — +${payoutAmount} Ember.`;
+    const notificationKey = `settle:call:${input.pickId}`;
+
     await sql.transaction([
         sql`UPDATE picks SET result = ${input.result}, settled_at = NOW() WHERE id = ${input.pickId} AND result IS NULL`,
         sql`
@@ -193,6 +267,11 @@ export async function settleCall(sql: NeonQueryFunction<false, false>, input: Se
             SELECT ${input.userId}, amount, NOW() FROM ins
             ON CONFLICT (user_id) DO UPDATE
                 SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
+        `,
+        sql`
+            INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key)
+            VALUES (${input.userId}, 'claimable', ${notificationMessage}, 'pick', ${input.pickId}, ${notificationKey})
+            ON CONFLICT (idempotency_key) DO NOTHING
         `,
     ]);
 
