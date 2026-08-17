@@ -12,7 +12,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../../lib/pages-functions/db';
-import { getSession } from '../../../lib/pages-functions/session';
+import { getSession, requireOnboarded } from '../../../lib/pages-functions/session';
 
 // Same env-gated default as functions/api/picks.ts (1/day for Phase 0, raised to 3 via
 // the DAILY_PICK_CAP Cloudflare env var whenever Phase 1 is ready - no redeploy needed).
@@ -34,6 +34,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     if (!session) {
         return jsonResponse({ message: 'Login required.' }, { status: 401 });
     }
+    const gate = requireOnboarded(session);
+    if (gate) return gate;
     const authHeaders = session.refreshedSetCookie ? { 'Set-Cookie': session.refreshedSetCookie } : undefined;
 
     const sql = getSql(context.env);

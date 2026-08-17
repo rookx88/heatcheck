@@ -115,6 +115,22 @@ export function requireSameOrigin(request: RequestLike): Response | null {
     return null;
 }
 
+// Server-side onboarding gate for action endpoints (picks / balance / picks-today).
+// Returns a 403 when a logged-in account hasn't signed the welcome letter yet, else
+// null (allow). The client UI already redirects un-onboarded sessions to /welcome/, so
+// this only bites hand-crafted API calls that skip the UI - onboardingRequired lets a
+// client that does hit it route to the letter. NOT applied to /api/session,
+// /api/onboarding-status, or /api/onboarding/complete: those must work for an
+// un-onboarded account (they're how it learns it must onboard, and how it does).
+// onboarded_at is never unset, so this never fires for an account that has onboarded.
+export function requireOnboarded(session: Session): Response | null {
+    if (session.onboarded) return null;
+    return jsonResponse(
+        { message: 'Finish setting up your account first.', onboardingRequired: true },
+        { status: 403, headers: session.refreshedSetCookie ? { 'Set-Cookie': session.refreshedSetCookie } : undefined }
+    );
+}
+
 export function getCookieValue(cookieHeader: string | null, name: string): string | null {
     if (!cookieHeader) return null;
     for (const part of cookieHeader.split(';')) {

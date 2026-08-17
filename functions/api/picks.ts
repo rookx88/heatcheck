@@ -17,7 +17,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, EMAIL_RE, UUID_RE, type Env } from '../../lib/pages-functions/db';
 import { sendVerificationEmail, generateVerificationCode } from '../../lib/pages-functions/email';
-import { getSession, requireSameOrigin } from '../../lib/pages-functions/session';
+import { getSession, requireSameOrigin, requireOnboarded } from '../../lib/pages-functions/session';
 import { logEvent } from '../../lib/pages-functions/events';
 
 // Defaults to 1/day (Phase 0) rather than the eventual 3/day Phase 1 standard -
@@ -70,6 +70,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // is still accepted - that's the deliberate first-ever-pick funnel entry point,
     // where email doubles as account creation.
     const session = await getSession(context.request, context.env);
+    // A logged-in account must finish onboarding before it can act. Only the session
+    // path is gated: the no-session email path below is the pre-account funnel entry
+    // (a first-ever pick), which by definition happens before onboarding exists.
+    if (session) {
+        const gate = requireOnboarded(session);
+        if (gate) return gate;
+    }
     const email = session
         ? session.email.toLowerCase()
         : (typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '');

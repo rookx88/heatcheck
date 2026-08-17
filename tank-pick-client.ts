@@ -115,7 +115,11 @@ export async function submitPick(email: string, slug: string, side: string, side
 // thrown, so callers render the logged-out UI instead of an error.
 export async function getTodayStatus(): Promise<TodayStatus | null> {
     const res = await fetch('/api/picks/today');
-    if (res.status === 401) return null;
+    // 401 = logged out; 403 = logged in but not onboarded (the server-side gate). Both
+    // are "not in a state to show today's picks" rather than errors - the Fishtank
+    // onboarding gate normally redirects to /welcome/ before this is ever called, so a
+    // 403 here only happens under deploy skew; return null instead of throwing.
+    if (res.status === 401 || res.status === 403) return null;
     const data = await parseJsonSafe(res);
     if (!res.ok) throw new Error(data.message || `GET /api/picks/today failed: ${res.status}`);
     return data as TodayStatus;
