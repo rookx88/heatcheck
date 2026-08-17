@@ -163,7 +163,7 @@ export async function purchaseConsumable(
             FROM bal
             ON CONFLICT (idempotency_key) DO NOTHING
             RETURNING 1
-        ), grant AS (
+        ), granted AS (
             INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
             SELECT ${input.userId}, ${input.catalogKey}, ${input.itemType}, 1
             FROM led
