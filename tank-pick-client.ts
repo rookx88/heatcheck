@@ -125,6 +125,10 @@ export interface SessionInfo {
     userId: string;
     email: string;
     verified: boolean;
+    // NULL / false until the first-login welcome letter is signed (/welcome/);
+    // Fishtank hard-gates on onboarded === false.
+    username: string | null;
+    onboarded: boolean;
 }
 
 // "Am I logged in?" - the identity source of truth on load, replacing the old role of

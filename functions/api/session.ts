@@ -12,7 +12,13 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         return jsonResponse({ message: 'Login required.' }, { status: 401 });
     }
     return jsonResponse(
-        { userId: session.userId, email: session.email, verified: session.verified },
+        {
+            userId: session.userId,
+            email: session.email,
+            verified: session.verified,
+            username: session.username,
+            onboarded: session.onboarded,
+        },
         session.refreshedSetCookie ? { headers: { 'Set-Cookie': session.refreshedSetCookie } } : {}
     );
 };

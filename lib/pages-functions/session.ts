@@ -54,6 +54,10 @@ export interface Session {
     userId: string;
     email: string;
     verified: boolean;
+    // NULL username / onboarded=false until the first-login welcome letter is signed
+    // (functions/api/onboarding/complete.ts) - the client-side gate keys off this.
+    username: string | null;
+    onboarded: boolean;
     sessionId: string;
     // Non-null when the throttled sliding refresh ran this request - the handler MUST
     // attach it as a Set-Cookie response header.
@@ -171,7 +175,7 @@ export async function getSession(request: RequestLike, env: Env): Promise<Sessio
     // expiry when it has drifted more than an hour behind the full 30 days.
     const rows = await sql`
         WITH s AS (
-            SELECT s.session_id, s.user_id, w.email, w.email_verified
+            SELECT s.session_id, s.user_id, w.email, w.email_verified, w.username, w.onboarded_at
             FROM sessions s
             JOIN waitlist w ON w.id = s.user_id
             WHERE s.session_id = ${payload.sessionId}
@@ -192,6 +196,8 @@ export async function getSession(request: RequestLike, env: Env): Promise<Sessio
         user_id: string;
         email: string;
         email_verified: boolean;
+        username: string | null;
+        onboarded_at: string | null;
         did_refresh: boolean;
     };
 
@@ -209,6 +215,8 @@ export async function getSession(request: RequestLike, env: Env): Promise<Sessio
         userId: row.user_id,
         email: row.email,
         verified: Boolean(row.email_verified),
+        username: row.username ?? null,
+        onboarded: Boolean(row.onboarded_at),
         sessionId: row.session_id,
         refreshedSetCookie,
     };

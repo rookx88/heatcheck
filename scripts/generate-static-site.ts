@@ -15,12 +15,14 @@ import { formatMarketLabel, formatOddsLabel, formatSettleDate, deriveTaglineFall
 import { buildWorldMap } from './build-world-map';
 import { buildNewsletterPick } from './build-newsletter-pick';
 import { buildLogin } from './build-login';
+import { buildWelcome } from './build-welcome';
 import { buildAnalyticsBeacon } from './build-analytics-beacon';
 import { generateBaseHtml } from './templates/base-template';
 import { generateLandingPageHtml, generateBetaInfoPageHtml } from './templates/waitlist-landing-template';
 import { generateClaimYourSpotPageHtml } from './templates/claim-your-spot-template';
 import { generateNewsletterPickPageHtml } from './templates/newsletter-pick-template';
 import { generateLoginPageHtml } from './templates/login-template';
+import { generateWelcomePageHtml } from './templates/welcome-template';
 import { generateTankPageHtml, TankPageEntry } from './templates/tank-template';
 import { formatDateISO, normalizeLeague } from './utils/date-formatter';
 import { generateSlug, ensureUniqueSlug, generateNarrativeSlug, generateMatchupSlug } from './utils/slug-generator';
@@ -762,6 +764,14 @@ async function generateAllPages(): Promise<void> {
         await buildLogin();
         writeHtmlFile('login/index.html', generateLoginPageHtml(baseUrl));
         console.log('✓ Built login bundle and page\n');
+
+        // First-login welcome letter: same standalone-bundle pattern as login (no DB
+        // dependency; all personalization fetched client-side from
+        // /api/onboarding-status).
+        console.log('Building welcome bundle...');
+        await buildWelcome();
+        writeHtmlFile('welcome/index.html', generateWelcomePageHtml(baseUrl));
+        console.log('✓ Built welcome bundle and page\n');
 
         // Generate about page (comprehensive SEO-optimized version)
         console.log('Generating about page...');

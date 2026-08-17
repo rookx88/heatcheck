@@ -13,6 +13,7 @@ export const EVENT_TYPES = [
     'pick_conflict',
     'email_verified',
     'logged_in',
+    'onboarding_completed',
     'newsletter_opt_in',
     'newsletter_sent',
     'newsletter_exclusive_pick',

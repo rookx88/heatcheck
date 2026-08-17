@@ -91,6 +91,7 @@ function RequestLinkForm({ initialError }: { initialError: string | null }) {
 function ConsumeToken({ token }: { token: string }) {
     const [error, setError] = useState<string | null>(null);
     const [email, setEmail] = useState<string | null>(null);
+    const [onboarded, setOnboarded] = useState(true);
     // React 18 StrictMode double-invokes effects in dev; a second POST would see the
     // already-NULLed nonce and misreport "already used", so guard the first fire.
     const fired = useRef(false);
@@ -116,8 +117,13 @@ function ConsumeToken({ token }: { token: string }) {
                 } catch { /* non-fatal */ }
                 setEmail(data.email as string);
                 setCachedAccount({ email: data.email as string, verified: true });
+                // Un-onboarded accounts go to the /welcome/ letter, not the homepage.
+                // A missing field (stale cached bundle against a newer API) also
+                // routes to /welcome/, which is safe: that page self-redirects when
+                // the server says the account is already onboarded.
+                setOnboarded(Boolean(data.onboarded));
                 window.setTimeout(() => {
-                    window.location.href = '/';
+                    window.location.href = data.onboarded ? '/' : '/welcome/';
                 }, 1500);
             } catch (err: any) {
                 setError(err.message || 'This login link is invalid or has expired. Request a new one.');
@@ -131,7 +137,9 @@ function ConsumeToken({ token }: { token: string }) {
             <div className="hc-login">
                 <p className="hc-login-eyebrow">Heatchecks Login</p>
                 <h1>You're in as {email}</h1>
-                <p className="hc-login-copy">Taking you to your tank…</p>
+                <p className="hc-login-copy">
+                    {onboarded ? 'Taking you to your tank…' : 'One moment — there’s a letter waiting for you.'}
+                </p>
             </div>
         );
     }

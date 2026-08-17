@@ -46,6 +46,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     let userId: string;
     let userEmail: string;
+    let onboarded: boolean;
     let setCookie: string;
     try {
         // Atomic single-use consumption: the nonce match is the guard. A second click
@@ -59,7 +60,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             WHERE id = ${payload.userId}
               AND login_nonce = ${payload.nonce}
               AND login_nonce_expires_at > NOW()
-            RETURNING id, email
+            RETURNING id, email, onboarded_at
         `;
         if (rows.length === 0) {
             return jsonResponse(
@@ -69,6 +70,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
         userId = rows[0].id as string;
         userEmail = rows[0].email as string;
+        // Drives the post-login destination: un-onboarded accounts land on the
+        // /welcome/ letter, not the homepage (login-client.tsx).
+        onboarded = Boolean(rows[0].onboarded_at);
 
         ({ setCookie } = await createSession(sql, context.env, userId, context.request.url));
     } catch (err) {
@@ -85,7 +89,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     return jsonResponse(
-        { userId, email: userEmail, verified: true },
+        { userId, email: userEmail, verified: true, onboarded },
         { headers: { 'Set-Cookie': setCookie } }
     );
 };

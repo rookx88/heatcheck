@@ -584,6 +584,16 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
         getSessionInfo()
             .then((session) => {
                 if (session) {
+                    // Hard onboarding gate: an account that has never signed the
+                    // welcome letter gets no tank surface - resume the letter instead.
+                    // Strict === false so a stale API response without the field
+                    // (deploy skew) fails open to normal hydration, not a redirect
+                    // loop. No loop is possible the other way either: /welcome/ never
+                    // mounts Fishtank and self-redirects once onboarded.
+                    if (session.onboarded === false) {
+                        window.location.replace('/welcome/');
+                        return undefined;
+                    }
                     setHasSession(true);
                     setEmail(session.email);
                     setAccountKnown(true);
