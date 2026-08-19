@@ -153,6 +153,18 @@ const NEW_SITE_IMAGES = [
     'tank-email-correct.jpg',
     'tank-email-incorrect.jpg',
     'heatchecks-logo-email.png',
+    // Pet body sprite (components/petRender.ts) - subpath preserved on copy.
+    'pets/mud_puppy_base_axol.png',
+    // Food-shop item art, one per items_catalog food key (FoodShopModal/FeedModal/
+    // PetInventoryModal build the URL as /assets/images/food/<catalog_key>.png).
+    'food/food_banana_shake.png',
+    'food/food_breakfast.png',
+    'food/food_fresh_salad.png',
+    'food/food_protein_shake.png',
+    'food/food_ribeye.png',
+    'food/food_stadium_dog.png',
+    'food/food_worm_delicacy.png',
+    'food/food_yogurt_parfait.png',
 ];
 
 /**
@@ -175,8 +187,13 @@ function copyNewSiteImages(): void {
             console.warn(`⚠ Expected new-site image not found: assets/images/${file}`);
             continue;
         }
-        fs.copyFileSync(src, path.join(distImagesDir, file));
-        fs.copyFileSync(src, path.join(publicImagesDir, file));
+        const distDest = path.join(distImagesDir, file);
+        const publicDest = path.join(publicImagesDir, file);
+        // Entries may carry a subpath (pets/, food/) that must exist at the destination.
+        ensureDir(path.dirname(distDest));
+        ensureDir(path.dirname(publicDest));
+        fs.copyFileSync(src, distDest);
+        fs.copyFileSync(src, publicDest);
         copied++;
     }
     console.log(`✓ Copied ${copied} new-site image(s) to dist/assets/images and public/assets/images`);

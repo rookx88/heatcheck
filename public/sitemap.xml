@@ -120,4 +120,22 @@
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/pete-crow-armstrong-home-run-prop-cubs-white-sox/</loc>
+    <lastmod>2026-08-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/gunnar-henderson-home-run-orioles-yankees/</loc>
+    <lastmod>2026-08-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/atletico-madrid-malaga-julian-alvarez-total-goals/</loc>
+    <lastmod>2026-08-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
 </urlset>

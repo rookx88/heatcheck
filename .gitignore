@@ -56,6 +56,14 @@ assets/images/*
 !assets/images/world-map.webp
 !assets/images/tank-email-correct.jpg
 !assets/images/tank-email-incorrect.jpg
+!assets/images/explore-logo.png
+!assets/images/explore-logo.webp
+!assets/images/heatchecks-logo-email.png
+# Whole-directory exceptions (allowed because assets/images/* excludes contents, not
+# the folder itself - see NOTE above): food-shop item art and pet body sprites, both
+# referenced by the shop/feed/pet components under /assets/images/food|pets/.
+!assets/images/food/
+!assets/images/pets/
 
 # Retired prediction-app content, relocated out of public/ so Cloudflare Pages
 # doesn't upload it and it stays out of the live site's build. Preserved here
