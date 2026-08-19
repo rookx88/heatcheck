@@ -55,7 +55,28 @@ function readPayload(): HomepagePayload | null {
     }
 }
 
+// Market Movers gainers/losers toggle - vanilla like the sport row, and deliberately
+// payload-independent: the section's HTML is complete server-side (all cards render;
+// filtering is pure CSS keyed on the grid's data-mm-view). JS only reveals the tab
+// strip (shipped `hidden`) and flips the attribute + aria-pressed.
+function mountMarketMoversToggle() {
+    const tabs = document.querySelector<HTMLElement>('[data-hc-mm-tabs]');
+    const grid = document.querySelector<HTMLElement>('[data-hc-mm-grid]');
+    if (!tabs || !grid) return;
+    tabs.hidden = false;
+    tabs.addEventListener('click', (e) => {
+        const btn = (e.target as HTMLElement).closest<HTMLElement>('button[data-mm-view]');
+        if (!btn || !btn.dataset.mmView) return;
+        grid.dataset.mmView = btn.dataset.mmView;
+        for (const b of tabs.querySelectorAll<HTMLElement>('button[data-mm-view]')) {
+            b.setAttribute('aria-pressed', String(b === btn));
+        }
+    });
+}
+
 function mount() {
+    mountMarketMoversToggle();
+
     const payload = readPayload();
     if (!payload) return;
 

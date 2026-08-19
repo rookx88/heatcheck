@@ -23,10 +23,11 @@ import { renderHomepage } from '../lib/pages-functions/homepage/render';
 import {
     filterAndSortLiveRows,
     pickLiveTankPerSport,
-    toFeedItemViewModel,
     emptyHomepageData,
     type HomepageTankRow,
 } from '../lib/pages-functions/homepage/data';
+import { getTickerNews, getTickerSeries, getTickerValues, type SqlReader } from '../lib/pages-functions/tickers';
+import { emptyMarketMovers, toMarketMovers } from '../lib/pages-functions/market-movers';
 import { generateClaimYourSpotPageHtml } from './templates/claim-your-spot-template';
 import { generateNewsletterPickPageHtml } from './templates/newsletter-pick-template';
 import { generateLoginPageHtml } from './templates/login-template';
@@ -1218,24 +1219,30 @@ async function generateAllPages(): Promise<void> {
         // Homepage: the build-time, logged-out fallback of the server-rendered
         // homepage (functions/index.ts renders the live version per request and takes
         // routing precedence over this file). Same renderHomepage() template, same
-        // mappers, fed from the rows fetched above - mirrors fetchHomepageData()'s
-        // two queries in JS (live per sport = future kickoff soonest-first; feed =
-        // 8 newest by published_at, created_at tiebreak).
+        // mappers, fed from the rows fetched above. Market Movers runs the SAME query
+        // helpers the live page and /api/tickers use, adapted onto pg via sqlPg below
+        // (one source of SQL truth); a failure (e.g. an env whose ticker tables don't
+        // exist yet) degrades to the empty section, never a broken build.
         console.log('Generating homepage (logged-out SSR fallback)...');
-        const homepageFeedRows = [...homepageRows]
-            .sort((a, b) => {
-                const aPub = a.published_at ? new Date(a.published_at).getTime() : -Infinity;
-                const bPub = b.published_at ? new Date(b.published_at).getTime() : -Infinity;
-                if (bPub !== aPub) return bPub - aPub;
-                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-            })
-            .slice(0, 8);
+        // Tagged-template -> pg adapter: interleaves the literal parts with $1..$n
+        // placeholders so lib/pages-functions/tickers.ts's SqlReader helpers run
+        // verbatim against the build-time pg pool.
+        const sqlPg: SqlReader = async (strings, ...values) => {
+            const text = strings.reduce((acc, part, i) => acc + `$${i}` + part);
+            return (await pool.query(text, values as unknown[])).rows;
+        };
+        let marketMovers = emptyMarketMovers();
+        try {
+            const [tickerValues, tickerSeries, tickerNews] = await Promise.all([
+                getTickerValues(sqlPg), getTickerSeries(sqlPg), getTickerNews(sqlPg, 3),
+            ]);
+            marketMovers = toMarketMovers(tickerValues, tickerSeries, tickerNews);
+        } catch (err) {
+            console.warn('⚠ Ticker data unavailable for homepage fallback; rendering empty Market Movers:', (err as Error).message);
+        }
         const homepageData = homepageRows.length > 0
-            ? {
-                sportSlots: pickLiveTankPerSport(filterAndSortLiveRows(homepageRows)),
-                feed: homepageFeedRows.map(toFeedItemViewModel),
-            }
-            : emptyHomepageData();
+            ? { sportSlots: pickLiveTankPerSport(filterAndSortLiveRows(homepageRows)), marketMovers }
+            : { ...emptyHomepageData(), marketMovers };
         writeHtmlFile('index.html', renderHomepage({ baseUrl, user: null, data: homepageData }));
         console.log('✓ Generated homepage fallback\n');
 

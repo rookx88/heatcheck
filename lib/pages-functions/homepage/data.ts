@@ -18,6 +18,8 @@ import {
     deriveTaglineFallback,
     deriveSidesImpliedProb,
 } from '../../../tank-deck-format';
+import { getTickerNews, getTickerSeries, getTickerValues } from '../tickers';
+import { emptyMarketMovers, toMarketMovers, type MarketMoversData } from '../market-movers';
 
 export interface HomepageTankRow {
     slug: string;
@@ -46,22 +48,13 @@ export interface SportSlot {
     card: SportCardViewModel | null;
 }
 
-export interface FeedItemViewModel {
-    href: string;
-    hook: string;
-    excerpt: string;
-    league: string;
-    sport: Sport | null;
-    dateLabel: string; // "Aug 15, 2026" or '' when published_at is missing
-}
-
 export interface HomepageData {
     sportSlots: SportSlot[];
-    feed: FeedItemViewModel[];
+    marketMovers: MarketMoversData;
 }
 
 export function emptyHomepageData(): HomepageData {
-    return { sportSlots: SPORT_ORDER.map(sport => ({ sport, card: null })), feed: [] };
+    return { sportSlots: SPORT_ORDER.map(sport => ({ sport, card: null })), marketMovers: emptyMarketMovers() };
 }
 
 // Same JS-side liveness rule as generate-static-site.ts's activeTankPages filter,
@@ -120,28 +113,20 @@ export function pickLiveTankPerSport(rows: HomepageTankRow[]): SportSlot[] {
     return SPORT_ORDER.map(sport => ({ sport, card: claimed.get(sport) ?? null }));
 }
 
-export function toFeedItemViewModel(row: HomepageTankRow): FeedItemViewModel {
-    const published = row.published_at ? new Date(row.published_at) : null;
-    return {
-        href: `/the-tank/articles/${row.slug}/`,
-        hook: row.model_output.hook,
-        excerpt: row.model_output.cards?.[0] ?? '',
-        league: row.league,
-        sport: SPORT_BY_LEAGUE[row.league] ?? null,
-        dateLabel: published && !isNaN(published.getTime())
-            // timeZone UTC pins the label to the stored date (same rule as formatSettleDate)
-            ? published.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
-            : '',
-    };
-}
-
-// Both queries share the public-surface predicate (the one from
-// generate-static-site.ts:1104 - NOT backend.ts's ?active=true feed, which skips the
+// The live query shares the public-surface predicate (the one from
+// generate-static-site.ts - NOT backend.ts's ?active=true feed, which skips the
 // visibility filter and would leak newsletter_only tanks). The kickoff IS NOT NULL
 // guard is load-bearing: without it one malformed row makes the ::timestamptz cast
 // throw and 500s the page.
+//
+// Market Movers (the recent-content/SEO section that replaced the old feed) fetches
+// through the shared ticker read helpers - the same statements /api/tickers and
+// /api/tickers/chart run, so the marquee, the cards, and the JSON API can never
+// disagree. It has its OWN fail-open catch: a ticker query failure empties only the
+// Market Movers section, while a tank query failure still trips functions/index.ts's
+// outer catch exactly as before.
 export async function fetchHomepageData(sql: NeonQueryFunction<false, false>): Promise<HomepageData> {
-    const [liveRows, recentRows] = await Promise.all([
+    const [liveRows, marketMovers] = await Promise.all([
         sql`
             SELECT slug, league, game_snapshot, model_output, published_at, created_at
             FROM tank_pages
@@ -152,17 +137,15 @@ export async function fetchHomepageData(sql: NeonQueryFunction<false, false>): P
             ORDER BY (game_snapshot->'game'->>'kickoff')::timestamptz ASC
             LIMIT 100
         `,
-        sql`
-            SELECT slug, league, game_snapshot, model_output, published_at, created_at
-            FROM tank_pages
-            WHERE status = 'published' AND visibility = 'app'
-              AND slug IS NOT NULL AND model_output IS NOT NULL
-            ORDER BY published_at DESC NULLS LAST, created_at DESC
-            LIMIT 8
-        `,
+        Promise.all([getTickerValues(sql), getTickerSeries(sql), getTickerNews(sql, 3)])
+            .then(([values, series, news]) => toMarketMovers(values, series, news))
+            .catch((err) => {
+                console.error('[homepage] Ticker data fetch failed; rendering empty Market Movers:', err);
+                return emptyMarketMovers();
+            }),
     ]);
     return {
         sportSlots: pickLiveTankPerSport(liveRows as unknown as HomepageTankRow[]),
-        feed: (recentRows as unknown as HomepageTankRow[]).map(toFeedItemViewModel),
+        marketMovers,
     };
 }

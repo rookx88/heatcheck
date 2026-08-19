@@ -3,9 +3,10 @@
 // ===================================================================================
 // Used by BOTH functions/index.ts (request-time SSR, logged-in or logged-out) and
 // scripts/generate-static-site.ts (build-time logged-out fallback written to
-// dist/index.html). Everything SEO-relevant (hooks, first beats, prop tags, the feed)
-// is real server HTML here; the client island (homepage-client.tsx) only layers the
-// 3D showcase, the interactive map, and row behavior on top - it never adds content.
+// dist/index.html). Everything SEO-relevant (hooks, first beats, prop tags, the
+// Market Movers ticker section with its excerpts) is real server HTML here; the
+// client island (homepage-client.tsx) only layers the 3D showcase, the interactive
+// map, and row/tab behavior on top - it never adds content.
 // ===================================================================================
 
 // NOTE: these imports reach into scripts/ from Workers-bundled code. Safe today
@@ -15,7 +16,8 @@
 import { renderHead, footer } from '../../../scripts/templates/waitlist-landing-template';
 import { escapeHtml } from '../../../scripts/utils/html-escape';
 import { SPORT_ORDER, type Sport } from '../../../sport-map';
-import type { HomepageData, SportSlot, FeedItemViewModel } from './data';
+import { marketMoversStyles, renderMarketMoversSection, renderTickerTape } from '../market-movers';
+import type { HomepageData, SportSlot } from './data';
 
 export interface HomepageUser {
     username: string;
@@ -94,32 +96,6 @@ function renderSportRow(slots: SportSlot[]): string {
             <ul class="hc-sport-row" data-hc-row>
                 ${cards}
             </ul>
-        </section>`;
-}
-
-function renderFeed(feed: FeedItemViewModel[]): string {
-    if (feed.length === 0) {
-        return `
-        <section id="recent" class="hc-section" aria-labelledby="hc-recent-heading">
-            <h2 id="hc-recent-heading">Recent stories</h2>
-            <p class="hc-section-sub">No published stories yet &mdash; check back soon.</p>
-        </section>`;
-    }
-    const items = feed.map(item => `
-            <article class="hc-feed-item">
-                <h3><a href="${escapeHtml(item.href)}">${escapeHtml(item.hook)}</a></h3>
-                ${item.excerpt ? `<p>${escapeHtml(item.excerpt)}</p>` : ''}
-                <div class="hc-feed-meta">
-                    <span class="hc-feed-league">${escapeHtml(item.league)}</span>
-                    ${item.dateLabel ? `<span class="hc-feed-date">${escapeHtml(item.dateLabel)}</span>` : ''}
-                </div>
-            </article>`).join('');
-
-    return `
-        <section id="recent" class="hc-section" aria-labelledby="hc-recent-heading">
-            <h2 id="hc-recent-heading">Recent stories</h2>
-            <p class="hc-section-sub">The latest published Tank stories, newest first.</p>
-            <div class="hc-feed">${items}</div>
         </section>`;
 }
 
@@ -215,16 +191,6 @@ function homepageStyles(): string {
             .hc-sport-card { flex: initial; max-width: none; }
         }
 
-        .hc-feed { display: flex; flex-direction: column; gap: 1.1rem; }
-        .hc-feed-item h3 { font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 1rem; line-height: 1.3; margin: 0 0 0.3rem; }
-        .hc-feed-item h3 a { text-decoration: none; }
-        .hc-feed-item h3 a:hover { text-decoration: underline; }
-        .hc-feed-item p { font-size: 0.85rem; line-height: 1.5; color: rgba(255,255,255,0.78); margin: 0 0 0.35rem; }
-        .hc-feed-meta { display: flex; gap: 0.7rem; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(255,255,255,0.5); }
-        @media (min-width: 760px) {
-            .hc-feed { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 2rem; }
-        }
-
         .hc-explore-wrap { position: relative; margin-top: 1.5rem; }
         .hc-explore-logo {
             position: absolute; top: -4.5%; left: -3%; width: clamp(130px, 26%, 250px); height: auto;
@@ -291,13 +257,14 @@ export function renderHomepage(options: RenderHomepageOptions): string {
 <head>
     ${head}
     <link rel="stylesheet" href="/assets/homepage.css">
-    <style>${homepageStyles()}</style>
+    <style>${homepageStyles()}${marketMoversStyles()}</style>
 </head>
 <body>
     <main class="hc-home">
         ${renderHeader(user)}
+        ${renderTickerTape(data.marketMovers.movers)}
         ${renderSportRow(data.sportSlots)}
-        ${renderFeed(data.feed)}
+        ${renderMarketMoversSection(data.marketMovers)}
         ${renderExplore()}
         ${footer()}
     </main>

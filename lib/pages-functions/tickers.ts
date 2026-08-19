@@ -225,6 +225,142 @@ export interface SettleTagInput {
     metadata: Record<string, unknown>;
 }
 
+// -----------------------------------------------------------------------------------
+// Read helpers - the ONE source of the ticker read queries, shared by the JSON
+// endpoints (functions/api/tickers*.ts), the server-rendered homepage Market Movers
+// section (lib/pages-functions/homepage/data.ts), and the build-time static fallback
+// (scripts/generate-static-site.ts via a tiny pg adapter). Marquee, cards, and API
+// can never disagree because they all run these exact statements.
+//
+// SqlReader is the minimal structural shape those callers share: Neon's tagged-template
+// function satisfies it directly; generate-static-site.ts adapts pg to it in 5 lines.
+// -----------------------------------------------------------------------------------
+
+export type SqlReader = (strings: TemplateStringsArray, ...params: unknown[]) => Promise<Record<string, unknown>[]>;
+
+export interface TickerValue {
+    key: string;
+    displayName: string;
+    description: string;
+    ruleType: string;
+    tabOrder: number;
+    value: number;      // live SUM(delta): a cumulative percentage starting at 0, NOT an indexed price
+    eventCount: number;
+    settleWinPct: number;
+    settleLossPct: number;
+}
+
+// All active tickers with their current values. A ticker's value only counts events
+// on visibility='app' Tanks - a newsletter_only Tank's events exist but never count.
+export async function getTickerValues(sql: SqlReader): Promise<TickerValue[]> {
+    const rows = await sql`
+        SELECT tk.key, tk.display_name, tk.description, tk.rule_type, tk.tab_order,
+               tk.settle_win_pct::float8 AS settle_win_pct,
+               tk.settle_loss_pct::float8 AS settle_loss_pct,
+               COALESCE(SUM(e.delta) FILTER (WHERE t.visibility = 'app'), 0)::float8 AS value,
+               COUNT(e.id) FILTER (WHERE t.visibility = 'app')::int AS event_count
+        FROM tickers tk
+        LEFT JOIN ticker_events e ON e.ticker_key = tk.key
+        LEFT JOIN tank_pages t ON t.id = e.tank_id
+        WHERE tk.active
+        GROUP BY tk.key, tk.display_name, tk.description, tk.rule_type, tk.tab_order,
+                 tk.settle_win_pct, tk.settle_loss_pct
+        ORDER BY tk.tab_order, tk.key
+    `;
+    return rows.map((r) => ({
+        key: r.key as string,
+        displayName: r.display_name as string,
+        description: r.description as string,
+        ruleType: r.rule_type as string,
+        tabOrder: r.tab_order as number,
+        value: r.value as number,
+        eventCount: r.event_count as number,
+        settleWinPct: r.settle_win_pct as number,
+        settleLossPct: r.settle_loss_pct as number,
+    }));
+}
+
+export interface TickerSeriesEvent {
+    id: string;
+    tankId: string;
+    eventType: 'tag' | 'settle';
+    delta: number;
+    cumulative: number;
+    occurredAt: string;
+}
+
+// The chart source: events ordered by time with a running cumulative sum, grouped per
+// ticker. The `id` tiebreak in both the window frame and ORDER BY makes same-timestamp
+// cumulatives deterministic. Same visibility='app' exclusion as getTickerValues, so a
+// chart's final cumulative always equals the ticker's current value.
+export async function getTickerSeries(sql: SqlReader, key?: string | null): Promise<Record<string, TickerSeriesEvent[]>> {
+    const keyParam = key ?? null;
+    const rows = await sql`
+        SELECT e.id, e.ticker_key, e.tank_id, e.event_type,
+               e.delta::float8 AS delta,
+               SUM(e.delta) OVER (PARTITION BY e.ticker_key ORDER BY e.occurred_at, e.id)::float8 AS cumulative,
+               e.occurred_at
+        FROM ticker_events e
+        JOIN tank_pages t ON t.id = e.tank_id AND t.visibility = 'app'
+        WHERE ${keyParam}::text IS NULL OR e.ticker_key = ${keyParam}
+        ORDER BY e.ticker_key, e.occurred_at, e.id
+    `;
+    const series: Record<string, TickerSeriesEvent[]> = {};
+    for (const row of rows) {
+        (series[row.ticker_key as string] ??= []).push({
+            id: row.id as string,
+            tankId: row.tank_id as string,
+            eventType: row.event_type as 'tag' | 'settle',
+            delta: row.delta as number,
+            cumulative: row.cumulative as number,
+            occurredAt: String(row.occurred_at),
+        });
+    }
+    return series;
+}
+
+export interface TickerNewsItem {
+    tickerKey: string;
+    slug: string;
+    league: string;
+    hook: string;    // model_output.hook, '' when missing
+    excerpt: string; // model_output.cards[0], '' when missing - the established excerpt unit
+    taggedAt: string;
+}
+
+// Most recently tagged public Tanks per ticker - the SSR "Recent News" source. Uses the
+// same public-surface predicate as the homepage tank queries (data.ts): published, app
+// visibility, slug + model_output present.
+export async function getTickerNews(sql: SqlReader, limitPerTicker = 3): Promise<Record<string, TickerNewsItem[]>> {
+    const rows = await sql`
+        SELECT ticker_key, slug, league, hook, excerpt, tagged_at FROM (
+            SELECT tt.ticker_key, t.slug, t.league,
+                   t.model_output->>'hook'     AS hook,
+                   t.model_output->'cards'->>0 AS excerpt,
+                   tt.tagged_at,
+                   ROW_NUMBER() OVER (PARTITION BY tt.ticker_key ORDER BY tt.tagged_at DESC, tt.id) AS rn
+            FROM ticker_tags tt
+            JOIN tank_pages t ON t.id = tt.tank_id
+            WHERE t.status = 'published' AND t.visibility = 'app'
+              AND t.slug IS NOT NULL AND t.model_output IS NOT NULL
+        ) ranked
+        WHERE rn <= ${limitPerTicker}
+        ORDER BY ticker_key, rn
+    `;
+    const news: Record<string, TickerNewsItem[]> = {};
+    for (const row of rows) {
+        (news[row.ticker_key as string] ??= []).push({
+            tickerKey: row.ticker_key as string,
+            slug: row.slug as string,
+            league: row.league as string,
+            hook: (row.hook as string | null) ?? '',
+            excerpt: (row.excerpt as string | null) ?? '',
+            taggedAt: String(row.tagged_at),
+        });
+    }
+    return news;
+}
+
 // Settle-event write, idempotent by construction (same single-statement CTE discipline
 // as ledger.ts's ledger+balance write): the event row only comes into existence if this
 // statement is the one that flips calculated_at from NULL. Returns false on a replay.

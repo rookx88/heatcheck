@@ -321,16 +321,6 @@
             .hc-sport-card { flex: initial; max-width: none; }
         }
 
-        .hc-feed { display: flex; flex-direction: column; gap: 1.1rem; }
-        .hc-feed-item h3 { font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 1rem; line-height: 1.3; margin: 0 0 0.3rem; }
-        .hc-feed-item h3 a { text-decoration: none; }
-        .hc-feed-item h3 a:hover { text-decoration: underline; }
-        .hc-feed-item p { font-size: 0.85rem; line-height: 1.5; color: rgba(255,255,255,0.78); margin: 0 0 0.35rem; }
-        .hc-feed-meta { display: flex; gap: 0.7rem; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(255,255,255,0.5); }
-        @media (min-width: 760px) {
-            .hc-feed { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 2rem; }
-        }
-
         .hc-explore-wrap { position: relative; margin-top: 1.5rem; }
         .hc-explore-logo {
             position: absolute; top: -4.5%; left: -3%; width: clamp(130px, 26%, 250px); height: auto;
@@ -344,6 +334,69 @@
         @media (max-width: 420px) {
             .hc-home { padding: 0.6rem 1rem 0.85rem; }
         }
+    
+        .hc-ticker-tape {
+            overflow: hidden; margin: 0.75rem -1.25rem 0;
+            border-top: 1px solid rgba(255,255,255,0.12); border-bottom: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.04);
+        }
+        .hc-tape-track { display: flex; width: max-content; animation: hc-tape 28s linear infinite; }
+        .hc-tape-group {
+            list-style: none; display: flex; gap: 2rem; margin: 0; padding: 0.45rem 1rem 0.45rem 3rem;
+            white-space: nowrap; font-weight: 800; font-size: 0.85rem;
+        }
+        @keyframes hc-tape { to { transform: translateX(-50%); } }
+        .hc-mm-value.is-pos { color: var(--hc-teal); }
+        .hc-mm-value.is-neg { color: #ef4444; }
+        .hc-mm-value.is-zero { color: rgba(255,255,255,0.6); }
+
+        .hc-mm-tabs { display: flex; gap: 0.5rem; margin: 0 0 1rem; }
+        .hc-mm-tabs button {
+            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.78rem;
+            letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer;
+            color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.18); border-radius: 999px; padding: 0.3rem 0.9rem;
+        }
+        .hc-mm-tabs button[aria-pressed="true"] {
+            color: var(--hc-teal); background: rgba(47, 230, 217, 0.1); border-color: rgba(47, 230, 217, 0.45);
+        }
+        .hc-mm-tabs button:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 2px; }
+
+        .hc-mm-grid { display: flex; flex-direction: column; gap: 1rem; }
+        .hc-mm-grid[data-mm-view="gainers"] .hc-mm-card:not([data-sign="pos"]) { display: none; }
+        .hc-mm-grid[data-mm-view="losers"] .hc-mm-card:not([data-sign="neg"]) { display: none; }
+        .hc-mm-card {
+            display: flex; flex-direction: column; gap: 0.55rem;
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 18px; padding: 1.1rem 1.1rem 1.2rem;
+        }
+        .hc-mm-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
+        .hc-mm-name { font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 1.1rem; margin: 0; }
+        .hc-mm-value { font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 1rem; }
+        .hc-mm-desc { font-size: 0.85rem; line-height: 1.45; color: rgba(255,255,255,0.78); margin: 0; }
+        .hc-mm-chart { margin: 0.25rem 0; }
+        .hc-mm-svg { display: block; width: 100%; height: auto; }
+        .hc-mm-chart-empty, .hc-mm-news-empty, .hc-mm-empty {
+            font-size: 0.82rem; color: rgba(255,255,255,0.55); margin: 0;
+        }
+        .hc-mm-news-heading {
+            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.72rem;
+            letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.6); margin: 0.25rem 0 0.4rem;
+        }
+        .hc-mm-news-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.7rem; }
+        .hc-mm-news-list a { font-weight: 800; font-size: 0.9rem; line-height: 1.3; text-decoration: none; }
+        .hc-mm-news-list a:hover { text-decoration: underline; }
+        .hc-mm-excerpt { font-size: 0.82rem; line-height: 1.45; color: rgba(255,255,255,0.75); margin: 0.15rem 0 0.2rem; }
+        .hc-mm-news-meta { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+
+        @media (min-width: 760px) {
+            .hc-mm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 2rem; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .hc-tape-track { animation: none; }
+            .hc-tape-group[aria-hidden="true"] { display: none; }
+            .hc-ticker-tape { overflow-x: auto; }
+        }
     </style>
 </head>
 <body>
@@ -356,32 +409,45 @@
             <a class="hc-cta-button hc-login-cta" href="/login/">Log in</a>
         </header>
         
+        <div class="hc-ticker-tape" aria-label="Ticker values — how tagged storylines have gone, not a forecast">
+            <div class="hc-tape-track">
+                <ul class="hc-tape-group">
+                <li class="hc-tape-item">$DOGS <span class="hc-mm-value is-pos">+8.5%</span></li>
+                <li class="hc-tape-item">$CHALK <span class="hc-mm-value is-zero">+0.0%</span></li>
+                <li class="hc-tape-item">$LOCKS <span class="hc-mm-value is-zero">+0.0%</span></li>
+                <li class="hc-tape-item">$MOONSHOT <span class="hc-mm-value is-pos">+18.0%</span></li></ul>
+                <ul class="hc-tape-group" aria-hidden="true">
+                <li class="hc-tape-item">$DOGS <span class="hc-mm-value is-pos">+8.5%</span></li>
+                <li class="hc-tape-item">$CHALK <span class="hc-mm-value is-zero">+0.0%</span></li>
+                <li class="hc-tape-item">$LOCKS <span class="hc-mm-value is-zero">+0.0%</span></li>
+                <li class="hc-tape-item">$MOONSHOT <span class="hc-mm-value is-pos">+18.0%</span></li></ul>
+            </div>
+        </div>
+        
         <section id="tanks" class="hc-section" aria-labelledby="hc-tanks-heading">
             <h2 id="hc-tanks-heading">Today&rsquo;s Tanks</h2>
             <p class="hc-section-sub">One live story per sport. Read it, then make your call in the Tank.</p>
             <div id="hc-showcase-root" aria-hidden="true"></div>
             <ul class="hc-sport-row" data-hc-row>
                 
-            <li class="hc-sport-card" data-sport="Baseball" data-live tabindex="0" aria-label="Baseball: Pete Crow-Armstrong just walked off the Crosstown Classic, joined the 30-30 club, and passed Ohtani in the MVP odds. Tonight the whole league is still watching to see if he does it again.">
-                <span class="hc-sport-badge"><span class="hc-sport-dot" style="background:#ef4444"></span>Baseball</span>
-                <h3 class="hc-hook">Pete Crow-Armstrong just walked off the Crosstown Classic, joined the 30-30 club, and passed Ohtani in the MVP odds. Tonight the whole league is still watching to see if he does it again.</h3>
-                <p class="hc-beat">The walk-off is already in the books. The 30-30 club has his name in it. The MVP odds have flipped his way. Wrigley is not calm right now.</p>
-                <span class="hc-prop-tag">O 0.5 Home Runs</span>
-                <a class="hc-card-cta" href="/the-tank/articles/pete-crow-armstrong-home-run-prop-cubs-white-sox/">Read the story <span aria-hidden="true">&rarr;</span></a>
-            </li>
-            <li class="hc-sport-card" data-sport="Football" data-live tabindex="-1" aria-label="Football: The Giants have been the whole offseason&#039;s headline. The Jets haven&#039;t said a word. Now they have to play the game.">
+            <li class="hc-sport-card" data-sport="Football" data-live tabindex="0" aria-label="Football: The Giants have been the whole offseason&#039;s headline. The Jets haven&#039;t said a word. Now they have to play the game.">
                 <span class="hc-sport-badge"><span class="hc-sport-dot" style="background:#a855f7"></span>Football</span>
                 <h3 class="hc-hook">The Giants have been the whole offseason&#039;s headline. The Jets haven&#039;t said a word. Now they have to play the game.</h3>
                 <p class="hc-beat">Every Giants misstep this offseason has landed on the back page. The Jets have stayed completely out of the story.</p>
                 <span class="hc-prop-tag">Moneyline</span>
                 <a class="hc-card-cta" href="/the-tank/articles/giants-jets-battle-of-new-york-moneyline/">Read the story <span aria-hidden="true">&rarr;</span></a>
             </li>
-            <li class="hc-sport-card" data-sport="Soccer" data-live tabindex="-1" aria-label="Soccer: Atletico left Julian Alvarez out of the squad entirely, and now half of Europe thinks they know why.">
+            <li class="hc-sport-card" data-sport="Soccer" data-live tabindex="-1" aria-label="Soccer: Pep is gone. The trophies stay. Enzo Maresca&#039;s Manchester City debut starts right now.">
                 <span class="hc-sport-badge"><span class="hc-sport-dot" style="background:#84cc16"></span>Soccer</span>
-                <h3 class="hc-hook">Atletico left Julian Alvarez out of the squad entirely, and now half of Europe thinks they know why.</h3>
-                <p class="hc-beat">Cerezo says Alvarez isn&#039;t going anywhere. Then Atletico bench him completely for Malaga and the exit rumors get louder, not quieter.</p>
-                <span class="hc-prop-tag">O 2.5 Totals</span>
-                <a class="hc-card-cta" href="/the-tank/articles/atletico-madrid-malaga-julian-alvarez-total-goals/">Read the story <span aria-hidden="true">&rarr;</span></a>
+                <h3 class="hc-hook">Pep is gone. The trophies stay. Enzo Maresca&#039;s Manchester City debut starts right now.</h3>
+                <p class="hc-beat">Ten years of Guardiola ended this summer, and Enzo Maresca inherits a club still shaped entirely around him.</p>
+                <span class="hc-prop-tag">O -1.5 Spreads</span>
+                <a class="hc-card-cta" href="/the-tank/articles/bournemouth-man-city-maresca-first-match/">Read the story <span aria-hidden="true">&rarr;</span></a>
+            </li>
+            <li class="hc-sport-card is-empty" data-sport="Baseball" tabindex="-1" aria-label="Baseball: nothing live today">
+                <span class="hc-sport-badge"><span class="hc-sport-dot" style="background:#ef4444"></span>Baseball</span>
+                <p class="hc-empty-note">Nothing live in baseball today.</p>
+                <p class="hc-empty-sub">New stories drop as games approach.</p>
             </li>
             <li class="hc-sport-card is-empty" data-sport="Basketball" tabindex="-1" aria-label="Basketball: nothing live today">
                 <span class="hc-sport-badge"><span class="hc-sport-dot" style="background:#f59e0b"></span>Basketball</span>
@@ -391,74 +457,106 @@
             </ul>
         </section>
         
-        <section id="recent" class="hc-section" aria-labelledby="hc-recent-heading">
-            <h2 id="hc-recent-heading">Recent stories</h2>
-            <p class="hc-section-sub">The latest published Tank stories, newest first.</p>
-            <div class="hc-feed">
-            <article class="hc-feed-item">
-                <h3><a href="/the-tank/articles/atletico-madrid-malaga-julian-alvarez-total-goals/">Atletico left Julian Alvarez out of the squad entirely, and now half of Europe thinks they know why.</a></h3>
-                <p>Cerezo says Alvarez isn&#039;t going anywhere. Then Atletico bench him completely for Malaga and the exit rumors get louder, not quieter.</p>
-                <div class="hc-feed-meta">
-                    <span class="hc-feed-league">La Liga</span>
-                    <span class="hc-feed-date">Aug 19, 2026</span>
-                </div>
-            </article>
-            <article class="hc-feed-item">
-                <h3><a href="/the-tank/articles/gunnar-henderson-home-run-orioles-yankees/">Judge is on his way back. He&#039;s just not back yet, and Gunnar Henderson is making the Yankees pay for it.</a></h3>
-                <p>Aaron Boone confirmed it this week: Judge is starting his hitting progression. That means he&#039;s close, but this series is still happening without him.</p>
-                <div class="hc-feed-meta">
-                    <span class="hc-feed-league">MLB</span>
-                    <span class="hc-feed-date">Aug 19, 2026</span>
-                </div>
-            </article>
-            <article class="hc-feed-item">
-                <h3><a href="/the-tank/articles/pete-crow-armstrong-home-run-prop-cubs-white-sox/">Pete Crow-Armstrong just walked off the Crosstown Classic, joined the 30-30 club, and passed Ohtani in the MVP odds. Tonight the whole league is still watching to see if he does it again.</a></h3>
-                <p>The walk-off is already in the books. The 30-30 club has his name in it. The MVP odds have flipped his way. Wrigley is not calm right now.</p>
-                <div class="hc-feed-meta">
-                    <span class="hc-feed-league">MLB</span>
-                    <span class="hc-feed-date">Aug 19, 2026</span>
-                </div>
-            </article>
-            <article class="hc-feed-item">
-                <h3><a href="/the-tank/articles/jets-titans-breece-hall-injury-spread/">Breece Hall got hurt in practice and now the Jets&#039; entire gameplan in Nashville is in question.</a></h3>
-                <p>Breece Hall went down Monday with an upper right leg issue, and his status for Titans-Jets is uncertain.</p>
-                <div class="hc-feed-meta">
-                    <span class="hc-feed-league">NFL</span>
-                    <span class="hc-feed-date">Aug 17, 2026</span>
-                </div>
-            </article>
-            <article class="hc-feed-item">
-                <h3><a href="/the-tank/articles/ohtani-home-runs-dodgers-rockies-coors-field/">Ohtani doesn&#039;t need one homer tonight. The number is 1.5.</a></h3>
-                <p>Coors Field sits a mile high, and the ball just flies different there. Every hitter knows it. Ohtani is stepping into the best hitter&#039;s park in baseball at the best possible time.</p>
-                <div class="hc-feed-meta">
-                    <span class="hc-feed-league">MLB</span>
-                    <span class="hc-feed-date">Aug 17, 2026</span>
-                </div>
-            </article>
-            <article class="hc-feed-item">
-                <h3><a href="/the-tank/articles/pete-crow-armstrong-home-run-cubs-white-sox-crosstown-classic/">The Cubs&#039; MVP case steps into the box against the White Sox with the whole city watching.</a></h3>
-                <p>Cubs-Sox week is the one Chicago actually circles on the calendar, and PCA is the reason both sides are tuning in.</p>
-                <div class="hc-feed-meta">
-                    <span class="hc-feed-league">MLB</span>
-                    <span class="hc-feed-date">Aug 17, 2026</span>
-                </div>
-            </article>
-            <article class="hc-feed-item">
-                <h3><a href="/the-tank/articles/cowboys-giants-von-miller-homecoming/">Von Miller finally became a Cowboy at 38. Now he has to prove it against the Giants.</a></h3>
-                <p>Miller grew up dreaming of this exact jersey. Dallas gave it to him a decade late, ring already in hand.</p>
-                <div class="hc-feed-meta">
-                    <span class="hc-feed-league">NFL</span>
-                    <span class="hc-feed-date">Aug 17, 2026</span>
-                </div>
-            </article>
-            <article class="hc-feed-item">
-                <h3><a href="/the-tank/articles/bournemouth-man-city-maresca-first-match/">Pep is gone. The trophies stay. Enzo Maresca&#039;s Manchester City debut starts right now.</a></h3>
-                <p>Ten years of Guardiola ended this summer, and Enzo Maresca inherits a club still shaped entirely around him.</p>
-                <div class="hc-feed-meta">
-                    <span class="hc-feed-league">EPL</span>
-                    <span class="hc-feed-date">Aug 14, 2026</span>
-                </div>
-            </article></div>
+        <section id="market-movers" class="hc-section" aria-labelledby="hc-mm-heading">
+            <h2 id="hc-mm-heading">Market Movers</h2>
+            <p class="hc-section-sub">Ticker values reflect how tagged storylines have gone - not a forecast.</p>
+            
+        <div class="hc-mm-tabs" data-hc-mm-tabs hidden>
+            <button type="button" data-mm-view="all" aria-pressed="true">All</button>
+            <button type="button" data-mm-view="gainers" aria-pressed="false">Gainers</button>
+            <button type="button" data-mm-view="losers" aria-pressed="false">Losers</button>
+        </div>
+        <div class="hc-mm-grid" data-hc-mm-grid data-mm-view="all">
+        <article class="hc-mm-card" data-ticker="moonshot" data-sign="pos">
+            <header class="hc-mm-head">
+                <h3 class="hc-mm-name">$MOONSHOT</h3>
+                <span class="hc-mm-value is-pos">+18.0%</span>
+            </header>
+            <p class="hc-mm-desc">Longshots - low-probability sides with big upside.</p>
+            <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 72" role="img" aria-label="$MOONSHOT cumulative chart: currently +18.0% over 4 events">
+                <title>$MOONSHOT cumulative chart: currently +18.0% over 4 events</title>
+                <line x1="6" x2="254" y1="60.0" y2="60.0" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 4" stroke-width="1"/>
+                <polyline fill="none" points="6.0,60.0 68.0,66.0 130.0,66.0 192.0,66.0 254.0,6.0" stroke="var(--hc-teal)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="68.0" cy="66.0" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · −2.0% (running: −2.0%)</title></circle><circle cx="130.0" cy="66.0" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · +0.0% (running: −2.0%)</title></circle><circle cx="192.0" cy="66.0" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · +0.0% (running: −2.0%)</title></circle><circle cx="254.0" cy="6.0" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · settle · +20.0% (running: +18.0%)</title></circle>
+            </svg></div>
+            <div class="hc-mm-news">
+                <h4 class="hc-mm-news-heading">Recent news</h4>
+                <ul class="hc-mm-news-list">
+                <li>
+                    <a href="/the-tank/articles/gunnar-henderson-home-run-orioles-yankees/">Judge is on his way back. He&#039;s just not back yet, and Gunnar Henderson is making the Yankees pay for it.</a>
+                    <p class="hc-mm-excerpt">Aaron Boone confirmed it this week: Judge is starting his hitting progression. That means he&#039;s close, but this series is still happening without him.</p>
+                    <span class="hc-mm-news-meta">MLB · Aug 19, 2026</span>
+                </li>
+                <li>
+                    <a href="/the-tank/articles/ohtani-home-runs-dodgers-rockies-coors-field/">Ohtani doesn&#039;t need one homer tonight. The number is 1.5.</a>
+                    <p class="hc-mm-excerpt">Coors Field sits a mile high, and the ball just flies different there. Every hitter knows it. Ohtani is stepping into the best hitter&#039;s park in baseball at the best possible time.</p>
+                    <span class="hc-mm-news-meta">MLB · Aug 19, 2026</span>
+                </li>
+                <li>
+                    <a href="/the-tank/articles/mike-vrabel-patriots-hot-seat-fired-2026/">Vrabel took the Patriots job to fix it. The question is whether he gets to finish.</a>
+                    <p class="hc-mm-excerpt">New England did not hire Vrabel for a rebuild timeline. They hired him to make the losing stop, and patience in that building has a short shelf life.</p>
+                    <span class="hc-mm-news-meta">NFL · Aug 19, 2026</span>
+                </li>
+            </ul>
+            </div>
+        </article>
+        <article class="hc-mm-card" data-ticker="dogs" data-sign="pos">
+            <header class="hc-mm-head">
+                <h3 class="hc-mm-name">$DOGS</h3>
+                <span class="hc-mm-value is-pos">+8.5%</span>
+            </header>
+            <p class="hc-mm-desc">Underdog storylines - sides priced below 50%.</p>
+            <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 72" role="img" aria-label="$DOGS cumulative chart: currently +8.5% over 13 events">
+                <title>$DOGS cumulative chart: currently +8.5% over 13 events</title>
+                <line x1="6" x2="254" y1="37.9" y2="37.9" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 4" stroke-width="1"/>
+                <polyline fill="none" points="6.0,37.9 25.1,52.9 44.2,60.4 63.2,60.4 82.3,66.0 101.4,66.0 120.5,66.0 139.5,66.0 158.6,66.0 177.7,66.0 196.8,62.3 215.8,43.5 234.9,24.8 254.0,6.0" stroke="var(--hc-teal)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="25.1" cy="52.9" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · −4.0% (running: −4.0%)</title></circle><circle cx="44.2" cy="60.4" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · −2.0% (running: −6.0%)</title></circle><circle cx="63.2" cy="60.4" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · +0.0% (running: −6.0%)</title></circle><circle cx="82.3" cy="66.0" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · −1.5% (running: −7.5%)</title></circle><circle cx="101.4" cy="66.0" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · +0.0% (running: −7.5%)</title></circle><circle cx="120.5" cy="66.0" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · +0.0% (running: −7.5%)</title></circle><circle cx="139.5" cy="66.0" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · +0.0% (running: −7.5%)</title></circle><circle cx="158.6" cy="66.0" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · +0.0% (running: −7.5%)</title></circle><circle cx="177.7" cy="66.0" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · +0.0% (running: −7.5%)</title></circle><circle cx="196.8" cy="62.3" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · tag · +1.0% (running: −6.5%)</title></circle><circle cx="215.8" cy="43.5" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · settle · +5.0% (running: −1.5%)</title></circle><circle cx="234.9" cy="24.8" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · settle · +5.0% (running: +3.5%)</title></circle><circle cx="254.0" cy="6.0" r="3" fill="var(--hc-teal)"><title>Aug 19, 2026 · settle · +5.0% (running: +8.5%)</title></circle>
+            </svg></div>
+            <div class="hc-mm-news">
+                <h4 class="hc-mm-news-heading">Recent news</h4>
+                <ul class="hc-mm-news-list">
+                <li>
+                    <a href="/the-tank/articles/atletico-madrid-malaga-julian-alvarez-total-goals/">Atletico left Julian Alvarez out of the squad entirely, and now half of Europe thinks they know why.</a>
+                    <p class="hc-mm-excerpt">Cerezo says Alvarez isn&#039;t going anywhere. Then Atletico bench him completely for Malaga and the exit rumors get louder, not quieter.</p>
+                    <span class="hc-mm-news-meta">La Liga · Aug 19, 2026</span>
+                </li>
+                <li>
+                    <a href="/the-tank/articles/gunnar-henderson-home-run-orioles-yankees/">Judge is on his way back. He&#039;s just not back yet, and Gunnar Henderson is making the Yankees pay for it.</a>
+                    <p class="hc-mm-excerpt">Aaron Boone confirmed it this week: Judge is starting his hitting progression. That means he&#039;s close, but this series is still happening without him.</p>
+                    <span class="hc-mm-news-meta">MLB · Aug 19, 2026</span>
+                </li>
+                <li>
+                    <a href="/the-tank/articles/jets-titans-breece-hall-injury-spread/">Breece Hall got hurt in practice and now the Jets&#039; entire gameplan in Nashville is in question.</a>
+                    <p class="hc-mm-excerpt">Breece Hall went down Monday with an upper right leg issue, and his status for Titans-Jets is uncertain.</p>
+                    <span class="hc-mm-news-meta">NFL · Aug 19, 2026</span>
+                </li>
+            </ul>
+            </div>
+        </article>
+        <article class="hc-mm-card" data-ticker="chalk" data-sign="zero">
+            <header class="hc-mm-head">
+                <h3 class="hc-mm-name">$CHALK</h3>
+                <span class="hc-mm-value is-zero">+0.0%</span>
+            </header>
+            <p class="hc-mm-desc">Favorite storylines - sides priced at 50% or better.</p>
+            <div class="hc-mm-chart"><p class="hc-mm-chart-empty">No activity yet.</p></div>
+            <div class="hc-mm-news">
+                <h4 class="hc-mm-news-heading">Recent news</h4>
+                <p class="hc-mm-news-empty">No tagged storylines yet.</p>
+            </div>
+        </article>
+        <article class="hc-mm-card" data-ticker="locks" data-sign="zero">
+            <header class="hc-mm-head">
+                <h3 class="hc-mm-name">$LOCKS</h3>
+                <span class="hc-mm-value is-zero">+0.0%</span>
+            </header>
+            <p class="hc-mm-desc">Heavy favorites - the near-sure things.</p>
+            <div class="hc-mm-chart"><p class="hc-mm-chart-empty">No activity yet.</p></div>
+            <div class="hc-mm-news">
+                <h4 class="hc-mm-news-heading">Recent news</h4>
+                <p class="hc-mm-news-empty">No tagged storylines yet.</p>
+            </div>
+        </article></div>
         </section>
         
         <section id="explore" class="hc-section" aria-labelledby="hc-explore-heading">
@@ -478,7 +576,7 @@
             &copy; 2026 Heatchecks &middot; <a href="/">Home</a>
         </div>
     </main>
-    <script type="application/json" id="homepage-data">{"initialSport":"Baseball","loggedIn":false,"sports":[{"sport":"Baseball","live":true,"slug":"pete-crow-armstrong-home-run-prop-cubs-white-sox","href":"/the-tank/articles/pete-crow-armstrong-home-run-prop-cubs-white-sox/","deck":{"hook":"Pete Crow-Armstrong just walked off the Crosstown Classic, joined the 30-30 club, and passed Ohtani in the MVP odds. Tonight the whole league is still watching to see if he does it again.","cards":["The walk-off is already in the books. The 30-30 club has his name in it. The MVP odds have flipped his way. Wrigley is not calm right now.","Every at-bat right now gets read as evidence in a case. A home run tonight just adds another exhibit to the file everyone is building on him."],"call":{"sides":["Over 0.5 HR","Under 0.5 HR"],"question":"Does Pete Crow-Armstrong hit a home run tonight against the White Sox?","sidesImpliedProb":[0.075,0.925]},"tagline":"PCA's MVP Push","contextLabel":"O 0.5 Home Runs","oddsOrMarketLabel":"MLB · Pete Crow-Armstrong","settleDateLabel":"Resolves Aug 19, 2026"}},{"sport":"Basketball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Football","live":true,"slug":"giants-jets-battle-of-new-york-moneyline","href":"/the-tank/articles/giants-jets-battle-of-new-york-moneyline/","deck":{"hook":"The Giants have been the whole offseason's headline. The Jets haven't said a word. Now they have to play the game.","cards":["Every Giants misstep this offseason has landed on the back page. The Jets have stayed completely out of the story.","Being talked about all summer means nothing once the ball is kicked. Attention isn't a stat line."],"call":{"sides":["Giants","Jets"],"question":"Giants or Jets to win?","sidesImpliedProb":[0.48,0.52]},"tagline":"The Giants have been the whole offseason's headline. The Jets haven't said a…","contextLabel":"Moneyline","oddsOrMarketLabel":"NFL · New York Giants vs. New York Jets","settleDateLabel":"Resolves Aug 28, 2026"}},{"sport":"Soccer","live":true,"slug":"atletico-madrid-malaga-julian-alvarez-total-goals","href":"/the-tank/articles/atletico-madrid-malaga-julian-alvarez-total-goals/","deck":{"hook":"Atletico left Julian Alvarez out of the squad entirely, and now half of Europe thinks they know why.","cards":["Cerezo says Alvarez isn't going anywhere. Then Atletico bench him completely for Malaga and the exit rumors get louder, not quieter.","The Independent is calling it a drop. Simeone isn't confirming or denying anything."],"call":{"sides":["Over 2.5","Under 2.5"],"question":"Over or under 2.5 total goals in Atletico Madrid vs Malaga?","sidesImpliedProb":[0.575,0.425]},"tagline":"Alvarez Out, Goals TBD","contextLabel":"O 2.5 Totals","oddsOrMarketLabel":"La Liga · Málaga CF vs. Club Atlético de Madrid","settleDateLabel":"Resolves Aug 19, 2026"}}]}</script>
+    <script type="application/json" id="homepage-data">{"initialSport":"Football","loggedIn":false,"sports":[{"sport":"Baseball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Basketball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Football","live":true,"slug":"giants-jets-battle-of-new-york-moneyline","href":"/the-tank/articles/giants-jets-battle-of-new-york-moneyline/","deck":{"hook":"The Giants have been the whole offseason's headline. The Jets haven't said a word. Now they have to play the game.","cards":["Every Giants misstep this offseason has landed on the back page. The Jets have stayed completely out of the story.","Being talked about all summer means nothing once the ball is kicked. Attention isn't a stat line."],"call":{"sides":["Giants","Jets"],"question":"Giants or Jets to win?","sidesImpliedProb":[0.48,0.52]},"tagline":"The Giants have been the whole offseason's headline. The Jets haven't said a…","contextLabel":"Moneyline","oddsOrMarketLabel":"NFL · New York Giants vs. New York Jets","settleDateLabel":"Resolves Aug 28, 2026"}},{"sport":"Soccer","live":true,"slug":"bournemouth-man-city-maresca-first-match","href":"/the-tank/articles/bournemouth-man-city-maresca-first-match/","deck":{"hook":"Pep is gone. The trophies stay. Enzo Maresca's Manchester City debut starts right now.","cards":["Ten years of Guardiola ended this summer, and Enzo Maresca inherits a club still shaped entirely around him.","City broke the bank for Elliot Anderson, proof the ambition never left even if the manager did."],"call":{"sides":["Manchester City -1.5","AFC Bournemouth +1.5"],"question":"Do you back Manchester City to cover -1.5 in Maresca's first match, or take Bournemouth and the points?","sidesImpliedProb":[0.44,0.56]},"tagline":"Life After Pep","contextLabel":"O -1.5 Spreads","oddsOrMarketLabel":"EPL · AFC Bournemouth vs. Manchester City FC","settleDateLabel":"Resolves Aug 23, 2026"}}]}</script>
     <script type="module" src="/assets/homepage.js" defer></script>
 </body>
 </html>
