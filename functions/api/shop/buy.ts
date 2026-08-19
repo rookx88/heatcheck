@@ -66,9 +66,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             const balance = balanceRows.length ? (balanceRows[0].balance as number) : 0;
             return jsonResponse({ message: 'Not enough Ember.', balance }, { status: 402, headers: authHeaders });
         }
-        const qtyRows = await sql`SELECT quantity FROM inventory_items WHERE user_id = ${session.userId} AND catalog_key = ${catalogKey} LIMIT 1`;
+        if (itemType === 'egg') {
+            // Eggs are one row per purchase — report the new row's identity, not a
+            // quantity. inventoryItemId is null on an idempotent replay (already granted).
+            return jsonResponse(
+                { ok: true, item: { catalogKey, itemType, inventoryItemId: result.grantedInventoryId } },
+                { headers: authHeaders }
+            );
+        }
+        const qtyRows = await sql`SELECT quantity FROM inventory_items WHERE user_id = ${session.userId} AND catalog_key = ${catalogKey} AND item_type = 'food' LIMIT 1`;
         const quantity = qtyRows.length ? (qtyRows[0].quantity as number) : 0;
-        return jsonResponse({ ok: true, item: { catalogKey, quantity } }, { headers: authHeaders });
+        return jsonResponse({ ok: true, item: { catalogKey, itemType, quantity } }, { headers: authHeaders });
     } catch (err) {
         console.error('[POST /api/shop/buy] Error:', err);
         return jsonResponse({ message: 'Internal server error' }, { status: 500, headers: authHeaders });

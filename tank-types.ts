@@ -74,3 +74,26 @@ export interface TankArticle {
     cards: string[];
     call: TankArticleCall;
 }
+
+// The Fishtank artifact's render payload (components/Fishtank.tsx re-exports this for
+// its consumers). Lives here, not in the component, so server-side code - the homepage
+// data mappers under lib/pages-functions/, which type-check without DOM libs - can
+// build one without importing a React/DOM module graph.
+export interface DeckPayload {
+    hook: string;
+    cards: string[];
+    // sidesImpliedProb is positionally parallel to sides (same convention
+    // functions/api/picks.ts's sideIndex relies on) - the raw market implied
+    // probability per side, straight from the frozen game_snapshot's prop.odds.
+    // Optional because older, pre-rebuild payloads won't carry it yet.
+    call: { question: string; sides: string[]; sidesImpliedProb?: number[] };
+    // Wall-header content, below. All pre-formatted strings computed server-side (never
+    // client-side) so the component stays purely presentational. tagline is the one
+    // model-generated field; the rest are real facts pulled from the frozen game_snapshot
+    // (league/subject, market odds, settle date) - same "never build a hard fact from
+    // model prose" rule the schema.org JSON-LD already follows.
+    tagline: string;           // Hook wall header - short storyline label, a few words
+    contextLabel: string;      // Take 1 header - "{league} · {subject}"
+    oddsOrMarketLabel: string; // Take 2 header - live odds, or the market label if no odds
+    settleDateLabel: string;   // Call wall header - "Resolves {date}"
+}

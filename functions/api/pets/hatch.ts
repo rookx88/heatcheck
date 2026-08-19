@@ -1,11 +1,13 @@
-// POST /api/pets/hatch - consume one held egg and create the account's pet, atomically.
-// A pet is created ONLY here, never auto-provisioned. One pet per account this build:
-// if a pet already exists the egg is left untouched and the existing pet is returned
-// (so a double-submit, or a second hatch attempt, is a safe no-op). The egg's color /
-// render_mode / render_config are copied onto the pet from the SKU's catalog config.
+// POST /api/pets/hatch - consume one specific owned egg row and create the account's
+// pet, atomically. Eggs are one inventory row each, so the request names the row
+// (inventoryItemId) and hatching DELETEs it — the deletion doubles as the double-fire
+// guard. A pet is created ONLY here, never auto-provisioned. One pet per account this
+// build: if a pet already exists the egg is left untouched and the existing pet is
+// returned (so a double-submit, or a second hatch attempt, is a safe no-op). The egg's
+// color / render_mode / render_config are copied onto the pet from the row's SKU config.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
-import { getSql, jsonResponse, type Env } from '../../../lib/pages-functions/db';
+import { getSql, jsonResponse, UUID_RE, type Env } from '../../../lib/pages-functions/db';
 import { getSession, requireSameOrigin, requireOnboarded } from '../../../lib/pages-functions/session';
 import { hatch, getGameConfig, petPublic, type FeedingConfig, type PetRow } from '../../../lib/pages-functions/pets';
 
@@ -25,8 +27,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     } catch {
         return jsonResponse({ message: 'Invalid JSON body.' }, { status: 400, headers: authHeaders });
     }
-    const eggCatalogKey = typeof body?.eggCatalogKey === 'string' ? body.eggCatalogKey.trim() : '';
-    if (!eggCatalogKey) return jsonResponse({ message: 'Missing eggCatalogKey.' }, { status: 400, headers: authHeaders });
+    const inventoryItemId = typeof body?.inventoryItemId === 'string' && UUID_RE.test(body.inventoryItemId) ? body.inventoryItemId : '';
+    if (!inventoryItemId) return jsonResponse({ message: 'Missing or invalid inventoryItemId.' }, { status: 400, headers: authHeaders });
 
     const sql = getSql(context.env);
 
@@ -39,10 +41,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             return jsonResponse({ pet: petPublic(existingRows[0] as unknown as PetRow, cfg), created: false }, { headers: authHeaders });
         }
 
-        // Look up the egg SKU's render attributes.
-        const eggRows = await sql`SELECT config FROM items_catalog WHERE key = ${eggCatalogKey} AND item_type = 'egg' LIMIT 1`;
+        // Look up the owned egg row + its SKU's render attributes in one shot. Empty
+        // covers not-a-real-row, not-an-egg, not-yours, and already-hatched alike —
+        // deliberately indistinguishable to the caller.
+        const eggRows = await sql`
+            SELECT c.config
+            FROM inventory_items i
+            JOIN items_catalog c ON c.key = i.catalog_key
+            WHERE i.id = ${inventoryItemId} AND i.user_id = ${session.userId} AND i.item_type = 'egg'
+            LIMIT 1
+        `;
         if (eggRows.length === 0) {
-            return jsonResponse({ message: 'Unknown egg.' }, { status: 400, headers: authHeaders });
+            return jsonResponse({ message: "You don't have that egg to hatch." }, { status: 404, headers: authHeaders });
         }
         const eggConfig = (eggRows[0].config as Record<string, unknown>) ?? {};
         const color = String(eggConfig.color ?? 'default');
@@ -54,14 +64,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
         const pet = await hatch(sql, {
             userId: session.userId,
-            eggCatalogKey,
+            inventoryItemId,
             color,
             renderMode,
             renderConfig,
             startSatisfaction,
         });
         if (!pet) {
-            // No egg was available to consume (e.g. quantity 0, or a race lost the egg).
+            // The row vanished between the lookup and the DELETE — a truly simultaneous
+            // double-fire where both requests passed the existing-pet check. If the
+            // winner's pet exists now, report it (success/success, not success/404).
+            const raceRows = await sql`SELECT id, color, render_mode, render_config, name, is_captain, satisfaction_at_last_feed, last_fed_at FROM pets WHERE user_id = ${session.userId} LIMIT 1`;
+            if (raceRows.length > 0) {
+                return jsonResponse({ pet: petPublic(raceRows[0] as unknown as PetRow, cfg), created: false }, { headers: authHeaders });
+            }
             return jsonResponse({ message: "You don't have that egg to hatch." }, { status: 404, headers: authHeaders });
         }
         return jsonResponse({ pet: petPublic(pet, cfg), created: true }, { status: 201, headers: authHeaders });

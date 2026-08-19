@@ -207,7 +207,9 @@ function WelcomePage() {
             }
             const data = await res.json().catch(() => ({}));
             if (data.onboarded) {
-                window.location.replace('/the-tank/');
+                // Already-onboarded visitors land on the homepage - it's the
+                // logged-in front door now (functions/index.ts), not /the-tank/.
+                window.location.replace('/');
                 return;
             }
             if (data.letterData) {
@@ -241,7 +243,9 @@ function WelcomePage() {
     const handleSigned = () => {
         setPhase('signed');
         window.setTimeout(() => {
-            window.location.href = '/the-tank/';
+            // Onboarding completion lands on the homepage in its logged-in state
+            // (real username + Ember balance) - no intermediate screen.
+            window.location.href = '/';
         }, 1200);
     };
 

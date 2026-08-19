@@ -12,7 +12,7 @@
 
 CREATE TABLE IF NOT EXISTS items_catalog (
     key             TEXT PRIMARY KEY,            -- 'egg_slate', 'egg_founder_ivory', 'food_basic', ...
-    item_type       TEXT NOT NULL,              -- 'egg' | 'food' | 'equipment'
+    item_type       TEXT NOT NULL,              -- 'egg' | 'food' | 'equipment' | 'collectible' (last two: declared, no SKUs yet)
     name            TEXT NOT NULL,
     price_rule_key  TEXT NOT NULL,              -- ember_rules sink key holding this SKU's Ember price
     config          JSONB NOT NULL DEFAULT '{}',-- egg filter: {color, render_mode:'filter', hue}

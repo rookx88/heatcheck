@@ -1,0 +1,157 @@
+/* Food vendor modal list - rides the tank-modal chrome (TankScreen.css) and the
+   hatchery's shared bits (HatcheryModal.css). Color grammar: ember/orange =
+   considering (the Confirm step), teal = resting actions. */
+
+.food-shop-list {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  text-align: left;
+}
+
+.food-shop-item {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.55rem 0.7rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(47, 230, 217, 0.2);
+  border-radius: 14px;
+}
+
+.food-shop-thumb {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.35));
+}
+
+.food-shop-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.food-shop-name {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: #fff;
+}
+
+.food-shop-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.65);
+  margin-top: 0.15rem;
+}
+
+.food-shop-owned {
+  color: #2fe6d9;
+  font-weight: 700;
+}
+
+.food-shop-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.food-shop-price {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: rgba(255, 199, 44, 0.9);
+  white-space: nowrap;
+}
+
+.food-shop-buy {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #2fe6d9;
+  background: rgba(47, 230, 217, 0.08);
+  border: 2px solid rgba(47, 230, 217, 0.5);
+  border-radius: 10px;
+  padding: 0.35rem 1.1rem;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.food-shop-buy:hover,
+.food-shop-buy:focus-visible {
+  background: rgba(47, 230, 217, 0.18);
+  outline: none;
+}
+
+.food-shop-buy:active {
+  transform: scale(0.96);
+}
+
+.food-shop-confirm-row {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.food-shop-confirm {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1a1200;
+  background: var(--hc-gold, #ffc72c);
+  border: none;
+  border-radius: 10px;
+  padding: 0.4rem 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--hc-gold-dark, #e8a800), 0 5px 10px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease;
+}
+
+.food-shop-confirm:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--hc-gold-dark, #e8a800);
+}
+
+.food-shop-confirm:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.food-shop-cancel {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.65);
+  background: none;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 10px;
+  padding: 0.35rem 0.7rem;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.food-shop-cancel:hover,
+.food-shop-cancel:focus-visible {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.5);
+  outline: none;
+}
+
+@media (max-width: 420px) {
+  .food-shop-thumb {
+    width: 56px;
+    height: 56px;
+  }
+}

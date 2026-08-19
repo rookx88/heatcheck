@@ -13,7 +13,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useMotionValue, useSpring, AnimatePresence, useReducedMotion } from 'motion/react';
-import { Flame, Zap, Swords } from 'lucide-react';
+import { Flame, Zap, Swords, Sparkles } from 'lucide-react';
 import {
     getCachedAccount,
     setCachedAccount,
@@ -30,30 +30,26 @@ import {
 import { trackEvent } from '../tank-analytics-client';
 import { AllSetModal } from './AllSetModal';
 
-export interface DeckPayload {
-    hook: string;
-    cards: string[];
-    // sidesImpliedProb is positionally parallel to sides (same convention
-    // functions/api/picks.ts's sideIndex relies on) - the raw market implied
-    // probability per side, straight from the frozen game_snapshot's prop.odds.
-    // Optional because older, pre-rebuild payloads won't carry it yet.
-    call: { question: string; sides: string[]; sidesImpliedProb?: number[] };
-    // Wall-header content, below. All pre-formatted strings computed server-side (never
-    // client-side) so this component stays purely presentational. tagline is the one
-    // model-generated field; the rest are real facts pulled from the frozen game_snapshot
-    // (league/subject, market odds, settle date) - same "never build a hard fact from
-    // model prose" rule the schema.org JSON-LD already follows.
-    tagline: string;           // Hook wall header - short storyline label, a few words
-    contextLabel: string;      // Take 1 header - "{league} · {subject}"
-    oddsOrMarketLabel: string; // Take 2 header - live odds, or the market label if no odds
-    settleDateLabel: string;   // Call wall header - "Resolves {date}"
-}
+// DeckPayload moved to tank-types.ts (pure, importable from lib/pages-functions
+// without a DOM/React module graph); re-exported here so existing consumers keep
+// importing it from the component.
+import type { DeckPayload } from '../tank-types';
+export type { DeckPayload };
 
 interface Wall {
-    kind: 'hook' | 'card' | 'call';
+    kind: 'hook' | 'card' | 'call' | 'promo';
     label: string;
     icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
     rotateY: number;
+}
+
+// A pitch wall for logged-out contexts (homepage showcase): body copy + one CTA link.
+// Takes the slot of the second Take, keeping the cube at exactly 4 walls.
+export interface PromoWall {
+    label: string;    // wall header (e.g. "Join HeatChecks")
+    body: string;
+    ctaHref: string;
+    ctaLabel: string;
 }
 
 const TANK_W = 260;
@@ -62,12 +58,17 @@ const TANK_D = 260;
 const Z_W = TANK_W / 2;
 const Z_H = TANK_H / 2;
 
-// Fixed at 4 walls - Hook, two Takes, Call - regardless of how many cards the model
-// returns (the prompt allows 2-4); extras beyond the first two are simply not shown.
+// The cube's geometry only closes at EXACTLY 4 walls: every wall sits at the fixed
+// radius Z_W = TANK_W/2, which is the closing distance for panels 90° apart. Fewer
+// walls (a deck shipping one card) render as detached slabs floating past the base's
+// corners. So: Hook + two Takes + Call normally (extra model cards beyond two are
+// simply not shown), and when a promoWall is passed it takes the second Take's slot -
+// callers with 1-card decks (the homepage showcase) MUST pass a promo wall to stay
+// at 4.
 const MAX_CARDS_SHOWN = 2;
 
-function displayCards(payload: DeckPayload): string[] {
-    return payload.cards.slice(0, MAX_CARDS_SHOWN);
+function displayCards(payload: DeckPayload, promoWall?: PromoWall): string[] {
+    return payload.cards.slice(0, promoWall ? MAX_CARDS_SHOWN - 1 : MAX_CARDS_SHOWN);
 }
 
 // Card wall headers are positional, not repeated per-card: Take 1 always orients the
@@ -75,12 +76,13 @@ function displayCards(payload: DeckPayload): string[] {
 // MAX_CARDS_SHOWN caps the deck at exactly 2 card walls.
 const CARD_HEADER_KEYS: (keyof DeckPayload)[] = ['contextLabel', 'oddsOrMarketLabel'];
 
-function buildWalls(payload: DeckPayload): Wall[] {
-    const cards = displayCards(payload);
+function buildWalls(payload: DeckPayload, promoWall?: PromoWall): Wall[] {
+    const cards = displayCards(payload, promoWall);
     const pieces: Omit<Wall, 'rotateY'>[] = [
         { kind: 'hook', label: payload.tagline, icon: Flame },
         ...cards.map((_, i) => ({ kind: 'card' as const, label: payload[CARD_HEADER_KEYS[i]] as string, icon: Zap })),
         { kind: 'call', label: payload.settleDateLabel, icon: Swords },
+        ...(promoWall ? [{ kind: 'promo' as const, label: promoWall.label, icon: Sparkles }] : []),
     ];
     const n = pieces.length;
     return pieces.map((p, i) => ({ ...p, rotateY: (360 / n) * i }));
@@ -254,21 +256,27 @@ const WallPanel: React.FC<{
 // the-tank page's own hotspot: TankScreen.css's .tank-screen__scanline/__glow use this
 // exact pale cyan, #7fe9ff, over a scanning gradient band) - the tech signature of the
 // world, with the fiery accent above layered on top to say "yours to open."
-const CallScanline: React.FC = () => (
-    <motion.div
-        style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            height: 44,
-            background: 'linear-gradient(180deg, transparent 0%, rgba(127,233,255,0.32) 50%, transparent 100%)',
-            mixBlendMode: 'screen',
-            pointerEvents: 'none',
-        }}
-        animate={{ top: ['-12%', '112%'] }}
-        transition={{ duration: 3.4, repeat: Infinity, ease: 'linear' }}
-    />
-);
+const CallScanline: React.FC = () => {
+    // Purely decorative infinite loop - skip entirely under reduced motion (same
+    // gate EmberBurst already applies).
+    const reduceMotion = useReducedMotion();
+    if (reduceMotion) return null;
+    return (
+        <motion.div
+            style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                height: 44,
+                background: 'linear-gradient(180deg, transparent 0%, rgba(127,233,255,0.32) 50%, transparent 100%)',
+                mixBlendMode: 'screen',
+                pointerEvents: 'none',
+            }}
+            animate={{ top: ['-12%', '112%'] }}
+            transition={{ duration: 3.4, repeat: Infinity, ease: 'linear' }}
+        />
+    );
+};
 
 // HUD-style targeting corners - the "this panel is live, this is the access point"
 // visual shorthand, static (no motion) so it doesn't compete with the scanline/sparks.
@@ -314,7 +322,10 @@ const CALL_SPARK_POSITIONS = [
 
 // A light speckle along the Call wall's border, like it's just starting to catch -
 // small, low-amplitude flicker, not the full drifting Embers treatment.
-const CallSparks: React.FC = () => (
+const CallSparks: React.FC = () => {
+    const reduceMotion = useReducedMotion();
+    if (reduceMotion) return null;
+    return (
     <>
         {CALL_SPARK_POSITIONS.map((pos, i) => {
             const color = EMBER_COLORS[i % EMBER_COLORS.length];
@@ -339,11 +350,15 @@ const CallSparks: React.FC = () => (
             );
         })}
     </>
-);
+    );
+};
 
 // Tiny embers drifting/bouncing inside the tank volume, at a spread of depths so
 // they read as floating in the box rather than pinned to one flat plane.
-const Embers: React.FC = () => (
+const Embers: React.FC = () => {
+    const reduceMotion = useReducedMotion();
+    if (reduceMotion) return null;
+    return (
     <>
         {Array.from({ length: EMBER_COUNT }).map((_, i) => {
             const zOffset = -80 + (i % 4) * 50;
@@ -377,7 +392,8 @@ const Embers: React.FC = () => (
             );
         })}
     </>
-);
+    );
+};
 
 // Visual proportion only, 0 (favorite) to 1 (max-clamped longshot) - the same shape
 // of quantity lib/pages-functions/ledger.ts's correctCallPayout() scales a win's
@@ -950,31 +966,102 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
 // front-facing wall is computed instead of hardcoded, so any wall can open at this angle.
 const OPEN_TILT_DEG = 25;
 
-export const Fishtank: React.FC<{ payload: DeckPayload; slug: string }> = ({ payload, slug }) => {
-    const walls = buildWalls(payload);
+// Discovery-surface variant of the Call wall (the homepage showcase): a plain
+// "read the story" link instead of <CallContent>'s interactive pick flow, so the
+// showcase never fires CallContent's pick/session API calls and picking stays on
+// the real Tank page. Presents the call question neutrally - the link is the only
+// action.
+const LinkCallContent: React.FC<{ call: DeckPayload['call']; linkCall: LinkCall }> = ({ call, linkCall }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.9rem' }}>
+        <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: '#f1f5f9' }}>{call.question}</p>
+        <a
+            href={linkCall.href}
+            style={{
+                display: 'inline-block',
+                background: 'var(--hc-gold, #ffc72c)',
+                color: '#1a1200',
+                fontFamily: "'Baloo 2', 'Nunito', sans-serif",
+                fontWeight: 800,
+                fontSize: '0.95rem',
+                textDecoration: 'none',
+                padding: '0.55rem 1.5rem',
+                borderRadius: 12,
+                boxShadow: '0 4px 0 var(--hc-gold-dark, #e8a800), 0 8px 18px rgba(0,0,0,0.4)',
+            }}
+        >
+            {linkCall.label ?? 'Read the story'} <span aria-hidden="true">&rarr;</span>
+        </a>
+    </div>
+);
+
+export interface LinkCall {
+    href: string;
+    label?: string;
+}
+
+// The logged-out pitch wall: body copy + a gold CTA pill (same pill styling as
+// LinkCallContent's, so the two action walls read as one design language).
+const PromoWallContent: React.FC<{ promoWall: PromoWall }> = ({ promoWall }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.9rem' }}>
+        <p style={{ margin: 0, fontWeight: 700, fontSize: '0.9rem', color: '#f1f5f9', lineHeight: 1.5 }}>{promoWall.body}</p>
+        <a
+            href={promoWall.ctaHref}
+            style={{
+                display: 'inline-block',
+                background: 'var(--hc-gold, #ffc72c)',
+                color: '#1a1200',
+                fontFamily: "'Baloo 2', 'Nunito', sans-serif",
+                fontWeight: 800,
+                fontSize: '0.95rem',
+                textDecoration: 'none',
+                padding: '0.55rem 1.5rem',
+                borderRadius: 12,
+                boxShadow: '0 4px 0 var(--hc-gold-dark, #e8a800), 0 8px 18px rgba(0,0,0,0.4)',
+            }}
+        >
+            {promoWall.ctaLabel} <span aria-hidden="true">&rarr;</span>
+        </a>
+    </div>
+);
+
+// `scale` shrinks the painted cube WITHOUT shrinking the 420px stage box: preserve-3d
+// content ignores layout clipping, so the fix for the cube painting over neighboring
+// UI is a smaller cube inside the same reserved space (a proportionally smaller box
+// would keep the same relative spill). Geometry constants stay untouched - wall copy
+// is rem-sized and would overflow shrunken walls.
+export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?: LinkCall; promoWall?: PromoWall; scale?: number }> = ({ payload, slug, linkCall, promoWall, scale = 1 }) => {
+    const walls = buildWalls(payload, promoWall);
     // Prop bets sell the artifact - open with the Call wall already facing forward
     // instead of making the reader drag all the way around to find it.
     const callWall = walls.find(w => w.kind === 'call');
     const initialRotateY = OPEN_TILT_DEG - (callWall?.rotateY ?? 0);
 
+    const reduceMotion = useReducedMotion();
     const rotateX = useMotionValue(-12);
     const rotateY = useMotionValue(initialRotateY);
     const springX = useSpring(rotateX, { stiffness: 150, damping: 25 });
     const springY = useSpring(rotateY, { stiffness: 150, damping: 25 });
 
-    const cards = displayCards(payload);
+    const cards = displayCards(payload, promoWall);
     const contentByKind = (wall: Wall, index: number): React.ReactNode => {
         if (wall.kind === 'hook') return <p style={{ margin: 0, fontWeight: 600, fontSize: '1rem', color: '#f1f5f9' }}>{payload.hook}</p>;
-        if (wall.kind === 'call') return <CallContent call={payload.call} slug={slug} />;
+        if (wall.kind === 'promo') return promoWall ? <PromoWallContent promoWall={promoWall} /> : null;
+        if (wall.kind === 'call') {
+            return linkCall
+                ? <LinkCallContent call={payload.call} linkCall={linkCall} />
+                : <CallContent call={payload.call} slug={slug} />;
+        }
         const cardIndex = index - 1; // hook occupies index 0
         return <p style={{ margin: 0 }}>{cards[cardIndex]}</p>;
     };
 
     const handlePan = (_: any, info: { delta: { x: number; y: number } }) => {
-        let nextX = rotateX.get() - info.delta.y * 0.4;
+        // Deltas are unscaled screen pixels; dividing by `scale` keeps a full drag
+        // across the (visually smaller) cube producing the same rotation as at 1x.
+        let nextX = rotateX.get() - (info.delta.y * 0.4) / scale;
         nextX = Math.max(-70, Math.min(70, nextX));
         rotateX.set(nextX);
-        rotateY.set(rotateY.get() + info.delta.x * 0.4);
+        rotateY.set(rotateY.get() + (info.delta.x * 0.4) / scale);
     };
 
     // Fires once per newly-reached wall (not continuously while dragging) - a genuine
@@ -1001,6 +1088,11 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string }> = ({ pay
                     cursor: 'grab',
                     touchAction: 'none',
                     userSelect: 'none',
+                    // 2D scale on the stage doesn't interfere with the `perspective`
+                    // property, and hit-testing scales with the paint, so pan/tap are
+                    // unaffected. Everything in the preserve-3d tree (walls, embers,
+                    // bursts) shrinks together.
+                    transform: scale !== 1 ? `scale(${scale})` : undefined,
                 }}
             >
                 <motion.div
@@ -1050,7 +1142,7 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string }> = ({ pay
                                 boxShadow: 'inset 0 0 50px rgba(6,182,212,0.4)',
                                 backgroundImage: 'radial-gradient(circle at 50% 50%, rgba(255,255,255,0.15) 0%, transparent 70%)',
                             }}
-                            animate={{ z: [0, 6, 0] }}
+                            animate={reduceMotion ? undefined : { z: [0, 6, 0] }}
                             transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
                         />
                     </Face3D>

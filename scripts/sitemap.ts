@@ -58,7 +58,11 @@ export function generateSitemap(
     }> = [
         { loc: `${baseUrl}/`, lastmod: today, changefreq: 'weekly', priority: '1.0' },
         { loc: `${baseUrl}/claim-your-spot/`, lastmod: today, changefreq: 'monthly', priority: '0.8' },
-        { loc: `${baseUrl}/the-tank/`, lastmod: today, changefreq: 'daily', priority: '0.8' },
+        { loc: `${baseUrl}/the-tank/`, lastmod: today, changefreq: 'weekly', priority: '0.7' },
+        { loc: `${baseUrl}/the-tank-hq/`, lastmod: today, changefreq: 'daily', priority: '0.8' },
+        { loc: `${baseUrl}/the-hatchery/`, lastmod: today, changefreq: 'monthly', priority: '0.5' },
+        { loc: `${baseUrl}/champions-terrace/`, lastmod: today, changefreq: 'monthly', priority: '0.4' },
+        { loc: `${baseUrl}/quickboost-delicacies/`, lastmod: today, changefreq: 'monthly', priority: '0.4' },
         { loc: `${baseUrl}/beta/`, lastmod: today, changefreq: 'monthly', priority: '0.6' },
     ];
 

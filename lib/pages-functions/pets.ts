@@ -75,25 +75,28 @@ export function petPublic(pet: PetRow, cfg: FeedingConfig): {
 
 export interface HatchInput {
     userId: string;
-    eggCatalogKey: string;
+    inventoryItemId: string; // the specific owned egg row to consume (eggs are one row each)
     color: string;
     renderMode: string;
     renderConfig: Record<string, unknown>;
     startSatisfaction: number;
 }
 
-// Consume one egg AND create the pet in ONE statement. The pet INSERT selects FROM the
-// egg-consuming UPDATE, so a pet is created only if an egg was actually consumed; and if
-// the captain partial-unique index rejects a second pet, the whole statement rolls back,
-// so the egg is NOT consumed. Returns the new pet row, or null when no egg was available
-// to consume. A captain-uniqueness violation surfaces as a 23505 the caller maps to
-// "already have a pet".
+// Consume one egg AND create the pet in ONE statement. Eggs are one inventory row each,
+// so consumption is DELETE-by-id (no partial-consumption case), and the row's deletion
+// is the natural idempotency/race guard: a second attempt on the same id matches zero
+// rows, `consumed` is empty, and no pet is inserted. The pet INSERT selects FROM the
+// DELETE, so a pet is created only if the egg row was actually consumed; and if the
+// captain partial-unique index rejects a second pet, the whole statement rolls back, so
+// the egg is NOT consumed. Returns the new pet row, or null when the egg row wasn't
+// there to consume (already hatched, or not this user's). A captain-uniqueness violation
+// surfaces as a 23505 the caller maps to "already have a pet".
 export async function hatch(sql: NeonQueryFunction<false, false>, input: HatchInput): Promise<PetRow | null> {
     const rows = await sql`
         WITH consumed AS (
-            UPDATE inventory_items SET quantity = quantity - 1
-            WHERE user_id = ${input.userId} AND catalog_key = ${input.eggCatalogKey}
-              AND item_type = 'egg' AND quantity >= 1
+            DELETE FROM inventory_items
+            WHERE id = ${input.inventoryItemId} AND user_id = ${input.userId}
+              AND item_type = 'egg'
             RETURNING id
         )
         INSERT INTO pets (user_id, base_body, color, render_mode, render_config, satisfaction_at_last_feed, last_fed_at)

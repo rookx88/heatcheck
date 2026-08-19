@@ -23,6 +23,18 @@ export async function buildTankBundles(): Promise<void> {
         entryPoints: [
             { in: path.join(process.cwd(), 'tank-article-deck-client.tsx'), out: 'tank-article-deck' },
             { in: path.join(process.cwd(), 'tank-page-client.tsx'), out: 'tank-page' },
+            // Homepage island (showcase Fishtank + interactive world map + row
+            // behavior) - built in the same call so it shares the React/motion/
+            // Fishtank chunk with the two Tank bundles above.
+            { in: path.join(process.cwd(), 'homepage-client.tsx'), out: 'homepage' },
+            // Tank Land hub (/the-tank/) and The Hatchery (/the-hatchery/) - same
+            // deal: they share React (and, for the hatchery, Egg3D/motion) with the
+            // rest of the tank-world bundles.
+            { in: path.join(process.cwd(), 'tank-land-client.tsx'), out: 'tank-land' },
+            { in: path.join(process.cwd(), 'hatchery-page-client.tsx'), out: 'hatchery-page' },
+            // The two Tank Land food shops.
+            { in: path.join(process.cwd(), 'champions-terrace-client.tsx'), out: 'champions-terrace' },
+            { in: path.join(process.cwd(), 'quickboost-client.tsx'), out: 'quickboost-delicacies' },
         ],
         bundle: true,
         splitting: true, // requires format: 'esm'; this is what extracts the shared chunk
@@ -33,9 +45,12 @@ export async function buildTankBundles(): Promise<void> {
         outdir,
         entryNames: '[name]', // -> tank-article-deck.js / tank-page.js (+ sibling tank-page.css)
         chunkNames: 'tank-shared-[hash]', // the extracted common code, fixed prefix + content hash
-        // The source filename ("Tanks- Background.svg") has a stray space/hyphen;
-        // force a clean fixed output name instead of deriving one from it.
-        assetNames: 'tanks-background',
+        // The source filenames ("Tanks- Background.svg", "HeatChecksWorldMap.svg")
+        // include a stray space / mixed casing; use a clean fixed prefix + content
+        // hash instead of deriving names from them. A hash (not a single fixed name)
+        // because the homepage entry brings a SECOND svg into this build - two assets
+        // can't share one fixed output path.
+        assetNames: 'tank-asset-[hash]',
         publicPath: '/assets', // baked into the JS as the SVG's href
         loader: { '.svg': 'file' }, // copy the SVG as a static file, don't inline as a data: URL
         metafile: true, // needed below to discover the shared chunk's hashed filename

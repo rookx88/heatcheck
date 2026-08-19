@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Heatchecks | A Sports World Worth Playing — Join the Beta Waitlist</title>
-    <meta name="description" content="Heatchecks is becoming a Neopets-style sports world: explore themed sports islands, follow real matchups, and grow your own Mud Puppy pet. Join the free beta waitlist today.">
+    <title>Heatchecks | Live Sports Prop Stories, Every Day</title>
+    <meta name="description" content="Daily prop storylines across baseball, basketball, football, and soccer. Read the story, explore the sports world, and make your own call in the Tank.">
     <link rel="canonical" href="https://heatchecks.io/">
 
-    <meta property="og:title" content="Heatchecks | A Sports World Worth Playing — Join the Beta Waitlist">
-    <meta property="og:description" content="Heatchecks is becoming a Neopets-style sports world: explore themed sports islands, follow real matchups, and grow your own Mud Puppy pet. Join the free beta waitlist today.">
+    <meta property="og:title" content="Heatchecks | Live Sports Prop Stories, Every Day">
+    <meta property="og:description" content="Daily prop storylines across baseball, basketball, football, and soccer. Read the story, explore the sports world, and make your own call in the Tank.">
     <meta property="og:image" content="https://heatchecks.io/assets/images/og-share-world-map.jpg">
     <meta property="og:url" content="https://heatchecks.io/">
     <meta property="og:type" content="website">
@@ -17,8 +17,8 @@
     <link rel="icon" type="image/png" href="/assets/images/heatchecks-logo.png">
 
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Heatchecks | A Sports World Worth Playing — Join the Beta Waitlist">
-    <meta name="twitter:description" content="Heatchecks is becoming a Neopets-style sports world: explore themed sports islands, follow real matchups, and grow your own Mud Puppy pet. Join the free beta waitlist today.">
+    <meta name="twitter:title" content="Heatchecks | Live Sports Prop Stories, Every Day">
+    <meta name="twitter:description" content="Daily prop storylines across baseball, basketball, football, and soccer. Read the story, explore the sports world, and make your own call in the Tank.">
     <meta name="twitter:image" content="https://heatchecks.io/assets/images/og-share-world-map.jpg">
 
     <script type="application/ld+json">
@@ -32,14 +32,14 @@
       "@type": "ImageObject",
       "url": "https://heatchecks.io/assets/images/heatchecks-logo.png"
     },
-    "description": "Heatchecks is becoming a Neopets-style sports world: explore themed sports islands, follow real matchups, and grow your own Mud Puppy pet. Join the free beta waitlist today."
+    "description": "Daily prop storylines across baseball, basketball, football, and soccer. Read the story, explore the sports world, and make your own call in the Tank."
   },
   {
     "@context": "https://schema.org",
     "@type": "WebSite",
     "name": "HeatChecks",
     "url": "https://heatchecks.io",
-    "description": "Heatchecks is becoming a Neopets-style sports world: explore themed sports islands, follow real matchups, and grow your own Mud Puppy pet. Join the free beta waitlist today."
+    "description": "Daily prop storylines across baseball, basketball, football, and soccer. Read the story, explore the sports world, and make your own call in the Tank."
   }
 ]
 </script>
@@ -247,66 +247,236 @@
         }
     </style>
     <script type="module" src="/assets/analytics-beacon.js" defer></script>
+    <link rel="stylesheet" href="/assets/homepage.css">
+    <style>
+        /* The page must never scroll horizontally - wide content (the sport row)
+           scrolls inside its own container instead. */
+        html, body { overflow-x: hidden; }
+        .hc-home { max-width: 1080px; margin: 0 auto; padding: 0.75rem 1.25rem 1rem; min-height: 100vh; display: flex; flex-direction: column; }
+        .hc-home-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; }
+        .hc-home-header .hc-logo img { width: clamp(120px, 26vw, 240px); height: auto; display: block; }
+        /* margin-left:auto (formerly on the nav, now removed) keeps the auth area
+           pinned to the header's right edge. */
+        .hc-login-cta { font-size: 0.95rem; padding: 0.5rem 1.4rem; flex-shrink: 0; margin-left: auto; }
+        .hc-auth { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; margin-left: auto; }
+        .hc-auth-name { font-weight: 800; font-size: 0.9rem; }
+        .hc-ember-chip {
+            display: inline-flex; align-items: center; gap: 0.3rem;
+            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem;
+            color: var(--hc-gold); background: rgba(255, 199, 44, 0.12);
+            border: 1px solid rgba(255, 199, 44, 0.4); border-radius: 999px; padding: 0.2rem 0.7rem;
+        }
+        .hc-section { margin-top: 2.25rem; }
+        .hc-section h2 {
+            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800;
+            font-size: clamp(1.3rem, 4.5vw, 1.7rem); margin: 0; text-transform: uppercase;
+        }
+        .hc-section-sub { margin: 0.35rem 0 1rem; font-size: 0.88rem; color: rgba(255,255,255,0.7); }
+        .hc-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+        #hc-showcase-root:empty { display: none; }
+        #hc-showcase-root { margin: 0 0 1.25rem; }
+
+        .hc-sport-row {
+            list-style: none; margin: 0; padding: 0 0 0.75rem;
+            display: flex; gap: 0.75rem;
+            overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 1.25rem;
+            -webkit-overflow-scrolling: touch;
+        }
+        .hc-sport-card {
+            flex: 0 0 78%; max-width: 340px; scroll-snap-align: start;
+            display: flex; flex-direction: column; align-items: flex-start; gap: 0.55rem;
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 18px; padding: 1.1rem 1.1rem 1.2rem;
+        }
+        .hc-sport-card.is-selected, .hc-sport-card[aria-current="true"] {
+            border-color: rgba(47, 230, 217, 0.65); box-shadow: 0 0 18px rgba(47, 230, 217, 0.25);
+        }
+        .hc-sport-card:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 2px; }
+        .hc-sport-badge {
+            display: inline-flex; align-items: center; gap: 0.4rem;
+            font-weight: 800; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
+            color: rgba(255,255,255,0.85);
+        }
+        .hc-sport-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px currentColor; }
+        .hc-hook { font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 1.05rem; line-height: 1.25; margin: 0; }
+        .hc-beat { font-size: 0.85rem; line-height: 1.45; color: rgba(255,255,255,0.82); margin: 0; }
+        .hc-prop-tag {
+            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.72rem;
+            letter-spacing: 0.05em; text-transform: uppercase;
+            color: var(--hc-teal); background: rgba(47, 230, 217, 0.1);
+            border: 1px solid rgba(47, 230, 217, 0.45); border-radius: 999px; padding: 0.25rem 0.7rem;
+        }
+        .hc-card-cta {
+            margin-top: auto; font-weight: 800; font-size: 0.85rem;
+            color: var(--hc-gold); text-decoration: none;
+        }
+        .hc-card-cta:hover { text-decoration: underline; }
+        .hc-sport-card.is-empty { justify-content: center; border-style: dashed; background: rgba(255,255,255,0.03); }
+        .hc-empty-note { font-weight: 800; font-size: 0.9rem; margin: 0; color: rgba(255,255,255,0.75); }
+        .hc-empty-sub { font-size: 0.78rem; margin: 0; color: rgba(255,255,255,0.5); }
+
+        @media (min-width: 760px) {
+            .hc-sport-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); overflow: visible; }
+            .hc-sport-card { flex: initial; max-width: none; }
+        }
+
+        .hc-feed { display: flex; flex-direction: column; gap: 1.1rem; }
+        .hc-feed-item h3 { font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 1rem; line-height: 1.3; margin: 0 0 0.3rem; }
+        .hc-feed-item h3 a { text-decoration: none; }
+        .hc-feed-item h3 a:hover { text-decoration: underline; }
+        .hc-feed-item p { font-size: 0.85rem; line-height: 1.5; color: rgba(255,255,255,0.78); margin: 0 0 0.35rem; }
+        .hc-feed-meta { display: flex; gap: 0.7rem; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+        @media (min-width: 760px) {
+            .hc-feed { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 2rem; }
+        }
+
+        .hc-explore-wrap { position: relative; margin-top: 1.5rem; }
+        .hc-explore-logo {
+            position: absolute; top: -4.5%; left: -3%; width: clamp(130px, 26%, 250px); height: auto;
+            z-index: 2; pointer-events: none; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.45));
+        }
+        .hc-world-map-static, #hc-map-root svg { display: block; width: 100%; height: auto; }
+
+        @media (prefers-reduced-motion: reduce) {
+            .hc-sport-row { scroll-behavior: auto; }
+        }
+        @media (max-width: 420px) {
+            .hc-home { padding: 0.6rem 1rem 0.85rem; }
+        }
+    </style>
 </head>
 <body>
-    <main class="hc-page">
+    <main class="hc-home">
         
-        <div class="hc-topbar">
+        <header class="hc-home-header">
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
                 <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
             </a>
-            <a class="hc-learn-more" href="/beta/">
-                <span class="hc-check-box">
-                    <img src="/assets/images/checknav.webp" alt="" width="140" height="200">
-                </span>
-                <span>Learn more</span>
-            </a>
-        </div>
-
-        <div class="hc-hero">
-            <div class="hc-hero-inner">
-                <picture>
-                    <source srcset="/assets/images/world-map.webp" type="image/webp">
-                    <img class="hc-world-map" src="/assets/images/world-map.png" alt="Illustrated map of the Heatchecks sports world, with themed islands for soccer, football, basketball, baseball, hockey, and golf surrounding a central aquarium" width="1120" height="1113" loading="eager">
-                </picture>
-                <div class="hc-puppy-stage" aria-hidden="false" aria-label="Your Mud Puppy pet, shown cycling through its forms">
-                    <picture class="hc-puppy-frame is-active" data-frame="0">
-                        <source srcset="/assets/images/mudpuppy-default.webp" type="image/webp">
-                        <img src="/assets/images/mudpuppy-default.png" alt="Mud Puppy, the Heatchecks pet, in its default form" width="800" height="1200">
-                    </picture>
-                    <picture class="hc-puppy-frame" data-frame="1">
-                        <source srcset="/assets/images/mudpuppy-jersey.webp" type="image/webp">
-                        <img src="/assets/images/mudpuppy-jersey.png" alt="Mud Puppy wearing a basketball jersey, evolved from playing and following basketball" width="800" height="1200">
-                    </picture>
-                    <picture class="hc-puppy-frame" data-frame="2">
-                        <source srcset="/assets/images/mudpuppy-football.webp" type="image/webp">
-                        <img src="/assets/images/mudpuppy-football.png" alt="Mud Puppy wearing football gear, evolved from playing and following football" width="800" height="1200">
+            <a class="hc-cta-button hc-login-cta" href="/login/">Log in</a>
+        </header>
+        
+        <section id="tanks" class="hc-section" aria-labelledby="hc-tanks-heading">
+            <h2 id="hc-tanks-heading">Today&rsquo;s Tanks</h2>
+            <p class="hc-section-sub">One live story per sport. Read it, then make your call in the Tank.</p>
+            <div id="hc-showcase-root" aria-hidden="true"></div>
+            <ul class="hc-sport-row" data-hc-row>
+                
+            <li class="hc-sport-card" data-sport="Football" data-live tabindex="0" aria-label="Football: The Giants have been the whole offseason&#039;s headline. The Jets haven&#039;t said a word. Now they have to play the game.">
+                <span class="hc-sport-badge"><span class="hc-sport-dot" style="background:#a855f7"></span>Football</span>
+                <h3 class="hc-hook">The Giants have been the whole offseason&#039;s headline. The Jets haven&#039;t said a word. Now they have to play the game.</h3>
+                <p class="hc-beat">Every Giants misstep this offseason has landed on the back page. The Jets have stayed completely out of the story.</p>
+                <span class="hc-prop-tag">Moneyline</span>
+                <a class="hc-card-cta" href="/the-tank/articles/giants-jets-battle-of-new-york-moneyline/">Read the story <span aria-hidden="true">&rarr;</span></a>
+            </li>
+            <li class="hc-sport-card" data-sport="Soccer" data-live tabindex="-1" aria-label="Soccer: Pep is gone. The trophies stay. Enzo Maresca&#039;s Manchester City debut starts right now.">
+                <span class="hc-sport-badge"><span class="hc-sport-dot" style="background:#84cc16"></span>Soccer</span>
+                <h3 class="hc-hook">Pep is gone. The trophies stay. Enzo Maresca&#039;s Manchester City debut starts right now.</h3>
+                <p class="hc-beat">Ten years of Guardiola ended this summer, and Enzo Maresca inherits a club still shaped entirely around him.</p>
+                <span class="hc-prop-tag">O -1.5 Spreads</span>
+                <a class="hc-card-cta" href="/the-tank/articles/bournemouth-man-city-maresca-first-match/">Read the story <span aria-hidden="true">&rarr;</span></a>
+            </li>
+            <li class="hc-sport-card is-empty" data-sport="Baseball" tabindex="-1" aria-label="Baseball: nothing live today">
+                <span class="hc-sport-badge"><span class="hc-sport-dot" style="background:#ef4444"></span>Baseball</span>
+                <p class="hc-empty-note">Nothing live in baseball today.</p>
+                <p class="hc-empty-sub">New stories drop as games approach.</p>
+            </li>
+            <li class="hc-sport-card is-empty" data-sport="Basketball" tabindex="-1" aria-label="Basketball: nothing live today">
+                <span class="hc-sport-badge"><span class="hc-sport-dot" style="background:#f59e0b"></span>Basketball</span>
+                <p class="hc-empty-note">Nothing live in basketball today.</p>
+                <p class="hc-empty-sub">New stories drop as games approach.</p>
+            </li>
+            </ul>
+        </section>
+        
+        <section id="recent" class="hc-section" aria-labelledby="hc-recent-heading">
+            <h2 id="hc-recent-heading">Recent stories</h2>
+            <p class="hc-section-sub">The latest published Tank stories, newest first.</p>
+            <div class="hc-feed">
+            <article class="hc-feed-item">
+                <h3><a href="/the-tank/articles/jets-titans-breece-hall-injury-spread/">Breece Hall got hurt in practice and now the Jets&#039; entire gameplan in Nashville is in question.</a></h3>
+                <p>Breece Hall went down Monday with an upper right leg issue, and his status for Titans-Jets is uncertain.</p>
+                <div class="hc-feed-meta">
+                    <span class="hc-feed-league">NFL</span>
+                    <span class="hc-feed-date">Aug 17, 2026</span>
+                </div>
+            </article>
+            <article class="hc-feed-item">
+                <h3><a href="/the-tank/articles/ohtani-home-runs-dodgers-rockies-coors-field/">Ohtani doesn&#039;t need one homer tonight. The number is 1.5.</a></h3>
+                <p>Coors Field sits a mile high, and the ball just flies different there. Every hitter knows it. Ohtani is stepping into the best hitter&#039;s park in baseball at the best possible time.</p>
+                <div class="hc-feed-meta">
+                    <span class="hc-feed-league">MLB</span>
+                    <span class="hc-feed-date">Aug 17, 2026</span>
+                </div>
+            </article>
+            <article class="hc-feed-item">
+                <h3><a href="/the-tank/articles/pete-crow-armstrong-home-run-cubs-white-sox-crosstown-classic/">The Cubs&#039; MVP case steps into the box against the White Sox with the whole city watching.</a></h3>
+                <p>Cubs-Sox week is the one Chicago actually circles on the calendar, and PCA is the reason both sides are tuning in.</p>
+                <div class="hc-feed-meta">
+                    <span class="hc-feed-league">MLB</span>
+                    <span class="hc-feed-date">Aug 17, 2026</span>
+                </div>
+            </article>
+            <article class="hc-feed-item">
+                <h3><a href="/the-tank/articles/cowboys-giants-von-miller-homecoming/">Von Miller finally became a Cowboy at 38. Now he has to prove it against the Giants.</a></h3>
+                <p>Miller grew up dreaming of this exact jersey. Dallas gave it to him a decade late, ring already in hand.</p>
+                <div class="hc-feed-meta">
+                    <span class="hc-feed-league">NFL</span>
+                    <span class="hc-feed-date">Aug 17, 2026</span>
+                </div>
+            </article>
+            <article class="hc-feed-item">
+                <h3><a href="/the-tank/articles/bournemouth-man-city-maresca-first-match/">Pep is gone. The trophies stay. Enzo Maresca&#039;s Manchester City debut starts right now.</a></h3>
+                <p>Ten years of Guardiola ended this summer, and Enzo Maresca inherits a club still shaped entirely around him.</p>
+                <div class="hc-feed-meta">
+                    <span class="hc-feed-league">EPL</span>
+                    <span class="hc-feed-date">Aug 14, 2026</span>
+                </div>
+            </article>
+            <article class="hc-feed-item">
+                <h3><a href="/the-tank/articles/brewers-dodgers-tarik-skubal-moneyline/">The Dodgers added Tarik Skubal and got scarier on paper and somehow worse in the standings.</a></h3>
+                <p>Every team in baseball watched the Dodgers add Skubal and braced for a bulldozer. Instead LA has barely won since he showed up.</p>
+                <div class="hc-feed-meta">
+                    <span class="hc-feed-league">MLB</span>
+                    <span class="hc-feed-date">Aug 14, 2026</span>
+                </div>
+            </article>
+            <article class="hc-feed-item">
+                <h3><a href="/the-tank/articles/rangers-angels-over-under-7-5-runs/">The Rangers are ice cold. The Angels are on fire. Only one of those trends can be right about this total.</a></h3>
+                <p>Texas has been scuffling at the plate, the kind of stretch where nothing falls.</p>
+                <div class="hc-feed-meta">
+                    <span class="hc-feed-league">MLB</span>
+                    <span class="hc-feed-date">Aug 14, 2026</span>
+                </div>
+            </article>
+            <article class="hc-feed-item">
+                <h3><a href="/the-tank/articles/commanders-eagles-jayden-daniels-week-1/">Jayden Daniels is living like a champion before he&#039;s won a single game this year.</a></h3>
+                <p>The luxury brands, the college marketing snub, the icon energy. Jayden Daniels is carrying himself like he&#039;s already arrived.</p>
+                <div class="hc-feed-meta">
+                    <span class="hc-feed-league">NFL</span>
+                    <span class="hc-feed-date">Aug 13, 2026</span>
+                </div>
+            </article></div>
+        </section>
+        
+        <section id="explore" class="hc-section" aria-labelledby="hc-explore-heading">
+            <h2 id="hc-explore-heading" class="hc-visually-hidden">Explore the world by sport</h2>
+            <div class="hc-explore-wrap">
+                <img class="hc-explore-logo" src="/assets/images/explore-logo.webp" alt="" aria-hidden="true" loading="lazy" width="720" height="463">
+                <div id="hc-map-root">
+                    <picture>
+                        <source srcset="/assets/images/world-map.webp" type="image/webp">
+                        <img class="hc-world-map-static" src="/assets/images/world-map.png" alt="Illustrated map of the Heatchecks sports world, with themed islands for soccer, football, basketball, baseball, hockey, and golf surrounding a central aquarium" width="1120" height="1113" loading="lazy">
                     </picture>
                 </div>
             </div>
-        </div>
-
-        <div class="hc-bubble">
-            <h1>The sports world you already follow, finally worth something.</h1>
-        </div>
-
-        <p class="hc-subcopy">Explore the world, read the stories, make the calls, play the games — and everything you do earns Embers to grow your Mud Puppy in a competitive sports world. Free to play!</p>
-
-        <div class="hc-cta-row">
-            <a class="hc-cta-button" href="/claim-your-spot/">Claim your spot.</a>
+        </section>
+        
+        <div class="hc-footer">
+            &copy; 2026 Heatchecks &middot; <a href="/">Home</a>
         </div>
     </main>
-    <script>
-    (function () {
-        var frames = document.querySelectorAll('.hc-puppy-frame');
-        if (frames.length < 2) return;
-        var index = 0;
-        setInterval(function () {
-            frames[index].classList.remove('is-active');
-            index = (index + 1) % frames.length;
-            frames[index].classList.add('is-active');
-        }, 3500);
-    })();
-    </script>
+    <script type="application/json" id="homepage-data">{"initialSport":"Football","loggedIn":false,"sports":[{"sport":"Baseball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Basketball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Football","live":true,"slug":"giants-jets-battle-of-new-york-moneyline","href":"/the-tank/articles/giants-jets-battle-of-new-york-moneyline/","deck":{"hook":"The Giants have been the whole offseason's headline. The Jets haven't said a word. Now they have to play the game.","cards":["Every Giants misstep this offseason has landed on the back page. The Jets have stayed completely out of the story.","Being talked about all summer means nothing once the ball is kicked. Attention isn't a stat line."],"call":{"sides":["Giants","Jets"],"question":"Giants or Jets to win?","sidesImpliedProb":[0.48,0.52]},"tagline":"The Giants have been the whole offseason's headline. The Jets haven't said a…","contextLabel":"Moneyline","oddsOrMarketLabel":"NFL · New York Giants vs. New York Jets","settleDateLabel":"Resolves Aug 28, 2026"}},{"sport":"Soccer","live":true,"slug":"bournemouth-man-city-maresca-first-match","href":"/the-tank/articles/bournemouth-man-city-maresca-first-match/","deck":{"hook":"Pep is gone. The trophies stay. Enzo Maresca's Manchester City debut starts right now.","cards":["Ten years of Guardiola ended this summer, and Enzo Maresca inherits a club still shaped entirely around him.","City broke the bank for Elliot Anderson, proof the ambition never left even if the manager did."],"call":{"sides":["Manchester City -1.5","AFC Bournemouth +1.5"],"question":"Do you back Manchester City to cover -1.5 in Maresca's first match, or take Bournemouth and the points?","sidesImpliedProb":[0.44,0.56]},"tagline":"Life After Pep","contextLabel":"O -1.5 Spreads","oddsOrMarketLabel":"EPL · AFC Bournemouth vs. Manchester City FC","settleDateLabel":"Resolves Aug 23, 2026"}}]}</script>
+    <script type="module" src="/assets/homepage.js" defer></script>
 </body>
 </html>

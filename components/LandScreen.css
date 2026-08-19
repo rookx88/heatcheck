@@ -1,0 +1,165 @@
+/* Shared location-page chrome (Tank Land, The Hatchery) - the same portrait-card
+   frame formula and hotspot glow grammar as TankScreen.css, with CSS-driven hover
+   (no JS hover state needed since these hotspots have no scanline sweep). */
+
+.land-screen {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(180deg, #060c22 0%, #0b1a45 55%, #14275f 100%);
+}
+
+/* At EVERY viewport size: the largest box of the artwork's own 9:16 aspect that
+   fits, centered against the navy backdrop. A full-bleed frame + slice-fit crops
+   the art's edges on viewports taller than 9:16 (i.e. most phones), cutting off
+   edge structures like signs and buildings - aspect-fitting the frame itself means
+   the scene is always fully visible, with navy letterboxing filling the rest. */
+.land-screen__frame {
+  position: absolute;
+  /* Top-anchored, not vertically centered: on tall phone viewports the leftover
+     letterbox space all goes below the scene instead of floating it mid-screen.
+     Desktop is unaffected (the card fills the full height there anyway). */
+  top: 0;
+  left: 50%;
+  width: min(100vw, calc(100vh * 0.5625));
+  height: min(100vh, calc(100vw / 0.5625));
+  max-width: 640px;
+  transform: translateX(-50%);
+  overflow: hidden;
+  border-radius: 18px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(47, 230, 217, 0.15);
+}
+
+.land-screen__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.land-screen__background {
+  pointer-events: none;
+  user-select: none;
+}
+
+.land-screen__hotspot {
+  cursor: pointer;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.land-screen__glow,
+.land-screen__outline {
+  pointer-events: none;
+  fill: none;
+  stroke-linejoin: round;
+}
+
+.land-screen__glow {
+  stroke: #2fe6d9;
+  stroke-width: 10;
+  opacity: 0;
+  filter: blur(10px);
+  transition: opacity 0.35s ease;
+}
+
+.land-screen__outline {
+  stroke: #2fe6d9;
+  stroke-width: 2.5;
+  opacity: 0;
+  filter: drop-shadow(0 0 6px #2fe6d9);
+  transition: opacity 0.3s ease;
+}
+
+.land-screen__brighten {
+  pointer-events: none;
+  fill: #7fe9ff;
+  mix-blend-mode: screen;
+  opacity: 0;
+  filter: blur(2px);
+  transition: opacity 0.4s ease;
+}
+
+/* Labels are hover/focus-revealed, like the world map's region names - the art is
+   the resting state, the name appears when a structure is being considered. */
+.land-screen__label {
+  pointer-events: none;
+  fill: #ffffff;
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 34px;
+  letter-spacing: 0.06em;
+  paint-order: stroke;
+  stroke: rgba(5, 7, 15, 0.85);
+  stroke-width: 8;
+  filter: drop-shadow(0 0 10px rgba(47, 230, 217, 0.5));
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.land-screen__hit {
+  fill: rgba(0, 0, 0, 0.001);
+  stroke: none;
+}
+
+.land-screen__hotspot:hover .land-screen__glow,
+.land-screen__hotspot:focus-visible .land-screen__glow {
+  opacity: 0.8;
+  animation: land-hotspot-pulse 1.8s ease-in-out infinite;
+}
+
+.land-screen__hotspot:hover .land-screen__outline,
+.land-screen__hotspot:focus-visible .land-screen__outline {
+  opacity: 1;
+}
+
+.land-screen__hotspot:hover .land-screen__brighten,
+.land-screen__hotspot:focus-visible .land-screen__brighten {
+  opacity: 0.18;
+}
+
+.land-screen__hotspot:hover .land-screen__label,
+.land-screen__hotspot:focus-visible .land-screen__label {
+  opacity: 1;
+}
+
+@keyframes land-hotspot-pulse {
+  0%, 100% { stroke-width: 8; opacity: 0.6; }
+  50% { stroke-width: 13; opacity: 0.9; }
+}
+
+/* Back button - identical to TankScreen's. */
+.land-screen__back {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2200;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.land-screen__back-box {
+  width: 56px;
+  height: 56px;
+  border: 2px solid rgba(47, 230, 217, 0.6);
+  border-radius: 12px;
+  background: rgba(5, 7, 15, 0.55);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 18px rgba(47, 230, 217, 0.25);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.land-screen__back:hover .land-screen__back-box,
+.land-screen__back:focus-visible .land-screen__back-box {
+  box-shadow: 0 0 26px rgba(47, 230, 217, 0.45);
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .land-screen__glow {
+    animation: none !important;
+  }
+}

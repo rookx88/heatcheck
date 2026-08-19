@@ -96,6 +96,12 @@ export const WorldMap: React.FC<WorldMapProps> = ({
     (region: WorldMapRegion) => {
       if (onNavigate) {
         onNavigate(region.route, region);
+        // A custom handler may filter in place (homepage sport islands) instead of
+        // leaving the page, so the lock must release or every later click gets
+        // swallowed by handleClick's lockedId guard. When the handler does perform
+        // a real navigation, the teardown makes this reset moot.
+        setLockedId(null);
+        setHoveredId(null);
       } else if (typeof window !== 'undefined') {
         window.location.href = region.route;
       }

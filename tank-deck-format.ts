@@ -24,6 +24,15 @@ export function formatMarketLabel(market: string): string {
         .join(' ');
 }
 
+// Compact prop-line tag for card/list surfaces: {market:'football_player_passing_yards',
+// line:268.5} -> "O 268.5 Passing Yards". A null line means a yes/no market (e.g.
+// Anytime TD) with no over/under number, so the market label stands alone - "O null"
+// would be nonsense there.
+export function formatPropTag(prop: { market: string; line: number | null }): string {
+    const label = formatMarketLabel(prop.market);
+    return prop.line != null ? `O ${prop.line} ${label}` : label;
+}
+
 // "Yes 13.5% / No 86.5%" - same math as index.tsx's formatOdds(). Null in, null out, so
 // the caller can fall back to formatMarketLabel() when no market price exists.
 export function formatOddsLabel(odds: PropOdds | null): string | null {

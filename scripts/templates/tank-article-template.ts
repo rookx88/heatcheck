@@ -98,6 +98,7 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
 <html lang="en">
 <head>
     ${head}
+    <link rel="stylesheet" href="/assets/tank-article-deck.css">
     <style>
         .tank-article {
             max-width: 720px;
@@ -222,7 +223,7 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
             </div>
         </div>
 
-        <a class="tank-article-back" href="${baseUrl}/the-tank/">&larr; Back to The Tank</a>
+        <a class="tank-article-back" href="${baseUrl}/the-tank-hq/">&larr; Back to The Tank HQ</a>
 
         ${footer()}
     </main>

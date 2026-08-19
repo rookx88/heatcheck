@@ -21,9 +21,10 @@ function formatKickoffFromMatchup(entry: TankPageEntry): string {
  * (mounted into #tank-page-root) is position:fixed/inset:0 with an opaque background,
  * and this page sets overflow:hidden on html/body, ordinary-flow content placed before
  * #tank-page-root is automatically covered once TankScreen mounts - no display:none or
- * cleanup JS needed. This is what makes /the-tank/ genuinely crawlable: a JS-disabled
+ * cleanup JS needed. This is what makes /the-tank-hq/ genuinely crawlable: a JS-disabled
  * visitor or crawler sees real <a> links to every active article; a JS-enabled visitor
- * sees the interactive carousel take over visually.
+ * sees the interactive carousel take over visually. (Articles themselves stay under
+ * /the-tank/articles/ - only this hub page moved when Tank Land took over /the-tank/.)
  */
 function generateFallbackSection(baseUrl: string, tanks: TankPageEntry[]): string {
     const items = tanks.map(entry => `
@@ -34,7 +35,7 @@ function generateFallbackSection(baseUrl: string, tanks: TankPageEntry[]): strin
 
     return `
     <section class="tank-fallback">
-        <h1>The Tank</h1>
+        <h1>The Tank HQ</h1>
         <p>Live prop storylines from Heatchecks, updated as games approach.</p>
         ${tanks.length === 0
             ? `<p>No active stories right now &mdash; check back soon.</p>`
@@ -43,14 +44,14 @@ function generateFallbackSection(baseUrl: string, tanks: TankPageEntry[]): strin
 }
 
 function buildSchemaOrg(baseUrl: string, tanks: TankPageEntry[]): any[] {
-    const url = `${baseUrl}/the-tank/`;
+    const url = `${baseUrl}/the-tank-hq/`;
 
     // Same rule as tank-article-template.ts: structured-data headline text comes from
     // the frozen league/matchup record, never from the model's hook/cards/call copy.
     const collectionPageSchema = {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
-        name: 'The Tank',
+        name: 'The Tank HQ',
         description: 'Live curated prop storylines from HeatChecks.',
         url,
         numberOfItems: tanks.length,
@@ -73,7 +74,8 @@ function buildSchemaOrg(baseUrl: string, tanks: TankPageEntry[]): any[] {
         '@type': 'BreadcrumbList',
         itemListElement: [
             { '@type': 'ListItem', position: 1, name: 'Home', item: `${baseUrl}/` },
-            { '@type': 'ListItem', position: 2, name: 'The Tank', item: url },
+            { '@type': 'ListItem', position: 2, name: 'Tank Land', item: `${baseUrl}/the-tank/` },
+            { '@type': 'ListItem', position: 3, name: 'The Tank HQ', item: url },
         ],
     };
 
@@ -81,16 +83,16 @@ function buildSchemaOrg(baseUrl: string, tanks: TankPageEntry[]): any[] {
 }
 
 /**
- * The page reached by clicking the aquarium ("The Tank") on the world map. Full-bleed
- * background artwork with one clickable hotspot (the in-scene "TANKS AVAILABLE"
- * monitor) that opens a modal carousel of available tanks, mounted client-side by
- * tank-page-client.tsx / scripts/build-tank-page.ts. Also the site's one real, crawlable
- * hub for Tank articles - see generateFallbackSection() above.
+ * The Tank HQ (/the-tank-hq/) - reached from the Tank HQ structure on Tank Land
+ * (/the-tank/). Full-bleed background artwork with one clickable hotspot (the
+ * in-scene "TANKS AVAILABLE" monitor) that opens a modal carousel of available tanks,
+ * mounted client-side by tank-page-client.tsx via scripts/build-tank-bundles.ts. Also
+ * the site's one real, crawlable hub for Tank articles - see generateFallbackSection().
  */
 export function generateTankPageHtml(baseUrl: string, tanks: TankPageEntry[]): string {
-    const title = 'The Tank | Heatchecks';
-    const description = 'Step into the Tank - browse the sports stories available right now at Heatchecks headquarters.';
-    const head = renderHead({ title, description, path: '/the-tank/', baseUrl, schemaOrg: buildSchemaOrg(baseUrl, tanks) });
+    const title = 'The Tank HQ | Heatchecks';
+    const description = 'Step into the Tank HQ - browse the sports stories available right now at Heatchecks headquarters.';
+    const head = renderHead({ title, description, path: '/the-tank-hq/', baseUrl, schemaOrg: buildSchemaOrg(baseUrl, tanks) });
 
     const tanksPayload = JSON.stringify(tanks).replace(/</g, '\\u003c');
 

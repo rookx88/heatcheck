@@ -18,6 +18,10 @@ export const EVENT_TYPES = [
     'newsletter_sent',
     'newsletter_exclusive_pick',
     'pick_settled',
+    'hatchery_opened',
+    'egg_purchased',
+    'egg_hatched',
+    'food_purchased',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];

@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Fishtank, type DeckPayload } from './Fishtank';
+import { PetWidget } from './PetWidget';
 import { trackEvent } from '../tank-analytics-client';
+import { SPORT_BY_LEAGUE, SPORT_ORDER, type Sport } from '../sport-map';
 import tanksBackgroundSrc from '../assets/new-website/Tanks- Background.svg';
 import './TankScreen.css';
 
@@ -22,28 +24,7 @@ export interface TankEntry {
   payload: DeckPayload;
 }
 
-type SportFilter = 'All' | 'Baseball' | 'Basketball' | 'Football' | 'Soccer';
-
-// League → filter category. A league not listed here simply gets no chip of its own
-// and shows only under All - the filter row is built from the sports that actually
-// have a live tank, never a fixed list.
-const SPORT_BY_LEAGUE: Record<string, Exclude<SportFilter, 'All'>> = {
-  MLB: 'Baseball',
-  NBA: 'Basketball',
-  NCAAB: 'Basketball',
-  WNBA: 'Basketball',
-  NFL: 'Football',
-  NCAAF: 'Football',
-  EPL: 'Soccer',
-  'Premier League': 'Soccer',
-  'La Liga': 'Soccer',
-  'Serie A': 'Soccer',
-  'Ligue 1': 'Soccer',
-  Bundesliga: 'Soccer',
-  MLS: 'Soccer',
-  Soccer: 'Soccer',
-};
-const SPORT_ORDER: Exclude<SportFilter, 'All'>[] = ['Baseball', 'Basketball', 'Football', 'Soccer'];
+type SportFilter = 'All' | Sport;
 
 interface TankScreenProps {
   tanks: TankEntry[];
@@ -176,6 +157,10 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' })
         </a>
       </div>
 
+      {/* Captain widget, bottom-right. Outside the transformed frame so its fixed
+          modal overlays aren't containing-block-trapped. */}
+      <PetWidget />
+
       {isOpen && (
         // Deliberately NOT closed by overlay clicks: dragging the 3D cube often ends
         // with the pointer over the overlay, which used to dismiss the whole modal
@@ -218,7 +203,7 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' })
               ) : (
                 <>
                   <div className="tank-modal-matchup">{current.league} &middot; {current.matchup}</div>
-                  <Fishtank key={current.slug} payload={current.payload} slug={current.slug} />
+                  <Fishtank key={current.slug} payload={current.payload} slug={current.slug} scale={0.8} />
                   {visibleTanks.length > 1 && (
                     <div className="tank-modal-nav">
                       <button className="tank-modal-arrow" onClick={prev} aria-label="Previous tank">

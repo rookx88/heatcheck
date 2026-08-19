@@ -1,0 +1,189 @@
+/* Hatchery modal — rides the tank-modal chrome (overlay/panel/header/filters/nav in
+   TankScreen.css); only hatchery-specific pieces live here. Color grammar matches the
+   Fishtank: ember/orange = considering (selected, not committed), teal = committed. */
+
+.hatchery-body {
+  min-height: 420px;
+}
+
+.hatchery-balance {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 199, 44, 0.9);
+  margin-bottom: 0.25rem;
+}
+
+.hatchery-egg-name {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: #fff;
+  margin-top: 0.25rem;
+}
+
+.hatchery-price {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: rgba(255, 199, 44, 0.9);
+  margin-top: 0.15rem;
+}
+
+.hatchery-limited {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 0.2rem;
+}
+
+.hatchery-caption {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+  margin-top: 0.5rem;
+  line-height: 1.5;
+}
+
+/* Neutral resting action (also the reveal card's Done). */
+.hatchery-buy {
+  margin-top: 0.9rem;
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #2fe6d9;
+  background: rgba(47, 230, 217, 0.08);
+  border: 2px solid rgba(47, 230, 217, 0.5);
+  border-radius: 14px;
+  padding: 0.6rem 2rem;
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.hatchery-buy:hover,
+.hatchery-buy:focus-visible {
+  background: rgba(47, 230, 217, 0.18);
+  outline: none;
+}
+
+.hatchery-buy:active {
+  transform: scale(0.96);
+}
+
+.hatchery-confirm-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.9rem;
+}
+
+/* Considering state: ember/orange until the spend is committed. */
+.hatchery-confirm {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1a1200;
+  background: var(--hc-gold, #ffc72c);
+  border: none;
+  border-radius: 14px;
+  padding: 0.65rem 1.5rem;
+  cursor: pointer;
+  box-shadow: 0 4px 0 var(--hc-gold-dark, #e8a800), 0 6px 14px rgba(0, 0, 0, 0.35);
+  transition: transform 0.15s ease;
+}
+
+.hatchery-confirm:active {
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 var(--hc-gold-dark, #e8a800);
+}
+
+.hatchery-confirm:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hatchery-cancel {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.65);
+  background: none;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 14px;
+  padding: 0.6rem 1.1rem;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+
+.hatchery-cancel:hover,
+.hatchery-cancel:focus-visible {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.5);
+  outline: none;
+}
+
+.hatchery-error {
+  margin-top: 0.75rem;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #ff8f8f;
+}
+
+.hatchery-notice {
+  margin-top: 0.75rem;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.85rem;
+  color: #2fe6d9;
+}
+
+.hatchery-login-link {
+  color: #2fe6d9;
+  font-weight: 700;
+}
+
+.hatchery-reveal-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 2.5rem 1rem;
+  animation: hatchery-reveal-in 0.35s ease-out;
+}
+
+@keyframes hatchery-reveal-in {
+  from { opacity: 0; transform: scale(0.92) translateY(6px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* The hatched pet itself - the base mud puppy art hue-rotated to the egg's color
+   (see components/petRender.ts). */
+.hatchery-reveal-pet {
+  width: 160px;
+  height: 160px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.5));
+  margin-bottom: 0.25rem;
+}
+
+.hatchery-reveal-title {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.25rem;
+  color: #2fe6d9;
+  text-shadow: 0 0 10px rgba(47, 230, 217, 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatchery-reveal-card {
+    animation: none !important;
+  }
+}

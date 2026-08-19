@@ -1,0 +1,49 @@
+/* Feed modal - pet portrait header above the shared food list styling
+   (FoodShopModal.css). */
+
+.feed-modal-pet {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+  text-align: left;
+}
+
+.feed-modal-pet img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.45));
+}
+
+.feed-modal-pet-name {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: #fff;
+}
+
+.feed-modal-state {
+  display: inline-block;
+  margin-top: 0.25rem;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.7rem;
+  border-radius: 999px;
+}
+
+.feed-modal-state--satisfied {
+  color: #2fe6d9;
+  background: rgba(47, 230, 217, 0.12);
+  border: 1.5px solid rgba(47, 230, 217, 0.5);
+}
+
+.feed-modal-state--hungry {
+  color: var(--hc-gold, #ffc72c);
+  background: rgba(255, 199, 44, 0.1);
+  border: 1.5px solid rgba(255, 199, 44, 0.5);
+}

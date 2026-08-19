@@ -1,0 +1,6 @@
+{
+  "name": "Interactive Amphibian Egg",
+  "description": "A 3D draggable and interactable amphibian egg built with React, Framer Motion, and inline CSS 3D transforms. The egg can be clicked to hatch.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

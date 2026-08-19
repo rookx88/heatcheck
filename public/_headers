@@ -43,8 +43,12 @@
 /images/*
   Cache-Control: public, no-cache
 
+# / is served by functions/index.ts (session-dependent SSR; the function sets its own
+# Cache-Control - _headers never applies to Function responses). This rule only governs
+# the static dist/index.html fallback, which must also never sit in a shared cache
+# since the real route serves per-session HTML at the same URL.
 /
-  Cache-Control: public, max-age=300, stale-while-revalidate=3600
+  Cache-Control: private, no-store
 
 /nba/
   Cache-Control: public, max-age=600, stale-while-revalidate=3600

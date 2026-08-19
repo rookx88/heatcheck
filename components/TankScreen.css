@@ -6,30 +6,27 @@
   background: linear-gradient(180deg, #060c22 0%, #0b1a45 55%, #14275f 100%);
 }
 
-/* Mobile (default): the frame IS the full screen - "take over the whole screen". */
+/* At EVERY viewport size: the largest box of the artwork's own 9:16 aspect that
+   fits, centered as a card against the navy background (the standard no-JS
+   "min(vw, vh*ratio)" formula). This used to be desktop-only with a full-bleed
+   mobile frame, but full-bleed + slice-fit crops the art's edges on viewports
+   taller than 9:16 (most phones) - the "TANKS AVAILABLE" monitor at the left edge
+   was getting cut off. Aspect-fitting everywhere keeps the whole scene visible,
+   with navy letterboxing filling the remainder. */
 .tank-screen__frame {
   position: absolute;
-  inset: 0;
+  /* Top-anchored, not vertically centered: on tall phone viewports the leftover
+     letterbox space all goes below the scene instead of floating it mid-screen.
+     Desktop is unaffected (the card fills the full height there anyway). */
+  top: 0;
+  left: 50%;
+  width: min(100vw, calc(100vh * 0.5625));
+  height: min(100vh, calc(100vw / 0.5625));
+  max-width: 640px;
+  transform: translateX(-50%);
   overflow: hidden;
-}
-
-/* Desktop/wide browsers: the source art is portrait (810x1440); cover-fitting it
-   into a wide viewport would crop most of the scene away. Instead, size the frame
-   itself to the largest box of the SAME aspect ratio that fits the viewport (the
-   standard no-JS "min(vw, vh*ratio)" formula), so the SVG's cover-fit inside it
-   needs to crop nothing, and center it as a card against the navy background. */
-@media (min-width: 700px) {
-  .tank-screen__frame {
-    inset: auto;
-    top: 50%;
-    left: 50%;
-    width: min(100vw, calc(100vh * 0.5625));
-    height: min(100vh, calc(100vw / 0.5625));
-    max-width: 640px;
-    transform: translate(-50%, -50%);
-    border-radius: 18px;
-    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(47, 230, 217, 0.15);
-  }
+  border-radius: 18px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(47, 230, 217, 0.15);
 }
 
 .tank-screen__svg {

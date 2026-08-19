@@ -1,0 +1,6 @@
+{
+  "name": "Fishtank Article Card",
+  "description": "A 3D interactive article card shaped like a fishtank with flippable sides and a water animation effect.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

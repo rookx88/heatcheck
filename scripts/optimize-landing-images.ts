@@ -129,6 +129,12 @@ async function buildSettlementEmailImages(): Promise<void> {
 
     for (const job of emailImageJobs) {
         const srcPath = path.join(process.cwd(), job.source);
+        if (!fs.existsSync(srcPath)) {
+            // The one-off source PNGs aren't checked in; when absent, keep the
+            // already-generated assets/images output instead of failing the run.
+            console.log(`⚠ ${job.source} not found at repo root, keeping existing ${job.outName}.jpg`);
+            continue;
+        }
         const outPath = path.join(outDir, `${job.outName}.jpg`);
         await sharp(srcPath)
             .resize({ width: 600 })
@@ -140,6 +146,33 @@ async function buildSettlementEmailImages(): Promise<void> {
     }
 }
 
+/**
+ * The Explore badge that drapes off the world map's top-left on the homepage.
+ * Like the settlement-email images, the source is a plain PNG at the repo root
+ * (2000x2000, real alpha channel - no extractEmbeddedPng/deriveAlpha step), so it
+ * keeps WebP + PNG output with transparency intact. 720px = ~2x retina for its
+ * clamp(130px, 26%, 250px) display width in the homepage template.
+ */
+async function buildExploreLogo(): Promise<void> {
+    const srcPath = path.join(process.cwd(), 'ExploreLogo.png');
+    if (!fs.existsSync(srcPath)) {
+        console.log('⚠ ExploreLogo.png not found at repo root, skipping explore-logo');
+        return;
+    }
+    const pngBuffer = await sharp(srcPath).trim().toBuffer();
+
+    const webpPath = path.join(outDir, 'explore-logo.webp');
+    const pngPath = path.join(outDir, 'explore-logo.png');
+    await sharp(pngBuffer).resize({ width: 720, withoutEnlargement: true }).webp({ quality: 82 }).toFile(webpPath);
+    const pngInfo = await sharp(pngBuffer).resize({ width: 720, withoutEnlargement: true }).png({ compressionLevel: 9 }).toFile(pngPath);
+
+    const webpSize = fs.statSync(webpPath).size;
+    console.log(
+        `✓ ExploreLogo.png -> explore-logo.webp (${(webpSize / 1024).toFixed(0)}KB) + ` +
+        `explore-logo.png (${(pngInfo.size / 1024).toFixed(0)}KB) [trimmed to ${pngInfo.width}x${pngInfo.height}]`
+    );
+}
+
 async function run(): Promise<void> {
     if (!fs.existsSync(outDir)) {
         fs.mkdirSync(outDir, { recursive: true });
@@ -147,6 +180,7 @@ async function run(): Promise<void> {
 
     await buildOgImage();
     await buildSettlementEmailImages();
+    await buildExploreLogo();
 
     for (const job of jobs) {
         const svgPath = path.join(sourceDir, job.source);

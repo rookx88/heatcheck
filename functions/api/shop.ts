@@ -41,10 +41,15 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         itemType: r.item_type,
         name: r.name,
         price: r.price,
-        // Egg: the guaranteed color + how it renders. Food: its satisfaction points.
+        // Egg: the guaranteed color + how it renders (hue/assetKey are the actual render
+        // inputs the client derives the shown colorway from). Food: its satisfaction points.
         color: (r.config.color as string) ?? null,
         renderMode: (r.config.render_mode as string) ?? null,
+        hue: (r.config.hue as number) ?? null,
+        assetKey: (r.config.asset_key as string) ?? null,
         satisfactionPoints: (r.config.satisfaction_points as number) ?? null,
+        // Food: which Tank Land shop stocks it ('quickboost' | 'champions').
+        vendor: (r.config.vendor as string) ?? null,
         availableUntil: r.available_until,
     }));
     return jsonResponse({ items }, { headers: authHeaders });

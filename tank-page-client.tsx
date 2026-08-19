@@ -1,7 +1,7 @@
-// Standalone bundle (built via scripts/build-tank-page.ts, not the main Vite app)
-// that mounts the full-screen Tank page: the clickable "Tanks Available" hotspot
-// over assets/new-website/Tanks- Background.svg, and the modal carousel of
-// available tanks.
+// Standalone bundle (built via scripts/build-tank-bundles.ts, not the main Vite app)
+// that mounts the full-screen Tank HQ page (/the-tank-hq/): the clickable "Tanks
+// Available" hotspot over assets/new-website/Tanks- Background.svg, and the modal
+// carousel of available tanks. Back leads to Tank Land (/the-tank/).
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
@@ -19,7 +19,7 @@ function mount() {
             console.error('[Tank Page] Failed to parse tanks payload:', err);
         }
     }
-    createRoot(root).render(<TankScreen tanks={tanks} backHref="/" />);
+    createRoot(root).render(<TankScreen tanks={tanks} backHref="/the-tank/" />);
 }
 
 if (document.readyState === 'loading') {

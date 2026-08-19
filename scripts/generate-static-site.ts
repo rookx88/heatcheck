@@ -18,12 +18,23 @@ import { buildLogin } from './build-login';
 import { buildWelcome } from './build-welcome';
 import { buildAnalyticsBeacon } from './build-analytics-beacon';
 import { generateBaseHtml } from './templates/base-template';
-import { generateLandingPageHtml, generateBetaInfoPageHtml } from './templates/waitlist-landing-template';
+import { generateBetaInfoPageHtml } from './templates/waitlist-landing-template';
+import { renderHomepage } from '../lib/pages-functions/homepage/render';
+import {
+    filterAndSortLiveRows,
+    pickLiveTankPerSport,
+    toFeedItemViewModel,
+    emptyHomepageData,
+    type HomepageTankRow,
+} from '../lib/pages-functions/homepage/data';
 import { generateClaimYourSpotPageHtml } from './templates/claim-your-spot-template';
 import { generateNewsletterPickPageHtml } from './templates/newsletter-pick-template';
 import { generateLoginPageHtml } from './templates/login-template';
 import { generateWelcomePageHtml } from './templates/welcome-template';
 import { generateTankPageHtml, TankPageEntry } from './templates/tank-template';
+import { generateTankLandPageHtml } from './templates/tank-land-template';
+import { generateHatcheryPageHtml } from './templates/hatchery-template';
+import { generateFoodShopPageHtml } from './templates/food-shop-template';
 import { formatDateISO, normalizeLeague } from './utils/date-formatter';
 import { generateSlug, ensureUniqueSlug, generateNarrativeSlug, generateMatchupSlug } from './utils/slug-generator';
 import { getShortTeamName } from './utils/date-formatter';
@@ -136,6 +147,8 @@ const NEW_SITE_IMAGES = [
     'mudpuppy-jersey.webp',
     'world-map.png',
     'world-map.webp',
+    'explore-logo.png',
+    'explore-logo.webp',
     'og-share-world-map.jpg',
     'tank-email-correct.jpg',
     'tank-email-incorrect.jpg',
@@ -712,21 +725,11 @@ async function generateAllPages(): Promise<void> {
         console.log('Skipping legacy static site generation (set LEGACY_BUILD=true to include it).\n');
       }
 
-        // Generate homepage (index.html) - beta waitlist landing page
-        console.log('Generating homepage (beta waitlist landing page)...');
-        const homepageHtml = generateLandingPageHtml(baseUrl);
-        // Generate index.html (homepage) - allow it to be written to public
-        const homepageDistPath = path.join(distDir, 'index.html');
-        ensureDir(path.dirname(homepageDistPath));
-        fs.writeFileSync(homepageDistPath, homepageHtml, 'utf-8');
-        console.log(`✓ Generated: ${homepageDistPath}`);
-
-        // Also write to public for dev server access
-        const homepagePublicPath = path.join(publicDir, 'index.html');
-        ensureDir(path.dirname(homepagePublicPath));
-        fs.writeFileSync(homepagePublicPath, homepageHtml, 'utf-8');
-        console.log(`✓ Generated: ${homepagePublicPath}`);
-        console.log('✓ Generated homepage\n');
+        // Homepage (index.html) is generated further down, after the tank_pages
+        // fetch: it's now the logged-out fallback of the server-rendered homepage
+        // (functions/index.ts), built from the same renderHomepage() template and the
+        // same rows, so there's exactly one homepage template. The old marketing
+        // landing page markup lives on only at /beta/ and /claim-your-spot/.
 
         // Generate beta info ("learn more") placeholder page
         console.log('Generating beta info page...');
@@ -1097,6 +1100,9 @@ async function generateAllPages(): Promise<void> {
         // isn't ready yet - it's a primary nav destination from the world map and
         // must never 404.
         let tankEntries: TankPageEntry[] = [];
+        // Same rows, reused for the homepage fallback below (all rows here already
+        // satisfy the public predicate: published + visibility='app' + slug + output).
+        let homepageRows: HomepageTankRow[] = [];
         try {
             const tankPagesResult = await pool.query(
                 `SELECT id, slug, league, angle, game_snapshot, model_output, created_at, published_at
@@ -1126,6 +1132,7 @@ async function generateAllPages(): Promise<void> {
                 });
             }
             console.log(`✓ Generated ${tankPagesResult.rows.length} Tank articles\n`);
+            homepageRows = tankPages as unknown as HomepageTankRow[];
 
             // Active feed for the-tank's carousel: published pages whose game hasn't
             // happened yet, soonest first. Reuses the rows already fetched above.
@@ -1158,15 +1165,62 @@ async function generateAllPages(): Promise<void> {
             console.warn('⚠ Warning: Failed to generate Tank articles (tank_pages table may not exist yet):', error.message);
         }
 
-        // Generate the-tank page (unconditionally - it's a primary nav destination
-        // from the world map, so it must exist even if tankEntries came back empty).
-        // This is also the site's one real, crawlable Tank hub - see
-        // generateFallbackSection() inside tank-template.ts.
-        console.log('Generating the-tank page...');
-        writeHtmlFile('the-tank/index.html', generateTankPageHtml(baseUrl, tankEntries));
-        // Note: /the-tank/ itself is already a hardcoded sitemap entry in sitemap.ts -
-        // not pushed here too, to avoid a duplicate <url> entry.
-        console.log(`✓ Generated the-tank page with ${tankEntries.length} tank(s)\n`);
+        // Generate the tank-world pages (unconditionally - /the-tank/ is a primary
+        // nav destination from the world map, so it must exist even if tankEntries
+        // came back empty):
+        //   /the-tank/     - Tank Land hub (navigation artwork)
+        //   /the-tank-hq/  - the story browser (formerly at /the-tank/); also the
+        //                    site's one real, crawlable Tank hub - see
+        //                    generateFallbackSection() inside tank-template.ts.
+        //   /the-hatchery/ - egg shop + incubator
+        //   /champions-terrace/, /quickboost-delicacies/ - the two food shops
+        console.log('Generating tank-world pages...');
+        writeHtmlFile('the-tank/index.html', generateTankLandPageHtml(baseUrl));
+        writeHtmlFile('the-tank-hq/index.html', generateTankPageHtml(baseUrl, tankEntries));
+        writeHtmlFile('the-hatchery/index.html', generateHatcheryPageHtml(baseUrl));
+        writeHtmlFile('champions-terrace/index.html', generateFoodShopPageHtml(baseUrl, {
+            path: '/champions-terrace/',
+            title: "Champion's Lakeside Terrace | Heatchecks",
+            heading: "Champion's Lakeside Terrace",
+            description: 'Hearty plates by the lake - feed your Mud Puppy like a champion.',
+            rootId: 'champions-terrace-root',
+            scriptName: 'champions-terrace',
+        }));
+        writeHtmlFile('quickboost-delicacies/index.html', generateFoodShopPageHtml(baseUrl, {
+            path: '/quickboost-delicacies/',
+            title: 'Quickboost Delicacies | Heatchecks',
+            heading: 'Quickboost Delicacies',
+            description: 'Light bites and shakes - quick boosts for your Mud Puppy.',
+            rootId: 'quickboost-root',
+            scriptName: 'quickboost-delicacies',
+        }));
+        // Note: all three URLs are hardcoded sitemap entries in sitemap.ts - not
+        // pushed here too, to avoid duplicate <url> entries.
+        console.log(`✓ Generated Tank Land, Tank HQ (${tankEntries.length} tank(s)), and Hatchery pages\n`);
+
+        // Homepage: the build-time, logged-out fallback of the server-rendered
+        // homepage (functions/index.ts renders the live version per request and takes
+        // routing precedence over this file). Same renderHomepage() template, same
+        // mappers, fed from the rows fetched above - mirrors fetchHomepageData()'s
+        // two queries in JS (live per sport = future kickoff soonest-first; feed =
+        // 8 newest by published_at, created_at tiebreak).
+        console.log('Generating homepage (logged-out SSR fallback)...');
+        const homepageFeedRows = [...homepageRows]
+            .sort((a, b) => {
+                const aPub = a.published_at ? new Date(a.published_at).getTime() : -Infinity;
+                const bPub = b.published_at ? new Date(b.published_at).getTime() : -Infinity;
+                if (bPub !== aPub) return bPub - aPub;
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+            })
+            .slice(0, 8);
+        const homepageData = homepageRows.length > 0
+            ? {
+                sportSlots: pickLiveTankPerSport(filterAndSortLiveRows(homepageRows)),
+                feed: homepageFeedRows.map(toFeedItemViewModel),
+            }
+            : emptyHomepageData();
+        writeHtmlFile('index.html', renderHomepage({ baseUrl, user: null, data: homepageData }));
+        console.log('✓ Generated homepage fallback\n');
 
         // Generate redirects file (for Cloudflare Pages)
         console.log('Generating redirects...');
