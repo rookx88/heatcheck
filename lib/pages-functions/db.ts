@@ -30,6 +30,11 @@ export interface Env {
     BASE_URL?: string;
     SETTLE_SECRET: string;
     CURATE_SECRET: string;
+    // Shared-secret auth for POST /api/ticker-tags (X-Ticker-Secret header), sent by
+    // the curator tooling when tagging a Tank to an Exchange ticker. Separate from
+    // CURATE_SECRET on purpose: different caller trust domain (local curator tool vs
+    // the worker-curate cron), so each can rotate without breaking the other.
+    TICKER_SECRET: string;
     ANTHROPIC_API_KEY: string;
     MODEL?: string;
     MAX_TOKENS?: string;

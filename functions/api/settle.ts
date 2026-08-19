@@ -4,62 +4,50 @@
 // the convention: compare X-Settle-Secret against Env.SETTLE_SECRET.
 //
 // Finds picks on polymarket-sourced Tanks with no result yet, and checks each
-// underlying market's resolution directly against Polymarket's public Gamma API.
-// Deliberately does NOT read the local polymarket_props cache table: nothing keeps that
-// cache fresh in production (the only code that syncs it, polymarket.ts's
-// syncAllLeagues/startPolymarketScheduler, is only ever called from backend.ts, which is
-// not deployed), and even if it were running, its sync only ever fetches closed=false
-// markets, so it would never observe a market transitioning to closed=true anyway.
+// underlying market's resolution directly against Polymarket's public Gamma API (see
+// lib/pages-functions/gamma.ts for why the polymarket_props cache is deliberately not
+// used). Also settles pending ticker tags (lib/pages-functions/tickers.ts): a
+// ticker-tagged Tank resolves here even if nobody ever picked it, and a Tank with both
+// picks and tags resolves its market exactly once per run via the resolution cache.
 //
-// Settlement via settleCall() (lib/pages-functions/ledger.ts) is idempotent per pick, so
-// this endpoint is safe to call as often as you like - a pick already settled simply
-// won't show up in the `result IS NULL` query on the next run.
+// Settlement via settleCall() (lib/pages-functions/ledger.ts) is idempotent per pick,
+// and settleTag() is idempotent per tag (calculated_at CTE guard), so this endpoint is
+// safe to call as often as you like - anything already settled simply won't show up in
+// the pending scans on the next run.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { settleCall, type CallResult } from '../../lib/pages-functions/ledger';
 import { sendSettlementEmail } from '../../lib/pages-functions/email';
 import { logEvent } from '../../lib/pages-functions/events';
-
-const GAMMA_BASE_URL = 'https://gamma-api.polymarket.com';
-
-// A price is only trusted as "the winner" once it's unambiguously resolved. Real closed
-// markets settle outcomePrices to exact "1"/"0" strings - confirmed live against several
-// actual resolved markets - but a stale/zero-liquidity market can resolve to something
-// degenerate like ["0","0"], which must be left unsettled rather than guessed at.
-const WINNER_THRESHOLD = 0.99;
+import {
+    fetchMarket,
+    outcomeOrderMismatch,
+    resolveMarket,
+    type MarketResolution,
+} from '../../lib/pages-functions/gamma';
+import { settleTag } from '../../lib/pages-functions/tickers';
 
 interface UnresolvedPick {
     id: string;
     waitlist_id: string;
     outcome_index: number;
     market_id: string | null;
+    snapshot_outcomes: unknown;
     implied_prob_at_lock: number;
     email: string;
     call_question: string | null;
 }
 
-interface GammaMarketLite {
-    outcomes?: string;       // JSON-encoded string array
-    outcomePrices?: string;  // JSON-encoded string array
-    closed?: boolean;
-}
-
-function safeJsonParse<T>(value: string | undefined | null): T | null {
-    if (!value) return null;
-    try {
-        return JSON.parse(value) as T;
-    } catch {
-        return null;
-    }
-}
-
-async function fetchMarket(marketId: string): Promise<GammaMarketLite | null> {
-    const res = await fetch(`${GAMMA_BASE_URL}/markets/${encodeURIComponent(marketId)}`, {
-        headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as GammaMarketLite;
+interface PendingTickerTag {
+    id: string;
+    ticker_key: string;
+    tank_id: string;
+    relevant_side: number;
+    market_id: string | null;
+    snapshot_outcomes: unknown;
+    settle_win_pct: number;
+    settle_loss_pct: number;
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -70,6 +58,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(context.env);
 
+    // One Gamma fetch per distinct market per run - a Tank with both picks and pending
+    // ticker tags resolves once and both loops consume the same result. Within a single
+    // run (seconds) a market can't meaningfully flip, so caching skip statuses is safe;
+    // thrown fetch errors are deliberately NOT cached, so one network blip can't mark a
+    // market unresolvable for every later item in the run.
+    const resolutionCache = new Map<string, MarketResolution>();
+    async function resolveOnce(marketId: string): Promise<MarketResolution> {
+        const cached = resolutionCache.get(marketId);
+        if (cached) return cached;
+        const resolution = resolveMarket(await fetchMarket(marketId));
+        resolutionCache.set(marketId, resolution);
+        return resolution;
+    }
+
     // Belt-and-suspenders on `t.provider = 'polymarket'`: functions/api/picks.ts already
     // refuses to create picks on non-polymarket Tanks, but this keeps settlement correct
     // even if that invariant is ever bypassed by a future code path. email + call_question
@@ -77,6 +79,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const rows = await sql`
         SELECT p.id, p.waitlist_id, p.outcome_index, p.implied_prob_at_lock::float8 AS implied_prob_at_lock,
                t.game_snapshot->'prop'->>'id' AS market_id,
+               t.game_snapshot->'prop'->'odds'->'outcomes' AS snapshot_outcomes,
                w.email, t.model_output->'call'->>'question' AS call_question
         FROM picks p
         JOIN tank_pages t ON t.id = p.tank_page_id
@@ -97,28 +100,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             continue;
         }
         try {
-            const market = await fetchMarket(pick.market_id);
-            if (!market || !market.closed) {
-                results.push({ pickId: pick.id, status: 'not_closed_yet' });
+            const resolution = await resolveOnce(pick.market_id);
+            if (resolution.status !== 'resolved') {
+                results.push({ pickId: pick.id, status: resolution.status });
                 continue;
             }
-            const outcomePrices = safeJsonParse<string[]>(market.outcomePrices) ?? [];
-            const prices = outcomePrices.map(Number);
-            if (prices.length === 0 || prices.every((p) => Number.isNaN(p))) {
-                results.push({ pickId: pick.id, status: 'unresolvable_prices' });
+            // outcome_index was stamped against the frozen snapshot's outcome order;
+            // winningIndex comes from the live Gamma array. If the names no longer line
+            // up positionally, skip (non-terminal) rather than possibly settle inverted.
+            if (outcomeOrderMismatch(resolution.outcomes, pick.snapshot_outcomes)) {
+                results.push({ pickId: pick.id, status: 'outcome_order_mismatch' });
                 continue;
             }
-            let winningIndex = 0;
-            for (let i = 1; i < prices.length; i++) {
-                if (prices[i] > prices[winningIndex]) winningIndex = i;
-            }
-            if (prices[winningIndex] < WINNER_THRESHOLD) {
-                // Neither outcome resolved unambiguously (e.g. a degenerate [0,0] market) -
-                // leave it for a future run rather than guess.
-                results.push({ pickId: pick.id, status: 'ambiguous_resolution' });
-                continue;
-            }
-            const result: CallResult = pick.outcome_index === winningIndex ? 'correct' : 'incorrect';
+            const result: CallResult = pick.outcome_index === resolution.winningIndex ? 'correct' : 'incorrect';
             const { payoutAmount } = await settleCall(sql, {
                 pickId: pick.id,
                 userId: pick.waitlist_id,
@@ -162,5 +156,65 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
     }
 
-    return jsonResponse({ checked: unresolved.length, results });
+    // Ticker tags settle independently of picks: a tagged Tank with zero picks still
+    // resolves here. No visibility filter - a newsletter_only Tank's tags still settle;
+    // its events are excluded at read time (functions/api/tickers*.ts), not at write
+    // time. No email/logEvent either: nothing user-facing fires for a ticker move.
+    const tagRows = await sql`
+        SELECT tt.id, tt.ticker_key, tt.tank_id, tt.relevant_side,
+               t.game_snapshot->'prop'->>'id' AS market_id,
+               t.game_snapshot->'prop'->'odds'->'outcomes' AS snapshot_outcomes,
+               tk.settle_win_pct::float8 AS settle_win_pct,
+               tk.settle_loss_pct::float8 AS settle_loss_pct
+        FROM ticker_tags tt
+        JOIN tank_pages t ON t.id = tt.tank_id
+        JOIN tickers tk ON tk.key = tt.ticker_key
+        WHERE tt.calculated_at IS NULL AND t.provider = 'polymarket'
+    `;
+    const pendingTags = tagRows as unknown as PendingTickerTag[];
+
+    const tickerResults: Array<{ tagId: string; tickerKey: string; status: string; delta?: number }> = [];
+
+    for (const tag of pendingTags) {
+        if (!tag.market_id) {
+            tickerResults.push({ tagId: tag.id, tickerKey: tag.ticker_key, status: 'missing_market_id' });
+            continue;
+        }
+        try {
+            const resolution = await resolveOnce(tag.market_id);
+            if (resolution.status !== 'resolved') {
+                tickerResults.push({ tagId: tag.id, tickerKey: tag.ticker_key, status: resolution.status });
+                continue;
+            }
+            if (outcomeOrderMismatch(resolution.outcomes, tag.snapshot_outcomes)) {
+                tickerResults.push({ tagId: tag.id, tickerKey: tag.ticker_key, status: 'outcome_order_mismatch' });
+                continue;
+            }
+            const won = tag.relevant_side === resolution.winningIndex;
+            const inserted = await settleTag(sql, {
+                tagId: tag.id,
+                tickerKey: tag.ticker_key,
+                tankId: tag.tank_id,
+                won,
+                winPct: tag.settle_win_pct,
+                lossPct: tag.settle_loss_pct,
+                metadata: {
+                    winningIndex: resolution.winningIndex,
+                    relevantSide: tag.relevant_side,
+                    marketId: tag.market_id,
+                },
+            });
+            tickerResults.push({
+                tagId: tag.id,
+                tickerKey: tag.ticker_key,
+                status: inserted ? (won ? 'settled_win' : 'settled_loss') : 'already_settled',
+                delta: won ? tag.settle_win_pct : -tag.settle_loss_pct,
+            });
+        } catch (err) {
+            console.error(`[POST /api/settle] Failed to settle ticker tag ${tag.id}:`, err);
+            tickerResults.push({ tagId: tag.id, tickerKey: tag.ticker_key, status: 'error' });
+        }
+    }
+
+    return jsonResponse({ checked: unresolved.length, results, tickerTagsChecked: pendingTags.length, tickerResults });
 };
