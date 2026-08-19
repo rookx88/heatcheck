@@ -37,6 +37,7 @@ export interface MarketMoverNewsVM {
 export interface MarketMoverVM {
     key: string;
     displayName: string;
+    indexLabel: string;  // "Underdog Index" etc, derived from rule_type
     description: string; // real tickers.description text - page content, not a UI label
     value: number;
     valueLabel: string;  // formatSignedPct(value) - the ONE string both tape and card show
@@ -76,6 +77,12 @@ function signOf(v: number): 'pos' | 'neg' | 'zero' {
     return 'zero';
 }
 
+// "underdog" -> "Underdog Index" - the card's display title ("UNDERDOG INDEX ($DOGS)").
+function indexLabelOf(ruleType: string): string {
+    const words = ruleType.split('_').map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
+    return `${words} Index`;
+}
+
 // Same UTC-pinned date rule as the old feed's toFeedItemViewModel / formatSettleDate.
 function utcDateLabel(iso: string): string {
     const d = new Date(iso);
@@ -94,6 +101,7 @@ export function toMarketMovers(
         return {
             key: t.key,
             displayName: t.displayName,
+            indexLabel: indexLabelOf(t.ruleType),
             description: t.description,
             value: t.value,
             valueLabel: formatSignedPct(t.value),
@@ -142,21 +150,24 @@ export function renderTickerChartSvg(vm: MarketMoverVM): string {
     const y = (v: number) => (PAD + ((hi - v) * (CHART_H - 2 * PAD)) / span).toFixed(1);
 
     const polyline = points.map((v, i) => `${x(i)},${y(v)}`).join(' ');
-    const stroke = vm.sign === 'pos' ? 'var(--hc-teal)' : vm.sign === 'neg' ? '#ef4444' : 'rgba(255,255,255,0.55)';
+    // The chart sits in a white plot box on the light-blue card (mockup palette):
+    // market green up, red down, slate for a flat zero line.
+    const stroke = vm.sign === 'pos' ? '#1f9d3c' : vm.sign === 'neg' ? '#d93025' : '#64748b';
     const zeroAxis = lo < 0 && hi > 0
-        ? `<line x1="${PAD}" x2="${CHART_W - PAD}" y1="${y(0)}" y2="${y(0)}" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 4" stroke-width="1"/>`
+        ? `<line x1="${PAD}" x2="${CHART_W - PAD}" y1="${y(0)}" y2="${y(0)}" stroke="rgba(15,23,42,0.25)" stroke-dasharray="4 4" stroke-width="1"/>`
         : '';
 
     // One dot per REAL event (the synthetic origin gets none) with a native tooltip.
     const originOffset = vm.seriesTruncated ? 0 : 1;
     const dots = vm.series.map((e, i) => {
         const title = `${utcDateLabel(e.occurredAt)} · ${e.eventType} · ${formatSignedPct(e.delta)} (running: ${formatSignedPct(e.cumulative)})`;
-        return `<circle cx="${x(i + originOffset)}" cy="${y(e.cumulative)}" r="3" fill="${stroke}"><title>${escapeHtml(title)}</title></circle>`;
+        return `<circle cx="${x(i + originOffset)}" cy="${y(e.cumulative)}" r="2.5" fill="${stroke}"><title>${escapeHtml(title)}</title></circle>`;
     }).join('');
 
     const summary = `${vm.displayName} cumulative chart: currently ${vm.valueLabel} over ${vm.eventCount} event${vm.eventCount === 1 ? '' : 's'}`;
     return `<svg class="hc-mm-svg" viewBox="0 0 ${CHART_W} ${CHART_H}" role="img" aria-label="${escapeHtml(summary)}">
                 <title>${escapeHtml(summary)}</title>
+                <rect x="0.5" y="0.5" width="${CHART_W - 1}" height="${CHART_H - 1}" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
                 ${zeroAxis}
                 <polyline fill="none" points="${polyline}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
                 ${dots}
@@ -182,13 +193,18 @@ export function renderMarketMoverCard(vm: MarketMoverVM): string {
     return `
         <article class="hc-mm-card" data-ticker="${escapeHtml(vm.key)}" data-sign="${vm.sign}">
             <header class="hc-mm-head">
-                <h3 class="hc-mm-name">${escapeHtml(vm.displayName)}</h3>
-                <span class="hc-mm-value is-${vm.sign}">${vm.valueLabel}</span>
+                <h3 class="hc-mm-title">
+                    <span class="hc-mm-index">${escapeHtml(vm.indexLabel)}</span>
+                    <span class="hc-mm-name">(${escapeHtml(vm.displayName)})</span>
+                </h3>
+                <p class="hc-mm-desc">${escapeHtml(vm.description)}</p>
             </header>
-            <p class="hc-mm-desc">${escapeHtml(vm.description)}</p>
-            <div class="hc-mm-chart">${renderTickerChartSvg(vm)}</div>
+            <div class="hc-mm-chartrow">
+                <div class="hc-mm-chart">${renderTickerChartSvg(vm)}</div>
+                <span class="hc-mm-value is-${vm.sign}">${vm.valueLabel}</span>
+            </div>
             <div class="hc-mm-news">
-                <h4 class="hc-mm-news-heading">Recent news</h4>
+                <h4 class="hc-mm-news-heading">Recent News</h4>
                 ${newsBlock}
             </div>
         </article>`;
@@ -206,7 +222,7 @@ export function renderTickerTape(movers: MarketMoverVM[]): string {
     // Marquee reads in tab_order (marketing order), not the section's value-desc order -
     // both label strings come from the same VM, so the numbers can't disagree.
     const items = [...movers].sort((a, b) => a.tabOrder - b.tabOrder).map((m) => `
-                <li class="hc-tape-item">${escapeHtml(m.displayName)} <span class="hc-mm-value is-${m.sign}">${m.valueLabel}</span></li>`).join('');
+                <li class="hc-tape-item is-${m.sign}">${escapeHtml(m.displayName)} <span class="hc-mm-value is-${m.sign}">${m.valueLabel}</span></li>`).join('');
     const group = (hidden: boolean) => `<ul class="hc-tape-group"${hidden ? ' aria-hidden="true"' : ''}>${items}</ul>`;
     return `
         <div class="hc-ticker-tape" aria-label="Ticker values — how tagged storylines have gone, not a forecast">
@@ -224,84 +240,143 @@ export function renderTickerTape(movers: MarketMoverVM[]): string {
 // -----------------------------------------------------------------------------------
 
 export function renderMarketMoversSection(data: MarketMoversData): string {
+    // Server default view is "all" so the no-JS page shows every ticker; the island
+    // reveals the tab strip and flips the view to "gainers" (the mockup's default) in
+    // the same pass - the gainers button ships aria-pressed to match that JS state.
     const body = data.movers.length === 0
         ? `<p class="hc-mm-empty">No ticker activity yet — storylines get tagged as they publish.</p>`
         : `
         <div class="hc-mm-tabs" data-hc-mm-tabs hidden>
-            <button type="button" data-mm-view="all" aria-pressed="true">All</button>
-            <button type="button" data-mm-view="gainers" aria-pressed="false">Gainers</button>
-            <button type="button" data-mm-view="losers" aria-pressed="false">Losers</button>
+            <button type="button" class="hc-mm-tab is-gainers" data-mm-view="gainers" aria-pressed="true">Top Gainers</button>
+            <button type="button" class="hc-mm-tab is-losers" data-mm-view="losers" aria-pressed="false">Top Losers</button>
         </div>
         <div class="hc-mm-grid" data-hc-mm-grid data-mm-view="all">${data.movers.map(renderMarketMoverCard).join('')}</div>`;
 
     return `
         <section id="market-movers" class="hc-section" aria-labelledby="hc-mm-heading">
-            <h2 id="hc-mm-heading">Market Movers</h2>
+            <h2 id="hc-mm-heading" class="hc-visually-hidden">Market Movers</h2>
+            <img class="hc-mm-logo" src="/assets/images/market-movers-logo.webp" alt="Market Movers" width="600" height="416" loading="lazy">
             <p class="hc-section-sub">${escapeHtml(data.note)}</p>
             ${body}
         </section>`;
 }
 
-// Appended into homepageStyles() output (render.ts). Sign colors: teal = positive,
-// red = negative (the Baseball badge red), muted white = zero.
+// Appended into homepageStyles() output (render.ts). Mockup palette: orange marquee
+// band with outlined sign-colored text (market green up / red down), folder-style
+// green/salmon tab buttons, light-blue index cards with white plot boxes and maroon
+// serif news entries. The page background itself stays untouched.
 export function marketMoversStyles(): string {
     return `
-        .hc-ticker-tape {
-            overflow: hidden; margin: 0.75rem -1.25rem 0;
-            border-top: 1px solid rgba(255,255,255,0.12); border-bottom: 1px solid rgba(255,255,255,0.12);
-            background: rgba(255,255,255,0.04);
-        }
+        .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #f89b4e; }
         .hc-tape-track { display: flex; width: max-content; animation: hc-tape 28s linear infinite; }
         .hc-tape-group {
-            list-style: none; display: flex; gap: 2rem; margin: 0; padding: 0.45rem 1rem 0.45rem 3rem;
-            white-space: nowrap; font-weight: 800; font-size: 0.85rem;
+            list-style: none; display: flex; gap: 2.25rem; margin: 0; padding: 0.5rem 1.5rem 0.55rem;
+            white-space: nowrap;
+            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
+            font-size: 1.45rem; letter-spacing: 0.03em; text-transform: uppercase;
+        }
+        .hc-tape-item, .hc-tape-item .hc-mm-value { font-weight: 800; }
+        .hc-tape-item.is-pos, .hc-tape-item.is-pos .hc-mm-value { color: #2f9e1e; }
+        .hc-tape-item.is-neg, .hc-tape-item.is-neg .hc-mm-value { color: #e33a24; }
+        .hc-tape-item.is-zero, .hc-tape-item.is-zero .hc-mm-value { color: #5b6572; }
+        .hc-tape-item {
+            text-shadow:
+                2px 0 0 #fff, -2px 0 0 #fff, 0 2px 0 #fff, 0 -2px 0 #fff,
+                1.5px 1.5px 0 #fff, -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff,
+                3px 3px 4px rgba(0,0,0,0.35);
         }
         @keyframes hc-tape { to { transform: translateX(-50%); } }
-        .hc-mm-value.is-pos { color: var(--hc-teal); }
-        .hc-mm-value.is-neg { color: #ef4444; }
-        .hc-mm-value.is-zero { color: rgba(255,255,255,0.6); }
 
-        .hc-mm-tabs { display: flex; gap: 0.5rem; margin: 0 0 1rem; }
-        .hc-mm-tabs button {
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.78rem;
-            letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer;
-            color: rgba(255,255,255,0.75); background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.18); border-radius: 999px; padding: 0.3rem 0.9rem;
-        }
-        .hc-mm-tabs button[aria-pressed="true"] {
-            color: var(--hc-teal); background: rgba(47, 230, 217, 0.1); border-color: rgba(47, 230, 217, 0.45);
-        }
-        .hc-mm-tabs button:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 2px; }
+        .hc-mm-logo { display: block; width: clamp(180px, 42vw, 300px); height: auto; margin: 0 0 0.25rem -0.4rem; }
 
-        .hc-mm-grid { display: flex; flex-direction: column; gap: 1rem; }
-        .hc-mm-grid[data-mm-view="gainers"] .hc-mm-card:not([data-sign="pos"]) { display: none; }
+        .hc-mm-tabs { display: flex; gap: 0.6rem; margin: 0.75rem 0 0; position: relative; z-index: 1; }
+        .hc-mm-tab {
+            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
+            font-size: clamp(0.95rem, 3.2vw, 1.25rem); letter-spacing: 0.04em; text-transform: uppercase;
+            cursor: pointer; color: #ffffff; border: none;
+            border-radius: 14px 14px 0 0; padding: 0.55rem 1.3rem 0.5rem;
+            text-shadow: 1.5px 0 0 #b3261e, -1.5px 0 0 #b3261e, 0 1.5px 0 #b3261e, 0 -1.5px 0 #b3261e,
+                         1px 1px 0 #b3261e, -1px -1px 0 #b3261e, 1px -1px 0 #b3261e, -1px 1px 0 #b3261e;
+            opacity: 0.68;
+        }
+        .hc-mm-tab.is-gainers { background: #55901f; }
+        .hc-mm-tab.is-losers { background: #f0705f; }
+        .hc-mm-tab[aria-pressed="true"] { opacity: 1; box-shadow: 0 -4px 12px rgba(255,255,255,0.18); }
+        .hc-mm-tab:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 2px; }
+
+        .hc-mm-grid { display: flex; flex-direction: column; gap: 1.1rem; }
+        .hc-mm-grid[data-mm-view="gainers"] .hc-mm-card[data-sign="neg"] { display: none; }
         .hc-mm-grid[data-mm-view="losers"] .hc-mm-card:not([data-sign="neg"]) { display: none; }
+        /* CSS-only empty state when a filter leaves nothing visible (e.g. no losers). */
+        .hc-mm-grid[data-mm-view="losers"]:not(:has(.hc-mm-card[data-sign="neg"]))::after {
+            content: 'No losers right now.'; display: block; padding: 1rem 0.25rem;
+            font-size: 0.85rem; color: rgba(255,255,255,0.6);
+        }
+        .hc-mm-grid[data-mm-view="gainers"]:not(:has(.hc-mm-card:not([data-sign="neg"])))::after {
+            content: 'No gainers right now.'; display: block; padding: 1rem 0.25rem;
+            font-size: 0.85rem; color: rgba(255,255,255,0.6);
+        }
+
         .hc-mm-card {
-            display: flex; flex-direction: column; gap: 0.55rem;
-            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 18px; padding: 1.1rem 1.1rem 1.2rem;
+            display: flex; flex-direction: column; gap: 0.6rem;
+            background: #5ec1ee; color: #10203a;
+            border-radius: 0 14px 14px 14px; padding: 1.15rem 1.15rem 1.3rem;
         }
-        .hc-mm-head { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; }
-        .hc-mm-name { font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 1.1rem; margin: 0; }
-        .hc-mm-value { font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 1rem; }
-        .hc-mm-desc { font-size: 0.85rem; line-height: 1.45; color: rgba(255,255,255,0.78); margin: 0; }
-        .hc-mm-chart { margin: 0.25rem 0; }
+        .hc-mm-title { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; margin: 0; }
+        .hc-mm-index {
+            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem;
+            letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526;
+        }
+        .hc-mm-name { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 1.35rem; color: #0b1526; }
+        .hc-mm-desc {
+            align-self: flex-start; margin: 0.1rem 0 0;
+            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.68rem;
+            letter-spacing: 0.12em; text-transform: uppercase; color: #10203a;
+            background: rgba(255,255,255,0.92); border-radius: 6px; padding: 0.28rem 0.6rem;
+        }
+        .hc-mm-chartrow { display: flex; align-items: center; gap: 0.9rem; margin: 0.35rem 0 0.2rem; }
+        .hc-mm-chart { flex: 1 1 auto; min-width: 0; max-width: 300px; }
         .hc-mm-svg { display: block; width: 100%; height: auto; }
-        .hc-mm-chart-empty, .hc-mm-news-empty, .hc-mm-empty {
-            font-size: 0.82rem; color: rgba(255,255,255,0.55); margin: 0;
+        .hc-mm-chartrow .hc-mm-value {
+            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
+            font-size: clamp(1.3rem, 5vw, 1.8rem); flex-shrink: 0;
+            text-shadow:
+                1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff,
+                1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff,
+                2.5px 2.5px 3px rgba(0,0,0,0.35);
         }
+        .hc-mm-chartrow .hc-mm-value.is-pos { color: #2f9e1e; }
+        .hc-mm-chartrow .hc-mm-value.is-neg { color: #e33a24; }
+        .hc-mm-chartrow .hc-mm-value.is-zero { color: #5b6572; }
+        .hc-mm-chart-empty {
+            font-size: 0.82rem; font-weight: 800; color: #10203a; margin: 0;
+            background: rgba(255,255,255,0.65); border: 1.5px solid #0f172a; border-radius: 4px; padding: 0.8rem 0.9rem;
+        }
+        .hc-mm-news-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: Georgia, 'Times New Roman', serif; }
+        .hc-mm-empty { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin: 1rem 0 0; }
         .hc-mm-news-heading {
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.72rem;
-            letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.6); margin: 0.25rem 0 0.4rem;
+            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
+            letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526; margin: 0.4rem 0 0.45rem;
         }
-        .hc-mm-news-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.7rem; }
-        .hc-mm-news-list a { font-weight: 800; font-size: 0.9rem; line-height: 1.3; text-decoration: none; }
+        .hc-mm-news-list { list-style: none; margin: 0; padding: 0 0 0 0.35rem; display: flex; flex-direction: column; gap: 0.7rem; }
+        .hc-mm-news-list a {
+            font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 0.95rem;
+            line-height: 1.35; color: #7a1f1f; text-decoration: none;
+        }
         .hc-mm-news-list a:hover { text-decoration: underline; }
-        .hc-mm-excerpt { font-size: 0.82rem; line-height: 1.45; color: rgba(255,255,255,0.75); margin: 0.15rem 0 0.2rem; }
-        .hc-mm-news-meta { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: rgba(255,255,255,0.5); }
+        .hc-mm-excerpt {
+            font-family: Georgia, 'Times New Roman', serif; font-size: 0.85rem; line-height: 1.45;
+            color: #8b3a3a; margin: 0.15rem 0 0.2rem 1rem;
+        }
+        .hc-mm-news-meta {
+            display: block; margin-left: 1rem; font-size: 0.66rem; font-weight: 800;
+            letter-spacing: 0.08em; text-transform: uppercase; color: #24344f;
+        }
 
         @media (min-width: 760px) {
             .hc-mm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 2rem; }
+            .hc-mm-card { border-radius: 14px; }
+            .hc-mm-card:first-child { border-radius: 0 14px 14px 14px; }
         }
         @media (prefers-reduced-motion: reduce) {
             .hc-tape-track { animation: none; }

@@ -58,6 +58,8 @@ assets/images/*
 !assets/images/tank-email-incorrect.jpg
 !assets/images/explore-logo.png
 !assets/images/explore-logo.webp
+!assets/images/market-movers-logo.png
+!assets/images/market-movers-logo.webp
 !assets/images/heatchecks-logo-email.png
 # Whole-directory exceptions (allowed because assets/images/* excludes contents, not
 # the folder itself - see NOTE above): food-shop item art and pet body sprites, both

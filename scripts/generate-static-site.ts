@@ -154,6 +154,8 @@ const NEW_SITE_IMAGES = [
     'tank-email-correct.jpg',
     'tank-email-incorrect.jpg',
     'heatchecks-logo-email.png',
+    'market-movers-logo.png',
+    'market-movers-logo.webp',
     // Pet body sprite (components/petRender.ts) - subpath preserved on copy.
     'pets/mud_puppy_base_axol.png',
     // Food-shop item art, one per items_catalog food key (FoodShopModal/FeedModal/

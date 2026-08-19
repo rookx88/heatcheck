@@ -64,6 +64,10 @@ function mountMarketMoversToggle() {
     const grid = document.querySelector<HTMLElement>('[data-hc-mm-grid]');
     if (!tabs || !grid) return;
     tabs.hidden = false;
+    // The mockup's default view is Top Gainers; the server renders "all" so the no-JS
+    // page shows everything. Flip to gainers here, matching the pre-rendered
+    // aria-pressed state on the gainers button.
+    grid.dataset.mmView = 'gainers';
     tabs.addEventListener('click', (e) => {
         const btn = (e.target as HTMLElement).closest<HTMLElement>('button[data-mm-view]');
         if (!btn || !btn.dataset.mmView) return;

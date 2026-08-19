@@ -192,9 +192,11 @@ function homepageStyles(): string {
         }
 
         .hc-explore-wrap { position: relative; margin-top: 1.5rem; }
+        /* Mockup places the Explore logo fully above the map rather than overlapping
+           its top-left corner. */
         .hc-explore-logo {
-            position: absolute; top: -4.5%; left: -3%; width: clamp(130px, 26%, 250px); height: auto;
-            z-index: 2; pointer-events: none; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.45));
+            display: block; width: clamp(180px, 42vw, 340px); height: auto; margin: 0 0 0.75rem;
+            pointer-events: none; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.45));
         }
         .hc-world-map-static, #hc-map-root svg { display: block; width: 100%; height: auto; }
 
