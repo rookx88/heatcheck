@@ -54,7 +54,10 @@ function mount() {
                     path: CHAMPIONS_PATH,
                     ariaLabel: 'Champion’s Lakeside Terrace - hearty plates',
                     href: '/champions-terrace/',
-                    label: { text: 'Champion’s Lakeside Terrace', x: 540, y: 1210 },
+                    // Anchored ABOVE the lodge polygon (top edge y=1065): below it the
+                    // text sat in the bottom-right corner under the PetWidget. x stays
+                    // left of the polygon's center so the long label fits the viewBox.
+                    label: { text: 'Champion’s Lakeside Terrace', x: 540, y: 1040 },
                 },
             ]}
         />

@@ -12,8 +12,20 @@
 // the manual flow uses. Never auto-publishes - a human still reviews and publishes via
 // the existing PUT /api/tank/pages/:id route.
 //
-// If the search step genuinely can't find 3 real connections, this creates fewer than 3
-// drafts - it never pads with generic high-prominence props just to hit a quota.
+// Matching runs once PER SPORT GROUP (see SPORT_GROUPS), not once globally across every
+// league's candidates. A single shared call let whichever sport had the most compelling
+// storylines that day (MLB, say) consume the whole match budget and crowd out everything
+// else - not a deliberate bias, just what happens when 6 slots are shared across every
+// league's candidates in one pool. Per-group calls give every sport its own honest shot
+// at finding a real story - and its own right to come back with zero, which stays a
+// valid, correct outcome per-group exactly as it was globally before. This does multiply
+// the Anthropic web-search cost by however many sport groups have live candidates (up to
+// 4x) - tune CURATE_WEB_SEARCH_MAX_USES / CURATE_MAX_MATCHES_PER_RUN down if that's a
+// problem, since both now apply per-group rather than once overall.
+//
+// If the search step genuinely can't find real connections for a given sport, that
+// sport contributes zero drafts this run - it never pads with a generic high-prominence
+// prop just to hit a quota.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import Anthropic from '@anthropic-ai/sdk';
@@ -34,6 +46,19 @@ const DEFAULT_MARKET_WHITELIST: string[] = [];
 const DEFAULT_MIN_PROMINENCE = 0;
 const DEFAULT_PER_GAME_CAP = 3;
 
+// Sport groups the curator gives an independent shot at, per Sammy's request to stop
+// letting one sport's news cycle crowd out the others. Individual soccer leagues are
+// grouped under one "Soccer" pass rather than run separately - the ask was sport-level
+// coverage (Soccer/Basketball/Baseball/Football), not one guaranteed match per league.
+// A league absent here (or with no live candidates that run) simply isn't grouped/run -
+// not an error, just nothing to curate for it right now.
+const SPORT_GROUPS: Record<string, string[]> = {
+    Soccer: ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'],
+    Basketball: ['NBA'],
+    Baseball: ['MLB'],
+    Football: ['NFL'],
+};
+
 interface CuratorMatch {
     candidateId: string;
     angle: string;
@@ -53,6 +78,118 @@ function isCuratorMatchResponse(value: any): value is CuratorMatchResponse {
     return value && Array.isArray(value.matches) && value.matches.every(
         (m: any) => m && typeof m.candidateId === 'string' && typeof m.angle === 'string' && m.angle.trim()
     );
+}
+
+interface CandidateEntry {
+    prop: Prop;
+    game: Game;
+}
+
+interface CurateGroupResult {
+    sportGroup: string;
+    candidatesConsidered: number;
+    matchesFound: number;
+    created: number;
+    results: Array<{ candidateId: string; status: string; slug?: string }>;
+}
+
+// Runs one match-then-generate pass (one Anthropic web-search call, then one generation
+// call per genuine match) against a single sport group's candidate list. Pulled out of
+// the request handler so each sport group gets its own isolated call/budget instead of
+// sharing one pool - see the file header for why that's the point of this refactor.
+async function curateSportGroup(
+    sportGroup: string,
+    candidates: CandidateEntry[],
+    env: Env,
+    sql: ReturnType<typeof getSql>,
+    existingSlugs: Set<string>,
+    config: { maxMatchesPerRun: number; webSearchMaxUses: number; matchMaxTokens: number; generationConfig: GenerationConfig }
+): Promise<CurateGroupResult> {
+    const candidateById = new Map(candidates.map(c => [c.prop.id, c]));
+    const candidatePayload = candidates.map(c => ({
+        id: c.prop.id,
+        player: c.prop.player,
+        market: c.prop.market,
+        line: c.prop.line,
+        league: c.game.league,
+        away: c.game.away,
+        home: c.game.home,
+        kickoff: c.game.kickoff,
+    }));
+
+    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+    const response = await client.messages.create({
+        model: env.MODEL || 'claude-sonnet-5',
+        max_tokens: config.matchMaxTokens,
+        thinking: { type: 'disabled' },
+        system: TANK_CURATOR_MATCH_PROMPT,
+        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: config.webSearchMaxUses }],
+        messages: [{ role: 'user', content: JSON.stringify({ candidates: candidatePayload }) }],
+    });
+
+    // Search tool-use responses can interleave multiple text/tool rounds - the final
+    // answer is the last text block, not necessarily the only one (unlike the single-shot
+    // narrative generation call in tank-generate.ts).
+    const textBlocks = response.content.filter((block): block is Anthropic.TextBlock => block.type === 'text');
+    const rawText = textBlocks.length ? textBlocks[textBlocks.length - 1].text : '';
+
+    let matchResponse: CuratorMatchResponse;
+    try {
+        const parsed = parseModelJson(extractJson(rawText));
+        if (!isCuratorMatchResponse(parsed)) {
+            throw new Error('Response did not match the expected { matches: [...] } shape.');
+        }
+        matchResponse = parsed;
+    } catch (err: any) {
+        console.error(`[POST /api/curate] [${sportGroup}] Failed to parse curator match response:`, err.message, rawText);
+        return { sportGroup, candidatesConsidered: candidates.length, matchesFound: 0, created: 0, results: [] };
+    }
+
+    const matches = matchResponse.matches.slice(0, config.maxMatchesPerRun);
+    const results: Array<{ candidateId: string; status: string; slug?: string }> = [];
+    let created = 0;
+
+    // Sequential, not parallel - matches settle.ts's precedent (predictable cost/rate,
+    // respects Anthropic's rate limits).
+    for (const match of matches) {
+        const candidate = candidateById.get(match.candidateId);
+        if (!candidate) {
+            results.push({ candidateId: match.candidateId, status: 'unknown_candidate_id' });
+            continue;
+        }
+        const { prop, game } = candidate;
+
+        try {
+            const genResult = await generateTankArticle(prop, match.angle, game, [], config.generationConfig);
+
+            let slug: string | null = null;
+            if (genResult.parsed) {
+                const baseSlug = genResult.parsed.seo.slug ? generateSlug(genResult.parsed.seo.slug) : generateSlug(genResult.parsed.seo.title);
+                slug = ensureUniqueSlug(baseSlug, existingSlugs);
+                existingSlugs.add(slug);
+            }
+
+            await sql`
+                INSERT INTO tank_pages (slug, provider, league, angle, game_snapshot, model_output, raw_output, generation_error, status)
+                VALUES (
+                    ${slug}, 'polymarket', ${game.league}, ${match.angle},
+                    ${JSON.stringify({ prop, game })},
+                    ${genResult.parsed ? JSON.stringify(genResult.parsed) : null},
+                    ${genResult.parsed ? null : genResult.rawText},
+                    ${genResult.error},
+                    'draft'
+                )
+            `;
+
+            created++;
+            results.push({ candidateId: match.candidateId, status: genResult.parsed ? 'created' : 'created_with_generation_error', slug: slug ?? undefined });
+        } catch (err: any) {
+            console.error(`[POST /api/curate] [${sportGroup}] Failed to create draft for candidate ${match.candidateId}:`, err);
+            results.push({ candidateId: match.candidateId, status: 'error' });
+        }
+    }
+
+    return { sportGroup, candidatesConsidered: candidates.length, matchesFound: matches.length, created, results };
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -86,10 +223,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const liveGames = await fetchLiveGames(undefined, windowHours);
     const filtered = filterProps(liveGames, { marketWhitelist, minProminence, perGameCap });
 
-    let candidates: { prop: Prop; game: Game }[] = [];
+    let allCandidates: CandidateEntry[] = [];
     for (const game of filtered) {
         for (const prop of game.props) {
-            candidates.push({ prop, game });
+            allCandidates.push({ prop, game });
         }
     }
 
@@ -102,110 +239,43 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           AND game_snapshot->'prop'->>'id' IS NOT NULL
     `;
     const recentMarketIds = new Set(recentRows.map(r => r.market_id as string));
-    candidates = candidates.filter(c => !recentMarketIds.has(c.prop.id));
+    allCandidates = allCandidates.filter(c => !recentMarketIds.has(c.prop.id));
 
-    candidates.sort((a, b) => b.prop.prominence - a.prop.prominence);
-    candidates = candidates.slice(0, maxCandidates);
-
-    if (candidates.length === 0) {
-        return jsonResponse({ candidatesConsidered: 0, matchesFound: 0, created: 0, results: [] });
+    if (allCandidates.length === 0) {
+        return jsonResponse({ candidatesConsidered: 0, matchesFound: 0, created: 0, groups: [] });
     }
 
-    const candidateById = new Map(candidates.map(c => [c.prop.id, c]));
-    const candidatePayload = candidates.map(c => ({
-        id: c.prop.id,
-        player: c.prop.player,
-        market: c.prop.market,
-        line: c.prop.line,
-        league: c.game.league,
-        away: c.game.away,
-        home: c.game.home,
-        kickoff: c.game.kickoff,
-    }));
-
-    // 3. One Anthropic call, web search enabled, to find real trends and match them.
-    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
-    const response = await client.messages.create({
-        model: env.MODEL || 'claude-sonnet-5',
-        max_tokens: matchMaxTokens,
-        thinking: { type: 'disabled' },
-        system: TANK_CURATOR_MATCH_PROMPT,
-        tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: webSearchMaxUses }],
-        messages: [{ role: 'user', content: JSON.stringify({ candidates: candidatePayload }) }],
-    });
-
-    // Search tool-use responses can interleave multiple text/tool rounds - the final
-    // answer is the last text block, not necessarily the only one (unlike the single-shot
-    // narrative generation call in tank-generate.ts).
-    const textBlocks = response.content.filter((block): block is Anthropic.TextBlock => block.type === 'text');
-    const rawText = textBlocks.length ? textBlocks[textBlocks.length - 1].text : '';
-
-    let matchResponse: CuratorMatchResponse;
-    try {
-        const parsed = parseModelJson(extractJson(rawText));
-        if (!isCuratorMatchResponse(parsed)) {
-            throw new Error('Response did not match the expected { matches: [...] } shape.');
-        }
-        matchResponse = parsed;
-    } catch (err: any) {
-        console.error('[POST /api/curate] Failed to parse curator match response:', err.message, rawText);
-        return jsonResponse(
-            { message: 'Curator match call failed to produce a valid response.', candidatesConsidered: candidates.length },
-            { status: 502 }
-        );
-    }
-
-    const matches = matchResponse.matches.slice(0, maxMatchesPerRun);
-
-    if (matches.length === 0) {
-        return jsonResponse({ candidatesConsidered: candidates.length, matchesFound: 0, created: 0, results: [] });
-    }
-
-    // 4. One generation call per genuine match, sequential (matches settle.ts's
-    // precedent - predictable cost/rate, respects Anthropic's rate limits).
     const slugRows = await sql`SELECT slug FROM tank_pages WHERE slug IS NOT NULL`;
     const existingSlugs = new Set(slugRows.map(r => r.slug as string));
 
-    const results: Array<{ candidateId: string; status: string; slug?: string }> = [];
-    let created = 0;
+    const runConfig = { maxMatchesPerRun, webSearchMaxUses, matchMaxTokens, generationConfig };
 
-    for (const match of matches) {
-        const candidate = candidateById.get(match.candidateId);
-        if (!candidate) {
-            results.push({ candidateId: match.candidateId, status: 'unknown_candidate_id' });
+    // 3. One match-then-generate pass per sport group, each scoped to only that group's
+    // candidates (top maxCandidates by prominence within the group) - see file header.
+    const groupResults: CurateGroupResult[] = [];
+    for (const [sportGroup, leagues] of Object.entries(SPORT_GROUPS)) {
+        const groupCandidates = allCandidates
+            .filter(c => leagues.includes(c.game.league))
+            .sort((a, b) => b.prop.prominence - a.prop.prominence)
+            .slice(0, maxCandidates);
+
+        if (groupCandidates.length === 0) {
+            groupResults.push({ sportGroup, candidatesConsidered: 0, matchesFound: 0, created: 0, results: [] });
             continue;
         }
-        const { prop, game } = candidate;
 
-        try {
-            const genResult = await generateTankArticle(prop, match.angle, game, [], generationConfig);
-
-            let slug: string | null = null;
-            if (genResult.parsed) {
-                const baseSlug = genResult.parsed.seo.slug ? generateSlug(genResult.parsed.seo.slug) : generateSlug(genResult.parsed.seo.title);
-                slug = ensureUniqueSlug(baseSlug, existingSlugs);
-                existingSlugs.add(slug);
-            }
-
-            await sql`
-                INSERT INTO tank_pages (slug, provider, league, angle, game_snapshot, model_output, raw_output, generation_error, status)
-                VALUES (
-                    ${slug}, 'polymarket', ${game.league}, ${match.angle},
-                    ${JSON.stringify({ prop, game })},
-                    ${genResult.parsed ? JSON.stringify(genResult.parsed) : null},
-                    ${genResult.parsed ? null : genResult.rawText},
-                    ${genResult.error},
-                    'draft'
-                )
-            `;
-
-            created++;
-            results.push({ candidateId: match.candidateId, status: genResult.parsed ? 'created' : 'created_with_generation_error', slug: slug ?? undefined });
-        } catch (err: any) {
-            console.error(`[POST /api/curate] Failed to create draft for candidate ${match.candidateId}:`, err);
-            results.push({ candidateId: match.candidateId, status: 'error' });
-        }
+        const groupResult = await curateSportGroup(sportGroup, groupCandidates, env, sql, existingSlugs, runConfig);
+        groupResults.push(groupResult);
     }
 
-    return jsonResponse({ candidatesConsidered: candidates.length, matchesFound: matches.length, created, results });
+    const totals = groupResults.reduce(
+        (acc, g) => ({
+            candidatesConsidered: acc.candidatesConsidered + g.candidatesConsidered,
+            matchesFound: acc.matchesFound + g.matchesFound,
+            created: acc.created + g.created,
+        }),
+        { candidatesConsidered: 0, matchesFound: 0, created: 0 }
+    );
+
+    return jsonResponse({ ...totals, groups: groupResults });
 };
