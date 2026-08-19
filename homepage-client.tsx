@@ -142,34 +142,41 @@ function mount() {
         }
         // Logged in: the full Tank-modal experience - two takes + the interactive
         // pick wall (CallContent self-hydrates from the session cookie) - pulled up
-        // toward the section sub-header (the 0.8x cube leaves dead space in its
+        // toward the section sub-header (the shrunken cube leaves dead space in its
         // 420px stage), with the captain widget docked at the showcase's bottom
         // right in the freed room. Logged out: read-the-story link wall + the
         // signup pitch wall as the 4th side (/login/ IS signup - email-only magic
         // link, no separate register).
+        //
+        // 0.56 = the original 0.8 showcase cube shrunk a further 30%. Fishtank's
+        // stage box stays 420px regardless of scale (see the note on its `scale`
+        // prop), so the extra ~50px of dead space freed per side is pulled back in
+        // with margins here rather than left as a gap in the page flow.
         return (
             <MotionConfig reducedMotion="user">
                 {payload.loggedIn ? (
-                    <div style={{ position: 'relative', marginTop: '-2.5rem' }}>
-                        <Fishtank key={entry.slug} payload={entry.deck} slug={entry.slug} scale={0.8} />
+                    <div style={{ position: 'relative', marginTop: '-5.5rem', marginBottom: '-3rem' }}>
+                        <Fishtank key={entry.slug} payload={entry.deck} slug={entry.slug} scale={0.56} />
                         {/* Fixed variant: rides the viewport, so the captain stays in
                             view wherever the page is scrolled. */}
                         <PetWidget variant="fixed" />
                     </div>
                 ) : (
-                    <Fishtank
-                        key={entry.slug}
-                        payload={entry.deck}
-                        slug={entry.slug}
-                        linkCall={{ href: entry.href }}
-                        promoWall={{
-                            label: 'Join HeatChecks',
-                            body: 'Experience a new way to enjoy the sports content you love. Make your picks, grow your Mud Puppy, and compete in a new sports world.',
-                            ctaHref: '/login/',
-                            ctaLabel: 'Sign Up',
-                        }}
-                        scale={0.8}
-                    />
+                    <div style={{ margin: '-3rem 0' }}>
+                        <Fishtank
+                            key={entry.slug}
+                            payload={entry.deck}
+                            slug={entry.slug}
+                            linkCall={{ href: entry.href }}
+                            promoWall={{
+                                label: 'Join HeatChecks',
+                                body: 'Experience a new way to enjoy the sports content you love. Make your picks, grow your Mud Puppy, and compete in a new sports world.',
+                                ctaHref: '/login/',
+                                ctaLabel: 'Sign Up',
+                            }}
+                            scale={0.56}
+                        />
+                    </div>
                 )}
             </MotionConfig>
         );
