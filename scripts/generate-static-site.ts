@@ -1236,7 +1236,7 @@ async function generateAllPages(): Promise<void> {
         let marketMovers = emptyMarketMovers();
         try {
             const [tickerValues, tickerSeries, tickerNews] = await Promise.all([
-                getTickerValues(sqlPg), getTickerSeries(sqlPg), getTickerNews(sqlPg, 3),
+                getTickerValues(sqlPg), getTickerSeries(sqlPg), getTickerNews(sqlPg, 2),
             ]);
             marketMovers = toMarketMovers(tickerValues, tickerSeries, tickerNews);
         } catch (err) {

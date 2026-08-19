@@ -137,7 +137,7 @@ export async function fetchHomepageData(sql: NeonQueryFunction<false, false>): P
             ORDER BY (game_snapshot->'game'->>'kickoff')::timestamptz ASC
             LIMIT 100
         `,
-        Promise.all([getTickerValues(sql), getTickerSeries(sql), getTickerNews(sql, 3)])
+        Promise.all([getTickerValues(sql), getTickerSeries(sql), getTickerNews(sql, 2)])
             .then(([values, series, news]) => toMarketMovers(values, series, news))
             .catch((err) => {
                 console.error('[homepage] Ticker data fetch failed; rendering empty Market Movers:', err);

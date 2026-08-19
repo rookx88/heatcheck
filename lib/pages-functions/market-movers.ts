@@ -179,7 +179,7 @@ export function renderTickerChartSvg(vm: MarketMoverVM): string {
 // logic, no invest/divest UI - a future stock-market page wraps this, never forks it.
 // -----------------------------------------------------------------------------------
 
-export function renderMarketMoverCard(vm: MarketMoverVM): string {
+export function renderMarketMoverCard(vm: MarketMoverVM, role?: 'gainer' | 'loser'): string {
     const newsBlock = vm.news.length === 0
         ? `<p class="hc-mm-news-empty">No tagged storylines yet.</p>`
         : `<ul class="hc-mm-news-list">${vm.news.map((n) => `
@@ -191,7 +191,7 @@ export function renderMarketMoverCard(vm: MarketMoverVM): string {
             </ul>`;
 
     return `
-        <article class="hc-mm-card" data-ticker="${escapeHtml(vm.key)}" data-sign="${vm.sign}">
+        <article class="hc-mm-card" data-ticker="${escapeHtml(vm.key)}" data-sign="${vm.sign}"${role ? ` data-mm-role="${role}"` : ''}>
             <header class="hc-mm-head">
                 <h3 class="hc-mm-title">
                     <span class="hc-mm-index">${escapeHtml(vm.indexLabel)}</span>
@@ -240,17 +240,26 @@ export function renderTickerTape(movers: MarketMoverVM[]): string {
 // -----------------------------------------------------------------------------------
 
 export function renderMarketMoversSection(data: MarketMoversData): string {
-    // Server default view is "all" so the no-JS page shows every ticker; the island
-    // reveals the tab strip and flips the view to "gainers" (the mockup's default) in
-    // the same pass - the gainers button ships aria-pressed to match that JS state.
-    const body = data.movers.length === 0
+    // Only the single top mover and (when one exists) the single top loser render -
+    // one card per tab, so the section stays compact. movers is value-desc sorted:
+    // gainer = first; loser = last, only if it actually moved down. Server default
+    // view is "all" so the no-JS page shows both cards; the island reveals the tab
+    // strip and flips the view to "gainers" (the mockup's default) in the same pass -
+    // the gainers button ships aria-pressed to match that JS state.
+    const gainer = data.movers[0];
+    const last = data.movers[data.movers.length - 1];
+    const loser = last && last !== gainer && last.value < 0 ? last : null;
+    const cards = gainer
+        ? renderMarketMoverCard(gainer, 'gainer') + (loser ? renderMarketMoverCard(loser, 'loser') : '')
+        : '';
+    const body = !gainer
         ? `<p class="hc-mm-empty">No ticker activity yet — storylines get tagged as they publish.</p>`
         : `
         <div class="hc-mm-tabs" data-hc-mm-tabs hidden>
             <button type="button" class="hc-mm-tab is-gainers" data-mm-view="gainers" aria-pressed="true">Top Gainers</button>
             <button type="button" class="hc-mm-tab is-losers" data-mm-view="losers" aria-pressed="false">Top Losers</button>
         </div>
-        <div class="hc-mm-grid" data-hc-mm-grid data-mm-view="all">${data.movers.map(renderMarketMoverCard).join('')}</div>`;
+        <div class="hc-mm-grid" data-hc-mm-grid data-mm-view="all">${cards}</div>`;
 
     return `
         <section id="market-movers" class="hc-section" aria-labelledby="hc-mm-heading">
@@ -305,15 +314,11 @@ export function marketMoversStyles(): string {
         .hc-mm-tab:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 2px; }
 
         .hc-mm-grid { display: flex; flex-direction: column; gap: 1.1rem; }
-        .hc-mm-grid[data-mm-view="gainers"] .hc-mm-card[data-sign="neg"] { display: none; }
-        .hc-mm-grid[data-mm-view="losers"] .hc-mm-card:not([data-sign="neg"]) { display: none; }
-        /* CSS-only empty state when a filter leaves nothing visible (e.g. no losers). */
-        .hc-mm-grid[data-mm-view="losers"]:not(:has(.hc-mm-card[data-sign="neg"]))::after {
+        .hc-mm-grid[data-mm-view="gainers"] .hc-mm-card[data-mm-role="loser"] { display: none; }
+        .hc-mm-grid[data-mm-view="losers"] .hc-mm-card[data-mm-role="gainer"] { display: none; }
+        /* CSS-only empty state when the losers tab has no card to show. */
+        .hc-mm-grid[data-mm-view="losers"]:not(:has(.hc-mm-card[data-mm-role="loser"]))::after {
             content: 'No losers right now.'; display: block; padding: 1rem 0.25rem;
-            font-size: 0.85rem; color: rgba(255,255,255,0.6);
-        }
-        .hc-mm-grid[data-mm-view="gainers"]:not(:has(.hc-mm-card:not([data-sign="neg"])))::after {
-            content: 'No gainers right now.'; display: block; padding: 1rem 0.25rem;
             font-size: 0.85rem; color: rgba(255,255,255,0.6);
         }
 

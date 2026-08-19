@@ -15,7 +15,7 @@
 // into lib/pages-functions/ instead.
 import { renderHead, footer } from '../../../scripts/templates/waitlist-landing-template';
 import { escapeHtml } from '../../../scripts/utils/html-escape';
-import { SPORT_ORDER, type Sport } from '../../../sport-map';
+import { SPORT_ORDER } from '../../../sport-map';
 import { marketMoversStyles, renderMarketMoversSection, renderTickerTape } from '../market-movers';
 import type { HomepageData, SportSlot } from './data';
 
@@ -30,20 +30,7 @@ export interface RenderHomepageOptions {
     data: HomepageData;
 }
 
-// Island colors from components/worldMapRegions.ts, so the row's sport badges and the
-// map speak the same visual language.
-const SPORT_COLORS: Record<Sport, string> = {
-    Baseball: '#ef4444',
-    Basketball: '#f59e0b',
-    Football: '#a855f7',
-    Soccer: '#84cc16',
-};
-
 const EMBER_SVG = `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="currentColor"><path d="M12 2c.6 3.8-1.2 5.6-2.9 7.3C7.4 11 6 12.6 6 15a6 6 0 0 0 12 0c0-1.7-.6-3.1-1.5-4.5-.4 1-.9 1.7-1.8 2.3.3-3.4-1-6.5-2.7-8.8Z"/></svg>`;
-
-function sportBadge(sport: Sport): string {
-    return `<span class="hc-sport-badge"><span class="hc-sport-dot" style="background:${SPORT_COLORS[sport]}"></span>${sport}</span>`;
-}
 
 function renderHeader(user: HomepageUser | null): string {
     const authArea = user
@@ -62,40 +49,32 @@ function renderHeader(user: HomepageUser | null): string {
         </header>`;
 }
 
-// One card per sport. Live sports first (in SPORT_ORDER), placeholder sports pushed to
-// the end - most useful content lands in the first swipe. Placeholders are real,
-// visible cards, never collapsed slots, so the row reads the same every day.
+// One switcher button per sport, below the 3D showcase: pressing a live sport's
+// button flips the artifact to that sport's newest Tank (the island wires the click;
+// the buttons are inert without JS - the showcase itself is JS-only anyway). Live
+// sports first, in SPORT_ORDER; sports with nothing live render disabled. The first
+// live sport ships is-selected/aria-pressed to match the island's initialSport.
 function renderSportRow(slots: SportSlot[]): string {
     const ordered = [...slots.filter(s => s.card), ...slots.filter(s => !s.card)];
-    const cards = ordered.map((slot, i) => {
-        const tabindex = i === 0 ? '0' : '-1'; // roving tabindex; island moves it with arrow keys
+    const firstLive = ordered.find(s => s.card)?.sport;
+    const buttons = ordered.map((slot) => {
         if (!slot.card) {
             return `
-            <li class="hc-sport-card is-empty" data-sport="${slot.sport}" tabindex="${tabindex}" aria-label="${slot.sport}: nothing live today">
-                ${sportBadge(slot.sport)}
-                <p class="hc-empty-note">Nothing live in ${slot.sport.toLowerCase()} today.</p>
-                <p class="hc-empty-sub">New stories drop as games approach.</p>
-            </li>`;
+            <button type="button" class="hc-sport-btn" data-sport="${slot.sport}" disabled aria-label="${slot.sport}: nothing live today">${slot.sport}</button>`;
         }
-        const c = slot.card;
+        const selected = slot.sport === firstLive;
         return `
-            <li class="hc-sport-card" data-sport="${slot.sport}" data-live tabindex="${tabindex}" aria-label="${escapeHtml(`${slot.sport}: ${c.hook}`)}">
-                ${sportBadge(slot.sport)}
-                <h3 class="hc-hook">${escapeHtml(c.hook)}</h3>
-                <p class="hc-beat">${escapeHtml(c.firstBeat)}</p>
-                <span class="hc-prop-tag">${escapeHtml(c.propTag)}</span>
-                <a class="hc-card-cta" href="${escapeHtml(c.href)}">Read the story <span aria-hidden="true">&rarr;</span></a>
-            </li>`;
+            <button type="button" class="hc-sport-btn${selected ? ' is-selected' : ''}" data-sport="${slot.sport}" data-live aria-pressed="${selected}" aria-label="${escapeHtml(`Show the ${slot.sport.toLowerCase()} Tank: ${slot.card.hook}`)}">${slot.sport}</button>`;
     }).join('');
 
     return `
         <section id="tanks" class="hc-section" aria-labelledby="hc-tanks-heading">
             <h2 id="hc-tanks-heading">Today&rsquo;s Tanks</h2>
-            <p class="hc-section-sub">One live story per sport. Read it, then make your call in the Tank.</p>
+            <p class="hc-section-sub">One live story per sport. Pick a sport, spin the Tank, make your call.</p>
             <div id="hc-showcase-root" aria-hidden="true"></div>
-            <ul class="hc-sport-row" data-hc-row>
-                ${cards}
-            </ul>
+            <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
+                ${buttons}
+            </div>
         </section>`;
 }
 
@@ -148,48 +127,19 @@ function homepageStyles(): string {
         #hc-showcase-root { margin: 0 0 1.25rem; }
 
         .hc-sport-row {
-            list-style: none; margin: 0; padding: 0 0 0.75rem;
-            display: flex; gap: 0.75rem;
-            overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 1.25rem;
-            -webkit-overflow-scrolling: touch;
+            margin: 0.5rem 0 0; padding: 0;
+            display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: flex-start;
         }
-        .hc-sport-card {
-            flex: 0 0 78%; max-width: 340px; scroll-snap-align: start;
-            display: flex; flex-direction: column; align-items: flex-start; gap: 0.55rem;
-            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
-            border-radius: 18px; padding: 1.1rem 1.1rem 1.2rem;
+        .hc-sport-btn {
+            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 1rem;
+            color: #0b1526; background: #ffffff; cursor: pointer;
+            border: 2px solid #ffffff; border-radius: 999px; padding: 0.5rem 1.35rem;
         }
-        .hc-sport-card.is-selected, .hc-sport-card[aria-current="true"] {
-            border-color: rgba(47, 230, 217, 0.65); box-shadow: 0 0 18px rgba(47, 230, 217, 0.25);
+        .hc-sport-btn.is-selected, .hc-sport-btn[aria-pressed="true"] {
+            border-color: var(--hc-teal); box-shadow: 0 0 14px rgba(47, 230, 217, 0.45);
         }
-        .hc-sport-card:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 2px; }
-        .hc-sport-badge {
-            display: inline-flex; align-items: center; gap: 0.4rem;
-            font-weight: 800; font-size: 0.72rem; letter-spacing: 0.08em; text-transform: uppercase;
-            color: rgba(255,255,255,0.85);
-        }
-        .hc-sport-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px currentColor; }
-        .hc-hook { font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 1.05rem; line-height: 1.25; margin: 0; }
-        .hc-beat { font-size: 0.85rem; line-height: 1.45; color: rgba(255,255,255,0.82); margin: 0; }
-        .hc-prop-tag {
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.72rem;
-            letter-spacing: 0.05em; text-transform: uppercase;
-            color: var(--hc-teal); background: rgba(47, 230, 217, 0.1);
-            border: 1px solid rgba(47, 230, 217, 0.45); border-radius: 999px; padding: 0.25rem 0.7rem;
-        }
-        .hc-card-cta {
-            margin-top: auto; font-weight: 800; font-size: 0.85rem;
-            color: var(--hc-gold); text-decoration: none;
-        }
-        .hc-card-cta:hover { text-decoration: underline; }
-        .hc-sport-card.is-empty { justify-content: center; border-style: dashed; background: rgba(255,255,255,0.03); }
-        .hc-empty-note { font-weight: 800; font-size: 0.9rem; margin: 0; color: rgba(255,255,255,0.75); }
-        .hc-empty-sub { font-size: 0.78rem; margin: 0; color: rgba(255,255,255,0.5); }
-
-        @media (min-width: 760px) {
-            .hc-sport-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); overflow: visible; }
-            .hc-sport-card { flex: initial; max-width: none; }
-        }
+        .hc-sport-btn:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 2px; }
+        .hc-sport-btn[disabled] { opacity: 0.35; cursor: default; }
 
         .hc-explore-wrap { position: relative; margin-top: 1.5rem; }
         /* Mockup places the Explore logo fully above the map rather than overlapping

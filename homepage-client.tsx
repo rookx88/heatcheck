@@ -100,53 +100,34 @@ function mount() {
     const getSelected = () => selectedSport;
 
     const row = document.querySelector<HTMLElement>('[data-hc-row]');
-    const cards = row ? Array.from(row.querySelectorAll<HTMLElement>('.hc-sport-card')) : [];
+    const sportButtons = row ? Array.from(row.querySelectorAll<HTMLElement>('.hc-sport-btn')) : [];
 
-    function updateRowSelection(scrollRow: boolean) {
-        for (const card of cards) {
-            const isSelected = card.dataset.sport === selectedSport;
-            card.classList.toggle('is-selected', isSelected);
-            if (isSelected) {
-                card.setAttribute('aria-current', 'true');
-                if (scrollRow) card.scrollIntoView({ inline: 'start', block: 'nearest', behavior: scrollBehavior });
-            } else {
-                card.removeAttribute('aria-current');
+    function updateRowSelection() {
+        for (const btn of sportButtons) {
+            const isSelected = btn.dataset.sport === selectedSport;
+            btn.classList.toggle('is-selected', isSelected);
+            if (btn.hasAttribute('aria-pressed') || isSelected) {
+                btn.setAttribute('aria-pressed', String(isSelected));
             }
         }
     }
 
-    function selectSport(sport: Sport, opts: { scrollRow?: boolean } = {}) {
+    function selectSport(sport: Sport, _opts: { scrollRow?: boolean } = {}) {
         if (!entriesBySport.has(sport)) return;
         selectedSport = sport;
         listeners.forEach(fn => fn());
-        updateRowSelection(Boolean(opts.scrollRow));
+        updateRowSelection();
     }
 
-    // ---- row enhancement (vanilla - the server cards ARE the UI) ----
-    if (row && cards.length > 0) {
+    // ---- sport buttons (vanilla): pressing a live sport's button flips the 3D
+    // showcase to that sport's newest Tank. Native <button>s, so no roving-tabindex
+    // machinery - disabled placeholders aren't clickable or focusable by default.
+    if (row && sportButtons.length > 0) {
         row.addEventListener('click', (e) => {
-            const target = e.target as HTMLElement;
-            if (target.closest('a')) return; // CTA keeps its normal navigation
-            const card = target.closest<HTMLElement>('.hc-sport-card');
-            if (card?.dataset.sport) selectSport(card.dataset.sport as Sport);
+            const btn = (e.target as HTMLElement).closest<HTMLElement>('.hc-sport-btn[data-live]');
+            if (btn?.dataset.sport) selectSport(btn.dataset.sport as Sport);
         });
-
-        // Roving tabindex: the server renders the first card tabindex="0", rest -1;
-        // arrow keys move both focus and selection.
-        row.addEventListener('keydown', (e) => {
-            if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-            const current = cards.indexOf(document.activeElement as HTMLElement);
-            if (current === -1) return;
-            e.preventDefault();
-            const delta = e.key === 'ArrowRight' ? 1 : -1;
-            const next = (current + delta + cards.length) % cards.length;
-            cards[current].setAttribute('tabindex', '-1');
-            cards[next].setAttribute('tabindex', '0');
-            cards[next].focus();
-            if (cards[next].dataset.sport) selectSport(cards[next].dataset.sport as Sport);
-        });
-
-        updateRowSelection(false);
+        updateRowSelection();
     }
 
     // ---- showcase root: the selected sport's tank as the 3D artifact ----
