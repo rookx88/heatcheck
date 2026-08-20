@@ -332,6 +332,24 @@
             .hc-sport-btn { width: 56px; height: 56px; font-size: 1.55rem; }
         }
 
+        /* The tanks section is the orange-bordered game panel with a gold title bar
+           at EVERY viewport (desktop additionally stretches it to match the Market
+           Movers column and pins the footer - see the grid block below). */
+        #tanks {
+            border: 3px solid #f89b4e;
+            border-radius: 6px;
+            background: #05070f;
+            padding: 0 1.1rem 1.1rem;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+        #tanks h2 {
+            background: var(--hc-gold); color: #1a1200;
+            margin: 0 -1.1rem 0.75rem; padding: 0.65rem 1.1rem;
+        }
+        .hc-section-sub--tanks { margin-top: 0; }
+
         /* Panel footer: picks-remaining header (island-filled; hidden while empty)
            over the crawlable Tank HQ pointer. */
         .hc-tanks-footer { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid rgba(47, 230, 217, 0.2); }
@@ -420,24 +438,10 @@
             #explore { grid-area: explore; }
             .hc-footer { grid-area: footer; }
 
-            /* Tanks: orange-bordered game panel with a white title bar, stretched to
-               the movers panel's height with the footer pinned at the bottom. */
-            #tanks {
-                margin-top: 1.5rem;
-                border: 3px solid #f89b4e;
-                border-radius: 6px;
-                background: #05070f;
-                padding: 0 1.1rem 1.1rem;
-                overflow: hidden;
-                display: flex;
-                flex-direction: column;
-            }
+            /* Tanks panel (base-styled above): stretched to the movers panel's
+               height with the footer pinned at the bottom. */
+            #tanks { margin-top: 1.5rem; }
             #tanks .hc-tanks-footer { margin-top: auto; padding-top: 1rem; }
-            #tanks h2 {
-                background: var(--hc-gold); color: #1a1200;
-                margin: 0 -1.1rem 0.75rem; padding: 0.65rem 1.1rem;
-            }
-            .hc-section-sub--tanks { margin-top: 0; }
 
             /* Explore: globe seated left on the page's own navy background (one
                consistent color story all the way down). Logged out, the register CTA
