@@ -13910,17 +13910,13 @@ const TankCurator: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
-  const [draftPages, setDraftPages] = useState<TankPageRow[]>([]);
-  const [isLoadingPages, setIsLoadingPages] = useState(false);
-  const [pagesError, setPagesError] = useState<string | null>(null);
-  // Distribution choice per draft, made at publish time - locked in once published (see
-  // backend.ts's PUT /api/tank/pages/:id, which rejects a visibility change afterward).
-  const [publishVisibility, setPublishVisibility] = useState<Record<string, 'app' | 'newsletter_only'>>({});
+  // Drafts live in their own top-level Drafts tab (TankDrafts) - this tab only tracks
+  // how many were just generated, to point the curator there.
+  const [generatedNote, setGeneratedNote] = useState<string | null>(null);
 
   const [activePages, setActivePages] = useState<TankPageRow[]>([]);
   const [isLoadingActive, setIsLoadingActive] = useState(false);
   const [activeError, setActiveError] = useState<string | null>(null);
-  const [tankView, setTankView] = useState<'drafts' | 'active'>('drafts');
 
   const fetchProps = useCallback(async () => {
     setIsLoadingProps(true); setPropsError(null);
@@ -13938,18 +13934,6 @@ const TankCurator: React.FC = () => {
     }
   }, [marketWhitelist, minProminence, perGameCap, selectedLeagues, fromDate, toDate]);
 
-  const fetchDraftPages = useCallback(async () => {
-    setIsLoadingPages(true); setPagesError(null);
-    try {
-      const result = await apiClient.listTankPages('draft');
-      setDraftPages(result.pages);
-    } catch (e: any) {
-      setPagesError(e.message || 'Failed to load draft pages.');
-    } finally {
-      setIsLoadingPages(false);
-    }
-  }, []);
-
   const fetchActivePages = useCallback(async () => {
     setIsLoadingActive(true); setActiveError(null);
     try {
@@ -13963,7 +13947,6 @@ const TankCurator: React.FC = () => {
   }, []);
 
   useEffect(() => { fetchProps(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchDraftPages(); }, [fetchDraftPages]);
   useEffect(() => { fetchActivePages(); }, [fetchActivePages]);
 
   const toggleMarket = (market: string) => {
@@ -14025,7 +14008,7 @@ const TankCurator: React.FC = () => {
       await apiClient.generateTankArticles(selections);
       setSelectedPropIds(new Set());
       setAngles({});
-      await fetchDraftPages();
+      setGeneratedNote(`${selections.length} draft(s) generated — review them in the Drafts tab.`);
     } catch (e: any) {
       setGenerateError(e.message || 'Generation failed.');
     } finally {
@@ -14033,34 +14016,12 @@ const TankCurator: React.FC = () => {
     }
   };
 
-  const handlePublish = async (id: string) => {
-    try {
-      const visibility = publishVisibility[id] || 'app';
-      await apiClient.updateTankPage(id, { status: 'published', visibility });
-      await fetchDraftPages();
-      await fetchActivePages();
-    } catch (e: any) {
-      setPagesError(e.message || 'Failed to publish.');
-    }
-  };
-
   const handleRevertToDraft = async (id: string) => {
     try {
       await apiClient.updateTankPage(id, { status: 'draft' });
       await fetchActivePages();
-      await fetchDraftPages();
     } catch (e: any) {
       setActiveError(e.message || 'Failed to revert to draft.');
-    }
-  };
-
-  const handleDiscard = async (id: string) => {
-    if (!window.confirm('Discard this draft? This cannot be undone.')) return;
-    try {
-      await apiClient.deleteTankPage(id);
-      await fetchDraftPages();
-    } catch (e: any) {
-      setPagesError(e.message || 'Failed to discard.');
     }
   };
 
@@ -14227,67 +14188,18 @@ const TankCurator: React.FC = () => {
         </button>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '2rem', marginBottom: '1rem' }}>
-        <h3 style={{ margin: 0 }}>{tankView === 'drafts' ? 'Draft Pages' : 'Active Pages'}</h3>
-        <div style={{ display: 'flex', gap: '0.4rem' }}>
-          <button
-            className={tankView === 'drafts' ? 'action-button' : 'cancel'}
-            onClick={() => setTankView('drafts')}
-          >
-            Drafts ({draftPages.length})
-          </button>
-          <button
-            className={tankView === 'active' ? 'action-button' : 'cancel'}
-            onClick={() => setTankView('active')}
-          >
-            Active ({activePages.length})
-          </button>
+      {generatedNote && (
+        <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#e8f5e9', color: '#1b5e20', borderRadius: '4px' }}>
+          {generatedNote}
         </div>
-      </div>
-
-      {tankView === 'drafts' && (
-        <>
-          {pagesError && (
-            <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ffebee', color: '#c62828', borderRadius: '4px' }}>
-              {pagesError}
-            </div>
-          )}
-          {isLoadingPages && <p>Loading drafts...</p>}
-          {!isLoadingPages && draftPages.length === 0 && <p style={{ color: '#666' }}>No drafts yet.</p>}
-          {draftPages.map(page => (
-            <div className="card" key={page.id} style={{ marginBottom: '1rem' }}>
-              {page.model_output ? (
-                <>
-                  <h4 style={{ marginTop: 0 }}>{page.model_output.seo.title}</h4>
-                  <p style={{ color: '#666' }}>{page.model_output.seo.meta_description}</p>
-                  <p><em>Hook:</em> {page.model_output.hook}</p>
-                  <p>{page.model_output.body}</p>
-                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                    <select
-                      value={publishVisibility[page.id] || 'app'}
-                      onChange={(e) => setPublishVisibility(prev => ({ ...prev, [page.id]: e.target.value as 'app' | 'newsletter_only' }))}
-                      style={{ padding: '0.4rem', fontSize: '0.85rem' }}
-                    >
-                      <option value="app">App</option>
-                      <option value="newsletter_only">Newsletter Only</option>
-                    </select>
-                    <button className="action-button" onClick={() => handlePublish(page.id)}>Publish</button>
-                    <button className="cancel" onClick={() => handleDiscard(page.id)}>Discard</button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <p style={{ color: '#c62828' }}>Generation failed: {page.generation_error}</p>
-                  {page.raw_output && <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.8rem', background: '#f5f5f5', padding: '0.5rem' }}>{page.raw_output}</pre>}
-                  <button className="cancel" onClick={() => handleDiscard(page.id)}>Discard</button>
-                </>
-              )}
-            </div>
-          ))}
-        </>
       )}
 
-      {tankView === 'active' && (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginTop: '2rem', marginBottom: '1rem' }}>
+        <h3 style={{ margin: 0 }}>Active Pages ({activePages.length})</h3>
+        <span style={{ color: '#666', fontSize: '0.85rem' }}>Drafts have their own tab now.</span>
+      </div>
+
+      {(
         <>
           {activeError && (
             <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ffebee', color: '#c62828', borderRadius: '4px' }}>
@@ -14316,6 +14228,132 @@ const TankCurator: React.FC = () => {
           })}
         </>
       )}
+    </div>
+  );
+};
+
+// ===================================================================================
+// TANK DRAFTS
+// ===================================================================================
+// Dedicated top-level tab for reviewing generated drafts (both the manual TankCurator
+// flow's and the automated /api/curate cron's) - previously buried under the scanner
+// UI inside The Tank tab, which stopped scaling once the daily cron meant a standing
+// queue of a dozen-plus drafts. Publish/discard semantics are identical to the old
+// inline list (backend.ts PUT /api/tank/pages/:id, visibility locked at publish).
+// Sorted by settlement date, soonest first - drafts about games that settle soonest
+// are the ones losing value by sitting unreviewed.
+
+const draftSettleDate = (page: TankPageRow): Date | null => {
+  const snapshot: any = page.game_snapshot;
+  const raw = snapshot?.prop?.settleDate ?? snapshot?.game?.settleDate ?? snapshot?.game?.kickoff;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+const TankDrafts: React.FC = () => {
+  const [draftPages, setDraftPages] = useState<TankPageRow[]>([]);
+  const [isLoadingPages, setIsLoadingPages] = useState(false);
+  const [pagesError, setPagesError] = useState<string | null>(null);
+  // Distribution choice per draft, made at publish time - locked in once published (see
+  // backend.ts's PUT /api/tank/pages/:id, which rejects a visibility change afterward).
+  const [publishVisibility, setPublishVisibility] = useState<Record<string, 'app' | 'newsletter_only'>>({});
+
+  const fetchDraftPages = useCallback(async () => {
+    setIsLoadingPages(true); setPagesError(null);
+    try {
+      const result = await apiClient.listTankPages('draft');
+      setDraftPages(result.pages);
+    } catch (e: any) {
+      setPagesError(e.message || 'Failed to load draft pages.');
+    } finally {
+      setIsLoadingPages(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchDraftPages(); }, [fetchDraftPages]);
+
+  const handlePublish = async (id: string) => {
+    try {
+      const visibility = publishVisibility[id] || 'app';
+      await apiClient.updateTankPage(id, { status: 'published', visibility });
+      await fetchDraftPages();
+    } catch (e: any) {
+      setPagesError(e.message || 'Failed to publish.');
+    }
+  };
+
+  const handleDiscard = async (id: string) => {
+    if (!window.confirm('Discard this draft? This cannot be undone.')) return;
+    try {
+      await apiClient.deleteTankPage(id);
+      await fetchDraftPages();
+    } catch (e: any) {
+      setPagesError(e.message || 'Failed to discard.');
+    }
+  };
+
+  // Soonest settlement first; drafts with no derivable date sink to the bottom.
+  const sortedDrafts = [...draftPages].sort((a, b) => {
+    const da = draftSettleDate(a)?.getTime() ?? Infinity;
+    const db = draftSettleDate(b)?.getTime() ?? Infinity;
+    return da - db;
+  });
+
+  return (
+    <div style={{ padding: '1.5rem', maxWidth: '1100px', margin: '0 auto' }}>
+      <h2 style={{ marginTop: 0 }}>Drafts</h2>
+      <p style={{ color: '#666' }}>
+        Generated Tank pages awaiting review — from the curator tool and the daily automated curate run.
+        Sorted by settlement date (soonest first). Publishing locks distribution and triggers the static
+        rebuild, deploy hook, and Exchange ticker tagging.
+      </p>
+      {pagesError && (
+        <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ffebee', color: '#c62828', borderRadius: '4px' }}>
+          {pagesError}
+        </div>
+      )}
+      {isLoadingPages && <p>Loading drafts...</p>}
+      {!isLoadingPages && draftPages.length === 0 && <p style={{ color: '#666' }}>No drafts waiting for review.</p>}
+      {sortedDrafts.map(page => {
+        const settle = draftSettleDate(page);
+        const settleLabel = settle
+          ? settle.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+          : 'unknown';
+        return (
+          <div className="card" key={page.id} style={{ marginBottom: '1rem' }}>
+            <p style={{ margin: '0 0 0.5rem', fontSize: '0.8rem', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              {page.league} · Settles: {settleLabel}
+            </p>
+            {page.model_output ? (
+              <>
+                <h4 style={{ marginTop: 0 }}>{page.model_output.seo.title}</h4>
+                <p style={{ color: '#666' }}>{page.model_output.seo.meta_description}</p>
+                <p><em>Hook:</em> {page.model_output.hook}</p>
+                <p>{page.model_output.body}</p>
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                  <select
+                    value={publishVisibility[page.id] || 'app'}
+                    onChange={(e) => setPublishVisibility(prev => ({ ...prev, [page.id]: e.target.value as 'app' | 'newsletter_only' }))}
+                    style={{ padding: '0.4rem', fontSize: '0.85rem' }}
+                  >
+                    <option value="app">App</option>
+                    <option value="newsletter_only">Newsletter Only</option>
+                  </select>
+                  <button className="action-button" onClick={() => handlePublish(page.id)}>Publish</button>
+                  <button className="cancel" onClick={() => handleDiscard(page.id)}>Discard</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p style={{ color: '#c62828' }}>Generation failed: {page.generation_error}</p>
+                {page.raw_output && <pre style={{ whiteSpace: 'pre-wrap', fontSize: '0.8rem', background: '#f5f5f5', padding: '0.5rem' }}>{page.raw_output}</pre>}
+                <button className="cancel" onClick={() => handleDiscard(page.id)}>Discard</button>
+              </>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 };
@@ -14513,7 +14551,7 @@ const NewsletterCurator: React.FC = () => {
 // ===================================================================================
 
 const App: React.FC = () => {
-  type Tab = 'scanner' | 'feed' | 'tank' | 'newsletter' | 'preview';
+  type Tab = 'scanner' | 'feed' | 'tank' | 'drafts' | 'newsletter' | 'preview';
   const [activeTab, setActiveTab] = useState<Tab>('scanner');
   const [editingPost, setEditingPost] = useState<HeatcheckPost | null>(null);
   const [refreshFeed, setRefreshFeed] = useState(false);
@@ -14535,6 +14573,7 @@ const App: React.FC = () => {
               <button className={`tab-button ${activeTab === 'scanner' ? 'active' : ''}`} onClick={() => setActiveTab('scanner')}>Scanner Console</button>
               <button className={`tab-button ${activeTab === 'feed' ? 'active' : ''}`} onClick={() => setActiveTab('feed')}>Content Feed</button>
               <button className={`tab-button ${activeTab === 'tank' ? 'active' : ''}`} onClick={() => setActiveTab('tank')}>The Tank</button>
+              <button className={`tab-button ${activeTab === 'drafts' ? 'active' : ''}`} onClick={() => setActiveTab('drafts')}>Drafts</button>
               <button className={`tab-button ${activeTab === 'newsletter' ? 'active' : ''}`} onClick={() => setActiveTab('newsletter')}>Newsletter</button>
               <button className={`tab-button ${activeTab === 'preview' ? 'active' : ''}`} onClick={() => setActiveTab('preview')}>Website Preview</button>
           </nav>
@@ -14545,6 +14584,7 @@ const App: React.FC = () => {
         {activeTab === 'scanner' && <ScannerConsole setEditingPost={setEditingPost} />}
         {activeTab === 'feed' && <HeatchecksFeed refreshKey={refreshFeed} setEditingPost={setEditingPost} />}
         {activeTab === 'tank' && <TankCurator />}
+        {activeTab === 'drafts' && <TankDrafts />}
         {activeTab === 'newsletter' && <NewsletterCurator />}
         {activeTab === 'preview' && <PublicHomePage onExit={() => setActiveTab('scanner')} />}
       </main>
