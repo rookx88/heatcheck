@@ -156,6 +156,8 @@ const NEW_SITE_IMAGES = [
     'heatchecks-logo-email.png',
     'market-movers-logo.png',
     'market-movers-logo.webp',
+    // Logged-out homepage register CTA card (renderExplore in homepage/render.ts).
+    'register-here.webp',
     // Pet body sprite (components/petRender.ts) - subpath preserved on copy.
     'pets/mud_puppy_base_axol.png',
     // Food-shop item art, one per items_catalog food key (FoodShopModal/FeedModal/

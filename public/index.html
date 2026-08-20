@@ -444,10 +444,11 @@
                card sits to the world's right; logged in, the open right half is
                where the fixed pet widget visually lives. */
             #explore { margin-top: 2rem; }
-            #explore .hc-explore-wrap { margin-top: 0.5rem; display: flex; align-items: center; gap: 2rem; }
-            /* In the flex row the logo goes absolute so it keeps overlapping the
-               world's top-left corner (still layered UNDER the map, z 1 vs 2). */
-            .hc-explore-logo { position: absolute; top: 0; left: 0; margin: 0; }
+            /* The logo stays IN FLOW above (so the world sits right under it, same
+               slight overlap as mobile via the logo's negative bottom margin); only
+               the row beneath it goes flex: map left, register CTA right. */
+            #explore .hc-explore-wrap { margin-top: 0.5rem; }
+            .hc-explore-row { display: flex; align-items: center; gap: 2rem; }
             #hc-map-root { flex: 0 1 620px; max-width: 620px; min-width: 0; }
             .hc-register-cta { flex: 0 1 360px; margin: 0; align-self: center; }
             .hc-footer { padding-top: 1.25rem; }
@@ -749,15 +750,17 @@
             <h2 id="hc-explore-heading" class="hc-visually-hidden">Explore the world by sport</h2>
             <div class="hc-explore-wrap">
                 <img class="hc-explore-logo" src="/assets/images/explore-logo.webp" alt="" aria-hidden="true" loading="lazy" width="720" height="463">
-                <div id="hc-map-root">
-                    <picture>
-                        <source srcset="/assets/images/world-map.webp" type="image/webp">
-                        <img class="hc-world-map-static" src="/assets/images/world-map.png" alt="Illustrated map of the Heatchecks sports world, with themed islands for soccer, football, basketball, baseball, hockey, and golf surrounding a central aquarium" width="1120" height="1113" loading="lazy">
-                    </picture>
-                </div>
+                <div class="hc-explore-row">
+                    <div id="hc-map-root">
+                        <picture>
+                            <source srcset="/assets/images/world-map.webp" type="image/webp">
+                            <img class="hc-world-map-static" src="/assets/images/world-map.png" alt="Illustrated map of the Heatchecks sports world, with themed islands for soccer, football, basketball, baseball, hockey, and golf surrounding a central aquarium" width="1120" height="1113" loading="lazy">
+                        </picture>
+                    </div>
                 <button type="button" class="hc-register-cta" data-hc-register aria-haspopup="dialog" aria-label="Register to join HeatChecks">
                     <img src="/assets/images/register-here.webp" alt="Register here to join the fun" width="800" height="800" loading="lazy">
                 </button>
+                </div>
             </div>
         </section>
         
