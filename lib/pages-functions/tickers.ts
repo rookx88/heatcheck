@@ -417,8 +417,11 @@ export async function sweepUntaggedTanks(
               AND t.game_snapshot->'prop'->>'id' IS NOT NULL
               AND t.published_at > NOW() - (INTERVAL '1 day' * ${opts.maxAgeDays})
               AND NOT EXISTS (SELECT 1 FROM ticker_tags tt WHERE tt.tank_id = t.id)
-            ORDER BY t.published_at
+            ORDER BY t.published_at DESC
         `,
+        // Newest first: failed sides (CLOB-dead old markets) still consume the maxSides
+        // budget - their Gamma/CLOB calls are spent either way - so fresh publishes must
+        // come first or a backlog of dead markets starves them until it ages out.
     ]);
     report.tanksConsidered = rows.length;
 
