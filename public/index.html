@@ -363,7 +363,9 @@
         .hc-tanks-hq-link a { color: var(--hc-teal); font-weight: 800; text-decoration: none; }
         .hc-tanks-hq-link a:hover { text-decoration: underline; }
 
-        .hc-explore-wrap { position: relative; margin-top: 1.5rem; }
+        /* Tighter seam under Market Movers (mobile especially). */
+        #explore.hc-section { margin-top: 1rem; }
+        .hc-explore-wrap { position: relative; margin-top: 0.75rem; }
         /* The world is pulled up so the EXPLORE logo slightly overlaps its top-left
            corner - but the map (and its hover region labels) LAYER OVER the logo:
            the map stacks above (z 2 vs 1), while the layout overlap comes from the
@@ -383,7 +385,7 @@
         .hc-register-cta {
             display: block;
             background: none; border: none; padding: 0; cursor: pointer;
-            margin: 1.25rem auto 0;
+            margin: 2rem auto 0; /* clear breathing room under the world on mobile */
             width: min(420px, 92%);
             -webkit-tap-highlight-color: transparent;
             transition: transform 0.15s ease, filter 0.2s ease;
@@ -449,12 +451,13 @@
                where the fixed pet widget visually lives. */
             #explore { margin-top: 2rem; }
             /* The logo stays IN FLOW above (so the world sits right under it, same
-               slight overlap as mobile via the logo's negative bottom margin); only
-               the row beneath it goes flex: map left, register CTA right. */
+               slight overlap as mobile via the logo's negative bottom margin). The
+               register CTA docks absolute at the wrap's TOP-RIGHT: level with the
+               EXPLORE logo, its right edge on the container edge - the same edge the
+               Market Movers panel above ends on. */
             #explore .hc-explore-wrap { margin-top: 0.5rem; }
-            .hc-explore-row { display: flex; align-items: center; gap: 2rem; }
-            #hc-map-root { flex: 0 1 620px; max-width: 620px; min-width: 0; }
-            .hc-register-cta { flex: 0 1 360px; margin: 0; align-self: center; }
+            #hc-map-root { max-width: 620px; }
+            .hc-register-cta { position: absolute; top: 0; right: 0; width: 340px; margin: 0; }
             .hc-footer { padding-top: 1.25rem; }
         }
     
