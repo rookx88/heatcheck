@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Egg3D, { colorwayFromCatalog } from './Egg3D';
 import { PET_IMAGE_SRC, petImageFilter, petDisplayName } from './petRender';
+import { PetNameForm, announcePetUpdated } from './PetNameForm';
 import { trackEvent } from '../tank-analytics-client';
 import {
     getOwnedEggs,
@@ -123,6 +124,7 @@ export const IncubatorModal: React.FC<IncubatorModalProps> = ({ onClose }) => {
             const result = await hatchEgg(egg.id);
             trackEvent('egg_hatched', { metadata: { catalogKey: egg.catalogKey, created: result.created } });
             setHatchOutcome({ egg, pet: result.pet, created: result.created });
+            announcePetUpdated(); // any mounted PetWidget/HUD picks up the new captain
             // Let the crack-open burst play before the reveal card covers it.
             window.setTimeout(() => setRevealShown(true), 1600);
             const [eggs, p] = await Promise.all([getOwnedEggs(), getPet()]);
@@ -185,21 +187,32 @@ export const IncubatorModal: React.FC<IncubatorModalProps> = ({ onClose }) => {
                         height={160}
                     />
                     {hatchOutcome.created ? (
-                        <>
-                            <div className="hatchery-reveal-title">It hatched!</div>
-                            <div className="hatchery-caption">
-                                {petDisplayName(hatchOutcome.pet.name, hatchOutcome.pet.color)} is now your captain.
-                            </div>
-                        </>
+                        hatchOutcome.pet.name ? (
+                            <>
+                                <div className="hatchery-reveal-title">Welcome, {hatchOutcome.pet.name}!</div>
+                                <div className="hatchery-caption">Your new captain is in the tank.</div>
+                                <button className="hatchery-buy" onClick={finishReveal}>Done</button>
+                            </>
+                        ) : (
+                            <>
+                                <div className="hatchery-reveal-title">It hatched!</div>
+                                <div className="hatchery-caption">
+                                    Your {hatchOutcome.pet.color} mud puppy needs a name to make it official.
+                                </div>
+                                <PetNameForm
+                                    onNamed={(pet) => setHatchOutcome((o) => (o ? { ...o, pet } : o))}
+                                />
+                            </>
+                        )
                     ) : (
                         <>
                             <div className="hatchery-reveal-title">Your tank already has a captain</div>
                             <div className="hatchery-caption">
                                 {petDisplayName(hatchOutcome.pet.name, hatchOutcome.pet.color)} is holding the spot.
                             </div>
+                            <button className="hatchery-buy" onClick={finishReveal}>Done</button>
                         </>
                     )}
-                    <button className="hatchery-buy" onClick={finishReveal}>Done</button>
                 </div>
             );
         }

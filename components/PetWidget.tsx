@@ -10,6 +10,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { PET_IMAGE_SRC, petImageFilter, petDisplayName } from './petRender';
 import { FeedModal } from './FeedModal';
 import { PetInventoryModal } from './PetInventoryModal';
+import { PetNameForm, PET_UPDATED_EVENT } from './PetNameForm';
 import { getPet, type PetInfo } from '../egg-shop-client';
 // The Feed/Inventory modals render the shared .tank-modal-* chrome. Imported HERE,
 // not left to the host bundle, so every page that mounts the widget (including the
@@ -17,7 +18,7 @@ import { getPet, type PetInfo } from '../egg-shop-client';
 import './TankScreen.css';
 import './PetWidget.css';
 
-type OpenModal = null | 'feed' | 'inventory';
+type OpenModal = null | 'feed' | 'inventory' | 'name';
 
 interface PetWidgetProps {
     // 'card': docked to the bottom-right corner of the aspect-fit map card (the
@@ -51,6 +52,14 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
         };
         window.addEventListener('pageshow', onPageShow);
         return () => window.removeEventListener('pageshow', onPageShow);
+    }, [hydrate]);
+
+    // Same-page pet changes (a hatch in the incubator modal, a naming) announce
+    // themselves - re-hydrate so the widget appears/renames without a reload.
+    useEffect(() => {
+        const onPetUpdated = () => hydrate();
+        window.addEventListener(PET_UPDATED_EVENT, onPetUpdated);
+        return () => window.removeEventListener(PET_UPDATED_EVENT, onPetUpdated);
     }, [hydrate]);
 
     useEffect(() => {
@@ -89,7 +98,19 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                     <img src={PET_IMAGE_SRC} style={{ filter }} alt="" width={110} height={110} />
                 </button>
             </div>
-            <div className="pet-widget__name">{name}</div>
+            {pet.name ? (
+                <div className="pet-widget__name">{name}</div>
+            ) : (
+                // Unnamed (the hatch reveal was dismissed early): the label doubles as
+                // the way back into naming.
+                <button
+                    type="button"
+                    className="pet-widget__name pet-widget__name--prompt"
+                    onClick={() => setOpenModal('name')}
+                >
+                    Name your pet ✏️
+                </button>
+            )}
 
             {openModal === 'feed' && (
                 <FeedModal
@@ -98,6 +119,34 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                 />
             )}
             {openModal === 'inventory' && <PetInventoryModal onClose={() => setOpenModal(null)} />}
+            {openModal === 'name' && (
+                <div className="tank-modal-overlay">
+                    <div
+                        className="tank-modal-panel"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-label="Name your pet"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <div className="tank-modal-header">
+                            <span>Name Your Pet</span>
+                            <button className="tank-modal-close" onClick={() => setOpenModal(null)} aria-label="Close">
+                                &times;
+                            </button>
+                        </div>
+                        <div className="tank-modal-body">
+                            <img
+                                src={PET_IMAGE_SRC}
+                                style={{ filter, width: 120, height: 120, objectFit: 'contain' }}
+                                alt=""
+                            />
+                            <PetNameForm
+                                onNamed={(p) => { setPet(p); setOpenModal(null); }}
+                            />
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

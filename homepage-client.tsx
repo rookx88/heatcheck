@@ -11,7 +11,9 @@ import { createRoot } from 'react-dom/client';
 import { MotionConfig } from 'motion/react';
 import { Fishtank, formatTimeUntilReset, type DeckPayload } from './components/Fishtank';
 import { PetWidget } from './components/PetWidget';
-import { getTodayStatus } from './tank-pick-client';
+import { getTodayStatus, logout } from './tank-pick-client';
+// The header chip's mini nav reuses the map pages' MapHud menu styling.
+import './components/MapHud.css';
 import { WorldMap } from './components/WorldMap';
 import { WORLD_MAP_REGIONS, type WorldMapRegion } from './components/worldMapRegions';
 import type { Sport } from './sport-map';
@@ -79,6 +81,56 @@ function mountMarketMoversToggle() {
     });
 }
 
+// Header identity chip -> the same mini nav the map pages' MapHud has (Home /
+// Log out). The chip itself is server-rendered (.hc-auth, logged-in only); this
+// just makes it clickable and hangs the dropdown off it. Vanilla, like the other
+// header/row enhancements.
+function mountHeaderMenu() {
+    const auth = document.querySelector<HTMLElement>('.hc-auth');
+    if (!auth) return; // logged out - the header shows the Log in button instead
+
+    auth.setAttribute('role', 'button');
+    auth.setAttribute('tabindex', '0');
+    auth.setAttribute('aria-haspopup', 'menu');
+    auth.setAttribute('aria-expanded', 'false');
+    auth.classList.add('hc-auth--clickable');
+
+    const menu = document.createElement('div');
+    menu.className = 'map-hud__menu hc-auth-menu';
+    menu.setAttribute('role', 'menu');
+    menu.hidden = true;
+    menu.innerHTML = `
+        <a class="map-hud__item" role="menuitem" href="/">Home</a>
+        <button type="button" class="map-hud__item" role="menuitem" data-hc-logout>Log out</button>`;
+    auth.appendChild(menu);
+
+    const setOpen = (open: boolean) => {
+        menu.hidden = !open;
+        auth.setAttribute('aria-expanded', String(open));
+    };
+    auth.addEventListener('click', (e) => {
+        if ((e.target as HTMLElement).closest('.hc-auth-menu')) return; // menu clicks act, not toggle
+        setOpen(menu.hidden);
+    });
+    auth.addEventListener('keydown', (e) => {
+        if ((e.key === 'Enter' || e.key === ' ') && !(e.target as HTMLElement).closest('.hc-auth-menu')) {
+            e.preventDefault();
+            setOpen(menu.hidden);
+        }
+        if (e.key === 'Escape') setOpen(false);
+    });
+    document.addEventListener('pointerdown', (e) => {
+        if (!auth.contains(e.target as Node)) setOpen(false);
+    });
+    menu.querySelector<HTMLButtonElement>('[data-hc-logout]')?.addEventListener('click', async (e) => {
+        const btn = e.currentTarget as HTMLButtonElement;
+        btn.disabled = true;
+        btn.textContent = 'Logging out…';
+        try { await logout(); } catch { /* leave anyway - the server re-checks */ }
+        window.location.href = '/';
+    });
+}
+
 // Picks-remaining footer in the tanks panel (vanilla, session-driven). Logged out
 // (getTodayStatus -> null) leaves the element empty, which CSS hides (:empty) - the
 // crawlable Tank HQ line below it always shows. When the cap is hit, the countdown
@@ -114,6 +166,7 @@ function mountPicksStatus() {
 function mount() {
     mountMarketMoversToggle();
     mountPicksStatus();
+    mountHeaderMenu();
 
     const payload = readPayload();
     if (!payload) return;

@@ -157,6 +157,23 @@
   margin-top: 0.15rem;
 }
 
+/* Unnamed pet: the label is a live prompt into the naming modal. */
+button.pet-widget__name--prompt {
+  pointer-events: auto;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: var(--hc-gold, #ffc72c);
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.pet-widget__name--prompt:hover,
+button.pet-widget__name--prompt:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
 /* Desktop sizing, per docking mode. The ground shadow is percentage-based so it
    scales with him either way. */
 @media (min-width: 1024px) {

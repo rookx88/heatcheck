@@ -1,0 +1,42 @@
+/* Pet naming form - rides the hatchery button/error classes; only the input and
+   spacing live here. */
+
+.pet-name-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.pet-name-input {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #ffffff;
+  background: rgba(5, 7, 15, 0.6);
+  border: 2px solid rgba(47, 230, 217, 0.4);
+  border-radius: 12px;
+  padding: 0.5rem 0.9rem;
+  width: min(240px, 100%);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.pet-name-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+}
+
+.pet-name-input:focus-visible {
+  border-color: var(--hc-teal, #2fe6d9);
+  box-shadow: 0 0 12px rgba(47, 230, 217, 0.35);
+}
+
+.pet-name-error,
+.pet-name-form .hatchery-caption {
+  flex-basis: 100%;
+  text-align: center;
+  margin-top: 0.15rem;
+}

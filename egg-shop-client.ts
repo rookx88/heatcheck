@@ -94,6 +94,17 @@ export class PetFullError extends Error {
     }
 }
 
+// Name 409 - taken by another pet or an account username, or the pet is already
+// named (naming is one-time).
+export class NameRejectedError extends Error {
+    taken: boolean;
+    constructor(message: string | undefined, taken: boolean) {
+        super(message || 'That name is taken.');
+        this.name = 'NameRejectedError';
+        this.taken = taken;
+    }
+}
+
 async function parseJsonSafe(res: Response): Promise<any> {
     try {
         return await res.json();
@@ -205,6 +216,20 @@ export async function feedPet(foodCatalogKey: string, feedToken: string): Promis
     if (res.status === 409) throw new PetFullError(data.message);
     if (res.status === 404) throw new EggGoneError(data.message || "You don't have that food.");
     if (!res.ok) throw new Error(data.message || `POST /api/pets/feed failed: ${res.status}`);
+    return { pet: data.pet as PetInfo };
+}
+
+// One-time pet naming. 400 = invalid shape (server message explains the rules);
+// 409 = taken (another pet or a username) or already named.
+export async function namePet(name: string): Promise<{ pet: PetInfo }> {
+    const res = await fetch('/api/pets/name', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+    });
+    const data = await parseJsonSafe(res);
+    if (res.status === 409) throw new NameRejectedError(data.message, Boolean(data.taken));
+    if (!res.ok) throw new Error(data.message || `POST /api/pets/name failed: ${res.status}`);
     return { pet: data.pet as PetInfo };
 }
 

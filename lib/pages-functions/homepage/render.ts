@@ -124,6 +124,11 @@ function homepageStyles(): string {
            pinned to the header's right edge. */
         .hc-login-cta { font-size: 0.95rem; padding: 0.5rem 1.4rem; flex-shrink: 0; margin-left: auto; }
         .hc-auth { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; margin-left: auto; }
+        /* The island turns the chip into the same mini-nav trigger the map pages'
+           MapHud has; the dropdown (MapHud.css classes) hangs off its right edge. */
+        .hc-auth--clickable { position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        .hc-auth--clickable:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 3px; border-radius: 999px; }
+        .hc-auth .hc-auth-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 600; }
         .hc-auth-name { font-weight: 800; font-size: 0.9rem; }
         .hc-ember-chip {
             display: inline-flex; align-items: center; gap: 0.3rem;
