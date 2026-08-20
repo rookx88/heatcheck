@@ -187,6 +187,22 @@ async function main() {
             [JSON.stringify({ weekKey, issueId: issue.id, succeeded, failed })]
         );
 
+        // In-app trace of the send: one informational notification per opted-in,
+        // onboarded subscriber, so a missed email isn't a silently-gone exclusive.
+        // Idempotent per (week, user) - re-running against an already-sent issue is
+        // blocked earlier anyway, but the key makes this safe regardless.
+        const notifResult = await pool.query(
+            `INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key)
+             SELECT w.id, 'informational',
+                    'This week''s exclusive Tank is live — check your email for your one-tap pick.',
+                    'newsletter', $1, 'newsletter:' || $1 || ':' || w.id
+             FROM waitlist w
+             WHERE w.newsletter_opt_in = true AND w.onboarded_at IS NOT NULL
+             ON CONFLICT (idempotency_key) DO NOTHING`,
+            [weekKey]
+        );
+        console.log(`In-app notifications inserted: ${notifResult.rowCount}`);
+
         console.log(`Done. ${succeeded} sent, ${failed} failed. Issue marked sent.`);
     } finally {
         await pool.end();

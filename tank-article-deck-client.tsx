@@ -11,6 +11,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Fishtank, type DeckPayload } from './components/Fishtank';
 import { PetWidget } from './components/PetWidget';
+import { NotificationsHost } from './components/NotificationsHost';
 
 function mount() {
     const root = document.getElementById('tank-article-deck-root');
@@ -25,6 +26,9 @@ function mount() {
                     scroll. Self-gating: renders nothing for logged-out readers (its
                     pet fetch 401s) or petless accounts - the article reads clean. */}
                 <PetWidget variant="fixed" />
+                {/* Inbox modal host - article pages have no header menu, so the pet
+                    widget's Inbox action is the only opener here. */}
+                <NotificationsHost />
             </>
         );
     } catch (err) {

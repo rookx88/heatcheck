@@ -26,24 +26,33 @@ async function runCurate(env: Env): Promise<string> {
     // close to it (see functions/api/ticker-sweep.ts). Same secret, sibling path.
     // Runs even when curation errored: the sweep is the catch-all for untagged
     // published Tanks and doesn't depend on curation having succeeded.
-    let sweepText = '';
+    const sweepText = await postSibling(env, '/api/ticker-sweep');
+
+    // Daily notification sweep (pet-hungry + new-Tanks digest) - same posture: own
+    // request, own budget, runs regardless of the earlier steps' outcomes.
+    const notifyText = await postSibling(env, '/api/notify-sweep');
+
+    return JSON.stringify({ curate: text, tickerSweep: sweepText, notifySweep: notifyText });
+}
+
+async function postSibling(env: Env, path: string): Promise<string> {
     try {
-        const sweepUrl = new URL('/api/ticker-sweep', env.CURATE_URL).toString();
-        const sweepRes = await fetch(sweepUrl, {
+        const url = new URL(path, env.CURATE_URL).toString();
+        const res = await fetch(url, {
             method: 'POST',
             headers: { 'X-Curate-Secret': env.CURATE_SECRET },
         });
-        sweepText = await sweepRes.text();
-        if (!sweepRes.ok) {
-            console.error(`[worker-curate] /api/ticker-sweep returned ${sweepRes.status}: ${sweepText}`);
+        const text = await res.text();
+        if (!res.ok) {
+            console.error(`[worker-curate] ${path} returned ${res.status}: ${text}`);
         } else {
-            console.log(`[worker-curate] ticker sweep complete: ${sweepText}`);
+            console.log(`[worker-curate] ${path} complete: ${text}`);
         }
+        return text;
     } catch (err) {
-        console.error('[worker-curate] ticker sweep call failed:', err);
+        console.error(`[worker-curate] ${path} call failed:`, err);
+        return '';
     }
-
-    return JSON.stringify({ curate: text, tickerSweep: sweepText });
 }
 
 export default {

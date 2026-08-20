@@ -15,6 +15,7 @@ import { getSql, jsonResponse, UUID_RE, type Env } from '../../../lib/pages-func
 import { getSession, requireSameOrigin } from '../../../lib/pages-functions/session';
 import { validateUsername } from '../../../lib/pages-functions/username';
 import { logEvent } from '../../../lib/pages-functions/events';
+import { insertNotificationIdempotent } from '../../../lib/pages-functions/notifications';
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const csrf = requireSameOrigin(context.request);
@@ -65,6 +66,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             } catch (eventErr) {
                 console.error('[POST /api/onboarding/complete] Failed to log event:', eventErr);
             }
+        }
+
+        // First inbox entry - welcomes the account and follows through on the welcome
+        // letter's egg tease (nothing else ever did). Fire-and-forget: onboarding must
+        // never fail because a notification insert did. Idempotent on welcome:<userId>.
+        // NOTE this stays within the "no pet, no starter item, no bonus Ember" rule in
+        // the header - it's a message, not a provision.
+        try {
+            await insertNotificationIdempotent(sql, {
+                userId: session.userId,
+                type: 'informational',
+                message: 'Welcome aboard — your record is signed. There’s an egg in the Hatchery with your name on it.',
+                refType: 'onboarding',
+                refId: null,
+                idempotencyKey: `welcome:${session.userId}`,
+            });
+        } catch (notifErr) {
+            console.error('[POST /api/onboarding/complete] Failed to insert welcome notification:', notifErr);
         }
 
         return jsonResponse({ ok: true, username: rows[0].username as string }, { headers: authHeaders });

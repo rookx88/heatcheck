@@ -15,6 +15,7 @@ import { getPet, type PetInfo } from '../egg-shop-client';
 import {
     getNotifications,
     markNotificationRead,
+    dispatchInboxOpen,
     dispatchNotificationsUpdated,
     NOTIFICATIONS_UPDATED_EVENT,
     type NotificationItem,
@@ -135,6 +136,15 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                         </button>
                         <button className="pet-widget__action" onClick={() => setOpenModal('inventory')}>
                             Inventory
+                        </button>
+                        {/* Inbox access wherever the pet lives - crucially including tank
+                            article pages, which have no header menu. The modal renders in
+                            the page's NotificationsHost, not here. */}
+                        <button
+                            className="pet-widget__action"
+                            onClick={() => { setExpanded(false); dispatchInboxOpen(); }}
+                        >
+                            Inbox
                         </button>
                     </div>
                 )}
