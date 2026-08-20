@@ -11,6 +11,7 @@
 
 import React from 'react';
 import { PetWidget } from './PetWidget';
+import { MapHud } from './MapHud';
 import './LandScreen.css';
 
 export const LAND_VIEWBOX = { width: 810, height: 1439.999935 };
@@ -28,7 +29,6 @@ export interface LandHotspot {
 interface LandScreenProps {
     backgroundSrc: string;
     pageAriaLabel: string;
-    backHref: string;
     hotspots: LandHotspot[];
     children?: React.ReactNode; // modals and other overlays
 }
@@ -47,7 +47,7 @@ const HotspotLayers: React.FC<{ hotspot: LandHotspot }> = ({ hotspot }) => (
     </>
 );
 
-export const LandScreen: React.FC<LandScreenProps> = ({ backgroundSrc, pageAriaLabel, backHref, hotspots, children }) => (
+export const LandScreen: React.FC<LandScreenProps> = ({ backgroundSrc, pageAriaLabel, hotspots, children }) => (
     <div className="land-screen">
         <div className="land-screen__frame">
             <svg
@@ -93,11 +93,9 @@ export const LandScreen: React.FC<LandScreenProps> = ({ backgroundSrc, pageAriaL
                 )}
             </svg>
 
-            <a className="land-screen__back" href={backHref} aria-label="Back">
-                <span className="land-screen__back-box">
-                    <img src="/assets/images/checknav.webp" alt="" width={34} height={34} />
-                </span>
-            </a>
+            {/* Identity HUD (username + Ember, mini nav) - replaces the old checkmark
+                back button in the card's top-right corner. */}
+            <MapHud />
         </div>
         {/* Captain widget, bottom-right of the screen. Mounted OUTSIDE the frame:
             the frame's translateX transform would trap the widget's position:fixed

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Fishtank, type DeckPayload } from './Fishtank';
 import { PetWidget } from './PetWidget';
+import { MapHud } from './MapHud';
 import { trackEvent } from '../tank-analytics-client';
 import { SPORT_BY_LEAGUE, SPORT_ORDER, type Sport } from '../sport-map';
 import tanksBackgroundSrc from '../assets/new-website/Tanks- Background.svg';
@@ -28,10 +29,9 @@ type SportFilter = 'All' | Sport;
 
 interface TankScreenProps {
   tanks: TankEntry[];
-  backHref?: string;
 }
 
-export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' }) => {
+export const TankScreen: React.FC<TankScreenProps> = ({ tanks }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -150,11 +150,9 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' })
           </g>
         </svg>
 
-        <a className="tank-screen__back" href={backHref} aria-label="Back to Heatchecks home">
-          <span className="tank-screen__back-box">
-            <img src="/assets/images/checknav.webp" alt="" width={34} height={34} />
-          </span>
-        </a>
+        {/* Identity HUD (username + Ember, mini nav) - replaces the old checkmark
+            back button in the card's top-right corner. */}
+        <MapHud />
       </div>
 
       {/* Captain widget, bottom-right. Outside the transformed frame so its fixed

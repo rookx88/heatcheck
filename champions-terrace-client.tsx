@@ -21,7 +21,6 @@ const ChampionsTerrace: React.FC = () => {
         <LandScreen
             backgroundSrc={championsShopSrc}
             pageAriaLabel="Champion's Lakeside Terrace - the lakeside kitchen"
-            backHref="/the-tank/"
             hotspots={[
                 {
                     id: 'menu',

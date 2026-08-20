@@ -49,31 +49,47 @@ function renderHeader(user: HomepageUser | null): string {
         </header>`;
 }
 
-// One switcher button per sport, below the 3D showcase: pressing a live sport's
-// button flips the artifact to that sport's newest Tank (the island wires the click;
-// the buttons are inert without JS - the showcase itself is JS-only anyway). Live
-// sports first, in SPORT_ORDER; sports with nothing live render disabled. The first
-// live sport ships is-selected/aria-pressed to match the island's initialSport.
+// One switcher button per sport, in a vertical column to the RIGHT of the 3D
+// showcase: pressing a live sport's button flips the artifact to that sport's newest
+// Tank (the island wires the click; the buttons are inert without JS - the showcase
+// itself is JS-only anyway). Symbol buttons, not text - narrow enough to hold the
+// side-by-side layout even on phones. The sport name lives in aria-label + title.
+// Live sports first, in SPORT_ORDER; sports with nothing live render disabled. The
+// first live sport ships is-selected/aria-pressed to match the island's initialSport.
+const SPORT_ICONS: Record<string, string> = {
+    Football: '🏈',
+    Soccer: '⚽',
+    Baseball: '⚾',
+    Basketball: '🏀',
+};
+
 function renderSportRow(slots: SportSlot[]): string {
     const ordered = [...slots.filter(s => s.card), ...slots.filter(s => !s.card)];
     const firstLive = ordered.find(s => s.card)?.sport;
     const buttons = ordered.map((slot) => {
+        const icon = SPORT_ICONS[slot.sport] ?? '🎯';
         if (!slot.card) {
             return `
-            <button type="button" class="hc-sport-btn" data-sport="${slot.sport}" disabled aria-label="${slot.sport}: nothing live today">${slot.sport}</button>`;
+            <button type="button" class="hc-sport-btn" data-sport="${slot.sport}" disabled title="${slot.sport}" aria-label="${slot.sport}: nothing live today"><span aria-hidden="true">${icon}</span></button>`;
         }
         const selected = slot.sport === firstLive;
         return `
-            <button type="button" class="hc-sport-btn${selected ? ' is-selected' : ''}" data-sport="${slot.sport}" data-live aria-pressed="${selected}" aria-label="${escapeHtml(`Show the ${slot.sport.toLowerCase()} Tank: ${slot.card.hook}`)}">${slot.sport}</button>`;
+            <button type="button" class="hc-sport-btn${selected ? ' is-selected' : ''}" data-sport="${slot.sport}" data-live aria-pressed="${selected}" title="${slot.sport}" aria-label="${escapeHtml(`Show the ${slot.sport.toLowerCase()} Tank: ${slot.card.hook}`)}"><span aria-hidden="true">${icon}</span></button>`;
     }).join('');
 
     return `
         <section id="tanks" class="hc-section" aria-labelledby="hc-tanks-heading">
-            <h2 id="hc-tanks-heading">Today&rsquo;s Tanks</h2>
-            <p class="hc-section-sub">One live story per sport. Pick a sport, spin the Tank, make your call.</p>
-            <div id="hc-showcase-root" aria-hidden="true"></div>
-            <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
-                ${buttons}
+            <h2 id="hc-tanks-heading">Newest Tanks Available</h2>
+            <p class="hc-section-sub hc-section-sub--tanks">Tanks are Heatcheck&rsquo;s most important invention. With the wisdom of the user, it unlocks embers, the currency of the world that allows you to grow your mud puppy. Make your pick on a tank. Get it right. Earn Ember.</p>
+            <div class="hc-tanks-layout">
+                <div id="hc-showcase-root" aria-hidden="true"></div>
+                <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
+                    ${buttons}
+                </div>
+            </div>
+            <div class="hc-tanks-footer">
+                <div id="hc-picks-status" class="hc-picks-status" aria-live="polite"></div>
+                <p class="hc-tanks-hq-link">More tanks to pick from are waiting at the <a href="/the-tank-hq/">Tank HQ</a> in Tank Land.</p>
             </div>
         </section>`;
 }
@@ -121,33 +137,73 @@ function homepageStyles(): string {
             font-size: clamp(1.3rem, 4.5vw, 1.7rem); margin: 0; text-transform: uppercase;
         }
         .hc-section-sub { margin: 0.35rem 0 1rem; font-size: 0.88rem; color: rgba(255,255,255,0.7); }
+        /* The tanks pitch reads as fine print under the section title - smaller and
+           dimmer than the standard sub line, capped for comfortable line length. */
+        .hc-section-sub--tanks { font-size: 0.78rem; color: rgba(255,255,255,0.6); max-width: 640px; line-height: 1.5; }
         .hc-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
         #hc-showcase-root:empty { display: none; }
         #hc-showcase-root { margin: 0 0 1.25rem; }
 
+        /* Side-by-side at EVERY width: artifact left, symbol buttons in a vertical
+           column to its right (the round icon buttons are narrow enough to hold this
+           layout on phones). */
+        .hc-tanks-layout { display: flex; flex-direction: row; align-items: center; gap: 0.75rem; }
+        .hc-tanks-layout #hc-showcase-root { flex: 1 1 auto; margin: 0; min-width: 0; }
         .hc-sport-row {
-            margin: 0.5rem 0 0; padding: 0;
-            display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: flex-start;
+            margin: 0; padding: 0; flex: 0 0 auto;
+            display: flex; flex-direction: column; gap: 0.6rem; align-items: center;
         }
+        @media (min-width: 760px) {
+            .hc-tanks-layout { gap: 1.5rem; }
+            .hc-tanks-layout #hc-showcase-root { flex: 0 1 560px; }
+        }
+        /* Round navy-glass symbol buttons in the house teal grammar (selected =
+           committed glow). Sport name is on aria-label/title, not visible text. */
         .hc-sport-btn {
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 1rem;
-            color: #0b1526; background: #ffffff; cursor: pointer;
-            border: 2px solid #ffffff; border-radius: 999px; padding: 0.5rem 1.35rem;
+            width: 48px; height: 48px; padding: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.35rem; line-height: 1;
+            color: var(--hc-teal); background: rgba(5, 7, 15, 0.6); cursor: pointer;
+            border: 2px solid rgba(47, 230, 217, 0.35); border-radius: 50%;
+            transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
         }
+        .hc-sport-btn:hover:not([disabled]) { background: rgba(47, 230, 217, 0.12); transform: scale(1.06); }
         .hc-sport-btn.is-selected, .hc-sport-btn[aria-pressed="true"] {
-            border-color: var(--hc-teal); box-shadow: 0 0 14px rgba(47, 230, 217, 0.45);
+            border-color: var(--hc-teal); background: rgba(47, 230, 217, 0.18);
+            box-shadow: 0 0 14px rgba(47, 230, 217, 0.45);
         }
         .hc-sport-btn:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 2px; }
         .hc-sport-btn[disabled] { opacity: 0.35; cursor: default; }
+        @media (min-width: 760px) {
+            .hc-sport-btn { width: 56px; height: 56px; font-size: 1.55rem; }
+        }
+
+        /* Panel footer: picks-remaining header (island-filled; hidden while empty)
+           over the crawlable Tank HQ pointer. */
+        .hc-tanks-footer { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid rgba(47, 230, 217, 0.2); }
+        .hc-picks-status {
+            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800;
+            font-size: 0.95rem; letter-spacing: 0.05em; text-transform: uppercase;
+            color: var(--hc-gold);
+        }
+        .hc-picks-status:empty { display: none; }
+        .hc-tanks-hq-link { margin: 0.35rem 0 0; font-size: 0.8rem; color: rgba(255,255,255,0.6); }
+        .hc-tanks-hq-link a { color: var(--hc-teal); font-weight: 800; text-decoration: none; }
+        .hc-tanks-hq-link a:hover { text-decoration: underline; }
 
         .hc-explore-wrap { position: relative; margin-top: 1.5rem; }
-        /* Mockup places the Explore logo fully above the map rather than overlapping
-           its top-left corner. */
+        /* The world is pulled up so the EXPLORE logo slightly overlaps its top-left
+           corner - but the map (and its hover region labels) LAYER OVER the logo:
+           the map stacks above (z 2 vs 1), while the layout overlap comes from the
+           logo's negative bottom margin. The pet widget (fixed, z 1500) stays above
+           both. */
         .hc-explore-logo {
-            display: block; width: clamp(180px, 42vw, 340px); height: auto; margin: 0 0 0.75rem;
+            display: block; width: clamp(180px, 42vw, 340px); height: auto; margin: 0 0 -2.75rem;
+            position: relative; z-index: 1;
             pointer-events: none; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.45));
         }
+        #hc-map-root { position: relative; z-index: 2; }
         .hc-world-map-static, #hc-map-root svg { display: block; width: 100%; height: auto; }
 
         @media (prefers-reduced-motion: reduce) {
@@ -155,6 +211,61 @@ function homepageStyles(): string {
         }
         @media (max-width: 420px) {
             .hc-home { padding: 0.6rem 1rem 0.85rem; }
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Desktop (mockup layout): two columns - tanks panel left, Market     */
+        /* Movers panel right - over the SAME DOM order, so mobile (below the  */
+        /* breakpoint) keeps the stacked layout untouched.                     */
+        /* ------------------------------------------------------------------ */
+        @media (min-width: 1024px) {
+            .hc-home {
+                max-width: 1240px;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                grid-template-areas:
+                    'header header'
+                    'tape tape'
+                    'tanks movers'
+                    'explore explore'
+                    'footer footer';
+                column-gap: 1.5rem;
+                /* Default (stretch) block alignment: the tanks and movers panels share
+                   the row, so the shorter one stretches to the taller one's height. */
+            }
+            .hc-home-header { grid-area: header; }
+            .hc-ticker-tape { grid-area: tape; }
+            #tanks { grid-area: tanks; }
+            #market-movers { grid-area: movers; }
+            #explore { grid-area: explore; }
+            .hc-footer { grid-area: footer; }
+
+            /* Tanks: orange-bordered game panel with a white title bar, stretched to
+               the movers panel's height with the footer pinned at the bottom. */
+            #tanks {
+                margin-top: 1.5rem;
+                border: 3px solid #f89b4e;
+                border-radius: 6px;
+                background: #05070f;
+                padding: 0 1.1rem 1.1rem;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+            #tanks .hc-tanks-footer { margin-top: auto; padding-top: 1rem; }
+            #tanks h2 {
+                background: var(--hc-gold); color: #1a1200;
+                margin: 0 -1.1rem 0.75rem; padding: 0.65rem 1.1rem;
+            }
+            .hc-section-sub--tanks { margin-top: 0; }
+
+            /* Explore: globe seated left on the page's own navy background (one
+               consistent color story all the way down); the open right half is where
+               the fixed pet widget visually lives. */
+            #explore { margin-top: 2rem; }
+            #explore .hc-explore-wrap { margin-top: 0.5rem; }
+            #hc-map-root { max-width: 620px; }
+            .hc-footer { padding-top: 1.25rem; }
         }
     `;
 }

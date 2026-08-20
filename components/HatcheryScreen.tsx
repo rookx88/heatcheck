@@ -36,7 +36,6 @@ export const HatcheryScreen: React.FC = () => {
         <LandScreen
             backgroundSrc={eggShopSrc}
             pageAriaLabel="The Hatchery - egg shop and incubator"
-            backHref="/the-tank/"
             hotspots={[
                 {
                     id: 'eggs-for-sale',

@@ -91,6 +91,15 @@ function utcDateLabel(iso: string): string {
         : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
+// Compact form for the chart's x-axis ticks ("Aug 12") - the full form with the year
+// stays on the hover tooltips.
+function utcShortDateLabel(iso: string): string {
+    const d = new Date(iso);
+    return isNaN(d.getTime())
+        ? ''
+        : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
 export function toMarketMovers(
     values: TickerValue[],
     series: Record<string, TickerSeriesEvent[]>,
@@ -131,7 +140,9 @@ export function toMarketMovers(
 // -----------------------------------------------------------------------------------
 
 const CHART_W = 260;
-const CHART_H = 72;
+const PLOT_H = 72;      // the plot panel itself
+const DATE_BAND = 16;   // x-axis date-tick strip below the panel
+const CHART_H = PLOT_H + DATE_BAND;
 const PAD = 6;
 
 export function renderTickerChartSvg(vm: MarketMoverVM): string {
@@ -147,30 +158,46 @@ export function renderTickerChartSvg(vm: MarketMoverVM): string {
     const hi = Math.max(0, ...points);
     const span = hi - lo || 1;
     const x = (i: number) => (PAD + (i * (CHART_W - 2 * PAD)) / Math.max(points.length - 1, 1)).toFixed(1);
-    const y = (v: number) => (PAD + ((hi - v) * (CHART_H - 2 * PAD)) / span).toFixed(1);
+    const y = (v: number) => (PAD + ((hi - v) * (PLOT_H - 2 * PAD)) / span).toFixed(1);
 
     const polyline = points.map((v, i) => `${x(i)},${y(v)}`).join(' ');
-    // The chart sits in a white plot box on the light-blue card (mockup palette):
-    // market green up, red down, slate for a flat zero line.
-    const stroke = vm.sign === 'pos' ? '#1f9d3c' : vm.sign === 'neg' ? '#d93025' : '#64748b';
+    // Navy plot panel in the site palette; market colors brightened for the dark
+    // background - green up, red down, slate for a flat zero line.
+    const stroke = vm.sign === 'pos' ? '#3ddc64' : vm.sign === 'neg' ? '#ff6b57' : '#94a3b8';
     const zeroAxis = lo < 0 && hi > 0
-        ? `<line x1="${PAD}" x2="${CHART_W - PAD}" y1="${y(0)}" y2="${y(0)}" stroke="rgba(15,23,42,0.25)" stroke-dasharray="4 4" stroke-width="1"/>`
+        ? `<line x1="${PAD}" x2="${CHART_W - PAD}" y1="${y(0)}" y2="${y(0)}" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 4" stroke-width="1"/>`
         : '';
 
-    // One dot per REAL event (the synthetic origin gets none) with a native tooltip.
+    // One dot per REAL event (the synthetic origin gets none) with a native tooltip
+    // carrying the full date + event detail.
     const originOffset = vm.seriesTruncated ? 0 : 1;
     const dots = vm.series.map((e, i) => {
         const title = `${utcDateLabel(e.occurredAt)} · ${e.eventType} · ${formatSignedPct(e.delta)} (running: ${formatSignedPct(e.cumulative)})`;
         return `<circle cx="${x(i + originOffset)}" cy="${y(e.cumulative)}" r="2.5" fill="${stroke}"><title>${escapeHtml(title)}</title></circle>`;
     }).join('');
 
+    // Visible date ticks under the plot: first / middle / last real event, deduped
+    // when the series is short enough that they collide on the same label.
+    const n = vm.series.length;
+    const tickIndices = [...new Set([0, Math.floor((n - 1) / 2), n - 1])];
+    const seen = new Set<string>();
+    const ticks = tickIndices.map((i) => {
+        const label = utcShortDateLabel(vm.series[i].occurredAt);
+        if (!label || seen.has(label)) return '';
+        seen.add(label);
+        const anchor = i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle';
+        const tx = i === 0 ? PAD : i === n - 1 ? CHART_W - PAD : Number(x(i + originOffset));
+        return `<text class="hc-mm-tick" x="${tx}" y="${PLOT_H + 12}" text-anchor="${anchor}">${escapeHtml(label)}</text>`;
+    }).join('');
+
     const summary = `${vm.displayName} cumulative chart: currently ${vm.valueLabel} over ${vm.eventCount} event${vm.eventCount === 1 ? '' : 's'}`;
     return `<svg class="hc-mm-svg" viewBox="0 0 ${CHART_W} ${CHART_H}" role="img" aria-label="${escapeHtml(summary)}">
                 <title>${escapeHtml(summary)}</title>
-                <rect x="0.5" y="0.5" width="${CHART_W - 1}" height="${CHART_H - 1}" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
+                <rect x="0.75" y="0.75" width="${CHART_W - 1.5}" height="${PLOT_H - 1.5}" rx="8" fill="#0b1a45" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
                 ${zeroAxis}
                 <polyline fill="none" points="${polyline}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
                 ${dots}
+                ${ticks}
             </svg>`;
 }
 
@@ -192,16 +219,18 @@ export function renderMarketMoverCard(vm: MarketMoverVM, role?: 'gainer' | 'lose
 
     return `
         <article class="hc-mm-card" data-ticker="${escapeHtml(vm.key)}" data-sign="${vm.sign}"${role ? ` data-mm-role="${role}"` : ''}>
-            <header class="hc-mm-head">
-                <h3 class="hc-mm-title">
-                    <span class="hc-mm-index">${escapeHtml(vm.indexLabel)}</span>
-                    <span class="hc-mm-name">(${escapeHtml(vm.displayName)})</span>
-                </h3>
-                <p class="hc-mm-desc">${escapeHtml(vm.description)}</p>
-            </header>
-            <div class="hc-mm-chartrow">
-                <div class="hc-mm-chart">${renderTickerChartSvg(vm)}</div>
-                <span class="hc-mm-value is-${vm.sign}">${vm.valueLabel}</span>
+            <div class="hc-mm-top">
+                <header class="hc-mm-head">
+                    <h3 class="hc-mm-title">
+                        <span class="hc-mm-index">${escapeHtml(vm.indexLabel)}</span>
+                        <span class="hc-mm-name">(${escapeHtml(vm.displayName)})</span>
+                    </h3>
+                    <p class="hc-mm-desc">${escapeHtml(vm.description)}</p>
+                </header>
+                <div class="hc-mm-chartrow">
+                    <span class="hc-mm-value is-${vm.sign}">${vm.valueLabel}</span>
+                    <div class="hc-mm-chart">${renderTickerChartSvg(vm)}</div>
+                </div>
             </div>
             <div class="hc-mm-news">
                 <h4 class="hc-mm-news-heading">Recent News</h4>
@@ -264,16 +293,19 @@ export function renderMarketMoversSection(data: MarketMoversData): string {
     return `
         <section id="market-movers" class="hc-section" aria-labelledby="hc-mm-heading">
             <h2 id="hc-mm-heading" class="hc-visually-hidden">Market Movers</h2>
-            <img class="hc-mm-logo" src="/assets/images/market-movers-logo.webp" alt="Market Movers" width="600" height="416" loading="lazy">
-            <p class="hc-section-sub">${escapeHtml(data.note)}</p>
+            <div class="hc-mm-band">
+                <img class="hc-mm-logo" src="/assets/images/market-movers-logo.webp" alt="Market Movers" width="600" height="416" loading="lazy">
+                <p class="hc-section-sub hc-mm-note">${escapeHtml(data.note)}</p>
+            </div>
             ${body}
         </section>`;
 }
 
 // Appended into homepageStyles() output (render.ts). Mockup palette: orange marquee
 // band with outlined sign-colored text (market green up / red down), folder-style
-// green/salmon tab buttons, light-blue index cards with white plot boxes and maroon
-// serif news entries. The page background itself stays untouched.
+// green/salmon tab buttons, light-blue index cards and maroon serif news entries -
+// with the plot itself restyled to the site's navy/teal (top-right of the card,
+// visible date ticks below the panel). The page background itself stays untouched.
 export function marketMoversStyles(): string {
     return `
         .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #f89b4e; }
@@ -327,24 +359,32 @@ export function marketMoversStyles(): string {
             background: #5ec1ee; color: #10203a;
             border-radius: 0 14px 14px 14px; padding: 1.15rem 1.15rem 1.3rem;
         }
+        /* Card header row: title/description left, chart + % pinned top-right. */
+        .hc-mm-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem 1.25rem; flex-wrap: wrap; }
+        .hc-mm-head { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; }
         .hc-mm-title { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; margin: 0; }
         .hc-mm-index {
             font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem;
             letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526;
         }
-        .hc-mm-name { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 1.35rem; color: #0b1526; }
+        .hc-mm-name { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 0.95rem; color: #0b1526; }
         .hc-mm-desc {
             align-self: flex-start; margin: 0.1rem 0 0;
             font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.68rem;
             letter-spacing: 0.12em; text-transform: uppercase; color: #10203a;
             background: rgba(255,255,255,0.92); border-radius: 6px; padding: 0.28rem 0.6rem;
         }
-        .hc-mm-chartrow { display: flex; align-items: center; gap: 0.9rem; margin: 0.35rem 0 0.2rem; }
-        .hc-mm-chart { flex: 1 1 auto; min-width: 0; max-width: 300px; }
+        /* Slim column, % above the plot, hugging the card's top-right corner. */
+        .hc-mm-chartrow { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; margin: 0 0 0 auto; flex: 0 1 210px; }
+        .hc-mm-chart { width: 100%; min-width: 150px; max-width: 210px; }
         .hc-mm-svg { display: block; width: 100%; height: auto; }
+        .hc-mm-tick {
+            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 9px;
+            letter-spacing: 0.04em; fill: #10203a;
+        }
         .hc-mm-chartrow .hc-mm-value {
             font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
-            font-size: clamp(1.3rem, 5vw, 1.8rem); flex-shrink: 0;
+            font-size: clamp(1.15rem, 4vw, 1.5rem); flex-shrink: 0;
             text-shadow:
                 1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff,
                 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff,
@@ -354,8 +394,8 @@ export function marketMoversStyles(): string {
         .hc-mm-chartrow .hc-mm-value.is-neg { color: #e33a24; }
         .hc-mm-chartrow .hc-mm-value.is-zero { color: #5b6572; }
         .hc-mm-chart-empty {
-            font-size: 0.82rem; font-weight: 800; color: #10203a; margin: 0;
-            background: rgba(255,255,255,0.65); border: 1.5px solid #0f172a; border-radius: 4px; padding: 0.8rem 0.9rem;
+            font-size: 0.82rem; font-weight: 800; color: rgba(255,255,255,0.85); margin: 0;
+            background: #0b1a45; border: 1.5px solid rgba(47,230,217,0.4); border-radius: 8px; padding: 0.8rem 0.9rem;
         }
         .hc-mm-news-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: Georgia, 'Times New Roman', serif; }
         .hc-mm-empty { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin: 1rem 0 0; }
@@ -378,11 +418,43 @@ export function marketMoversStyles(): string {
             letter-spacing: 0.08em; text-transform: uppercase; color: #24344f;
         }
 
-        @media (min-width: 760px) {
+        /* Base (mobile): the band wrapper is a plain block - zero visual change from
+           the pre-band markup. */
+        .hc-mm-band { display: block; }
+
+        @media (min-width: 760px) and (max-width: 1023px) {
             .hc-mm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 2rem; }
             .hc-mm-card { border-radius: 14px; }
             .hc-mm-card:first-child { border-radius: 0 14px 14px 14px; }
         }
+
+        /* Desktop (mockup): Market Movers as a white panel in the right grid column -
+           violet header band (logo + note box), tabs beneath, card content on white. */
+        @media (min-width: 1024px) {
+            #market-movers {
+                margin-top: 1.5rem;
+                background: #ffffff;
+                border-radius: 6px;
+                overflow: hidden;
+                padding: 0 1rem 1.25rem;
+            }
+            .hc-mm-band {
+                display: flex; align-items: center; gap: 1rem;
+                background: #5e35b1;
+                margin: 0 -1rem 0.25rem; padding: 0.6rem 1rem;
+            }
+            .hc-mm-logo { width: clamp(140px, 14vw, 190px); margin: 0; flex-shrink: 0; }
+            .hc-mm-note {
+                margin: 0; color: #ffffff; font-weight: 800; font-size: 0.78rem;
+                background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.35);
+                border-radius: 8px; padding: 0.45rem 0.7rem;
+            }
+            .hc-mm-tabs { margin-top: 0.5rem; }
+            .hc-mm-card { background: transparent; padding: 0.9rem 0.15rem 0.2rem; border-radius: 0; }
+            /* The white desc chip vanishes white-on-white - pale blue on desktop. */
+            .hc-mm-desc { background: rgba(94, 193, 238, 0.35); }
+        }
+
         @media (prefers-reduced-motion: reduce) {
             .hc-tape-track { animation: none; }
             .hc-tape-group[aria-hidden="true"] { display: none; }

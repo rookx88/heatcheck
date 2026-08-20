@@ -109,7 +109,8 @@ function nearestWallIndex(walls: Wall[], containerRotateY: number): number {
 // "3h 24m" / "24m" until the daily pick cap resets at UTC midnight - matches the
 // server's own reset boundary (functions/api/picks.ts's `created_at >= CURRENT_DATE`,
 // evaluated in the DB's UTC session timezone), not the reader's local midnight.
-function formatTimeUntilReset(nowMs: number): string {
+// Exported: the homepage's picks-remaining footer shows the same countdown.
+export function formatTimeUntilReset(nowMs: number): string {
     const now = new Date(nowMs);
     const nextResetMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0);
     const diffMinutes = Math.max(0, Math.round((nextResetMs - nowMs) / 60_000));

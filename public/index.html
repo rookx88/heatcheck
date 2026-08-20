@@ -272,33 +272,73 @@
             font-size: clamp(1.3rem, 4.5vw, 1.7rem); margin: 0; text-transform: uppercase;
         }
         .hc-section-sub { margin: 0.35rem 0 1rem; font-size: 0.88rem; color: rgba(255,255,255,0.7); }
+        /* The tanks pitch reads as fine print under the section title - smaller and
+           dimmer than the standard sub line, capped for comfortable line length. */
+        .hc-section-sub--tanks { font-size: 0.78rem; color: rgba(255,255,255,0.6); max-width: 640px; line-height: 1.5; }
         .hc-visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
         #hc-showcase-root:empty { display: none; }
         #hc-showcase-root { margin: 0 0 1.25rem; }
 
+        /* Side-by-side at EVERY width: artifact left, symbol buttons in a vertical
+           column to its right (the round icon buttons are narrow enough to hold this
+           layout on phones). */
+        .hc-tanks-layout { display: flex; flex-direction: row; align-items: center; gap: 0.75rem; }
+        .hc-tanks-layout #hc-showcase-root { flex: 1 1 auto; margin: 0; min-width: 0; }
         .hc-sport-row {
-            margin: 0.5rem 0 0; padding: 0;
-            display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: flex-start;
+            margin: 0; padding: 0; flex: 0 0 auto;
+            display: flex; flex-direction: column; gap: 0.6rem; align-items: center;
         }
+        @media (min-width: 760px) {
+            .hc-tanks-layout { gap: 1.5rem; }
+            .hc-tanks-layout #hc-showcase-root { flex: 0 1 560px; }
+        }
+        /* Round navy-glass symbol buttons in the house teal grammar (selected =
+           committed glow). Sport name is on aria-label/title, not visible text. */
         .hc-sport-btn {
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 1rem;
-            color: #0b1526; background: #ffffff; cursor: pointer;
-            border: 2px solid #ffffff; border-radius: 999px; padding: 0.5rem 1.35rem;
+            width: 48px; height: 48px; padding: 0;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.35rem; line-height: 1;
+            color: var(--hc-teal); background: rgba(5, 7, 15, 0.6); cursor: pointer;
+            border: 2px solid rgba(47, 230, 217, 0.35); border-radius: 50%;
+            transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
         }
+        .hc-sport-btn:hover:not([disabled]) { background: rgba(47, 230, 217, 0.12); transform: scale(1.06); }
         .hc-sport-btn.is-selected, .hc-sport-btn[aria-pressed="true"] {
-            border-color: var(--hc-teal); box-shadow: 0 0 14px rgba(47, 230, 217, 0.45);
+            border-color: var(--hc-teal); background: rgba(47, 230, 217, 0.18);
+            box-shadow: 0 0 14px rgba(47, 230, 217, 0.45);
         }
         .hc-sport-btn:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 2px; }
         .hc-sport-btn[disabled] { opacity: 0.35; cursor: default; }
+        @media (min-width: 760px) {
+            .hc-sport-btn { width: 56px; height: 56px; font-size: 1.55rem; }
+        }
+
+        /* Panel footer: picks-remaining header (island-filled; hidden while empty)
+           over the crawlable Tank HQ pointer. */
+        .hc-tanks-footer { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid rgba(47, 230, 217, 0.2); }
+        .hc-picks-status {
+            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800;
+            font-size: 0.95rem; letter-spacing: 0.05em; text-transform: uppercase;
+            color: var(--hc-gold);
+        }
+        .hc-picks-status:empty { display: none; }
+        .hc-tanks-hq-link { margin: 0.35rem 0 0; font-size: 0.8rem; color: rgba(255,255,255,0.6); }
+        .hc-tanks-hq-link a { color: var(--hc-teal); font-weight: 800; text-decoration: none; }
+        .hc-tanks-hq-link a:hover { text-decoration: underline; }
 
         .hc-explore-wrap { position: relative; margin-top: 1.5rem; }
-        /* Mockup places the Explore logo fully above the map rather than overlapping
-           its top-left corner. */
+        /* The world is pulled up so the EXPLORE logo slightly overlaps its top-left
+           corner - but the map (and its hover region labels) LAYER OVER the logo:
+           the map stacks above (z 2 vs 1), while the layout overlap comes from the
+           logo's negative bottom margin. The pet widget (fixed, z 1500) stays above
+           both. */
         .hc-explore-logo {
-            display: block; width: clamp(180px, 42vw, 340px); height: auto; margin: 0 0 0.75rem;
+            display: block; width: clamp(180px, 42vw, 340px); height: auto; margin: 0 0 -2.75rem;
+            position: relative; z-index: 1;
             pointer-events: none; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.45));
         }
+        #hc-map-root { position: relative; z-index: 2; }
         .hc-world-map-static, #hc-map-root svg { display: block; width: 100%; height: auto; }
 
         @media (prefers-reduced-motion: reduce) {
@@ -306,6 +346,61 @@
         }
         @media (max-width: 420px) {
             .hc-home { padding: 0.6rem 1rem 0.85rem; }
+        }
+
+        /* ------------------------------------------------------------------ */
+        /* Desktop (mockup layout): two columns - tanks panel left, Market     */
+        /* Movers panel right - over the SAME DOM order, so mobile (below the  */
+        /* breakpoint) keeps the stacked layout untouched.                     */
+        /* ------------------------------------------------------------------ */
+        @media (min-width: 1024px) {
+            .hc-home {
+                max-width: 1240px;
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                grid-template-areas:
+                    'header header'
+                    'tape tape'
+                    'tanks movers'
+                    'explore explore'
+                    'footer footer';
+                column-gap: 1.5rem;
+                /* Default (stretch) block alignment: the tanks and movers panels share
+                   the row, so the shorter one stretches to the taller one's height. */
+            }
+            .hc-home-header { grid-area: header; }
+            .hc-ticker-tape { grid-area: tape; }
+            #tanks { grid-area: tanks; }
+            #market-movers { grid-area: movers; }
+            #explore { grid-area: explore; }
+            .hc-footer { grid-area: footer; }
+
+            /* Tanks: orange-bordered game panel with a white title bar, stretched to
+               the movers panel's height with the footer pinned at the bottom. */
+            #tanks {
+                margin-top: 1.5rem;
+                border: 3px solid #f89b4e;
+                border-radius: 6px;
+                background: #05070f;
+                padding: 0 1.1rem 1.1rem;
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+            }
+            #tanks .hc-tanks-footer { margin-top: auto; padding-top: 1rem; }
+            #tanks h2 {
+                background: #ffffff; color: #0b1526;
+                margin: 0 -1.1rem 0.75rem; padding: 0.65rem 1.1rem;
+            }
+            .hc-section-sub--tanks { margin-top: 0; }
+
+            /* Explore: globe seated left on the page's own navy background (one
+               consistent color story all the way down); the open right half is where
+               the fixed pet widget visually lives. */
+            #explore { margin-top: 2rem; }
+            #explore .hc-explore-wrap { margin-top: 0.5rem; }
+            #hc-map-root { max-width: 620px; }
+            .hc-footer { padding-top: 1.25rem; }
         }
     
         .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #f89b4e; }
@@ -359,24 +454,32 @@
             background: #5ec1ee; color: #10203a;
             border-radius: 0 14px 14px 14px; padding: 1.15rem 1.15rem 1.3rem;
         }
+        /* Card header row: title/description left, chart + % pinned top-right. */
+        .hc-mm-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem 1.25rem; flex-wrap: wrap; }
+        .hc-mm-head { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; }
         .hc-mm-title { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; margin: 0; }
         .hc-mm-index {
             font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem;
             letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526;
         }
-        .hc-mm-name { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 1.35rem; color: #0b1526; }
+        .hc-mm-name { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 0.95rem; color: #0b1526; }
         .hc-mm-desc {
             align-self: flex-start; margin: 0.1rem 0 0;
             font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.68rem;
             letter-spacing: 0.12em; text-transform: uppercase; color: #10203a;
             background: rgba(255,255,255,0.92); border-radius: 6px; padding: 0.28rem 0.6rem;
         }
-        .hc-mm-chartrow { display: flex; align-items: center; gap: 0.9rem; margin: 0.35rem 0 0.2rem; }
-        .hc-mm-chart { flex: 1 1 auto; min-width: 0; max-width: 300px; }
+        /* Slim column, % above the plot, hugging the card's top-right corner. */
+        .hc-mm-chartrow { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; margin: 0 0 0 auto; flex: 0 1 210px; }
+        .hc-mm-chart { width: 100%; min-width: 150px; max-width: 210px; }
         .hc-mm-svg { display: block; width: 100%; height: auto; }
+        .hc-mm-tick {
+            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 9px;
+            letter-spacing: 0.04em; fill: #10203a;
+        }
         .hc-mm-chartrow .hc-mm-value {
             font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
-            font-size: clamp(1.3rem, 5vw, 1.8rem); flex-shrink: 0;
+            font-size: clamp(1.15rem, 4vw, 1.5rem); flex-shrink: 0;
             text-shadow:
                 1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff,
                 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff,
@@ -386,8 +489,8 @@
         .hc-mm-chartrow .hc-mm-value.is-neg { color: #e33a24; }
         .hc-mm-chartrow .hc-mm-value.is-zero { color: #5b6572; }
         .hc-mm-chart-empty {
-            font-size: 0.82rem; font-weight: 800; color: #10203a; margin: 0;
-            background: rgba(255,255,255,0.65); border: 1.5px solid #0f172a; border-radius: 4px; padding: 0.8rem 0.9rem;
+            font-size: 0.82rem; font-weight: 800; color: rgba(255,255,255,0.85); margin: 0;
+            background: #0b1a45; border: 1.5px solid rgba(47,230,217,0.4); border-radius: 8px; padding: 0.8rem 0.9rem;
         }
         .hc-mm-news-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: Georgia, 'Times New Roman', serif; }
         .hc-mm-empty { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin: 1rem 0 0; }
@@ -410,11 +513,43 @@
             letter-spacing: 0.08em; text-transform: uppercase; color: #24344f;
         }
 
-        @media (min-width: 760px) {
+        /* Base (mobile): the band wrapper is a plain block - zero visual change from
+           the pre-band markup. */
+        .hc-mm-band { display: block; }
+
+        @media (min-width: 760px) and (max-width: 1023px) {
             .hc-mm-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.25rem 2rem; }
             .hc-mm-card { border-radius: 14px; }
             .hc-mm-card:first-child { border-radius: 0 14px 14px 14px; }
         }
+
+        /* Desktop (mockup): Market Movers as a white panel in the right grid column -
+           violet header band (logo + note box), tabs beneath, card content on white. */
+        @media (min-width: 1024px) {
+            #market-movers {
+                margin-top: 1.5rem;
+                background: #ffffff;
+                border-radius: 6px;
+                overflow: hidden;
+                padding: 0 1rem 1.25rem;
+            }
+            .hc-mm-band {
+                display: flex; align-items: center; gap: 1rem;
+                background: #5e35b1;
+                margin: 0 -1rem 0.25rem; padding: 0.6rem 1rem;
+            }
+            .hc-mm-logo { width: clamp(140px, 14vw, 190px); margin: 0; flex-shrink: 0; }
+            .hc-mm-note {
+                margin: 0; color: #ffffff; font-weight: 800; font-size: 0.78rem;
+                background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.35);
+                border-radius: 8px; padding: 0.45rem 0.7rem;
+            }
+            .hc-mm-tabs { margin-top: 0.5rem; }
+            .hc-mm-card { background: transparent; padding: 0.9rem 0.15rem 0.2rem; border-radius: 0; }
+            /* The white desc chip vanishes white-on-white - pale blue on desktop. */
+            .hc-mm-desc { background: rgba(94, 193, 238, 0.35); }
+        }
+
         @media (prefers-reduced-motion: reduce) {
             .hc-tape-track { animation: none; }
             .hc-tape-group[aria-hidden="true"] { display: none; }
@@ -448,22 +583,30 @@
         </div>
         
         <section id="tanks" class="hc-section" aria-labelledby="hc-tanks-heading">
-            <h2 id="hc-tanks-heading">Today&rsquo;s Tanks</h2>
-            <p class="hc-section-sub">One live story per sport. Pick a sport, spin the Tank, make your call.</p>
-            <div id="hc-showcase-root" aria-hidden="true"></div>
-            <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
-                
-            <button type="button" class="hc-sport-btn is-selected" data-sport="Football" data-live aria-pressed="true" aria-label="Show the football Tank: The Giants have been the whole offseason&#039;s headline. The Jets haven&#039;t said a word. Now they have to play the game.">Football</button>
-            <button type="button" class="hc-sport-btn" data-sport="Soccer" data-live aria-pressed="false" aria-label="Show the soccer Tank: Pep is gone. The trophies stay. Enzo Maresca&#039;s Manchester City debut starts right now.">Soccer</button>
-            <button type="button" class="hc-sport-btn" data-sport="Baseball" disabled aria-label="Baseball: nothing live today">Baseball</button>
-            <button type="button" class="hc-sport-btn" data-sport="Basketball" disabled aria-label="Basketball: nothing live today">Basketball</button>
+            <h2 id="hc-tanks-heading">Newest Tanks Available</h2>
+            <p class="hc-section-sub hc-section-sub--tanks">Tanks are Heatcheck&rsquo;s most important invention. With the wisdom of the user, it unlocks embers, the currency of the world that allows you to grow your mud puppy. Make your pick on a tank. Get it right. Earn Ember.</p>
+            <div class="hc-tanks-layout">
+                <div id="hc-showcase-root" aria-hidden="true"></div>
+                <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
+                    
+            <button type="button" class="hc-sport-btn is-selected" data-sport="Football" data-live aria-pressed="true" title="Football" aria-label="Show the football Tank: The Giants have been the whole offseason&#039;s headline. The Jets haven&#039;t said a word. Now they have to play the game."><span aria-hidden="true">🏈</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Soccer" data-live aria-pressed="false" title="Soccer" aria-label="Show the soccer Tank: Pep is gone. The trophies stay. Enzo Maresca&#039;s Manchester City debut starts right now."><span aria-hidden="true">⚽</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Baseball" disabled title="Baseball" aria-label="Baseball: nothing live today"><span aria-hidden="true">⚾</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Basketball" disabled title="Basketball" aria-label="Basketball: nothing live today"><span aria-hidden="true">🏀</span></button>
+                </div>
+            </div>
+            <div class="hc-tanks-footer">
+                <div id="hc-picks-status" class="hc-picks-status" aria-live="polite"></div>
+                <p class="hc-tanks-hq-link">More tanks to pick from are waiting at the <a href="/the-tank-hq/">Tank HQ</a> in Tank Land.</p>
             </div>
         </section>
         
         <section id="market-movers" class="hc-section" aria-labelledby="hc-mm-heading">
             <h2 id="hc-mm-heading" class="hc-visually-hidden">Market Movers</h2>
-            <img class="hc-mm-logo" src="/assets/images/market-movers-logo.webp" alt="Market Movers" width="600" height="416" loading="lazy">
-            <p class="hc-section-sub">Ticker values reflect how tagged storylines have gone - not a forecast.</p>
+            <div class="hc-mm-band">
+                <img class="hc-mm-logo" src="/assets/images/market-movers-logo.webp" alt="Market Movers" width="600" height="416" loading="lazy">
+                <p class="hc-section-sub hc-mm-note">Ticker values reflect how tagged storylines have gone - not a forecast.</p>
+            </div>
             
         <div class="hc-mm-tabs" data-hc-mm-tabs hidden>
             <button type="button" class="hc-mm-tab is-gainers" data-mm-view="gainers" aria-pressed="true">Top Gainers</button>
@@ -471,22 +614,25 @@
         </div>
         <div class="hc-mm-grid" data-hc-mm-grid data-mm-view="all">
         <article class="hc-mm-card" data-ticker="moonshot" data-sign="pos" data-mm-role="gainer">
-            <header class="hc-mm-head">
-                <h3 class="hc-mm-title">
-                    <span class="hc-mm-index">Longshot Index</span>
-                    <span class="hc-mm-name">($MOONSHOT)</span>
-                </h3>
-                <p class="hc-mm-desc">Longshots - low-probability sides with big upside.</p>
-            </header>
-            <div class="hc-mm-chartrow">
-                <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 72" role="img" aria-label="$MOONSHOT cumulative chart: currently +18.0% over 4 events">
+            <div class="hc-mm-top">
+                <header class="hc-mm-head">
+                    <h3 class="hc-mm-title">
+                        <span class="hc-mm-index">Longshot Index</span>
+                        <span class="hc-mm-name">($MOONSHOT)</span>
+                    </h3>
+                    <p class="hc-mm-desc">Longshots - low-probability sides with big upside.</p>
+                </header>
+                <div class="hc-mm-chartrow">
+                    <span class="hc-mm-value is-pos">+18.0%</span>
+                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$MOONSHOT cumulative chart: currently +18.0% over 4 events">
                 <title>$MOONSHOT cumulative chart: currently +18.0% over 4 events</title>
-                <rect x="0.5" y="0.5" width="259" height="71" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
-                <line x1="6" x2="254" y1="60.0" y2="60.0" stroke="rgba(15,23,42,0.25)" stroke-dasharray="4 4" stroke-width="1"/>
-                <polyline fill="none" points="6.0,60.0 68.0,66.0 130.0,66.0 192.0,66.0 254.0,6.0" stroke="#1f9d3c" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-                <circle cx="68.0" cy="66.0" r="2.5" fill="#1f9d3c"><title>Aug 19, 2026 · tag · −2.0% (running: −2.0%)</title></circle><circle cx="130.0" cy="66.0" r="2.5" fill="#1f9d3c"><title>Aug 19, 2026 · tag · +0.0% (running: −2.0%)</title></circle><circle cx="192.0" cy="66.0" r="2.5" fill="#1f9d3c"><title>Aug 19, 2026 · tag · +0.0% (running: −2.0%)</title></circle><circle cx="254.0" cy="6.0" r="2.5" fill="#1f9d3c"><title>Aug 19, 2026 · settle · +20.0% (running: +18.0%)</title></circle>
+                <rect x="0.75" y="0.75" width="258.5" height="70.5" rx="8" fill="#0b1a45" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
+                <line x1="6" x2="254" y1="60.0" y2="60.0" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 4" stroke-width="1"/>
+                <polyline fill="none" points="6.0,60.0 68.0,66.0 130.0,66.0 192.0,66.0 254.0,6.0" stroke="#3ddc64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="68.0" cy="66.0" r="2.5" fill="#3ddc64"><title>Aug 19, 2026 · tag · −2.0% (running: −2.0%)</title></circle><circle cx="130.0" cy="66.0" r="2.5" fill="#3ddc64"><title>Aug 19, 2026 · tag · +0.0% (running: −2.0%)</title></circle><circle cx="192.0" cy="66.0" r="2.5" fill="#3ddc64"><title>Aug 19, 2026 · tag · +0.0% (running: −2.0%)</title></circle><circle cx="254.0" cy="6.0" r="2.5" fill="#3ddc64"><title>Aug 19, 2026 · settle · +20.0% (running: +18.0%)</title></circle>
+                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 19</text>
             </svg></div>
-                <span class="hc-mm-value is-pos">+18.0%</span>
+                </div>
             </div>
             <div class="hc-mm-news">
                 <h4 class="hc-mm-news-heading">Recent News</h4>
@@ -505,22 +651,25 @@
             </div>
         </article>
         <article class="hc-mm-card" data-ticker="chalk" data-sign="neg" data-mm-role="loser">
-            <header class="hc-mm-head">
-                <h3 class="hc-mm-title">
-                    <span class="hc-mm-index">Favorite Index</span>
-                    <span class="hc-mm-name">($CHALK)</span>
-                </h3>
-                <p class="hc-mm-desc">Favorite storylines - sides priced at 50% or better.</p>
-            </header>
-            <div class="hc-mm-chartrow">
-                <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 72" role="img" aria-label="$CHALK cumulative chart: currently −20.0% over 13 events">
+            <div class="hc-mm-top">
+                <header class="hc-mm-head">
+                    <h3 class="hc-mm-title">
+                        <span class="hc-mm-index">Favorite Index</span>
+                        <span class="hc-mm-name">($CHALK)</span>
+                    </h3>
+                    <p class="hc-mm-desc">Favorite storylines - sides priced at 50% or better.</p>
+                </header>
+                <div class="hc-mm-chartrow">
+                    <span class="hc-mm-value is-neg">−20.0%</span>
+                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$CHALK cumulative chart: currently −20.0% over 13 events">
                 <title>$CHALK cumulative chart: currently −20.0% over 13 events</title>
-                <rect x="0.5" y="0.5" width="259" height="71" fill="#ffffff" stroke="#0f172a" stroke-width="1.5"/>
+                <rect x="0.75" y="0.75" width="258.5" height="70.5" rx="8" fill="#0b1a45" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
                 
-                <polyline fill="none" points="6.0,6.0 25.1,21.0 44.2,16.5 63.2,16.5 82.3,18.0 101.4,16.5 120.5,16.5 139.5,16.5 158.6,16.5 177.7,18.0 196.8,21.0 215.8,36.0 234.9,51.0 254.0,66.0" stroke="#d93025" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-                <circle cx="25.1" cy="21.0" r="2.5" fill="#d93025"><title>Aug 20, 2026 · tag · −5.0% (running: −5.0%)</title></circle><circle cx="44.2" cy="16.5" r="2.5" fill="#d93025"><title>Aug 20, 2026 · tag · +1.5% (running: −3.5%)</title></circle><circle cx="63.2" cy="16.5" r="2.5" fill="#d93025"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="82.3" cy="18.0" r="2.5" fill="#d93025"><title>Aug 20, 2026 · tag · −0.5% (running: −4.0%)</title></circle><circle cx="101.4" cy="16.5" r="2.5" fill="#d93025"><title>Aug 20, 2026 · tag · +0.5% (running: −3.5%)</title></circle><circle cx="120.5" cy="16.5" r="2.5" fill="#d93025"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="139.5" cy="16.5" r="2.5" fill="#d93025"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="158.6" cy="16.5" r="2.5" fill="#d93025"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="177.7" cy="18.0" r="2.5" fill="#d93025"><title>Aug 20, 2026 · tag · −0.5% (running: −4.0%)</title></circle><circle cx="196.8" cy="21.0" r="2.5" fill="#d93025"><title>Aug 20, 2026 · tag · −1.0% (running: −5.0%)</title></circle><circle cx="215.8" cy="36.0" r="2.5" fill="#d93025"><title>Aug 20, 2026 · settle · −5.0% (running: −10.0%)</title></circle><circle cx="234.9" cy="51.0" r="2.5" fill="#d93025"><title>Aug 20, 2026 · settle · −5.0% (running: −15.0%)</title></circle><circle cx="254.0" cy="66.0" r="2.5" fill="#d93025"><title>Aug 20, 2026 · settle · −5.0% (running: −20.0%)</title></circle>
+                <polyline fill="none" points="6.0,6.0 25.1,21.0 44.2,16.5 63.2,16.5 82.3,18.0 101.4,16.5 120.5,16.5 139.5,16.5 158.6,16.5 177.7,18.0 196.8,21.0 215.8,36.0 234.9,51.0 254.0,66.0" stroke="#ff6b57" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="25.1" cy="21.0" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · −5.0% (running: −5.0%)</title></circle><circle cx="44.2" cy="16.5" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +1.5% (running: −3.5%)</title></circle><circle cx="63.2" cy="16.5" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="82.3" cy="18.0" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · −0.5% (running: −4.0%)</title></circle><circle cx="101.4" cy="16.5" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.5% (running: −3.5%)</title></circle><circle cx="120.5" cy="16.5" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="139.5" cy="16.5" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="158.6" cy="16.5" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="177.7" cy="18.0" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · −0.5% (running: −4.0%)</title></circle><circle cx="196.8" cy="21.0" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · −1.0% (running: −5.0%)</title></circle><circle cx="215.8" cy="36.0" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −10.0%)</title></circle><circle cx="234.9" cy="51.0" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −15.0%)</title></circle><circle cx="254.0" cy="66.0" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −20.0%)</title></circle>
+                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 20</text>
             </svg></div>
-                <span class="hc-mm-value is-neg">−20.0%</span>
+                </div>
             </div>
             <div class="hc-mm-news">
                 <h4 class="hc-mm-news-heading">Recent News</h4>

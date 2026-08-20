@@ -26,7 +26,6 @@ function mount() {
         <LandScreen
             backgroundSrc={tankLandSrc}
             pageAriaLabel="Tank Land - the HeatChecks island"
-            backHref="/"
             hotspots={[
                 {
                     id: 'tank-hq',

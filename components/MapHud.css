@@ -1,0 +1,130 @@
+/* Map-page HUD (top-right): username + Ember chip, with a mini nav dropdown.
+   Same identity language as the homepage header (white name, gold ember pill),
+   dropdown in the house navy-glass/teal grammar. Sits where the old checkmark back
+   button lived - above the card and (like the old button) above modal overlays. */
+
+.map-hud {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2200;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.map-hud__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  background: rgba(5, 7, 15, 0.7);
+  border: 2px solid rgba(47, 230, 217, 0.45);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  box-shadow: 0 0 18px rgba(47, 230, 217, 0.2);
+  backdrop-filter: blur(4px);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.map-hud__chip:hover,
+.map-hud__chip:focus-visible,
+.map-hud__chip[aria-expanded="true"] {
+  border-color: var(--hc-teal, #2fe6d9);
+  box-shadow: 0 0 24px rgba(47, 230, 217, 0.4);
+  outline: none;
+}
+
+.map-hud__name {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: #ffffff;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.map-hud__ember {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--hc-gold, #ffc72c);
+  background: rgba(255, 199, 44, 0.12);
+  border: 1px solid rgba(255, 199, 44, 0.4);
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+}
+
+.map-hud__login {
+  display: inline-block;
+  background: var(--hc-gold, #ffc72c);
+  color: #1a1200;
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.9rem;
+  text-decoration: none;
+  padding: 0.45rem 1.2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 0 var(--hc-gold-dark, #e8a800), 0 8px 18px rgba(0, 0, 0, 0.4);
+}
+
+.map-hud__menu {
+  margin-top: 0.45rem;
+  min-width: 150px;
+  background: rgba(5, 7, 15, 0.92);
+  border: 2px solid rgba(47, 230, 217, 0.45);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 0 24px rgba(47, 230, 217, 0.2), 0 12px 30px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  animation: map-hud-menu-in 0.15s ease-out;
+}
+
+@keyframes map-hud-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.map-hud__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.85rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--hc-teal, #2fe6d9);
+  text-decoration: none;
+  padding: 0.6rem 0.9rem;
+}
+
+.map-hud__item + .map-hud__item {
+  border-top: 1px solid rgba(47, 230, 217, 0.2);
+}
+
+.map-hud__item:hover,
+.map-hud__item:focus-visible {
+  background: rgba(47, 230, 217, 0.14);
+  outline: none;
+}
+
+.map-hud__item[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-hud__menu {
+    animation: none;
+  }
+}

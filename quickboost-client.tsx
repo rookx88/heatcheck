@@ -21,7 +21,6 @@ const QuickboostDelicacies: React.FC = () => {
         <LandScreen
             backgroundSrc={quickboostShopSrc}
             pageAriaLabel="Quickboost Delicacies - the smoothie counter"
-            backHref="/the-tank/"
             hotspots={[
                 {
                     id: 'order-here',

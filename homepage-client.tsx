@@ -9,8 +9,9 @@
 import React, { useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MotionConfig } from 'motion/react';
-import { Fishtank, type DeckPayload } from './components/Fishtank';
+import { Fishtank, formatTimeUntilReset, type DeckPayload } from './components/Fishtank';
 import { PetWidget } from './components/PetWidget';
+import { getTodayStatus } from './tank-pick-client';
 import { WorldMap } from './components/WorldMap';
 import { WORLD_MAP_REGIONS, type WorldMapRegion } from './components/worldMapRegions';
 import type { Sport } from './sport-map';
@@ -78,8 +79,41 @@ function mountMarketMoversToggle() {
     });
 }
 
+// Picks-remaining footer in the tanks panel (vanilla, session-driven). Logged out
+// (getTodayStatus -> null) leaves the element empty, which CSS hides (:empty) - the
+// crawlable Tank HQ line below it always shows. When the cap is hit, the countdown
+// to the UTC-midnight reset re-renders every minute; a bfcache restore re-fetches.
+function mountPicksStatus() {
+    const el = document.getElementById('hc-picks-status');
+    if (!el) return;
+    let timer: number | null = null;
+
+    const render = (remaining: number, picksToday: number) => {
+        if (timer !== null) { window.clearInterval(timer); timer = null; }
+        if (remaining > 0) {
+            el.textContent = `${remaining} pick${remaining === 1 ? '' : 's'} left today`;
+            return;
+        }
+        const tick = () => {
+            el.textContent = `All ${picksToday} pick${picksToday === 1 ? '' : 's'} used — next pick in ${formatTimeUntilReset(Date.now())}`;
+        };
+        tick();
+        timer = window.setInterval(tick, 60_000);
+    };
+
+    const refresh = () => {
+        getTodayStatus()
+            .then((status) => { if (status) render(status.remaining, status.picksToday); })
+            .catch(() => { /* footer is a nicety - never surface errors */ });
+    };
+
+    refresh();
+    window.addEventListener('pageshow', (e) => { if (e.persisted) refresh(); });
+}
+
 function mount() {
     mountMarketMoversToggle();
+    mountPicksStatus();
 
     const payload = readPayload();
     if (!payload) return;
@@ -154,21 +188,25 @@ function mount() {
         // signup pitch wall as the 4th side (/login/ IS signup - email-only magic
         // link, no separate register).
         //
-        // 0.56 = the original 0.8 showcase cube shrunk a further 30%. Fishtank's
-        // stage box stays 420px regardless of scale (see the note on its `scale`
-        // prop), so the extra ~50px of dead space freed per side is pulled back in
-        // with margins here rather than left as a gap in the page flow.
+        // 0.64 mobile / 0.77 desktop (+20% for the roomier two-column panel).
+        // Fishtank's stage box stays 420px regardless of scale (see the note on its
+        // `scale` prop), so the desktop bump changes only the painted cube - the
+        // panel keeps its height and stays matched to the Market Movers column. The
+        // dead stage space is pulled back in with margins rather than left as a gap.
+        // Deliberately NOT a CSS transform on a wrapper: that would turn the wrapper
+        // into the containing block for the fixed PetWidget and its modal overlays.
+        const showcaseScale = window.matchMedia('(min-width: 1024px)').matches ? 0.77 : 0.64;
         return (
             <MotionConfig reducedMotion="user">
                 {payload.loggedIn ? (
-                    <div style={{ position: 'relative', marginTop: '-5.5rem', marginBottom: '-3rem' }}>
-                        <Fishtank key={entry.slug} payload={entry.deck} slug={entry.slug} scale={0.56} />
+                    <div style={{ position: 'relative', marginTop: '-4.25rem', marginBottom: '-2.5rem' }}>
+                        <Fishtank key={entry.slug} payload={entry.deck} slug={entry.slug} scale={showcaseScale} />
                         {/* Fixed variant: rides the viewport, so the captain stays in
                             view wherever the page is scrolled. */}
                         <PetWidget variant="fixed" />
                     </div>
                 ) : (
-                    <div style={{ margin: '-3rem 0' }}>
+                    <div style={{ margin: '-2.5rem 0' }}>
                         <Fishtank
                             key={entry.slug}
                             payload={entry.deck}
@@ -180,7 +218,7 @@ function mount() {
                                 ctaHref: '/login/',
                                 ctaLabel: 'Sign Up',
                             }}
-                            scale={0.56}
+                            scale={showcaseScale}
                         />
                     </div>
                 )}

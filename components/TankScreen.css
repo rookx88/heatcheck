@@ -6,6 +6,57 @@
   background: linear-gradient(180deg, #060c22 0%, #0b1a45 55%, #14275f 100%);
 }
 
+/* Desktop backdrop: outer space - same starfield treatment as LandScreen.css (see
+   the comment there): static stars + nebula washes below, a sparser twinkling layer
+   above, both painted behind the frame/widget children. */
+@media (min-width: 1024px) {
+  .tank-screen::before,
+  .tank-screen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .tank-screen::before {
+    background-image:
+      radial-gradient(45% 35% at 18% 25%, rgba(47, 230, 217, 0.07), transparent 70%),
+      radial-gradient(40% 35% at 85% 72%, rgba(94, 53, 177, 0.16), transparent 70%),
+      radial-gradient(1.5px 1.5px at 25px 35px, rgba(255, 255, 255, 0.9), transparent 55%),
+      radial-gradient(1px 1px at 118px 92px, rgba(255, 255, 255, 0.65), transparent 55%),
+      radial-gradient(2px 2px at 202px 158px, rgba(207, 230, 255, 0.85), transparent 55%),
+      radial-gradient(1px 1px at 312px 58px, rgba(255, 255, 255, 0.5), transparent 55%),
+      radial-gradient(1.5px 1.5px at 378px 214px, rgba(255, 255, 255, 0.75), transparent 55%),
+      radial-gradient(1px 1px at 68px 200px, rgba(207, 230, 255, 0.6), transparent 55%);
+    background-size:
+      100% 100%,
+      100% 100%,
+      420px 260px,
+      420px 260px,
+      420px 260px,
+      420px 260px,
+      420px 260px,
+      420px 260px;
+    background-repeat: no-repeat, no-repeat, repeat, repeat, repeat, repeat, repeat, repeat;
+  }
+
+  .tank-screen::after {
+    background-image:
+      radial-gradient(2px 2px at 90px 45px, rgba(255, 255, 255, 0.9), transparent 55%),
+      radial-gradient(1.5px 1.5px at 250px 190px, rgba(160, 240, 255, 0.85), transparent 55%),
+      radial-gradient(1px 1px at 420px 110px, rgba(255, 255, 255, 0.7), transparent 55%),
+      radial-gradient(2.5px 2.5px at 520px 280px, rgba(255, 255, 255, 0.8), transparent 55%);
+    background-size: 640px 380px;
+    background-repeat: repeat;
+    animation: tank-screen-twinkle 4.5s ease-in-out infinite alternate;
+  }
+
+  @keyframes tank-screen-twinkle {
+    from { opacity: 0.35; }
+    to { opacity: 1; }
+  }
+}
+
 /* At EVERY viewport size: the largest box of the artwork's own 9:16 aspect that
    fits, centered as a card against the navy background (the standard no-JS
    "min(vw, vh*ratio)" formula). This used to be desktop-only with a full-bleed
@@ -123,44 +174,6 @@
 @keyframes tank-scanline-sweep {
   0% { transform: translateY(0); }
   100% { transform: translateY(480px); }
-}
-
-/* ---------------------------------------------------------------------- */
-/* Back-to-home checkmark button - must stay above the modal              */
-/* ---------------------------------------------------------------------- */
-
-.tank-screen__back {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  z-index: 2200;
-  text-decoration: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.tank-screen__back-box {
-  width: 56px;
-  height: 56px;
-  border: 2px solid rgba(47, 230, 217, 0.6);
-  border-radius: 12px;
-  background: rgba(5, 7, 15, 0.55);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 18px rgba(47, 230, 217, 0.25);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.tank-screen__back:hover .tank-screen__back-box,
-.tank-screen__back:focus-visible .tank-screen__back-box {
-  box-shadow: 0 0 26px rgba(47, 230, 217, 0.45);
-  transform: translateY(-1px);
-}
-
-.tank-screen__back-box img {
-  width: 34px;
-  height: 34px;
 }
 
 /* ---------------------------------------------------------------------- */
@@ -365,6 +378,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .tank-screen__glow,
+  .tank-screen::after,
   .tank-modal-overlay,
   .tank-modal-panel {
     animation: none !important;

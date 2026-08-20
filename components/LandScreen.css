@@ -10,6 +10,64 @@
   background: linear-gradient(180deg, #060c22 0%, #0b1a45 55%, #14275f 100%);
 }
 
+/* Desktop backdrop: outer space. Two pseudo-element layers painted behind the card
+   (tree order puts ::before/::after under the frame/widget children): a static
+   starfield with faint teal/violet nebula washes, and a sparser layer that twinkles.
+   Pure CSS - repeating radial-gradient "stars", no image assets. */
+@media (min-width: 1024px) {
+  .land-screen::before,
+  .land-screen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+
+  .land-screen::before {
+    background-image:
+      radial-gradient(45% 35% at 18% 25%, rgba(47, 230, 217, 0.07), transparent 70%),
+      radial-gradient(40% 35% at 85% 72%, rgba(94, 53, 177, 0.16), transparent 70%),
+      radial-gradient(1.5px 1.5px at 25px 35px, rgba(255, 255, 255, 0.9), transparent 55%),
+      radial-gradient(1px 1px at 118px 92px, rgba(255, 255, 255, 0.65), transparent 55%),
+      radial-gradient(2px 2px at 202px 158px, rgba(207, 230, 255, 0.85), transparent 55%),
+      radial-gradient(1px 1px at 312px 58px, rgba(255, 255, 255, 0.5), transparent 55%),
+      radial-gradient(1.5px 1.5px at 378px 214px, rgba(255, 255, 255, 0.75), transparent 55%),
+      radial-gradient(1px 1px at 68px 200px, rgba(207, 230, 255, 0.6), transparent 55%);
+    background-size:
+      100% 100%,
+      100% 100%,
+      420px 260px,
+      420px 260px,
+      420px 260px,
+      420px 260px,
+      420px 260px,
+      420px 260px;
+    background-repeat: no-repeat, no-repeat, repeat, repeat, repeat, repeat, repeat, repeat;
+  }
+
+  .land-screen::after {
+    background-image:
+      radial-gradient(2px 2px at 90px 45px, rgba(255, 255, 255, 0.9), transparent 55%),
+      radial-gradient(1.5px 1.5px at 250px 190px, rgba(160, 240, 255, 0.85), transparent 55%),
+      radial-gradient(1px 1px at 420px 110px, rgba(255, 255, 255, 0.7), transparent 55%),
+      radial-gradient(2.5px 2.5px at 520px 280px, rgba(255, 255, 255, 0.8), transparent 55%);
+    background-size: 640px 380px;
+    background-repeat: repeat;
+    animation: land-screen-twinkle 4.5s ease-in-out infinite alternate;
+  }
+
+  @keyframes land-screen-twinkle {
+    from { opacity: 0.35; }
+    to { opacity: 1; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .land-screen::after {
+    animation: none;
+  }
+}
+
 /* At EVERY viewport size: the largest box of the artwork's own 9:16 aspect that
    fits, centered against the navy backdrop. A full-bleed frame + slice-fit crops
    the art's edges on viewports taller than 9:16 (i.e. most phones), cutting off
@@ -126,36 +184,6 @@
 @keyframes land-hotspot-pulse {
   0%, 100% { stroke-width: 8; opacity: 0.6; }
   50% { stroke-width: 13; opacity: 0.9; }
-}
-
-/* Back button - identical to TankScreen's. */
-.land-screen__back {
-  position: absolute;
-  top: 1rem;
-  right: 1rem;
-  z-index: 2200;
-  text-decoration: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.land-screen__back-box {
-  width: 56px;
-  height: 56px;
-  border: 2px solid rgba(47, 230, 217, 0.6);
-  border-radius: 12px;
-  background: rgba(5, 7, 15, 0.55);
-  backdrop-filter: blur(4px);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 0 18px rgba(47, 230, 217, 0.25);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.land-screen__back:hover .land-screen__back-box,
-.land-screen__back:focus-visible .land-screen__back-box {
-  box-shadow: 0 0 26px rgba(47, 230, 217, 0.45);
-  transform: translateY(-1px);
 }
 
 @media (prefers-reduced-motion: reduce) {
