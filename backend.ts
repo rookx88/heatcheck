@@ -2324,6 +2324,45 @@ app.get('/api/tank/props', apiKeyAuth, async (req: express.Request, res: express
     }
 });
 
+// POST /api/tank/curate - manually fire the automated curator (auth required).
+// Proxies to the deployed POST /api/curate Pages Function (the one worker-curate/'s
+// daily cron hits) so the X-Curate-Secret stays server-side - the admin browser
+// never sees it, and no CORS surface is opened on the protected endpoint. The run
+// makes several Anthropic web-search + generation calls, so it can take minutes;
+// the admin UI holds a "running" state while this request waits for the summary.
+// Env: CURATE_SECRET (required) and CURATE_ENDPOINT (defaults to the local wrangler
+// dev server; point it at production to curate against prod).
+app.post('/api/tank/curate', apiKeyAuth, async (_req: express.Request, res: express.Response) => {
+    const secret = process.env.CURATE_SECRET;
+    if (!secret) {
+        return res.status(500).json({ message: 'CURATE_SECRET is not set in the backend environment.' });
+    }
+    const endpoint = process.env.CURATE_ENDPOINT || 'http://127.0.0.1:8788/api/curate';
+    try {
+        const upstream = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 'X-Curate-Secret': secret },
+            // Generous ceiling: per-sport-group match + generation passes add up.
+            signal: AbortSignal.timeout(10 * 60 * 1000),
+        });
+        const data = await upstream.json().catch(() => ({}));
+        if (!upstream.ok) {
+            return res.status(upstream.status).json({
+                message: (data as any)?.message || `Curate endpoint responded ${upstream.status}.`,
+            });
+        }
+        res.json(data);
+    } catch (error: any) {
+        console.error('[POST /api/tank/curate] Error:', error);
+        const timedOut = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+        res.status(502).json({
+            message: timedOut
+                ? 'Curate run timed out after 10 minutes - it may still be finishing server-side; check the Drafts tab shortly.'
+                : `Could not reach the curate endpoint (${endpoint}): ${error.message}`,
+        });
+    }
+});
+
 // POST /api/tank/generate - Generate TankArticle drafts from curator selections (auth required)
 app.post('/api/tank/generate', apiKeyAuth, async (req: express.Request, res: express.Response) => {
     try {

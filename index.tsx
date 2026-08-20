@@ -13915,6 +13915,12 @@ const TankCurator: React.FC = () => {
   // how many were just generated, to point the curator there.
   const [generatedNote, setGeneratedNote] = useState<string | null>(null);
 
+  // Manual trigger for the automated curator (the same flow worker-curate's daily
+  // cron fires). Slow by nature - several Anthropic web-search/generation calls.
+  const [isCurating, setIsCurating] = useState(false);
+  const [curateError, setCurateError] = useState<string | null>(null);
+  const [curateSummary, setCurateSummary] = useState<string | null>(null);
+
   const [activePages, setActivePages] = useState<TankPageRow[]>([]);
   const [isLoadingActive, setIsLoadingActive] = useState(false);
   const [activeError, setActiveError] = useState<string | null>(null);
@@ -14017,6 +14023,26 @@ const TankCurator: React.FC = () => {
     }
   };
 
+  const handleRunCurate = async () => {
+    if (isCurating) return;
+    setIsCurating(true); setCurateError(null); setCurateSummary(null);
+    try {
+      const result = await apiClient.runCurate();
+      const groupBits = result.groups
+        .filter(g => g.candidatesConsidered > 0)
+        .map(g => `${g.sportGroup}: ${g.created} draft(s) from ${g.matchesFound} match(es)`);
+      setCurateSummary(
+        `Run complete — ${result.created} draft(s) created (${result.matchesFound} match(es) across ${result.candidatesConsidered} candidates).`
+        + (groupBits.length ? ` ${groupBits.join(' · ')}.` : '')
+        + (result.created > 0 ? ' Review them in the Drafts tab.' : '')
+      );
+    } catch (e: any) {
+      setCurateError(e.message || 'Curate run failed.');
+    } finally {
+      setIsCurating(false);
+    }
+  };
+
   const handleRevertToDraft = async (id: string) => {
     try {
       await apiClient.updateTankPage(id, { status: 'draft' });
@@ -14037,6 +14063,19 @@ const TankCurator: React.FC = () => {
       <p style={{ color: '#666' }}>
         Provider: <strong>{providerName}</strong>. Pick props worth a story, write a one-line angle, then generate.
       </p>
+
+      <div className="card" style={{ marginBottom: '1.5rem' }}>
+        <h3 style={{ marginTop: 0, marginBottom: '0.4rem' }}>Auto-Curator</h3>
+        <p style={{ color: '#666', marginTop: 0, marginBottom: '0.85rem', fontSize: '0.9rem' }}>
+          Fires the same automated pass the daily cron runs: live props, web-searched trending storylines,
+          one match round per sport group, drafts only — nothing auto-publishes.
+        </p>
+        <button className="action-button" onClick={handleRunCurate} disabled={isCurating}>
+          {isCurating ? 'Running… (takes a few minutes)' : 'Run Auto-Curator Now'}
+        </button>
+        {curateSummary && <p style={{ color: '#2e7d32', marginBottom: 0, marginTop: '0.75rem' }}>{curateSummary}</p>}
+        {curateError && <p style={{ color: '#c62828', marginBottom: 0, marginTop: '0.75rem' }}>{curateError}</p>}
+      </div>
 
       <div className="card" style={{ marginBottom: '1.5rem' }}>
         <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Filters</h3>

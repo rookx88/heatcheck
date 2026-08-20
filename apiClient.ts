@@ -390,6 +390,25 @@ export const apiClient = {
         return response.json();
     },
 
+    // Fires the automated curator (the daily-cron flow) on demand. The backend
+    // proxies to the protected /api/curate Pages Function with its server-side
+    // secret; the response is that run's summary. Slow by nature (minutes).
+    async runCurate(): Promise<{
+        candidatesConsidered: number;
+        matchesFound: number;
+        created: number;
+        groups: Array<{
+            sportGroup: string;
+            candidatesConsidered: number;
+            matchesFound: number;
+            created: number;
+            results: Array<{ candidateId: string; status: string; slug?: string }>;
+        }>;
+    }> {
+        const response = await apiRequest('/api/tank/curate', { method: 'POST' });
+        return response.json();
+    },
+
     async getTankPage(id: string): Promise<TankPageRow> {
         const response = await apiRequest(`/api/tank/pages/${id}`);
         return response.json();
