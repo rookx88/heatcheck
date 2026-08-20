@@ -203,6 +203,9 @@
   max-width: 560px;
   max-height: 90vh;
   overflow-y: auto;
+  /* Artifact surfaces keep their own aesthetic: teal thumb instead of the global
+     orange (see the sitewide scrollbar rules in waitlist-landing-template). */
+  scrollbar-color: var(--hc-teal, #2fe6d9) #05070f;
   background: linear-gradient(180deg, #0b1a45 0%, #060c22 100%);
   border: 2px solid rgba(47, 230, 217, 0.5);
   border-radius: 20px;
@@ -213,6 +216,25 @@
 @keyframes tank-modal-pop-in {
   from { opacity: 0; transform: scale(0.94) translateY(8px); }
   to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.tank-modal-panel::-webkit-scrollbar {
+  width: 10px;
+}
+
+.tank-modal-panel::-webkit-scrollbar-track {
+  background: #05070f;
+  border-radius: 0 20px 20px 0;
+}
+
+.tank-modal-panel::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, var(--hc-teal, #2fe6d9) 0%, rgba(47, 230, 217, 0.55) 100%);
+  border-radius: 999px;
+  border: 2px solid #05070f;
+}
+
+.tank-modal-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--hc-teal, #2fe6d9);
 }
 
 .tank-modal-header {

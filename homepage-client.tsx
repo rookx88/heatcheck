@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 import { MotionConfig } from 'motion/react';
 import { Fishtank, formatTimeUntilReset, type DeckPayload } from './components/Fishtank';
 import { PetWidget } from './components/PetWidget';
+import { RegisterModal } from './components/RegisterModal';
 import { getTodayStatus, logout } from './tank-pick-client';
 // The header chip's mini nav reuses the map pages' MapHud menu styling.
 import './components/MapHud.css';
@@ -79,6 +80,37 @@ function mountMarketMoversToggle() {
             b.setAttribute('aria-pressed', String(b === btn));
         }
     });
+}
+
+// Register CTA (logged-out only; the server renders the card only then). Click
+// plays the pop jiggle, then mounts the RegisterModal into a lazily-created body
+// root - body-level so the modal's fixed overlay isn't trapped by any ancestor.
+function mountRegisterCta() {
+    const cta = document.querySelector<HTMLElement>('[data-hc-register]');
+    if (!cta) return;
+    let modalHost: ReturnType<typeof createRoot> | null = null;
+    let hostEl: HTMLDivElement | null = null;
+
+    const closeModal = () => {
+        modalHost?.render(null);
+    };
+    const openModal = () => {
+        if (!hostEl) {
+            hostEl = document.createElement('div');
+            document.body.appendChild(hostEl);
+            modalHost = createRoot(hostEl);
+        }
+        modalHost!.render(<RegisterModal onClose={closeModal} />);
+    };
+
+    cta.addEventListener('click', () => {
+        cta.classList.remove('is-popping');
+        // Force a reflow so re-adding the class replays the animation.
+        void cta.offsetWidth;
+        cta.classList.add('is-popping');
+        window.setTimeout(openModal, 200); // mid-jiggle, so the movement reads
+    });
+    cta.addEventListener('animationend', () => cta.classList.remove('is-popping'));
 }
 
 // Header identity chip -> the same mini nav the map pages' MapHud has (Home /
@@ -167,6 +199,7 @@ function mount() {
     mountMarketMoversToggle();
     mountPicksStatus();
     mountHeaderMenu();
+    mountRegisterCta();
 
     const payload = readPayload();
     if (!payload) return;
@@ -271,6 +304,7 @@ function mount() {
                                 ctaHref: '/login/',
                                 ctaLabel: 'Sign Up',
                             }}
+                            openWall="promo"
                             scale={showcaseScale}
                         />
                     </div>

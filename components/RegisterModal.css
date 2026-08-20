@@ -1,0 +1,67 @@
+/* Join HeatChecks modal - rides tank-modal chrome + hatchery action classes. */
+
+.register-modal {
+  max-width: 440px;
+}
+
+.register-modal-lede {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: #ffffff;
+  margin: 0.25rem 0 0.9rem;
+}
+
+.register-modal-form {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.register-modal-input {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #ffffff;
+  background: rgba(5, 7, 15, 0.6);
+  border: 2px solid rgba(47, 230, 217, 0.4);
+  border-radius: 12px;
+  padding: 0.55rem 0.9rem;
+  width: min(260px, 100%);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.register-modal-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+}
+
+.register-modal-input:focus-visible {
+  border-color: var(--hc-teal, #2fe6d9);
+  box-shadow: 0 0 12px rgba(47, 230, 217, 0.35);
+}
+
+.register-modal-sent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 1rem 0 0.5rem;
+}
+
+.register-modal-check {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  color: #05070f;
+  background: var(--hc-teal, #2fe6d9);
+  box-shadow: 0 0 24px rgba(47, 230, 217, 0.45);
+  margin-bottom: 0.35rem;
+}

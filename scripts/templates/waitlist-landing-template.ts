@@ -98,6 +98,19 @@ function sharedStyles(): string {
             font-family: 'Nunito', 'Helvetica Neue', Arial, sans-serif;
             -webkit-font-smoothing: antialiased;
         }
+        /* House scrollbars everywhere: navy track, marquee-orange thumb. Surfaces
+           with their own aesthetic (the tank-modal artifacts) override the thumb to
+           teal in their own CSS. Firefox uses scrollbar-color; WebKit the pseudos. */
+        html { scrollbar-color: #f89b4e var(--hc-navy-dark); }
+        ::-webkit-scrollbar { width: 10px; height: 10px; }
+        ::-webkit-scrollbar-track { background: var(--hc-navy-dark); }
+        ::-webkit-scrollbar-thumb {
+            background: linear-gradient(180deg, #f89b4e 0%, var(--hc-gold) 100%);
+            border-radius: 999px;
+            border: 2px solid var(--hc-navy-dark);
+        }
+        ::-webkit-scrollbar-thumb:hover { background: var(--hc-gold); }
+        ::-webkit-scrollbar-corner { background: var(--hc-navy-dark); }
         a { color: inherit; }
         .hc-page {
             max-width: 560px;

@@ -295,7 +295,7 @@ export function renderMarketMoversSection(data: MarketMoversData): string {
             <h2 id="hc-mm-heading" class="hc-visually-hidden">Market Movers</h2>
             <div class="hc-mm-band">
                 <img class="hc-mm-logo" src="/assets/images/market-movers-logo.webp" alt="Market Movers" width="600" height="416" loading="lazy">
-                <p class="hc-section-sub hc-mm-note">${escapeHtml(data.note)}</p>
+                <p class="hc-section-sub hc-mm-note">Real sport moments are the fuel that forges the world of Heatchecks. Each moment is tied to an index. Storylines and results affect each index differently! And soon, a new way to put your Embers to work while you enjoy sports content.</p>
             </div>
             ${body}
         </section>`;
@@ -377,6 +377,12 @@ export function marketMoversStyles(): string {
         /* Slim column, % above the plot, hugging the card's top-right corner. */
         .hc-mm-chartrow { display: flex; flex-direction: column; align-items: flex-end; gap: 0.15rem; margin: 0 0 0 auto; flex: 0 1 210px; }
         .hc-mm-chart { width: 100%; min-width: 150px; max-width: 210px; }
+        /* Mobile: the chart row spans the card with the plot centered; the % keeps
+           its right-side placement. */
+        @media (max-width: 1023px) {
+            .hc-mm-chartrow { flex: 1 1 100%; margin: 0; }
+            .hc-mm-chart { align-self: center; max-width: 240px; }
+        }
         .hc-mm-svg { display: block; width: 100%; height: auto; }
         .hc-mm-tick {
             font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 9px;

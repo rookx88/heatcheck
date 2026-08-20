@@ -511,7 +511,6 @@ const picksTodayLineStyle: React.CSSProperties = {
 // one, so a not-yet-verified account can never end up stranded on a fully-picked tank
 // with no way back to the code form.
 const VerifyBlock: React.FC<{
-    email: string;
     verifyState: VerifyState;
     verifyCode: string;
     setVerifyCode: (v: string) => void;
@@ -519,10 +518,13 @@ const VerifyBlock: React.FC<{
     resendState: 'idle' | 'sending' | 'sent';
     onVerify: (e: React.FormEvent) => void;
     onResend: () => void;
-}> = ({ email, verifyState, verifyCode, setVerifyCode, verifyError, resendState, onVerify, onResend }) =>
+}> = ({ verifyState, verifyCode, setVerifyCode, verifyError, resendState, onVerify, onResend }) =>
     verifyState === 'verified' ? (
+        // Deliberately no email address here: the artifact renders in shared/visible
+        // contexts (homepage showcase, Tank HQ modal, article pages), so the wall
+        // must never display the account's email.
         <p style={{ color: '#2fe6d9', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-            &#10003; {email ? `${email} confirmed` : 'Email confirmed'}
+            &#10003; Email confirmed
         </p>
     ) : (
         <form onSubmit={onVerify} style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed rgba(255,255,255,0.15)' }}>
@@ -831,7 +833,6 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
 
     const verifyBlock = (
         <VerifyBlock
-            email={email}
             verifyState={verifyState}
             verifyCode={verifyCode}
             setVerifyCode={setVerifyCode}
@@ -1030,12 +1031,14 @@ const PromoWallContent: React.FC<{ promoWall: PromoWall }> = ({ promoWall }) => 
 // UI is a smaller cube inside the same reserved space (a proportionally smaller box
 // would keep the same relative spill). Geometry constants stay untouched - wall copy
 // is rem-sized and would overflow shrunken walls.
-export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?: LinkCall; promoWall?: PromoWall; scale?: number }> = ({ payload, slug, linkCall, promoWall, scale = 1 }) => {
+export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?: LinkCall; promoWall?: PromoWall; openWall?: 'call' | 'promo'; scale?: number }> = ({ payload, slug, linkCall, promoWall, openWall = 'call', scale = 1 }) => {
     const walls = buildWalls(payload, promoWall);
-    // Prop bets sell the artifact - open with the Call wall already facing forward
-    // instead of making the reader drag all the way around to find it.
+    // Which wall greets the viewer. Default: the Call wall (prop bets sell the
+    // artifact). Logged-out surfaces can instead open on the promo/signup wall
+    // (openWall="promo") - falls back to the call wall when no promo exists.
     const callWall = walls.find(w => w.kind === 'call');
-    const initialRotateY = OPEN_TILT_DEG - (callWall?.rotateY ?? 0);
+    const focusWall = (openWall === 'promo' ? walls.find(w => w.kind === 'promo') : undefined) ?? callWall;
+    const initialRotateY = OPEN_TILT_DEG - (focusWall?.rotateY ?? 0);
 
     const reduceMotion = useReducedMotion();
     const rotateX = useMotionValue(-12);

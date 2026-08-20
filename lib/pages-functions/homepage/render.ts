@@ -95,8 +95,14 @@ function renderSportRow(slots: SportSlot[]): string {
 }
 
 // Static world-map picture is the no-JS/crawler fallback inside #hc-map-root; the
-// island's createRoot().render() replaces it with the interactive WorldMap.
-function renderExplore(): string {
+// island's createRoot().render() replaces it with the interactive WorldMap. Logged
+// out, the section also carries the register CTA card (mobile: under the world;
+// desktop: to its right) - the island wires its click to the register modal.
+function renderExplore(user: HomepageUser | null): string {
+    const registerCta = user ? '' : `
+                <button type="button" class="hc-register-cta" data-hc-register aria-haspopup="dialog" aria-label="Register to join HeatChecks">
+                    <img src="/assets/images/register-here.webp" alt="Register here to join the fun" width="800" height="800" loading="lazy">
+                </button>`;
     return `
         <section id="explore" class="hc-section" aria-labelledby="hc-explore-heading">
             <h2 id="hc-explore-heading" class="hc-visually-hidden">Explore the world by sport</h2>
@@ -107,7 +113,7 @@ function renderExplore(): string {
                         <source srcset="/assets/images/world-map.webp" type="image/webp">
                         <img class="hc-world-map-static" src="/assets/images/world-map.png" alt="Illustrated map of the Heatchecks sports world, with themed islands for soccer, football, basketball, baseball, hockey, and golf surrounding a central aquarium" width="1120" height="1113" loading="lazy">
                     </picture>
-                </div>
+                </div>${registerCta}
             </div>
         </section>`;
 }
@@ -211,6 +217,33 @@ function homepageStyles(): string {
         #hc-map-root { position: relative; z-index: 2; }
         .hc-world-map-static, #hc-map-root svg { display: block; width: 100%; height: auto; }
 
+        /* Register CTA card (logged-out only). Mobile: centered under the world,
+           before the footer. Click movement: hover lift, active squash, and the
+           island toggles .is-popping for a jiggle before the modal opens. */
+        .hc-register-cta {
+            display: block;
+            background: none; border: none; padding: 0; cursor: pointer;
+            margin: 1.25rem auto 0;
+            width: min(420px, 92%);
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 0.15s ease, filter 0.2s ease;
+        }
+        .hc-register-cta img {
+            display: block; width: 100%; height: auto;
+            border-radius: 18px;
+            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(47, 230, 217, 0.25);
+        }
+        .hc-register-cta:hover { transform: translateY(-3px) scale(1.02); filter: brightness(1.05); }
+        .hc-register-cta:active { transform: scale(0.95); }
+        .hc-register-cta:focus-visible { outline: 3px solid var(--hc-teal); outline-offset: 4px; border-radius: 18px; }
+        .hc-register-cta.is-popping { animation: hc-register-pop 0.35s ease; }
+        @keyframes hc-register-pop {
+            0% { transform: scale(1); }
+            30% { transform: scale(0.92) rotate(-2deg); }
+            65% { transform: scale(1.05) rotate(1.5deg); }
+            100% { transform: scale(1); }
+        }
+
         @media (prefers-reduced-motion: reduce) {
             .hc-sport-row { scroll-behavior: auto; }
         }
@@ -265,11 +298,16 @@ function homepageStyles(): string {
             .hc-section-sub--tanks { margin-top: 0; }
 
             /* Explore: globe seated left on the page's own navy background (one
-               consistent color story all the way down); the open right half is where
-               the fixed pet widget visually lives. */
+               consistent color story all the way down). Logged out, the register CTA
+               card sits to the world's right; logged in, the open right half is
+               where the fixed pet widget visually lives. */
             #explore { margin-top: 2rem; }
-            #explore .hc-explore-wrap { margin-top: 0.5rem; }
-            #hc-map-root { max-width: 620px; }
+            #explore .hc-explore-wrap { margin-top: 0.5rem; display: flex; align-items: center; gap: 2rem; }
+            /* In the flex row the logo goes absolute so it keeps overlapping the
+               world's top-left corner (still layered UNDER the map, z 1 vs 2). */
+            .hc-explore-logo { position: absolute; top: 0; left: 0; margin: 0; }
+            #hc-map-root { flex: 0 1 620px; max-width: 620px; min-width: 0; }
+            .hc-register-cta { flex: 0 1 360px; margin: 0; align-self: center; }
             .hc-footer { padding-top: 1.25rem; }
         }
     `;
@@ -333,7 +371,7 @@ export function renderHomepage(options: RenderHomepageOptions): string {
         ${renderTickerTape(data.marketMovers.movers)}
         ${renderSportRow(data.sportSlots)}
         ${renderMarketMoversSection(data.marketMovers)}
-        ${renderExplore()}
+        ${renderExplore(user)}
         ${footer()}
     </main>
     <script type="application/json" id="homepage-data">${payloadJson}</script>
