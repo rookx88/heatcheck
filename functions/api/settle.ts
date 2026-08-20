@@ -37,6 +37,9 @@ interface UnresolvedPick {
     implied_prob_at_lock: number;
     email: string;
     call_question: string | null;
+    side: string | null;
+    away: string | null;
+    home: string | null;
 }
 
 interface PendingTickerTag {
@@ -78,8 +81,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // are only for the settlement notification below, not resolution itself.
     const rows = await sql`
         SELECT p.id, p.waitlist_id, p.outcome_index, p.implied_prob_at_lock::float8 AS implied_prob_at_lock,
+               p.side,
                t.game_snapshot->'prop'->>'id' AS market_id,
                t.game_snapshot->'prop'->'odds'->'outcomes' AS snapshot_outcomes,
+               t.game_snapshot->'game'->>'away' AS away,
+               t.game_snapshot->'game'->>'home' AS home,
                w.email, t.model_output->'call'->>'question' AS call_question
         FROM picks p
         JOIN tank_pages t ON t.id = p.tank_page_id
@@ -118,6 +124,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 userId: pick.waitlist_id,
                 result,
                 impliedProbAtLock: pick.implied_prob_at_lock,
+                // Notification copy context: the exact side they picked, and the Tank's
+                // matchup ("Away vs Home"), falling back to the call question.
+                pickLabel: pick.side ?? undefined,
+                matchup: pick.away && pick.home ? `${pick.away} vs ${pick.home}` : pick.call_question ?? undefined,
             });
             results.push({ pickId: pick.id, status: `settled_${result}`, payoutAmount });
 

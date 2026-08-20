@@ -253,6 +253,12 @@ export interface SettleCallInput {
     // result (see correctCallPayout below); still required either way so a caller
     // can't accidentally settle a win without it.
     impliedProbAtLock: number;
+    // Notification copy context, both optional (missing -> the terse fallback copy).
+    // pickLabel = the side the user picked, verbatim (picks.side); matchup = the
+    // Tank's game label ("Brewers vs Dodgers"). The message is "spoken" by the user's
+    // pet in the widget bubble, hence the hype on a win.
+    pickLabel?: string;
+    matchup?: string;
 }
 
 export interface SettleCallResult {
@@ -310,10 +316,19 @@ export async function settleCall(sql: NeonQueryFunction<false, false>, input: Se
     // to reveal the payoff. The Ember is already paid here; claiming (claimed_at) is
     // presentational only. Idempotent on 'settle:call:<pickId>', so a re-run no-ops it
     // alongside the picks UPDATE and the payout - all three guarded independently.
+    //
+    // Copy is written in the pet's voice (the PetWidget bubble "speaks" it): a win gets
+    // hyped, a loss gets the tank-busted-open line with the consolation amount. Falls
+    // back to the original terse copy when the caller has no label/matchup context.
+    const inMatchup = input.matchup ? ` in ${input.matchup}` : '';
     const notificationMessage =
         input.result === 'correct'
-            ? `You called it — +${payoutAmount} Ember.`
-            : `Your call settled — +${payoutAmount} Ember.`;
+            ? (input.pickLabel
+                ? `LET'S GO! You called "${input.pickLabel}"${inMatchup} and it HIT — the tank cracked open for +${payoutAmount} Ember!`
+                : `You called it — +${payoutAmount} Ember.`)
+            : (input.pickLabel
+                ? `Your pick "${input.pickLabel}"${inMatchup} fell short, so the tank busted open and only ${payoutAmount} Ember came out.`
+                : `Your call settled — +${payoutAmount} Ember.`);
     const notificationKey = `settle:call:${input.pickId}`;
 
     await sql.transaction([
