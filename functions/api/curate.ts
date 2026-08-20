@@ -26,10 +26,19 @@
 // If the search step genuinely can't find real connections for a given sport, that
 // sport contributes zero drafts this run - it never pads with a generic high-prominence
 // prop just to hit a quota.
+//
+// This endpoint also runs the daily Exchange ticker TAG SWEEP (sweepUntaggedTanks in
+// lib/pages-functions/tickers.ts): published, app-visible Tanks that somehow have no
+// ticker tags get both sides tagged onto every eligible ticker. It's the catch-all
+// behind backend.ts's publish-time tag hook - anything that publishes without being
+// tagged (hook misconfigured, CLOB hiccup at publish time) is picked up here within a
+// day. Runs even when there are zero curation candidates, and its failure never fails
+// the curation response.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import Anthropic from '@anthropic-ai/sdk';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
+import { sweepUntaggedTanks, type SweepReport } from '../../lib/pages-functions/tickers';
 import { fetchLiveGames, DEFAULT_WINDOW_HOURS } from '../../tank-gamma-live';
 import { filterProps } from '../../tank-filter';
 import { generateTankArticle, extractJson, parseModelJson, type GenerationConfig } from '../../tank-generate';
@@ -38,6 +47,7 @@ import { generateSlug, ensureUniqueSlug } from '../../scripts/utils/slug-generat
 import type { Prop, Game } from '../../tank-types';
 
 const DEFAULT_DEDUPE_DAYS = 7;
+const DEFAULT_TAG_SWEEP_DAYS = 14;
 const DEFAULT_MAX_CANDIDATES = 80;
 const DEFAULT_MAX_MATCHES_PER_RUN = 6;
 const DEFAULT_WEB_SEARCH_MAX_USES = 8;
@@ -219,6 +229,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(env);
 
+    // 0. Exchange ticker tag sweep - runs FIRST so the zero-candidates early return
+    // below can't skip it, and in its own try/catch so a sweep failure degrades to an
+    // error note in the response rather than failing curation.
+    let tickerTagging: SweepReport | { error: string };
+    try {
+        tickerTagging = await sweepUntaggedTanks(sql, {
+            maxAgeDays: numEnv(env.CURATE_TAG_SWEEP_DAYS, DEFAULT_TAG_SWEEP_DAYS),
+        });
+    } catch (err) {
+        console.error('[POST /api/curate] Ticker tag sweep failed:', err);
+        tickerTagging = { error: err instanceof Error ? err.message : String(err) };
+    }
+
     // 1. Live candidates, filtered the same way the manual admin flow filters them.
     const liveGames = await fetchLiveGames(undefined, windowHours);
     const filtered = filterProps(liveGames, { marketWhitelist, minProminence, perGameCap });
@@ -242,7 +265,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     allCandidates = allCandidates.filter(c => !recentMarketIds.has(c.prop.id));
 
     if (allCandidates.length === 0) {
-        return jsonResponse({ candidatesConsidered: 0, matchesFound: 0, created: 0, groups: [] });
+        return jsonResponse({ candidatesConsidered: 0, matchesFound: 0, created: 0, groups: [], tickerTagging });
     }
 
     const slugRows = await sql`SELECT slug FROM tank_pages WHERE slug IS NOT NULL`;
@@ -277,5 +300,5 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         { candidatesConsidered: 0, matchesFound: 0, created: 0 }
     );
 
-    return jsonResponse({ ...totals, groups: groupResults });
+    return jsonResponse({ ...totals, groups: groupResults, tickerTagging });
 };

@@ -65,6 +65,16 @@ export async function getTicker(sql: NeonQueryFunction<false, false>, key: strin
     return rows.length ? (rows[0] as unknown as TickerRow) : null;
 }
 
+export async function getActiveTickers(sql: NeonQueryFunction<false, false>): Promise<TickerRow[]> {
+    const rows = await sql`
+        SELECT key, display_name, description, rule_type,
+               settle_win_pct::float8 AS settle_win_pct,
+               settle_loss_pct::float8 AS settle_loss_pct,
+               tab_order
+        FROM tickers WHERE active = true ORDER BY tab_order, key`;
+    return rows as unknown as TickerRow[];
+}
+
 export type EligibilityResult = { ok: true } | { ok: false; reason: string };
 
 // Eligibility is checked at tag time against the FROZEN snapshot probability of the
@@ -359,6 +369,109 @@ export async function getTickerNews(sql: SqlReader, limitPerTicker = 3): Promise
         });
     }
     return news;
+}
+
+// -----------------------------------------------------------------------------------
+// Tag sweep - the automated tagging path, run by /api/curate's daily cron (and safe to
+// run any time). Finds published, app-visible polymarket Tanks that have NO ticker
+// tags yet and tags BOTH sides, each with every active ticker whose rule the side's
+// frozen snapshot probability satisfies. Publish-gated on purpose: drafts must never
+// be tagged, because the public value/chart queries filter visibility but not status.
+// The age window bounds retries: a Tank whose CLOB history is gone fails today, gets
+// retried on later runs, and ages out of the window instead of erroring daily forever.
+// Known limitation (accepted): the tank-level NOT EXISTS means a partially-tagged Tank
+// (one side landed, the other failed) isn't revisited - side failures are near-always
+// market-wide, and the manual /api/ticker-tags endpoint covers stragglers.
+// -----------------------------------------------------------------------------------
+
+export interface SweepReport {
+    tanksConsidered: number;
+    tagsCreated: number;
+    skips: number; // duplicate (tank,ticker) rows that already existed
+    failures: Array<{ slug: string; side: number; code: string; message: string }>;
+}
+
+export async function sweepUntaggedTanks(
+    sql: NeonQueryFunction<false, false>,
+    opts: { maxAgeDays: number },
+): Promise<SweepReport> {
+    const report: SweepReport = { tanksConsidered: 0, tagsCreated: 0, skips: 0, failures: [] };
+
+    const [cfg, activeTickers, rows] = await Promise.all([
+        getTickerConfig(sql),
+        getActiveTickers(sql),
+        sql`
+            SELECT t.id, t.slug,
+                   t.game_snapshot->'prop'->>'id' AS market_id,
+                   t.game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices
+            FROM tank_pages t
+            WHERE t.status = 'published' AND t.visibility = 'app' AND t.provider = 'polymarket'
+              AND t.slug IS NOT NULL AND t.model_output IS NOT NULL
+              AND t.game_snapshot->'prop'->>'id' IS NOT NULL
+              AND t.published_at > NOW() - (INTERVAL '1 day' * ${opts.maxAgeDays})
+              AND NOT EXISTS (SELECT 1 FROM ticker_tags tt WHERE tt.tank_id = t.id)
+            ORDER BY t.published_at
+        `,
+    ]);
+    report.tanksConsidered = rows.length;
+
+    // Sequential, settle.ts discipline: each side costs a Gamma + CLOB call.
+    for (const row of rows) {
+        const tankId = row.id as string;
+        const slug = row.slug as string;
+        const marketId = row.market_id as string;
+        const probs = Array.isArray(row.outcome_prices) ? (row.outcome_prices as unknown[]).map(Number) : [];
+        if (probs.length === 0 || probs.some((p) => !Number.isFinite(p))) {
+            report.failures.push({ slug, side: -1, code: 'missing_snapshot_odds', message: 'No usable outcomePrices in the frozen snapshot.' });
+            continue;
+        }
+        for (let side = 0; side < probs.length; side++) {
+            const eligible = activeTickers.filter((t) => checkEligibility(t.rule_type, probs[side], cfg).ok);
+            if (eligible.length === 0) continue;
+            // One CLOB fetch per SIDE, shared by every ticker tagging that side.
+            let tagDelta: TagDelta;
+            try {
+                tagDelta = await fetchTagDelta(marketId, side, cfg.tag_delta_cap_pct);
+            } catch (err) {
+                const code = err instanceof TaggingError ? err.code : 'error';
+                const message = err instanceof Error ? err.message : String(err);
+                report.failures.push({ slug, side, code, message });
+                continue;
+            }
+            for (const ticker of eligible) {
+                try {
+                    await insertTagWithEvent(sql, {
+                        tagId: crypto.randomUUID(),
+                        tankId,
+                        tickerKey: ticker.key,
+                        relevantSide: side,
+                        delta: tagDelta.delta,
+                        metadata: {
+                            rawDelta: tagDelta.rawDelta,
+                            capped: tagDelta.capped,
+                            capPct: cfg.tag_delta_cap_pct,
+                            priceNow: tagDelta.priceNow,
+                            price3dAgo: tagDelta.price3dAgo,
+                            tokenId: tagDelta.tokenId,
+                            historyPoints: tagDelta.historyPoints,
+                            thinHistory: tagDelta.thinHistory,
+                            snapshotProb: probs[side],
+                            marketId,
+                            source: 'curate_sweep',
+                        },
+                    });
+                    report.tagsCreated++;
+                } catch (err) {
+                    if ((err as { code?: string })?.code === '23505') {
+                        report.skips++;
+                    } else {
+                        report.failures.push({ slug, side, code: 'insert_error', message: err instanceof Error ? err.message : String(err) });
+                    }
+                }
+            }
+        }
+    }
+    return report;
 }
 
 // Settle-event write, idempotent by construction (same single-statement CTE discipline

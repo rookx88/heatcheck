@@ -47,6 +47,9 @@ export interface Env {
     CURATE_MAX_MATCHES_PER_RUN?: string;
     CURATE_WEB_SEARCH_MAX_USES?: string;
     CURATE_MATCH_MAX_TOKENS?: string;
+    // How far back (days) the curate run's ticker tag sweep looks for published,
+    // untagged Tanks - bounds daily retries for markets whose CLOB history is gone.
+    CURATE_TAG_SWEEP_DAYS?: string;
     // Gates the daily pick volume separately from code deploys - defaults to 1 (see
     // functions/api/picks.ts) until explicitly raised via this env var when Phase 1
     // is actually ready to go, no redeploy needed to flip it.

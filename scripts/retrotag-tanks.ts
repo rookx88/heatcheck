@@ -1,4 +1,7 @@
 // Mechanical retrotagging of existing published Tanks onto the Exchange tickers.
+// NOTE: superseded for ongoing use by the automated pipeline - backend.ts tags at
+// publish time and /api/curate's daily sweep (sweepUntaggedTanks) is the catch-all.
+// Keep this script for one-off backfills against Tanks older than the sweep window.
 // Seeds the ticker layer with real data by driving the REAL production API - this
 // script never writes to the database directly: every tag goes through
 // POST /api/ticker-tags (which enforces eligibility, uniqueness, CLOB-derived deltas,

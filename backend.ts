@@ -164,6 +164,69 @@ const ODDS_API_KEY = process.env.THE_ODDS_API_KEY;
 // Tank page is published, without needing a git push. See the PUT /api/tank/pages/:id
 // route below. Optional: unset just means publishing doesn't trigger a redeploy yet.
 const DEPLOY_HOOK_URL = process.env.DEPLOY_HOOK_URL || '';
+// Exchange ticker tagging at publish time (see the PUT /api/tank/pages/:id route):
+// fires both-sides tags through the DEPLOYED /api/ticker-tags endpoint - the deployed
+// site owns the CLOB integration and authoritative eligibility validation; this server
+// only decides which (side, ticker) pairs to request. Optional like DEPLOY_HOOK_URL:
+// unset TICKER_SECRET just means published Tanks wait for the daily curate sweep.
+const TICKER_SECRET = process.env.TICKER_SECRET || '';
+const TICKER_TAG_BASE_URL = process.env.TICKER_TAG_BASE_URL || 'https://heatchecks.io';
+
+// Publish-time ticker tagging: tag BOTH sides of the Tank's market, each side with
+// every ticker whose eligibility rule its FROZEN snapshot probability satisfies.
+// The threshold logic mirrors lib/pages-functions/tickers.ts's checkEligibility (same
+// acknowledged-mirror precedent as simulate-ember-economy.ts vs the payout formula) -
+// safe because the deployed endpoint re-validates every request authoritatively; a
+// drifted mirror produces a logged 422, never a wrong tag. Fire-and-forget: publishing
+// never fails because tagging did, and the daily curate sweep is the catch-all.
+async function tagPublishedTankOnTickers(slug: string, gameSnapshot: any): Promise<void> {
+    const probs: number[] = Array.isArray(gameSnapshot?.prop?.odds?.outcomePrices)
+        ? gameSnapshot.prop.odds.outcomePrices.map(Number)
+        : [];
+    if (probs.length === 0 || probs.some((p: number) => !Number.isFinite(p))) {
+        console.warn(`[Ticker Tags] ${slug}: no usable snapshot outcomePrices - leaving for the curate sweep.`);
+        return;
+    }
+    const cfgResult = await pool.query(`SELECT config FROM game_config WHERE key = 'tickers' AND active`);
+    const tickersResult = await pool.query(`SELECT key, rule_type FROM tickers WHERE active = true ORDER BY tab_order`);
+    if (cfgResult.rowCount !== 1 || tickersResult.rowCount === 0) {
+        console.warn(`[Ticker Tags] ${slug}: ticker config/rows missing - leaving for the curate sweep.`);
+        return;
+    }
+    const moonshotMax = Number(cfgResult.rows[0].config.moonshot_max_prob);
+    const locksMin = Number(cfgResult.rows[0].config.locks_min_prob);
+    const sideEligible = (ruleType: string, p: number): boolean => {
+        if (ruleType === 'underdog') return p < 0.5;
+        if (ruleType === 'favorite') return p >= 0.5;
+        if (ruleType === 'heavy_favorite') return p >= locksMin;
+        if (ruleType === 'longshot') return p < moonshotMax;
+        return false;
+    };
+
+    for (let side = 0; side < probs.length; side++) {
+        for (const ticker of tickersResult.rows) {
+            if (!sideEligible(ticker.rule_type, probs[side])) continue;
+            try {
+                const res = await fetch(`${TICKER_TAG_BASE_URL}/api/ticker-tags`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Ticker-Secret': TICKER_SECRET },
+                    body: JSON.stringify({ slug, tickerKey: ticker.key, relevantSide: side }),
+                });
+                if (res.status === 201) {
+                    const body: any = await res.json().catch(() => null);
+                    console.log(`[Ticker Tags] ✓ ${slug} side ${side} -> ${ticker.key} (delta ${body?.delta})`);
+                } else if (res.status === 409) {
+                    console.log(`[Ticker Tags] = ${slug} side ${side} -> ${ticker.key} already tagged`);
+                } else {
+                    const body: any = await res.json().catch(() => null);
+                    console.warn(`[Ticker Tags] ✗ ${slug} side ${side} -> ${ticker.key}: ${res.status} ${body?.code ?? ''} ${body?.message ?? ''} (curate sweep will retry)`);
+                }
+            } catch (err: any) {
+                console.warn(`[Ticker Tags] ✗ ${slug} side ${side} -> ${ticker.key}: ${err.message} (curate sweep will retry)`);
+            }
+        }
+    }
+}
 
 // --- AUTHENTICATION MIDDLEWARE ---
 const apiKeyAuth = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -2434,6 +2497,19 @@ app.put('/api/tank/pages/:id', apiKeyAuth, async (req: express.Request, res: exp
                      WHERE newsletter_issues.sent_at IS NULL`,
                 [weekKey, result.rows[0].slug]
             );
+        }
+
+        // Exchange ticker tagging fires the moment a public polymarket Tank publishes -
+        // fire-and-forget like the static rebuild and deploy hook below; failures are
+        // logged and the daily curate sweep picks up anything missed.
+        if (statusChangedToPublished && visibility === 'app'
+            && existing.rows[0].provider === 'polymarket' && result.rows[0].slug) {
+            if (TICKER_SECRET) {
+                tagPublishedTankOnTickers(result.rows[0].slug, existing.rows[0].game_snapshot)
+                    .catch((err: any) => console.error('[Ticker Tags] ✗ Tagging pass failed:', err.message));
+            } else {
+                console.warn('[Ticker Tags] TICKER_SECRET is not configured - this Tank will be tagged by the next daily curate sweep instead.');
+            }
         }
 
         if (statusChangedToPublished || statusChangedAwayFromPublished) {
