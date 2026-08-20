@@ -11,12 +11,15 @@
 //
 // Env: DATABASE_URL, BASE_URL (a deployed URL with TICKER_SECRET/SETTLE_SECRET bound,
 // e.g. the branch preview), TICKER_SECRET, SETTLE_SECRET.
-// RETROTAG_PREFER=favorite flips the side rule below.
 //
-// Side rule (user decision, 2026-08-19): on a binary market both sides are equally
-// "extreme" (their probs mirror around 0.5), so a preference has to be explicit -
-// default is the UNDERDOG side (the editorial storyline): dogs, plus moonshot when
-// under the config threshold. RETROTAG_PREFER=favorite mirrors: chalk, plus locks.
+// Side rule (user decision, 2026-08-19, revised same day): tag BOTH sides of every
+// market, each with its own eligible tickers - underdog side -> dogs (+ moonshot when
+// under the config threshold), favorite side -> chalk (+ locks at/above its
+// threshold). On a binary market the two sides mirror around 0.5, so this is what
+// makes dogs/chalk (and locks/moonshot) move inversely off the same real market: one
+// history drives both tag deltas with opposite signs, one outcome settles one side up
+// and the other down. Tagging only one side (the original rule) left the favorite-side
+// tickers with no events at all.
 //
 // Outcome handling per POST: 201 tagged; 409 already_tagged = skip (safe rerun);
 // 502 retriable (CLOB/Gamma hiccup, or empty price history on long-closed markets) =
@@ -34,7 +37,6 @@ const TICKER_SECRET = process.env.TICKER_SECRET || '';
 const SETTLE_SECRET = process.env.SETTLE_SECRET || '';
 const DRY_RUN = process.argv.includes('--dry-run');
 const NO_SETTLE = process.argv.includes('--no-settle');
-const PREFER_FAVORITE = process.env.RETROTAG_PREFER === 'favorite';
 
 if (!process.env.DATABASE_URL || !BASE_URL || !TICKER_SECRET || (!NO_SETTLE && !DRY_RUN && !SETTLE_SECRET)) {
     console.error('Required env: DATABASE_URL, BASE_URL, TICKER_SECRET (+ SETTLE_SECRET unless --no-settle/--dry-run).');
@@ -89,9 +91,10 @@ async function main() {
            AND game_snapshot->'prop'->>'id' IS NOT NULL
          ORDER BY published_at NULLS LAST, created_at`);
     const candidates = rows as CandidateRow[];
-    console.log(`${candidates.length} candidate tank(s); side rule: ${PREFER_FAVORITE ? 'FAVORITE (chalk/locks)' : 'UNDERDOG (dogs/moonshot)'}; thresholds moonshot<${moonshotMax} locks>=${locksMin}\n`);
+    console.log(`${candidates.length} candidate tank(s); rule: BOTH sides (underdog -> dogs/moonshot, favorite -> chalk/locks); thresholds moonshot<${moonshotMax} locks>=${locksMin}\n`);
 
-    // Build the mechanical plan.
+    // Build the mechanical plan: every side of every market, with that side's eligible
+    // tickers. One plan entry per (tank, side).
     const plans: TagPlan[] = [];
     const skipped: Array<{ slug: string; reason: string }> = [];
     for (const c of candidates) {
@@ -100,20 +103,13 @@ async function main() {
             skipped.push({ slug: c.slug, reason: 'no usable snapshot outcomePrices' });
             continue;
         }
-        // Preferred side: the underdog (min prob) or, in favorite mode, the max-prob side.
-        const side = PREFER_FAVORITE
-            ? probs.indexOf(Math.max(...probs))
-            : probs.indexOf(Math.min(...probs));
-        const p = probs[side];
-        const tickers = PREFER_FAVORITE
-            ? [...(p >= 0.5 ? ['chalk'] : []), ...(p >= locksMin ? ['locks'] : [])]
-            : [...(p < 0.5 ? ['dogs'] : []), ...(p < moonshotMax ? ['moonshot'] : [])];
-        if (tickers.length === 0) {
-            // e.g. a perfectly even market in underdog mode (p === 0.5 -> not < 0.5)
-            skipped.push({ slug: c.slug, reason: `preferred side prob ${p.toFixed(3)} eligible for no ticker` });
-            continue;
+        for (let side = 0; side < probs.length; side++) {
+            const p = probs[side];
+            const tickers = p < 0.5
+                ? ['dogs', ...(p < moonshotMax ? ['moonshot'] : [])]
+                : ['chalk', ...(p >= locksMin ? ['locks'] : [])];
+            plans.push({ slug: c.slug, side, prob: p, tickers });
         }
-        plans.push({ slug: c.slug, side, prob: p, tickers });
     }
 
     console.log('Plan:');
