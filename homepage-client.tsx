@@ -12,6 +12,8 @@ import { MotionConfig } from 'motion/react';
 import { Fishtank, formatTimeUntilReset, type DeckPayload } from './components/Fishtank';
 import { PetWidget } from './components/PetWidget';
 import { RegisterModal } from './components/RegisterModal';
+import { NotificationsHost } from './components/NotificationsHost';
+import { dispatchInboxOpen } from './notifications-client';
 import { getTodayStatus, logout } from './tank-pick-client';
 // The header chip's mini nav reuses the map pages' MapHud menu styling.
 import './components/MapHud.css';
@@ -133,6 +135,7 @@ function mountHeaderMenu() {
     menu.hidden = true;
     menu.innerHTML = `
         <a class="map-hud__item" role="menuitem" href="/">Home</a>
+        <button type="button" class="map-hud__item" role="menuitem" data-hc-inbox>Inbox</button>
         <button type="button" class="map-hud__item" role="menuitem" data-hc-logout>Log out</button>`;
     auth.appendChild(menu);
 
@@ -154,6 +157,10 @@ function mountHeaderMenu() {
     document.addEventListener('pointerdown', (e) => {
         if (!auth.contains(e.target as Node)) setOpen(false);
     });
+    menu.querySelector<HTMLButtonElement>('[data-hc-inbox]')?.addEventListener('click', () => {
+        setOpen(false);
+        dispatchInboxOpen();
+    });
     menu.querySelector<HTMLButtonElement>('[data-hc-logout]')?.addEventListener('click', async (e) => {
         const btn = e.currentTarget as HTMLButtonElement;
         btn.disabled = true;
@@ -161,6 +168,15 @@ function mountHeaderMenu() {
         try { await logout(); } catch { /* leave anyway - the server re-checks */ }
         window.location.href = '/';
     });
+}
+
+// The inbox modal's mount point on the homepage: a body-level root, so it exists for
+// every logged-in visitor (with or without a pet/showcase) and can never be trapped
+// by a transformed ancestor.
+function mountNotificationsHost() {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    createRoot(root).render(<NotificationsHost />);
 }
 
 // Picks-remaining footer in the tanks panel (vanilla, session-driven). Logged out
@@ -197,6 +213,7 @@ function mountPicksStatus() {
 
 function mount() {
     mountMarketMoversToggle();
+    mountNotificationsHost();
     mountPicksStatus();
     mountHeaderMenu();
     mountRegisterCta();

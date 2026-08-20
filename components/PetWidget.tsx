@@ -12,6 +12,13 @@ import { FeedModal } from './FeedModal';
 import { PetInventoryModal } from './PetInventoryModal';
 import { PetNameForm, PET_UPDATED_EVENT } from './PetNameForm';
 import { getPet, type PetInfo } from '../egg-shop-client';
+import {
+    getNotifications,
+    markNotificationRead,
+    dispatchNotificationsUpdated,
+    NOTIFICATIONS_UPDATED_EVENT,
+    type NotificationItem,
+} from '../notifications-client';
 // The Feed/Inventory modals render the shared .tank-modal-* chrome. Imported HERE,
 // not left to the host bundle, so every page that mounts the widget (including the
 // homepage, which never renders TankScreen) gets the modal styling.
@@ -32,6 +39,9 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
     const [pet, setPet] = useState<PetInfo | null>(null);
     const [expanded, setExpanded] = useState(false);
     const [openModal, setOpenModal] = useState<OpenModal>(null);
+    const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+    // The notification currently being "spoken" in the pet's bubble.
+    const [bubble, setBubble] = useState<NotificationItem | null>(null);
 
     const hydrate = useCallback(async () => {
         try {
@@ -41,18 +51,30 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
         }
     }, []);
 
+    const hydrateNotifications = useCallback(async () => {
+        try {
+            setNotifications((await getNotifications()) ?? []);
+        } catch {
+            // Same rule as the pet fetch: chrome fails quiet.
+        }
+    }, []);
+
     useEffect(() => {
         hydrate();
-    }, [hydrate]);
+        hydrateNotifications();
+    }, [hydrate, hydrateNotifications]);
 
     // bfcache: Back restores the page without remounting React.
     useEffect(() => {
         const onPageShow = (e: PageTransitionEvent) => {
-            if (e.persisted) hydrate();
+            if (e.persisted) {
+                hydrate();
+                hydrateNotifications();
+            }
         };
         window.addEventListener('pageshow', onPageShow);
         return () => window.removeEventListener('pageshow', onPageShow);
-    }, [hydrate]);
+    }, [hydrate, hydrateNotifications]);
 
     // Same-page pet changes (a hatch in the incubator modal, a naming) announce
     // themselves - re-hydrate so the widget appears/renames without a reload.
@@ -62,14 +84,41 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
         return () => window.removeEventListener(PET_UPDATED_EVENT, onPetUpdated);
     }, [hydrate]);
 
+    // Read-state changes elsewhere (the inbox modal) drop the badge count live.
     useEffect(() => {
-        if (!expanded) return;
+        const onUpdated = () => hydrateNotifications();
+        window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+        return () => window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
+    }, [hydrateNotifications]);
+
+    useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && !openModal) setExpanded(false);
+            if (e.key !== 'Escape' || openModal) return;
+            // Escape peels back one layer at a time: bubble first, then the row.
+            if (bubble) setBubble(null);
+            else if (expanded) setExpanded(false);
         };
+        if (!expanded && !bubble) return;
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-    }, [expanded, openModal]);
+    }, [expanded, openModal, bubble]);
+
+    // Feed is newest-first, so the oldest unread is the LAST unread element.
+    const unread = notifications.filter((n) => n.readAt === null);
+
+    const speakOldestUnread = () => {
+        const oldest = unread[unread.length - 1];
+        if (!oldest) return;
+        setBubble(oldest);
+        // Mark read the moment it's shown (user decision). Optimistic; the write is
+        // idempotent and chrome-quiet on failure.
+        setNotifications((prev) =>
+            prev.map((n) => (n.id === oldest.id ? { ...n, readAt: new Date().toISOString() } : n)),
+        );
+        markNotificationRead(oldest.id)
+            .catch(() => { /* next fetch reconciles */ })
+            .finally(() => dispatchNotificationsUpdated());
+    };
 
     if (!pet) return null;
 
@@ -97,6 +146,35 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                 >
                     <img src={PET_IMAGE_SRC} style={{ filter }} alt="" width={110} height={110} />
                 </button>
+                {unread.length > 0 && !bubble && (
+                    // The alert sits over the pet but is its own button (sibling, not
+                    // child, of .pet-widget__pet - nested buttons are invalid HTML and
+                    // the click must not toggle the action row).
+                    <button
+                        type="button"
+                        className="pet-widget__alert"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            speakOldestUnread();
+                        }}
+                        aria-label={`${unread.length} unread notification${unread.length === 1 ? '' : 's'} - hear the oldest`}
+                    >
+                        !
+                    </button>
+                )}
+                {bubble && (
+                    <div className="pet-widget__bubble" role="status">
+                        <span className="pet-widget__bubble-text">{bubble.message}</span>
+                        <button
+                            type="button"
+                            className="pet-widget__bubble-close"
+                            onClick={() => setBubble(null)}
+                            aria-label="Dismiss"
+                        >
+                            &times;
+                        </button>
+                    </div>
+                )}
             </div>
             {pet.name ? (
                 <div className="pet-widget__name">{name}</div>

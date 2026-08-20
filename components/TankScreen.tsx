@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Fishtank, type DeckPayload } from './Fishtank';
 import { PetWidget } from './PetWidget';
 import { MapHud } from './MapHud';
+import { NotificationsHost } from './NotificationsHost';
 import { trackEvent } from '../tank-analytics-client';
 import { SPORT_BY_LEAGUE, SPORT_ORDER, type Sport } from '../sport-map';
 import tanksBackgroundSrc from '../assets/new-website/Tanks- Background.svg';
@@ -158,6 +159,7 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks }) => {
       {/* Captain widget, bottom-right. Outside the transformed frame so its fixed
           modal overlays aren't containing-block-trapped. */}
       <PetWidget />
+      <NotificationsHost />
 
       {isOpen && (
         // Deliberately NOT closed by overlay clicks: dragging the 3D cube often ends

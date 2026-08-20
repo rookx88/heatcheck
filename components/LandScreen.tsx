@@ -12,6 +12,7 @@
 import React from 'react';
 import { PetWidget } from './PetWidget';
 import { MapHud } from './MapHud';
+import { NotificationsHost } from './NotificationsHost';
 import './LandScreen.css';
 
 export const LAND_VIEWBOX = { width: 810, height: 1439.999935 };
@@ -101,6 +102,10 @@ export const LandScreen: React.FC<LandScreenProps> = ({ backgroundSrc, pageAriaL
             the frame's translateX transform would trap the widget's position:fixed
             modal overlays (transformed ancestors become their containing block). */}
         <PetWidget />
+        {/* Inbox modal host: same transform-safe position as the PetWidget (MapHud's
+            menu only dispatches the open event - it can't host a fixed overlay from
+            inside the frame). */}
+        <NotificationsHost />
         {children}
     </div>
 );

@@ -41,6 +41,8 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* Anchor for the absolute alert badge and speech bubble. */
+  position: relative;
 }
 
 .pet-widget.is-expanded .pet-widget__row {
@@ -238,8 +240,97 @@ button.pet-widget__name--prompt:focus-visible {
   }
 }
 
+/* Unread-notifications alert: gold "unclaimed value" circle over the pet's head.
+   A sibling button of .pet-widget__pet (nested buttons are invalid), floated over
+   its top-right corner. */
+.pet-widget__alert {
+  position: absolute;
+  top: -4px;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid #05070f;
+  background: #ffc72c;
+  color: #05070f;
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+  box-shadow: 0 0 12px rgba(255, 199, 44, 0.75), 0 3px 8px rgba(0, 0, 0, 0.5);
+  animation: pet-alert-pulse 1.6s ease-in-out infinite;
+}
+
+.pet-widget__alert:focus-visible {
+  outline: 2px solid #2fe6d9;
+  outline-offset: 2px;
+}
+
+@keyframes pet-alert-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+}
+
+/* Speech bubble: the pet "reads" the oldest unread notification. Absolute (never
+   fixed - the map pages' transformed frames would trap a fixed box) above the pet,
+   with a CSS tail pointing down at it. */
+.pet-widget__bubble {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  right: 0;
+  width: max-content;
+  max-width: min(280px, 78vw);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  padding: 0.65rem 0.8rem;
+  background: linear-gradient(160deg, #0d1b33, #05070f);
+  border: 2px solid rgba(47, 230, 217, 0.55);
+  border-radius: 14px;
+  box-shadow: 0 0 18px rgba(47, 230, 217, 0.25), 0 10px 26px rgba(0, 0, 0, 0.55);
+  z-index: 3;
+}
+
+.pet-widget__bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  right: 42px;
+  border: 9px solid transparent;
+  border-top-color: rgba(47, 230, 217, 0.55);
+}
+
+.pet-widget__bubble-text {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.85rem;
+  line-height: 1.4;
+  color: #fff;
+  text-align: left;
+}
+
+.pet-widget__bubble-close {
+  background: none;
+  border: none;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 0.1rem;
+  flex-shrink: 0;
+}
+
+.pet-widget__bubble-close:hover {
+  color: #fff;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .pet-widget__actions {
+    animation: none;
+  }
+  .pet-widget__alert {
     animation: none;
   }
 }

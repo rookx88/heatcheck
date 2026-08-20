@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getSessionInfo, logout } from '../tank-pick-client';
 import { getEmberBalance } from '../egg-shop-client';
+import { dispatchInboxOpen } from '../notifications-client';
 import './MapHud.css';
 
 // Same flame glyph the homepage's ember chip uses.
@@ -108,6 +109,17 @@ export const MapHud: React.FC = () => {
             {menuOpen && (
                 <div className="map-hud__menu" role="menu">
                     <a className="map-hud__item" role="menuitem" href="/">Home</a>
+                    {/* Dispatches to the page's NotificationsHost - the modal can't
+                        render here, inside the transformed map frame (fixed-overlay
+                        containing-block trap). */}
+                    <button
+                        type="button"
+                        className="map-hud__item"
+                        role="menuitem"
+                        onClick={() => { setMenuOpen(false); dispatchInboxOpen(); }}
+                    >
+                        Inbox
+                    </button>
                     <button type="button" className="map-hud__item" role="menuitem" onClick={doLogout} disabled={loggingOut}>
                         {loggingOut ? 'Logging out…' : 'Log out'}
                     </button>

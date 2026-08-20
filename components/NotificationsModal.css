@@ -1,0 +1,76 @@
+/* Inbox rows - the .pet-inv-item look, as full-width buttons. Unread rows are bright
+   with the gold "unclaimed value" dot; read rows grey out and go inert. */
+
+.notif-loading {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0.5rem 0;
+}
+
+.notif-list {
+  list-style: none;
+  margin: 0.25rem 0 0.25rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.notif-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1.5px solid rgba(47, 230, 217, 0.35);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  color: #fff;
+}
+
+.notif-item:hover:not(:disabled) {
+  background: rgba(47, 230, 217, 0.08);
+}
+
+.notif-item:focus-visible {
+  outline: 2px solid #2fe6d9;
+  outline-offset: 2px;
+}
+
+.notif-item.is-read {
+  opacity: 0.55;
+  border-color: rgba(255, 255, 255, 0.12);
+  cursor: default;
+}
+
+.notif-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #ffc72c;
+  box-shadow: 0 0 8px rgba(255, 199, 44, 0.7);
+  flex-shrink: 0;
+}
+
+.notif-message {
+  flex: 1;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.88rem;
+  line-height: 1.35;
+}
+
+.notif-date {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
