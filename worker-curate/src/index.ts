@@ -20,7 +20,30 @@ async function runCurate(env: Env): Promise<string> {
     } else {
         console.log(`[worker-curate] curate run complete: ${text}`);
     }
-    return text;
+
+    // Exchange ticker tag sweep - a SEPARATE request on purpose: each Pages Function
+    // invocation has its own subrequest budget, and curation's traffic already runs
+    // close to it (see functions/api/ticker-sweep.ts). Same secret, sibling path.
+    // Runs even when curation errored: the sweep is the catch-all for untagged
+    // published Tanks and doesn't depend on curation having succeeded.
+    let sweepText = '';
+    try {
+        const sweepUrl = new URL('/api/ticker-sweep', env.CURATE_URL).toString();
+        const sweepRes = await fetch(sweepUrl, {
+            method: 'POST',
+            headers: { 'X-Curate-Secret': env.CURATE_SECRET },
+        });
+        sweepText = await sweepRes.text();
+        if (!sweepRes.ok) {
+            console.error(`[worker-curate] /api/ticker-sweep returned ${sweepRes.status}: ${sweepText}`);
+        } else {
+            console.log(`[worker-curate] ticker sweep complete: ${sweepText}`);
+        }
+    } catch (err) {
+        console.error('[worker-curate] ticker sweep call failed:', err);
+    }
+
+    return JSON.stringify({ curate: text, tickerSweep: sweepText });
 }
 
 export default {

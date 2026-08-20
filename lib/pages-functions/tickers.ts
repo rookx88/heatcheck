@@ -388,14 +388,21 @@ export interface SweepReport {
     tanksConsidered: number;
     tagsCreated: number;
     skips: number; // duplicate (tank,ticker) rows that already existed
+    deferred: number; // sides left for the next run by the maxSides budget cap
     failures: Array<{ slug: string; side: number; code: string; message: string }>;
 }
 
 export async function sweepUntaggedTanks(
     sql: NeonQueryFunction<false, false>,
-    opts: { maxAgeDays: number },
+    opts: { maxAgeDays: number; maxSides?: number },
 ): Promise<SweepReport> {
-    const report: SweepReport = { tanksConsidered: 0, tagsCreated: 0, skips: 0, failures: [] };
+    // Each side costs ~2 external calls (Gamma + CLOB) plus inserts, and a Worker
+    // invocation has a hard subrequest budget (the "Too many subrequests" limit) -
+    // maxSides keeps one sweep run comfortably inside its own request's budget; any
+    // remainder is deferred to the next daily run and reported.
+    const maxSides = opts.maxSides ?? 12;
+    let sidesProcessed = 0;
+    const report: SweepReport = { tanksConsidered: 0, tagsCreated: 0, skips: 0, deferred: 0, failures: [] };
 
     const [cfg, activeTickers, rows] = await Promise.all([
         getTickerConfig(sql),
@@ -428,6 +435,11 @@ export async function sweepUntaggedTanks(
         for (let side = 0; side < probs.length; side++) {
             const eligible = activeTickers.filter((t) => checkEligibility(t.rule_type, probs[side], cfg).ok);
             if (eligible.length === 0) continue;
+            if (sidesProcessed >= maxSides) {
+                report.deferred++;
+                continue;
+            }
+            sidesProcessed++;
             // One CLOB fetch per SIDE, shared by every ticker tagging that side.
             let tagDelta: TagDelta;
             try {
