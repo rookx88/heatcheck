@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from '@google/genai';
 import Chart from 'chart.js/auto';
 import { apiClient } from './apiClient';
+import { effectiveSettleDate } from './tank-deck-format';
 import { PublicHomePage } from './pages/index';
 import { parseExcelFile } from './scripts/utils/excelParser';
 import { analyzeDFSSlate } from './scripts/services/dfsAnalysisService';
@@ -14245,7 +14246,9 @@ const TankCurator: React.FC = () => {
 
 const draftSettleDate = (page: TankPageRow): Date | null => {
   const snapshot: any = page.game_snapshot;
-  const raw = snapshot?.prop?.settleDate ?? snapshot?.game?.settleDate ?? snapshot?.game?.kickoff;
+  // effectiveSettleDate clamps Polymarket's padded "resolution deadline" end dates
+  // (game markets stamp kickoff + 7 days) back to the game date - see tank-deck-format.
+  const raw = effectiveSettleDate(snapshot?.prop ?? {}, snapshot?.game ?? {});
   if (!raw) return null;
   const d = new Date(raw);
   return isNaN(d.getTime()) ? null : d;

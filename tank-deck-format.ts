@@ -52,6 +52,27 @@ export function deriveSidesImpliedProb(odds: PropOdds | null, sidesLength: numbe
 }
 
 // "Resolves Dec 31, 2026"
+// Polymarket's GAME markets (MLB moneylines/spreads/totals) carry Gamma's endDate as
+// an administrative resolution deadline padded ~a week past the game, while player
+// props carry the true game time - observed live 2026-08: game markets settle-stamped
+// kickoff + exactly 7 days. When the stored settle date sits implausibly far past
+// kickoff, the game itself is the editorially meaningful date, so display that
+// instead. 36h of slack covers late finishes, doubleheaders, and suspended games
+// resuming next day without treating them as deadlines.
+const SETTLE_DEADLINE_SLACK_MS = 36 * 60 * 60 * 1000;
+
+export function effectiveSettleDate(
+    prop: { settleDate?: string },
+    game: { settleDate?: string; kickoff?: string },
+): string | undefined {
+    const stored = prop.settleDate ?? game.settleDate ?? game.kickoff;
+    if (!stored || !game.kickoff) return stored;
+    const storedMs = new Date(stored).getTime();
+    const kickoffMs = new Date(game.kickoff).getTime();
+    if (isNaN(storedMs) || isNaN(kickoffMs)) return stored;
+    return storedMs - kickoffMs > SETTLE_DEADLINE_SLACK_MS ? game.kickoff : stored;
+}
+
 export function formatSettleDate(iso: string): string {
     const date = new Date(iso);
     if (isNaN(date.getTime())) return 'Settle date TBD';

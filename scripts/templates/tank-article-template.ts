@@ -1,7 +1,7 @@
 import { renderHead, topbar, footer } from './waitlist-landing-template';
 import { escapeHtml } from '../utils/html-escape';
 import type { Prop, Game, TankArticle } from '../../tank-types';
-import { formatMarketLabel, formatOddsLabel, formatSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../../tank-deck-format';
+import { formatMarketLabel, formatOddsLabel, formatSettleDate, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../../tank-deck-format';
 
 export interface TankPageRecord {
     id: string;
@@ -91,7 +91,7 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
         tagline,
         contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
         oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
-        settleDateLabel: truncateHeaderLabel(formatSettleDate(prop.settleDate ?? game.settleDate ?? game.kickoff)),
+        settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
     }).replace(/</g, '\\u003c');
 
     return `<!DOCTYPE html>

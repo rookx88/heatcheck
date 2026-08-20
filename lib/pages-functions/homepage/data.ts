@@ -14,6 +14,7 @@ import { SPORT_BY_LEAGUE, SPORT_ORDER, type Sport } from '../../../sport-map';
 import {
     formatPropTag,
     formatSettleDate,
+    effectiveSettleDate,
     truncateHeaderLabel,
     deriveTaglineFallback,
     deriveSidesImpliedProb,
@@ -94,7 +95,7 @@ export function toSportCardViewModel(row: HomepageTankRow, sport: Sport): SportC
             tagline: truncateHeaderLabel(row.model_output.tagline || deriveTaglineFallback(row.model_output.hook)),
             contextLabel: truncateHeaderLabel(propTag),
             oddsOrMarketLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
-            settleDateLabel: truncateHeaderLabel(formatSettleDate(prop.settleDate ?? game.settleDate ?? game.kickoff)),
+            settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
         },
     };
 }
