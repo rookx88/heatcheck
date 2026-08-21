@@ -220,6 +220,25 @@ const InsideCanvas = ({
     );
 };
 
+// The card's own bounding box never changes size - only its CSS `scale()` does - so
+// the reference footprint is the WIDE case (both flaps open, coplanar with the
+// center panel): three 240px panels side by side, 340px tall. Fitting to that means
+// opening the card on a small phone never pushes flaps past the screen edge, whether
+// it's folded or open. A fixed breakpoint scale (e.g. one flat 0.75 below 768px)
+// can't do this: 720 * 0.75 = 540px is still wider than most phones.
+const CARD_W = 720;
+const CARD_H = 340;
+
+function computeCardScale(): number {
+    if (typeof window === 'undefined') return 1;
+    const availW = window.innerWidth - 32; // ~16px breathing room each side
+    const availH = window.innerHeight - 120; // hint text + top/bottom breathing room
+    // Never scale UP past 1 (desktop keeps its natural size); never scale below a
+    // floor where the art/text stop being legible - a defensive clamp, not something
+    // any real phone screen should hit.
+    return Math.max(0.35, Math.min(1, availW / CARD_W, availH / CARD_H));
+}
+
 export const CollectibleCard: React.FC<CollectibleCardProps> = ({
     edition,
     coverSrc,
@@ -231,6 +250,19 @@ export const CollectibleCard: React.FC<CollectibleCardProps> = ({
     matchCaption,
 }) => {
     const [isOpen, setIsOpen] = useState(false);
+    // Lazy-initialized so the first paint is already correctly scaled (no flash of an
+    // oversized card before the resize listener has a chance to run).
+    const [scale, setScale] = useState(computeCardScale);
+
+    useEffect(() => {
+        const onResize = () => setScale(computeCardScale());
+        window.addEventListener('resize', onResize);
+        window.addEventListener('orientationchange', onResize);
+        return () => {
+            window.removeEventListener('resize', onResize);
+            window.removeEventListener('orientationchange', onResize);
+        };
+    }, []);
 
     const x = useMotionValue(0.5);
     const y = useMotionValue(0.5);
@@ -264,7 +296,7 @@ export const CollectibleCard: React.FC<CollectibleCardProps> = ({
             </motion.div>
 
             {/* Main 3D perspective scene */}
-            <div className="cc-scene" style={{ perspective: '1200px' }}>
+            <div className="cc-scene" style={{ perspective: '1200px', transform: `scale(${scale})` }}>
                 {/* Tilt wrapper */}
                 <motion.div style={{ rotateX, rotateY, transformStyle: 'preserve-3d' }} className="cc-tilt">
                     {/* Main assembly (P2 - center panel) */}

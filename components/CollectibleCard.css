@@ -39,19 +39,14 @@
   user-select: none;
 }
 
-/* The prototype rendered at 75% below tablet width and full size above. */
+/* Scale is computed in JS from the actual viewport (see computeCardScale in
+   CollectibleCard.tsx) and applied as an inline style - a fixed breakpoint scale
+   can't guarantee the 720px-wide open card fits every phone width. */
 .cc-scene {
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  transform: scale(0.75);
-}
-
-@media (min-width: 768px) {
-  .cc-scene {
-    transform: none;
-  }
 }
 
 .cc-tilt {
