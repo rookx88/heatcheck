@@ -64,8 +64,13 @@ export async function maybeDiscover(
     if (!pet) return { kind: 'no_pet' };
 
     // The ~100% path: not due yet. Zero extra queries - the timestamp rides along in
-    // the pet SELECT the endpoint already does.
-    if (pet.next_eligible_roll_at !== null && Date.parse(pet.next_eligible_roll_at) > Date.now()) {
+    // the pet SELECT the endpoint already does. Always `new Date(x).getTime()`, never
+    // Date.parse(x): the Neon driver hands timestamptz back as a Date at runtime, and
+    // Date.parse coerces via toString(), which truncates to whole seconds - that
+    // truncation made windowScope collide across rapid test rolls and silently
+    // ON CONFLICT-dropped their ledger rows. new Date(x) keeps millisecond precision
+    // for both the Date and ISO-string cases (same idiom as computeSatisfaction).
+    if (pet.next_eligible_roll_at !== null && new Date(pet.next_eligible_roll_at).getTime() > Date.now()) {
         return { kind: 'not_due' };
     }
 
@@ -96,14 +101,17 @@ export async function maybeDiscover(
     // pre-feed history is unrecoverable from the stored facts. Accepted.)
     const sustained =
         petState(computeSatisfaction(pet, feedingCfg), feedingCfg) === 'satisfied' &&
-        Date.now() - Date.parse(pet.last_fed_at) >= cfg.sustained_hours * 3_600_000;
+        Date.now() - new Date(pet.last_fed_at).getTime() >= cfg.sustained_hours * 3_600_000;
     const cooldownMinutes = sustained
         ? uniformMinutes(cfg.short_cooldown_minutes_min, cfg.short_cooldown_minutes_max)
         : uniformMinutes(cfg.long_cooldown_minutes_min, cfg.long_cooldown_minutes_max);
 
     // The identity of the window being consumed - makes the grant's idempotency keys
     // deterministic per roll, so a replay of the same window is a no-op everywhere.
-    const windowScope = String(Date.parse(pet.next_eligible_roll_at));
+    // Millisecond precision matters here (see the new Date note above): at second
+    // precision, distinct windows can collide into one idempotency key and the
+    // conflict silently swallows the grant.
+    const windowScope = String(new Date(pet.next_eligible_roll_at).getTime());
 
     // Collectibles are in the configured weights from day one, but have no backend yet.
     // When no active collectible SKU exists, renormalizing over ember+food IS the
