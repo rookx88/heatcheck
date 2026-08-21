@@ -79,6 +79,15 @@ function renderSportRow(slots: SportSlot[]): string {
 
     return `
         <section id="tanks" class="hc-section" aria-labelledby="hc-tanks-heading">
+            <!-- The ember-lit cave behind the WHOLE panel interior: pitch copy, tank
+                 artifact, sport buttons, and the picks-left footer all sit in it.
+                 Server-rendered (not island-mounted) so it paints before hydration;
+                 a negative z-index child of the isolated panel, so every in-flow
+                 sibling paints above it with no per-element z-index. -->
+            <div class="hc-tanks-backdrop" style="background-image: url('/assets/images/tank-homepage-backdrop.webp')" aria-hidden="true">
+                <span class="hc-tanks-wind"></span>
+                <span class="hc-tanks-wind hc-tanks-wind--b"></span>
+            </div>
             <h2 id="hc-tanks-heading">Newest Tanks Available</h2>
             <p class="hc-section-sub hc-section-sub--tanks">Tanks are Heatcheck&rsquo;s most important invention. With the wisdom of the user, it unlocks embers, the currency of the world that allows you to grow your mud puppy. Make your pick on a tank. Get it right. Earn Ember.</p>
             <div class="hc-tanks-layout">
@@ -161,7 +170,9 @@ function homepageStyles(): string {
         /* Side-by-side at EVERY width: artifact left, symbol buttons in a vertical
            column to its right (the round icon buttons are narrow enough to hold this
            layout on phones). */
-        .hc-tanks-layout { display: flex; flex-direction: row; align-items: center; gap: 0.75rem; }
+        /* position:relative (z-index left 'auto') so this paints above
+           .hc-tanks-backdrop - see that rule's comment for why. */
+        .hc-tanks-layout { position: relative; display: flex; flex-direction: row; align-items: center; gap: 0.75rem; }
         .hc-tanks-layout #hc-showcase-root { flex: 1 1 auto; margin: 0; min-width: 0; }
         .hc-sport-row {
             margin: 0; padding: 0; flex: 0 0 auto;
@@ -194,8 +205,19 @@ function homepageStyles(): string {
 
         /* The tanks section is the orange-bordered game panel with a gold title bar
            at EVERY viewport (desktop additionally stretches it to match the Market
-           Movers column and pins the footer - see the grid block below). */
+           Movers column and pins the footer - see the grid block below).
+           position:relative only (deliberately NO isolation/transform/filter here):
+           #tanks contains the fixed-position PetWidget several levels down (inside
+           .hc-tanks-layout > #hc-showcase-root), and isolation: isolate creates a
+           new stacking context that traps a fixed descendant's paint layer inside
+           it - the widget (and its Feed/Inventory modals) would then render
+           correctly on-screen but get overpainted by later same-page sections that
+           have their own stacking (Market Movers, the world map), instead of
+           sitting above the whole document like position:fixed normally does. Ran
+           into exactly this. See homepage-client.tsx's matching note on the
+           showcase wrapper for the transform version of the same trap. */
         #tanks {
+            position: relative;
             border: 3px solid #f89b4e;
             border-radius: 6px;
             background: #05070f;
@@ -204,15 +226,96 @@ function homepageStyles(): string {
             display: flex;
             flex-direction: column;
         }
+
+        /* The ember-lit cave filling the whole panel (the navy above stays as the
+           loading/no-image base). No isolation on #tanks (see above) means this
+           z-index:-1 would escape and paint behind the WHOLE page, not just this
+           panel, if left as the only positioned element here - so instead every
+           in-flow sibling that must sit above it (h2, the pitch copy, the artifact+
+           sport-row layout, the footer) is also given position:relative below,
+           with z-index left at the default 'auto'. That groups them all as
+           stack-level-0 positioned elements compared by DOM order alone: this
+           backdrop, being first in the markup, paints first (bottom); every later
+           sibling paints after (on top) - the same "first in DOM sits behind"
+           result, achieved without needing negative z-index or a trapping
+           stacking context. */
+        .hc-tanks-backdrop {
+            position: absolute;
+            inset: 0;
+            pointer-events: none;
+            overflow: hidden;
+            /* background-image is inline in the markup - /assets/* is a runtime
+               path, and this block never passes through a bundler anyway. */
+            background-size: cover;
+            /* Keep the tunnel's ember glow behind the artifact band (upper-middle
+               of the panel once the footer adds height below). */
+            background-position: center 55%;
+        }
+        /* Legibility scrim + soft diorama vignette: darkest where the fine-print
+           pitch copy sits (top) and where the picks-left footer sits (bottom), clear
+           through the middle so the artifact keeps the full ember glow. */
+        .hc-tanks-backdrop::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(
+                180deg,
+                rgba(5, 7, 15, 0.62) 0%,
+                rgba(5, 7, 15, 0.28) 26%,
+                rgba(5, 7, 15, 0) 46%,
+                rgba(5, 7, 15, 0) 64%,
+                rgba(5, 7, 15, 0.45) 100%
+            );
+            box-shadow: inset 0 0 42px 16px rgba(6, 12, 34, 0.7);
+        }
+
+        /* The wind: two soft, blurred light wisps drifting across the cave at
+           different speeds - moving air catching the ember light, never a scanline. */
+        .hc-tanks-wind {
+            position: absolute;
+            top: 0;
+            height: 100%;
+            width: 42%;
+            background: linear-gradient(
+                100deg,
+                transparent 0%,
+                rgba(255, 214, 140, 0.07) 38%,
+                rgba(255, 255, 255, 0.09) 50%,
+                rgba(255, 214, 140, 0.04) 62%,
+                transparent 100%
+            );
+            filter: blur(13px);
+            opacity: 0;
+            animation: hc-wind-sweep 14s linear infinite;
+        }
+        .hc-tanks-wind--b {
+            width: 26%;
+            top: 12%;
+            height: 76%;
+            animation-duration: 23s;
+            animation-delay: 7s;
+        }
+        @keyframes hc-wind-sweep {
+            0% { transform: translateX(-130%) skewX(-9deg); opacity: 0; }
+            14% { opacity: 1; }
+            72% { opacity: 0.7; }
+            100% { transform: translateX(360%) skewX(-9deg); opacity: 0; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .hc-tanks-wind { animation: none; opacity: 0; }
+        }
+        /* position:relative on all four here (z-index left at 'auto') is what makes
+           them paint above .hc-tanks-backdrop - see that rule's comment. */
         #tanks h2 {
+            position: relative;
             background: var(--hc-gold); color: #1a1200;
             margin: 0 -1.1rem 0.75rem; padding: 0.65rem 1.1rem;
         }
-        .hc-section-sub--tanks { margin-top: 0; }
+        .hc-section-sub--tanks { position: relative; margin-top: 0; }
 
         /* Panel footer: picks-remaining header (island-filled; hidden while empty)
            over the crawlable Tank HQ pointer. */
-        .hc-tanks-footer { margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid rgba(47, 230, 217, 0.2); }
+        .hc-tanks-footer { position: relative; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid rgba(47, 230, 217, 0.2); }
         .hc-picks-status {
             font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800;
             font-size: 0.95rem; letter-spacing: 0.05em; text-transform: uppercase;

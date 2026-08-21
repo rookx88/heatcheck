@@ -10,7 +10,13 @@
   text-align: left;
 }
 
-.feed-modal-pet img {
+/* Scoped to the body sprite specifically, NOT a blanket "img" - PetPortrait also
+   renders the satiated aura as an <img> (.pet-portrait__aura), and a bare "img"
+   descendant selector here would out-specificity PetPortrait.css's own aura rules
+   (class+element beats its single class), stomping the aura's 128%-of-wrapper
+   sizing down to this fixed 96px box and breaking its inset:-14% centering -
+   exactly the misplaced-aura bug this comment is here to prevent regressing. */
+.feed-modal-pet .pet-portrait__img {
   width: 96px;
   height: 96px;
   object-fit: contain;

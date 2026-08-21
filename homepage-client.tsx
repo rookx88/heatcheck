@@ -17,8 +17,6 @@ import { dispatchInboxOpen } from './notifications-client';
 import { getTodayStatus, logout } from './tank-pick-client';
 // The header chip's mini nav reuses the map pages' MapHud menu styling.
 import './components/MapHud.css';
-// The cave backdrop + wind sweep behind the 3D showcase.
-import './components/ShowcaseBackdrop.css';
 import { WorldMap } from './components/WorldMap';
 import { WORLD_MAP_REGIONS, type WorldMapRegion } from './components/worldMapRegions';
 import type { Sport } from './sport-map';
@@ -305,16 +303,9 @@ function mount() {
             <MotionConfig reducedMotion="user">
                 {payload.loggedIn ? (
                     <div style={{ position: 'relative', marginTop: '-4.25rem', marginBottom: '-2.5rem' }}>
-                        {/* Painted first so everything after it sits on top in plain
-                            DOM order (see ShowcaseBackdrop.css). */}
-                        <div
-                            className="hc-showcase-backdrop hc-showcase-backdrop--in"
-                            style={{ backgroundImage: 'url(/assets/images/tank-homepage-backdrop.webp)' }}
-                            aria-hidden="true"
-                        >
-                            <span className="hc-showcase-wind" />
-                            <span className="hc-showcase-wind hc-showcase-wind--b" />
-                        </div>
+                        {/* The cave backdrop is no longer mounted here - it's the
+                            server-rendered .hc-tanks-backdrop behind the whole #tanks
+                            panel (homepage/render.ts). */}
                         <Fishtank key={entry.slug} payload={entry.deck} slug={entry.slug} scale={showcaseScale} />
                         {/* Fixed variant: rides the viewport, so the captain stays in
                             view wherever the page is scrolled. */}
@@ -322,14 +313,6 @@ function mount() {
                     </div>
                 ) : (
                     <div style={{ position: 'relative', margin: '-2.5rem 0' }}>
-                        <div
-                            className="hc-showcase-backdrop hc-showcase-backdrop--out"
-                            style={{ backgroundImage: 'url(/assets/images/tank-homepage-backdrop.webp)' }}
-                            aria-hidden="true"
-                        >
-                            <span className="hc-showcase-wind" />
-                            <span className="hc-showcase-wind hc-showcase-wind--b" />
-                        </div>
                         <Fishtank
                             key={entry.slug}
                             payload={entry.deck}

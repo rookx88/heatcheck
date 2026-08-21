@@ -424,6 +424,18 @@ export function marketMoversStyles(): string {
             letter-spacing: 0.08em; text-transform: uppercase; color: #24344f;
         }
 
+        /* Same orange frame as #tanks (homepage/render.ts), at every viewport - not
+           just inside the desktop-only white-panel treatment below - so the two
+           sections read as matching game panels side by side. box-sizing:border-box
+           (global reset) keeps the added border from disturbing the desktop grid's
+           stretch-alignment between the two panels. */
+        #market-movers {
+            border: 3px solid #f89b4e;
+            border-radius: 6px;
+            padding: 0 1rem 1.1rem;
+            overflow: hidden;
+        }
+
         /* Base (mobile): the band wrapper is a plain block - zero visual change from
            the pre-band markup. */
         .hc-mm-band { display: block; }
@@ -437,11 +449,12 @@ export function marketMoversStyles(): string {
         /* Desktop (mockup): Market Movers as a white panel in the right grid column -
            violet header band (logo + note box), tabs beneath, card content on white. */
         @media (min-width: 1024px) {
+            /* border/border-radius/overflow now come from the base rule above -
+               desktop only adds the white fill, the taller bottom padding, and the
+               grid-row top offset. */
             #market-movers {
                 margin-top: 1.5rem;
                 background: #ffffff;
-                border-radius: 6px;
-                overflow: hidden;
                 padding: 0 1rem 1.25rem;
             }
             .hc-mm-band {
