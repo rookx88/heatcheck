@@ -21,14 +21,14 @@ interface PortraitPet {
 export const PetPortrait: React.FC<{
     pet: PortraitPet;
     // The pet image's square edge in px; the aura overflows it slightly on all sides.
-    size: number;
+    // OMIT it where stylesheet rules own the sizing (PetWidget's responsive
+    // .pet-portrait__img rules) - the wrapper shrink-wraps the img either way, so
+    // the aura's percentage insets track whatever size the body renders at.
+    size?: number;
     className?: string;
     alt?: string;
 }> = ({ pet, size, className, alt = '' }) => (
-    <span
-        className={`pet-portrait${className ? ` ${className}` : ''}`}
-        style={{ width: size, height: size }}
-    >
+    <span className={`pet-portrait${className ? ` ${className}` : ''}`}>
         {pet.state === 'satisfied' && (
             <img className="pet-portrait__aura" src={AURA_IMAGE_SRC} alt="" aria-hidden="true" />
         )}
@@ -37,8 +37,7 @@ export const PetPortrait: React.FC<{
             src={PET_IMAGE_SRC}
             style={{ filter: petImageFilter(pet.render_mode, pet.render_config) }}
             alt={alt}
-            width={size}
-            height={size}
+            {...(size !== undefined ? { width: size, height: size } : {})}
         />
     </span>
 );

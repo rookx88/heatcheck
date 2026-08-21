@@ -146,7 +146,9 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                     aria-expanded={expanded}
                     aria-label={`${name} - pet actions`}
                 >
-                    <PetPortrait pet={pet} size={110} />
+                    {/* No size prop: PetWidget.css's responsive .pet-portrait__img
+                        rules own the body's dimensions here. */}
+                    <PetPortrait pet={pet} />
                 </button>
                 {unread.length > 0 && !bubble && (
                     // The alert sits over the pet but is its own button (sibling, not
