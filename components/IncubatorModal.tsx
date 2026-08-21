@@ -7,7 +7,8 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Egg3D, { colorwayFromCatalog } from './Egg3D';
-import { PET_IMAGE_SRC, petImageFilter, petDisplayName } from './petRender';
+import { petDisplayName } from './petRender';
+import { PetPortrait } from './PetPortrait';
 import { PetNameForm, announcePetUpdated } from './PetNameForm';
 import { trackEvent } from '../tank-analytics-client';
 import {
@@ -178,13 +179,11 @@ export const IncubatorModal: React.FC<IncubatorModalProps> = ({ onClose }) => {
                 />
             ) : (
                 <div className="hatchery-reveal-card">
-                    <img
+                    <PetPortrait
                         className="hatchery-reveal-pet"
-                        src={PET_IMAGE_SRC}
-                        style={{ filter: petImageFilter(hatchOutcome.pet.render_mode, hatchOutcome.pet.render_config) }}
+                        pet={hatchOutcome.pet}
+                        size={160}
                         alt={`${hatchOutcome.pet.color} mud puppy`}
-                        width={160}
-                        height={160}
                     />
                     {hatchOutcome.created ? (
                         hatchOutcome.pet.name ? (

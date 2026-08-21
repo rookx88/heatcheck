@@ -1,0 +1,81 @@
+/* Homepage showcase stage backdrop: the ember-lit cave the tank artifact rests in,
+   replacing the flat navy behind the 3D cube, with a light wind sweeping through.
+   Mounted by homepage-client.tsx as an absolutely-positioned first child of the
+   showcase wrapper, so the cube, link walls, and pet widget all paint above it in
+   plain DOM order - no z-index dance, and no transform on any ancestor of the fixed
+   PetWidget (which would hijack its containing block).
+
+   The wrapper's negative margins pull the cube's dead stage space back in, so the
+   backdrop insets per variant compensate to cover only the band the artifact
+   actually occupies - not the section copy above it. */
+
+.hc-showcase-backdrop {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  pointer-events: none;
+  /* background-image is set inline by homepage-client.tsx - esbuild would try to
+     bundle-resolve a url() here, but /assets/* is a runtime path. */
+  background-size: cover;
+  /* Keep the tunnel's ember glow in frame behind the cube. */
+  background-position: center 58%;
+  /* Soft edge so the cave reads as a diorama set into the page, not a hard card. */
+  box-shadow: inset 0 0 34px 18px rgba(6, 12, 34, 0.9);
+}
+
+/* Logged-in wrapper: margins -4.25rem top / -2.5rem bottom. */
+.hc-showcase-backdrop--in {
+  top: 4.25rem;
+  bottom: 2.5rem;
+}
+
+/* Logged-out wrapper: margins -2.5rem top and bottom. */
+.hc-showcase-backdrop--out {
+  top: 2.5rem;
+  bottom: 2.5rem;
+}
+
+/* The wind: two soft, blurred light wisps drifting across the cave at different
+   speeds. Skewed streaks with a long fade-in/out so they read as moving air
+   catching the ember light, never as a scanline. */
+.hc-showcase-wind {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  width: 42%;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 214, 140, 0.07) 38%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 214, 140, 0.04) 62%,
+    transparent 100%
+  );
+  filter: blur(13px);
+  opacity: 0;
+  animation: hc-wind-sweep 14s linear infinite;
+}
+
+.hc-showcase-wind--b {
+  width: 26%;
+  top: 12%;
+  height: 76%;
+  animation-duration: 23s;
+  animation-delay: 7s;
+}
+
+@keyframes hc-wind-sweep {
+  0% { transform: translateX(-130%) skewX(-9deg); opacity: 0; }
+  14% { opacity: 1; }
+  72% { opacity: 0.7; }
+  100% { transform: translateX(360%) skewX(-9deg); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-showcase-wind {
+    animation: none;
+    opacity: 0;
+  }
+}

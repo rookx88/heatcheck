@@ -1,0 +1,48 @@
+/* Satiated aura: layered behind the pet sprite, shimmering gently. Two offset
+   animations (a scale/opacity breath and a slower brightness sweep) with different
+   periods, so the combined motion doesn't read as a metronome loop. */
+
+.pet-portrait {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+}
+
+.pet-portrait__aura {
+  position: absolute;
+  /* Slight overflow so the glow halos past the sprite on every side. */
+  inset: -14%;
+  width: 128%;
+  height: 128%;
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+  animation:
+    pet-aura-breathe 3.4s ease-in-out infinite,
+    pet-aura-shimmer 5.1s ease-in-out infinite;
+}
+
+.pet-portrait__img {
+  position: relative;
+  z-index: 1;
+  object-fit: contain;
+}
+
+@keyframes pet-aura-breathe {
+  0%, 100% { opacity: 0.72; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.055); }
+}
+
+/* The crackle marks are pure white, so a brightness sweep is invisible on them - the
+   shimmer is a pulsing ember-gold glow bloom instead. */
+@keyframes pet-aura-shimmer {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(255, 199, 44, 0.35)); }
+  50% { filter: drop-shadow(0 0 7px rgba(255, 199, 44, 0.9)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-portrait__aura {
+    animation: none;
+    opacity: 0.85;
+  }
+}

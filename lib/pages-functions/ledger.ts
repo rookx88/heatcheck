@@ -356,6 +356,73 @@ export async function settleCall(sql: NeonQueryFunction<false, false>, input: Se
     return { payoutAmount };
 }
 
+export interface DiscoveryFindEmberInput {
+    userId: string;
+    petId: string;
+    // Pre-rolled by discovery.ts (sustained-aware, randomized within the config range).
+    cooldownMinutes: number;
+    // Epoch-ms of the pets.next_eligible_roll_at value being consumed - the identity of
+    // this roll window. Makes the ledger idempotency key deterministic per window, so a
+    // theoretical replay of the same window is a no-op everywhere.
+    windowScope: string;
+    // The notification copy needs the rolled amount, and the amount is rolled here
+    // (this file owns the discovery_find rule), so the caller passes a builder.
+    buildMessage: (amount: number) => string;
+}
+
+export interface DiscoveryFindEmberResult {
+    // false = a concurrent request consumed this window first (nothing written).
+    claimed: boolean;
+    amount: number;
+}
+
+// A pet's ambient Ember find (Pet Random Event Discovery - see add_pet_discovery.sql).
+// Rolls a uniform amount from discovery_find's {min, max} and then, in ONE CTE-chained
+// statement: consumes the roll window (the pets UPDATE below is the race guard - a
+// losing concurrent request re-evaluates against the winner's pushed-out timestamp and
+// matches zero rows), appends the ledger row, folds the balance cache (post()'s shape,
+// same double-credit-on-retry reasoning), and inserts the claimable notification. Every
+// leg selects FROM the one before it, so a lost race writes nothing anywhere. No
+// spendLock: this never debits, and the claim UPDATE serializes concurrent rolls.
+export async function discoveryFindEmber(
+    sql: NeonQueryFunction<false, false>,
+    input: DiscoveryFindEmberInput
+): Promise<DiscoveryFindEmberResult> {
+    const rule = await getActiveRule(sql, 'discovery_find');
+    const amount = rule.config.min + Math.floor(Math.random() * (rule.config.max - rule.config.min + 1));
+    const idempotencyKey = buildIdempotencyKey('discovery_find', input.userId, input.windowScope);
+    const notificationKey = `discovery:${input.petId}:${input.windowScope}`;
+    const message = input.buildMessage(amount);
+    const rows = await sql`
+        WITH claimed AS (
+            UPDATE pets SET next_eligible_roll_at = NOW() + (${input.cooldownMinutes}::float8 * INTERVAL '1 minute')
+            WHERE id = ${input.petId} AND user_id = ${input.userId}
+              AND next_eligible_roll_at IS NOT NULL AND next_eligible_roll_at <= NOW()
+            RETURNING id
+        ), led AS (
+            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
+            SELECT ${input.userId}, ${amount}::int, 'earn', 'discovery_find', ${rule.version},
+                   ${idempotencyKey}, ${JSON.stringify({ petId: input.petId, window: input.windowScope, cooldownMinutes: input.cooldownMinutes })}
+            FROM claimed
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING amount
+        ), bal AS (
+            INSERT INTO ember_balances (user_id, balance, updated_at)
+            SELECT ${input.userId}, amount, NOW() FROM led
+            ON CONFLICT (user_id) DO UPDATE
+                SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
+            RETURNING user_id
+        ), note AS (
+            INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key)
+            SELECT ${input.userId}, 'claimable', ${message}, 'pet', ${input.petId}::text, ${notificationKey}
+            FROM led
+            ON CONFLICT (idempotency_key) DO NOTHING
+        )
+        SELECT EXISTS (SELECT 1 FROM claimed) AS claimed
+    `;
+    return { claimed: Boolean((rows[0] as unknown as { claimed: boolean }).claimed), amount };
+}
+
 // Fast-path read of the cached balance.
 export async function balance(sql: NeonQueryFunction<false, false>, userId: string): Promise<number> {
     const rows = await sql`SELECT balance FROM ember_balances WHERE user_id = ${userId} LIMIT 1`;

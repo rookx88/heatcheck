@@ -4,7 +4,8 @@
 // a friendly 409 BEFORE consuming anything.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PET_IMAGE_SRC, petImageFilter, petDisplayName } from './petRender';
+import { petDisplayName } from './petRender';
+import { PetPortrait } from './PetPortrait';
 import {
     getPet,
     getOwnedFood,
@@ -128,13 +129,7 @@ export const FeedModal: React.FC<FeedModalProps> = ({ onClose, onPetChange }) =>
         return (
             <>
                 <div className="feed-modal-pet">
-                    <img
-                        src={PET_IMAGE_SRC}
-                        style={{ filter: petImageFilter(pet.render_mode, pet.render_config) }}
-                        alt=""
-                        width={96}
-                        height={96}
-                    />
+                    <PetPortrait pet={pet} size={96} />
                     <div>
                         <div className="feed-modal-pet-name">{petDisplayName(pet.name, pet.color)}</div>
                         <span className={`feed-modal-state feed-modal-state--${pet.state}`}>

@@ -7,13 +7,14 @@
 // one line; click again (or Escape) collapses. Feed and Inventory open their modals.
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { PET_IMAGE_SRC, petImageFilter, petDisplayName } from './petRender';
+import { petDisplayName } from './petRender';
+import { PetPortrait } from './PetPortrait';
 import { FeedModal } from './FeedModal';
 import { PetInventoryModal } from './PetInventoryModal';
 import { PetNameForm, PET_UPDATED_EVENT } from './PetNameForm';
-import { getPet, type PetInfo } from '../egg-shop-client';
+import { type PetInfo } from '../egg-shop-client';
+import { getToolbarState } from '../toolbar-state-client';
 import {
-    getNotifications,
     markNotificationRead,
     dispatchInboxOpen,
     dispatchNotificationsUpdated,
@@ -44,53 +45,45 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
     // The notification currently being "spoken" in the pet's bubble.
     const [bubble, setBubble] = useState<NotificationItem | null>(null);
 
-    const hydrate = useCallback(async () => {
+    // One consolidated fetch for both facts this widget owns (pet + notifications) -
+    // /api/toolbar-state replaced the separate /api/pets + /api/notifications pair.
+    const hydrateAll = useCallback(async () => {
         try {
-            setPet(await getPet());
+            const state = await getToolbarState();
+            setPet(state?.pet ?? null);
+            setNotifications(state?.notifications ?? []);
         } catch {
             // Widget is decorative chrome - never surface load errors.
         }
     }, []);
 
-    const hydrateNotifications = useCallback(async () => {
-        try {
-            setNotifications((await getNotifications()) ?? []);
-        } catch {
-            // Same rule as the pet fetch: chrome fails quiet.
-        }
-    }, []);
-
     useEffect(() => {
-        hydrate();
-        hydrateNotifications();
-    }, [hydrate, hydrateNotifications]);
+        hydrateAll();
+    }, [hydrateAll]);
 
     // bfcache: Back restores the page without remounting React.
     useEffect(() => {
         const onPageShow = (e: PageTransitionEvent) => {
-            if (e.persisted) {
-                hydrate();
-                hydrateNotifications();
-            }
+            if (e.persisted) hydrateAll();
         };
         window.addEventListener('pageshow', onPageShow);
         return () => window.removeEventListener('pageshow', onPageShow);
-    }, [hydrate, hydrateNotifications]);
+    }, [hydrateAll]);
 
     // Same-page pet changes (a hatch in the incubator modal, a naming) announce
     // themselves - re-hydrate so the widget appears/renames without a reload.
     useEffect(() => {
-        const onPetUpdated = () => hydrate();
+        const onPetUpdated = () => hydrateAll();
         window.addEventListener(PET_UPDATED_EVENT, onPetUpdated);
         return () => window.removeEventListener(PET_UPDATED_EVENT, onPetUpdated);
-    }, [hydrate]);
+    }, [hydrateAll]);
 
     // Read-state changes elsewhere (the inbox modal) drop the badge count live.
     useEffect(() => {
-        const onUpdated = () => hydrateNotifications();
+        const onUpdated = () => hydrateAll();
         window.addEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
         return () => window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
-    }, [hydrateNotifications]);
+    }, [hydrateAll]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
@@ -124,7 +117,6 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
     if (!pet) return null;
 
     const name = petDisplayName(pet.name, pet.color);
-    const filter = petImageFilter(pet.render_mode, pet.render_config);
 
     return (
         <div className={`pet-widget pet-widget--${variant}${expanded ? ' is-expanded' : ''}`}>
@@ -154,7 +146,7 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                     aria-expanded={expanded}
                     aria-label={`${name} - pet actions`}
                 >
-                    <img src={PET_IMAGE_SRC} style={{ filter }} alt="" width={110} height={110} />
+                    <PetPortrait pet={pet} size={110} />
                 </button>
                 {unread.length > 0 && !bubble && (
                     // The alert sits over the pet but is its own button (sibling, not
@@ -223,11 +215,7 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                             </button>
                         </div>
                         <div className="tank-modal-body">
-                            <img
-                                src={PET_IMAGE_SRC}
-                                style={{ filter, width: 120, height: 120, objectFit: 'contain' }}
-                                alt=""
-                            />
+                            <PetPortrait pet={pet} size={120} />
                             <PetNameForm
                                 onNamed={(p) => { setPet(p); setOpenModal(null); }}
                             />

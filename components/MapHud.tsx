@@ -6,8 +6,8 @@
 // restores so it never shows a stale total after Back.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { getSessionInfo, logout } from '../tank-pick-client';
-import { getEmberBalance } from '../egg-shop-client';
+import { logout } from '../tank-pick-client';
+import { getToolbarState } from '../toolbar-state-client';
 import { dispatchInboxOpen } from '../notifications-client';
 import './MapHud.css';
 
@@ -28,15 +28,18 @@ export const MapHud: React.FC = () => {
 
     const hydrate = useCallback(async () => {
         try {
-            const session = await getSessionInfo();
-            if (!session) {
+            // One consolidated fetch - /api/toolbar-state replaced the sequential
+            // /api/session + /api/balance pair.
+            const state = await getToolbarState();
+            if (!state) {
                 setLoggedIn(false);
                 return;
             }
             setLoggedIn(true);
-            setUsername(session.username ?? session.email);
-            const bal = await getEmberBalance();
-            if (bal !== null) setBalance(bal);
+            setUsername(state.session.username ?? state.session.email);
+            // balance is null on the un-onboarded partial shape - keep showing the
+            // placeholder, same as the old 403 -> null path.
+            if (state.balance !== null) setBalance(state.balance);
         } catch {
             // HUD is chrome - fail quiet, keep whatever state we had.
             setLoggedIn((v) => v ?? false);

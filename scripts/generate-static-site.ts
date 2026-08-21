@@ -158,8 +158,14 @@ const NEW_SITE_IMAGES = [
     'market-movers-logo.webp',
     // Logged-out homepage register CTA card (renderExplore in homepage/render.ts).
     'register-here.webp',
+    // Homepage showcase stage backdrop - the cave the tank artifact rests in
+    // (components/ShowcaseBackdrop.css, mounted by homepage-client.tsx).
+    'tank-homepage-backdrop.webp',
     // Pet body sprite (components/petRender.ts) - subpath preserved on copy.
     'pets/mud_puppy_base_axol.png',
+    // Satiated aura, layered behind the pet while state === 'satisfied'
+    // (components/PetPortrait.tsx).
+    'pets/aura-satiated.svg',
     // Food-shop item art, one per items_catalog food key (FoodShopModal/FeedModal/
     // PetInventoryModal build the URL as /assets/images/food/<catalog_key>.png).
     'food/food_banana_shake.png',
