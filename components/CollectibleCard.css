@@ -1,0 +1,602 @@
+/* Genesis Collection card (CollectibleCard.tsx) - hand-converted from the Tailwind
+   prototype in heatchecks-cards/. Everything is cc-prefixed (classes AND keyframes)
+   because this ships inside shared page bundles alongside other components' CSS.
+   The two editions differ only in the custom properties set by the .cc--gold /
+   .cc--neon modifiers; everything else is shared. */
+
+.cc-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Nunito', sans-serif;
+}
+
+/* gold: amber cover border + amber sheen; neon: fuchsia border + fuchsia sheen.
+   These three vars ARE the edition diff (plus the cover art the parent passes). */
+.cc--gold {
+  --cc-accent-border: rgba(245, 158, 11, 0.7);
+  --cc-sheen: rgba(253, 230, 138, 0.25);
+  --cc-serial-color: #fcd34d;
+  --cc-serial-glow: rgba(245, 158, 11, 0.7);
+}
+
+.cc--neon {
+  --cc-accent-border: rgba(217, 70, 239, 0.7);
+  --cc-sheen: rgba(240, 171, 252, 0.25);
+  --cc-serial-color: #f0abfc;
+  --cc-serial-glow: rgba(217, 70, 239, 0.7);
+}
+
+.cc-hint {
+  color: #a1a1aa;
+  letter-spacing: 0.2em;
+  font-size: 0.75rem;
+  font-weight: 600;
+  pointer-events: none;
+  margin-bottom: 2.5rem;
+  user-select: none;
+}
+
+/* The prototype rendered at 75% below tablet width and full size above. */
+.cc-scene {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: scale(0.75);
+}
+
+@media (min-width: 768px) {
+  .cc-scene {
+    transform: none;
+  }
+}
+
+.cc-tilt {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cc-assembly {
+  position: relative;
+  width: 240px;
+  height: 340px;
+  cursor: pointer;
+}
+
+.cc-panel {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.75rem;
+}
+
+/* Inside faces: each panel shows a 240px-wide clipped window onto the same 720px
+   canvas, offset per panel by the inline translateX on .cc-canvas-strip. */
+.cc-face {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.75rem;
+  border: 1px solid #155e75;
+  box-shadow: 0 0 30px rgba(6, 182, 212, 0.15);
+  background: #09090b;
+}
+
+.cc-face--center {
+  border-left: none;
+  border-right: none;
+}
+
+.cc-canvas-strip {
+  width: 720px;
+  height: 100%;
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+
+/* ===== Back cover (P2 outside) - shared by both editions: the gold HEATCHECKS
+   panel with the Genesis Collection inscription and the serial stamp. ===== */
+
+.cc-back {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.75rem;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.cc-back-glow {
+  width: 100%;
+  height: 100%;
+  opacity: 0.3;
+  background: radial-gradient(circle at center, #f59e0b 0%, transparent 70%);
+}
+
+.cc-back-frame {
+  position: absolute;
+  border: 4px double #f59e0b;
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.4), inset 0 0 15px rgba(245, 158, 11, 0.4);
+  opacity: 0.8;
+  width: 90%;
+  height: 92%;
+  border-radius: 0.5rem;
+  pointer-events: none;
+}
+
+.cc-back-inscription {
+  position: absolute;
+  top: 7%;
+  left: 9%;
+  color: #fcd34d;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.7));
+  user-select: none;
+}
+
+.cc-back-logo {
+  font-weight: 900;
+  letter-spacing: 0.35em;
+  transform: rotate(-45deg);
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+  user-select: none;
+  text-align: center;
+  background: linear-gradient(to bottom, #fef3c7, #facc15, #d97706);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 14px rgba(250, 204, 21, 0.65));
+}
+
+/* The mint stamp: inscription styling, edition accent, anchored opposite it. */
+.cc-back-serial {
+  position: absolute;
+  bottom: 7%;
+  right: 9%;
+  color: var(--cc-serial-color);
+  font-size: 9px;
+  font-weight: 700;
+  font-family: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.25em;
+  filter: drop-shadow(0 0 6px var(--cc-serial-glow));
+  user-select: none;
+}
+
+/* ===== Fold flaps ===== */
+
+.cc-flap {
+  position: absolute;
+  top: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.cc-flap--right {
+  left: 100%;
+  transform-origin: left;
+  z-index: 10;
+}
+
+.cc-flap--left {
+  right: 100%;
+  transform-origin: right;
+  z-index: 20;
+}
+
+.cc-flap-back {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.75rem;
+  background: #18181b;
+  border: 1px solid #27272a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.cc-flap-glow {
+  width: 100%;
+  height: 100%;
+  opacity: 0.2;
+  background: radial-gradient(circle at center, #06b6d4 0%, transparent 70%);
+}
+
+/* ===== Front cover (P3 outside) ===== */
+
+.cc-cover {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.8);
+  border: 1px solid var(--cc-accent-border);
+  background: #18181b;
+}
+
+.cc-cover-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cc-cover-lacquer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.2), transparent 30%, rgba(0, 0, 0, 0.25));
+}
+
+.cc-cover-specular {
+  position: absolute;
+  top: -25%;
+  left: -25%;
+  width: 150%;
+  height: 60%;
+  pointer-events: none;
+  border-radius: 100%;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.3), transparent);
+  filter: blur(6px);
+}
+
+.cc-cover-sweep-wrap {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.cc-cover-sweep {
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  width: 45%;
+  transform: skewX(-12deg);
+  background: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.5), transparent);
+  animation: ccGlossSweep 4s ease-in-out infinite;
+}
+
+.cc-cover-sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top right, transparent, var(--cc-sheen), transparent);
+  opacity: 0;
+  transition: opacity 0.7s;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+}
+
+.cc-cover:hover .cc-cover-sheen {
+  opacity: 1;
+}
+
+.cc-cover-rim {
+  position: absolute;
+  inset: 0;
+  border-radius: 0.75rem;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+  pointer-events: none;
+}
+
+/* ===== Inside canvas - the hologram scene all three panels window onto ===== */
+
+.cc-canvas {
+  width: 720px;
+  height: 340px;
+  background: #09090b;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: ccHologramFlicker 6s infinite;
+}
+
+/* Freezes the whole scene while the card is folded shut. */
+.cc-pause,
+.cc-pause * {
+  animation-play-state: paused !important;
+}
+
+.cc-void {
+  position: absolute;
+  inset: 0;
+  background: #020617;
+}
+
+/* Black pixels become transparent over the void via mix-blend screen + brightness -
+   see heatchecks-cards/README.md for the replacement-footage recipe. */
+.cc-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.9;
+  z-index: 0;
+  mix-blend-mode: screen;
+  filter: brightness(2) contrast(1.15);
+}
+
+.cc-source-glow {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, rgba(6, 182, 212, 0.2) 0%, transparent 70%);
+  z-index: 0;
+  mix-blend-mode: screen;
+}
+
+.cc-sun {
+  position: absolute;
+  top: 5%;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  border: 1px solid rgba(236, 72, 153, 0.5);
+  box-shadow: 0 0 30px rgba(236, 72, 153, 0.4) inset;
+  opacity: 0.8;
+  z-index: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  overflow: hidden;
+  mix-blend-mode: screen;
+}
+
+.cc-sun-line {
+  width: 100%;
+  background: rgba(236, 72, 153, 0.8);
+  box-shadow: 0 0 5px #ec4899;
+}
+
+.cc-sun-line:nth-child(1) { height: 1px; margin-bottom: 0.5rem; }
+.cc-sun-line:nth-child(2) { height: 2px; margin-bottom: 0.75rem; }
+.cc-sun-line:nth-child(3) { height: 2px; margin-bottom: 1rem; }
+.cc-sun-line:nth-child(4) { height: 3px; margin-bottom: 1.25rem; }
+.cc-sun-line:nth-child(5) { height: 4px; margin-bottom: 1.5rem; }
+.cc-sun-line:nth-child(6) { height: 5px; margin-bottom: 1.5rem; }
+
+.cc-sphere {
+  position: absolute;
+  top: 5%;
+  width: 280px;
+  height: 280px;
+  z-index: 10;
+  pointer-events: none;
+  perspective: 800px;
+}
+
+.cc-sphere-core {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  animation: ccSphereSpin 12s linear infinite;
+}
+
+.cc-sphere-ring {
+  position: absolute;
+  inset: 0.5rem;
+  border-radius: 50%;
+}
+
+.cc-sphere-ring--pink {
+  border: 1px solid rgba(236, 72, 153, 0.4);
+  box-shadow: 0 0 10px rgba(236, 72, 153, 0.2) inset;
+}
+
+.cc-sphere-ring--cyan {
+  border: 1px solid rgba(34, 211, 238, 0.4);
+}
+
+.cc-sphere-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2.25rem;
+  text-align: center;
+}
+
+.cc-sphere-title,
+.cc-sphere-caption {
+  margin: 0;
+  font-family: ui-monospace, 'Cascadia Mono', 'Segoe UI Mono', monospace;
+  font-weight: 700;
+  text-transform: uppercase;
+  line-height: 1.625;
+  text-wrap: balance;
+}
+
+.cc-sphere-title {
+  color: #67e8f9;
+  font-size: 13px;
+  letter-spacing: 0.2em;
+  filter: drop-shadow(0 0 10px rgba(6, 182, 212, 0.9));
+}
+
+.cc-sphere-caption {
+  color: #f472b6;
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  filter: drop-shadow(0 0 10px rgba(236, 72, 153, 0.9));
+}
+
+.cc-floor {
+  position: absolute;
+  bottom: 0;
+  width: 100%;
+  height: 55%;
+  perspective: 800px;
+  z-index: 0;
+}
+
+.cc-grid {
+  width: 200%;
+  height: 200%;
+  position: absolute;
+  bottom: 0;
+  left: -50%;
+  transform-origin: bottom;
+  transform: rotateX(75deg);
+  opacity: 0.6;
+  animation: ccGridMove 1s linear infinite;
+  background-image:
+    linear-gradient(transparent 95%, #06b6d4 100%),
+    linear-gradient(90deg, transparent 95%, #06b6d4 100%);
+  background-size: 40px 40px;
+  box-shadow: inset 0 0 100px #020617;
+}
+
+.cc-holo-layer {
+  z-index: 10;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+
+.cc-holo-svg {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  animation: ccHologramPulse 2s ease-in-out infinite;
+}
+
+.cc-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+  opacity: 0.2;
+  mix-blend-mode: overlay;
+  background-image: repeating-linear-gradient(0deg, transparent, transparent 2px, #06b6d4 2px, #06b6d4 4px);
+  background-size: 100% 4px;
+}
+
+.cc-beam-wrap {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 30;
+  opacity: 0.3;
+  mix-blend-mode: screen;
+  overflow: hidden;
+}
+
+.cc-beam {
+  width: 100%;
+  height: 20%;
+  background: linear-gradient(to bottom, transparent, #22d3ee, transparent);
+  filter: blur(6px);
+  animation: ccScanlineMove 4s linear infinite;
+}
+
+/* ===== Keyframes (soccer-KICK subset of the prototype, cc-prefixed). ccGlossSweep
+   came from the prototype's index.css, not its App.tsx - see README.md there. ===== */
+
+@keyframes ccGlossSweep {
+  0% { left: -60%; opacity: 0; }
+  10% { opacity: 1; }
+  45% { left: 115%; opacity: 1; }
+  46%, 100% { left: 115%; opacity: 0; }
+}
+
+@keyframes ccSphereSpin {
+  0% { transform: rotateY(0deg); }
+  100% { transform: rotateY(360deg); }
+}
+
+@keyframes ccGridMove {
+  0% { background-position: center 0; }
+  100% { background-position: center 40px; }
+}
+
+@keyframes ccHologramPulse {
+  0%, 100% { filter: drop-shadow(0 0 10px rgba(6, 182, 212, 0.5)) brightness(1); }
+  50% { filter: drop-shadow(0 0 25px rgba(6, 182, 212, 0.8)) brightness(1.2); }
+}
+
+@keyframes ccHologramFlicker {
+  0%, 100% { opacity: 0.95; }
+  3% { opacity: 0.7; }
+  6% { opacity: 0.95; }
+  9% { opacity: 0.8; }
+  50% { opacity: 0.95; }
+  53% { opacity: 0.7; }
+  56% { opacity: 1; }
+}
+
+@keyframes ccScanlineMove {
+  0% { transform: translateY(-340px); }
+  100% { transform: translateY(340px); }
+}
+
+@keyframes ccLeftShockwave {
+  0%, 4% { r: 0; opacity: 0; stroke-width: 10px; }
+  5% { r: 30; opacity: 1; stroke-width: 5px; }
+  10% { r: 100; opacity: 0; stroke-width: 1px; }
+  100% { r: 0; opacity: 0; }
+}
+
+@keyframes ccRightShockwave {
+  0%, 24% { r: 0; opacity: 0; stroke-width: 10px; }
+  25% { r: 40; opacity: 1; stroke-width: 5px; }
+  30% { r: 150; opacity: 0; stroke-width: 1px; }
+  100% { r: 0; opacity: 0; }
+}
+
+@keyframes ccRightCore {
+  0%, 24% { r: 0; opacity: 0; }
+  25% { r: 20; opacity: 1; }
+  27% { r: 0; opacity: 0; }
+  100% { r: 0; opacity: 0; }
+}
+
+@keyframes ccSoccerTrajectory {
+  0% { transform: translate(150px, 250px) scale(0); opacity: 0; }
+  4% { transform: translate(150px, 250px) scale(0.8); opacity: 1; filter: brightness(1); }
+  5% { transform: translate(150px, 250px) scale(1.2); opacity: 1; filter: brightness(3); }
+  15% { transform: translate(400px, -400px) scale(3.5); opacity: 1; }
+  25% { transform: translate(650px, 180px) scale(0.7); opacity: 1; filter: brightness(1); }
+  26% { transform: translate(650px, 180px) scale(1.2); opacity: 1; filter: brightness(3); }
+  35% { transform: translate(750px, 250px) scale(0.7); opacity: 1; }
+  36%, 100% { opacity: 0; }
+}
+
+@keyframes ccSoccerSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(720deg); }
+}
+
+@keyframes ccBootSwing {
+  0%, 2% { transform: translate(50px, 200px) rotate(-30deg); opacity: 0; }
+  3% { transform: translate(50px, 200px) rotate(-30deg); opacity: 1; }
+  5% { transform: translate(110px, 240px) rotate(15deg); opacity: 1; }
+  15% { transform: translate(150px, 200px) rotate(40deg); opacity: 0; }
+  100% { opacity: 0; }
+}
+
+@keyframes ccFlameDirection {
+  0%, 24% { transform: scaleX(1) rotate(0deg); }
+  25%, 100% { transform: scaleX(-1) rotate(15deg); }
+}
+
+@keyframes ccFlameFlicker {
+  0% { transform: scale(1) skew(0deg); }
+  100% { transform: scale(1.1) skew(5deg); }
+}

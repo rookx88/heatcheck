@@ -45,6 +45,23 @@ export interface OwnedFood {
     quantity: number;
 }
 
+// One owned serialized card - one row per copy (the egg model), never stacked. All
+// display metadata rides along from the catalog config so the grid and the card
+// viewer never need a second fetch.
+export interface OwnedCollectible {
+    id: string;
+    catalogKey: string;
+    name: string;
+    edition: string | null; // 'gold' | 'neon'
+    series: string | null;
+    serial: number;
+    mintSize: number | null;
+    coverImage: string | null; // subpath under /assets/images/
+    matchTitle: string | null;
+    matchCaption: string | null;
+    acquiredAt: string;
+}
+
 // The only pet shape the server ever returns (satisfaction is a two-state label, never
 // a number - see lib/pages-functions/pets.ts petPublic()).
 export interface PetInfo {
@@ -165,6 +182,15 @@ export async function getOwnedEggs(): Promise<OwnedEgg[] | null> {
     const data = await parseJsonSafe(res);
     if (!res.ok) throw new Error(data.message || `GET /api/inventory failed: ${res.status}`);
     return (data.eggs ?? []) as OwnedEgg[];
+}
+
+// Server-ordered newest-first, same contract as eggs - the UI must not re-sort.
+export async function getOwnedCollectibles(): Promise<OwnedCollectible[] | null> {
+    const res = await fetch('/api/inventory');
+    if (res.status === 401 || res.status === 403) return null;
+    const data = await parseJsonSafe(res);
+    if (!res.ok) throw new Error(data.message || `GET /api/inventory failed: ${res.status}`);
+    return (data.collectibles ?? []) as OwnedCollectible[];
 }
 
 export async function getEmberBalance(): Promise<number | null> {

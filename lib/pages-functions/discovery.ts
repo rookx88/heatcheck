@@ -8,8 +8,9 @@
 // so exactly one wins and the loser writes nothing.
 //
 // No Ember is written here - the ember branch delegates to ledger.discoveryFindEmber()
-// (ledger.ts is the one sanctioned Ember write path). The food branch writes
-// inventory_items directly, precedent pets.ts feed().
+// (ledger.ts is the one sanctioned Ember write path). The food and collectible
+// branches write inventory_items directly, precedent pets.ts feed(); the collectible
+// branch also allocates serials via collectible_pools (add_genesis_collectibles.sql).
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { computeSatisfaction, getGameConfig, petState, type FeedingConfig, type PetRow } from './pets';
@@ -39,7 +40,13 @@ export type DiscoveryOutcome =
     | { kind: 'initialized' }
     | { kind: 'lost_race' }
     | { kind: 'found_ember'; amount: number }
-    | { kind: 'found_food'; catalogKey: string; name: string };
+    | { kind: 'found_food'; catalogKey: string; name: string }
+    | { kind: 'found_collectible'; catalogKey: string; name: string; serial: number; mintSize: number }
+    // Last-copy race: the pool sold out between the pre-roll eligibility check and the
+    // grant statement. The window is consumed and nothing is granted - by design (see
+    // the collectible branch); needs two collectible rolls landing on the final serial
+    // within one statement window, so at most once per SKU ever.
+    | { kind: 'collectible_pool_exhausted' };
 
 function uniformMinutes(min: number, max: number): number {
     return min + Math.random() * (max - min);
@@ -49,6 +56,12 @@ interface FoodSkuRow {
     key: string;
     name: string;
     price: number;
+}
+
+interface CollectibleSkuRow {
+    key: string;
+    name: string;
+    mint_size: number;
 }
 
 // The whole side effect, including its own preconditions - callers just pass whatever
@@ -113,33 +126,86 @@ export async function maybeDiscover(
     // conflict silently swallows the grant.
     const windowScope = String(new Date(pet.next_eligible_roll_at).getTime());
 
-    // Collectibles are in the configured weights from day one, but have no backend yet.
-    // When no active collectible SKU exists, renormalizing over ember+food IS the
-    // proportional redistribution of the collectible mass (70/95, 25/95) - the roll
-    // never fails or errors over the missing category.
-    const collectibleRows = await sql`
-        SELECT EXISTS (
-            SELECT 1 FROM items_catalog
-            WHERE item_type = 'collectible' AND active = true
-              AND (available_from IS NULL OR available_from <= NOW())
-              AND (available_until IS NULL OR available_until > NOW())
-        ) AS supported
-    `;
-    const collectiblesSupported = Boolean((collectibleRows[0] as unknown as { supported: boolean }).supported);
+    // Droppable collectible SKUs with supply remaining. Sold-out (minted_count >=
+    // mint_size) and non-droppable SKUs fall out of this list BEFORE the roll, so the
+    // no-eligible-SKU case renormalizes over ember+food exactly like the pre-launch
+    // no-SKU case always has (70/95, 25/95) - the roll never fails over the missing
+    // category. discovery_droppable is a catalog-config gate independent of `active`:
+    // a held-back edition activated later for some other channel (shop, airdrop) must
+    // not silently start dropping here.
+    const collectibleSkus = (await sql`
+        SELECT c.key, c.name, p.mint_size
+        FROM items_catalog c
+        JOIN collectible_pools p ON p.catalog_key = c.key
+        WHERE c.item_type = 'collectible' AND c.active = true
+          AND (c.config->>'discovery_droppable')::boolean IS TRUE
+          AND (c.available_from IS NULL OR c.available_from <= NOW())
+          AND (c.available_until IS NULL OR c.available_until > NOW())
+          AND p.minted_count < p.mint_size
+    `) as unknown as CollectibleSkuRow[];
 
     const weightEmber = cfg.weight_ember;
     const weightFood = cfg.weight_food;
-    const weightCollectible = collectiblesSupported ? cfg.weight_collectible : 0;
+    const weightCollectible = collectibleSkus.length > 0 ? cfg.weight_collectible : 0;
     const roll = Math.random() * (weightEmber + weightFood + weightCollectible);
 
     let category: 'ember' | 'food' = roll < weightEmber ? 'ember' : 'food';
     if (roll >= weightEmber + weightFood) {
-        // Collectible rolled (only reachable once collectible SKUs exist). There is no
-        // collectible grant path yet - no discovery-pool table to decrement - so fall
-        // back to ember rather than over-issue or fail. Build the real branch (atomic
-        // discovery-pool check-and-decrement, spend()'s guarded-UPDATE idiom) before
-        // activating collectible SKUs.
-        category = 'ember';
+        // Collectible rolled: mint one serialized copy. Uniform over eligible SKUs
+        // (one today - Genesis Neon - but nothing here assumes that).
+        const picked = collectibleSkus[Math.floor(Math.random() * collectibleSkus.length)];
+        const notificationKey = `discovery:${pet.id}:${windowScope}`;
+        // The serial is only known inside the statement (RETURNING minted_count), so
+        // the pet-voice message is assembled in SQL around it from two halves.
+        const msgPre = `WHOA. I dug up something SHINY while you were away — a ${picked.name} card, serial #`;
+        const msgPost = ` of ${picked.mint_size}! Tucked it into our Collectibles. Do NOT let me eat it.`;
+        // Same one-statement shape as the food branch (claimed = the window race
+        // guard), plus `minted`: the discovery-pool check-and-decrement in spend()'s
+        // guarded-UPDATE idiom. The collectible_pools row lock serializes all mints of
+        // this SKU globally; a loser re-evaluates minted_count < mint_size against the
+        // winner's committed version, so the cap can't be exceeded, and RETURNING
+        // minted_count IS the freshly allocated 1-based serial - allocation and cap
+        // enforcement are one atomic write. minted_count is monotone (never decrement:
+        // a freed serial would be re-issued and collide on
+        // idx_inventory_collectible_serial). The consumed window is the idempotency
+        // for the mint, the notification key the deduped backstop - food-branch
+        // doctrine. No Ember moves, so ledger.ts stays untouched.
+        const rows = await sql`
+            WITH claimed AS (
+                UPDATE pets SET next_eligible_roll_at = NOW() + (${cooldownMinutes}::float8 * INTERVAL '1 minute')
+                WHERE id = ${pet.id} AND user_id = ${userId}
+                  AND next_eligible_roll_at IS NOT NULL AND next_eligible_roll_at <= NOW()
+                RETURNING id
+            ), minted AS (
+                UPDATE collectible_pools
+                SET minted_count = minted_count + 1
+                WHERE catalog_key = ${picked.key} AND minted_count < mint_size
+                  AND EXISTS (SELECT 1 FROM claimed)
+                RETURNING minted_count AS serial
+            ), granted AS (
+                INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity, serial_number)
+                SELECT ${userId}, ${picked.key}, 'collectible', 1, m.serial
+                FROM minted m
+                RETURNING id
+            ), note AS (
+                INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key)
+                SELECT ${userId}, 'claimable', ${msgPre} || m.serial::text || ${msgPost}, 'pet', ${pet.id}::text, ${notificationKey}
+                FROM minted m
+                ON CONFLICT (idempotency_key) DO NOTHING
+            )
+            SELECT EXISTS (SELECT 1 FROM claimed) AS claimed,
+                   (SELECT serial FROM minted) AS serial
+        `;
+        const outcome = rows[0] as unknown as { claimed: boolean; serial: number | null };
+        if (!outcome.claimed) return { kind: 'lost_race' };
+        if (outcome.serial === null) return { kind: 'collectible_pool_exhausted' };
+        return {
+            kind: 'found_collectible',
+            catalogKey: picked.key,
+            name: picked.name,
+            serial: outcome.serial,
+            mintSize: picked.mint_size,
+        };
     }
 
     if (category === 'food') {

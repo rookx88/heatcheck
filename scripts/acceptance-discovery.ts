@@ -110,12 +110,13 @@ async function insertPet(userId: string): Promise<string> {
 }
 
 // Every way this feature can have granted anything to a user, as one number.
-async function grantTotals(userId: string): Promise<{ ledgerRows: number; ledgerSum: number; foodUnits: number; total: number }> {
+async function grantTotals(userId: string): Promise<{ ledgerRows: number; ledgerSum: number; foodUnits: number; cardRows: number; total: number }> {
     const { rows } = await pool.query(
         `SELECT
             (SELECT COUNT(*)::int FROM ember_ledger WHERE user_id = $1 AND rule_key = 'discovery_find') AS ledger_rows,
             (SELECT COALESCE(SUM(amount), 0)::int FROM ember_ledger WHERE user_id = $1 AND rule_key = 'discovery_find') AS ledger_sum,
-            (SELECT COALESCE(SUM(quantity), 0)::int FROM inventory_items WHERE user_id = $1 AND item_type = 'food') AS food_units`,
+            (SELECT COALESCE(SUM(quantity), 0)::int FROM inventory_items WHERE user_id = $1 AND item_type = 'food') AS food_units,
+            (SELECT COUNT(*)::int FROM inventory_items WHERE user_id = $1 AND item_type = 'collectible') AS card_rows`,
         [userId],
     );
     const r = rows[0];
@@ -123,7 +124,8 @@ async function grantTotals(userId: string): Promise<{ ledgerRows: number; ledger
         ledgerRows: r.ledger_rows,
         ledgerSum: r.ledger_sum,
         foodUnits: r.food_units,
-        total: r.ledger_rows + r.food_units,
+        cardRows: r.card_rows,
+        total: r.ledger_rows + r.food_units + r.card_rows,
     };
 }
 
@@ -141,6 +143,10 @@ async function windowMinutes(petId: string): Promise<number> {
     return Number(rows[0].mins);
 }
 
+// Deliberately does NOT touch collectible_pools: minted_count is monotone (see
+// add_genesis_collectibles.sql) - deleting the fixture users' card rows is fine, but
+// rewinding the counter would re-issue their serials. Burned serials are the accepted
+// cost of a run, and the reason this suite is dev/branch-DB only.
 async function cleanup() {
     const { rows: users } = await pool.query(`SELECT id FROM waitlist WHERE email LIKE $1`, [`${EMAIL_PREFIX}%@example.com`]);
     for (const u of users) {
@@ -238,14 +244,74 @@ async function main() {
     const distEnd = await grantTotals(roller.userId);
     const emberRolls = distEnd.ledgerRows - distBase.ledgerRows;
     const foodRolls = distEnd.foodUnits - distBase.foodUnits;
-    check(`every roll granted (${ROLLS} rolls -> ${emberRolls} ember + ${foodRolls} food)`, emberRolls + foodRolls === ROLLS);
-    // Collectible weight (5) redistributes into ember/food: expected ember share is
-    // 70/95 ~ 73.7%. Band is ~4 standard deviations at n=150.
+    const cardRolls = distEnd.cardRows - distBase.cardRows;
+    check(`every roll granted (${ROLLS} rolls -> ${emberRolls} ember + ${foodRolls} food + ${cardRolls} cards)`, emberRolls + foodRolls + cardRolls === ROLLS);
+    // Expected ember share depends on whether an eligible collectible SKU exists in
+    // THIS database (same predicate as the discovery prober): 70/100 = 70% with one,
+    // 70/95 ~ 73.7% redistributed without. Band is ~4 standard deviations at n=150.
+    const { rows: eligibleSkus } = await pool.query(
+        `SELECT c.key FROM items_catalog c
+         JOIN collectible_pools p ON p.catalog_key = c.key
+         WHERE c.item_type = 'collectible' AND c.active = true
+           AND (c.config->>'discovery_droppable')::boolean IS TRUE
+           AND (c.available_from IS NULL OR c.available_from <= NOW())
+           AND (c.available_until IS NULL OR c.available_until > NOW())
+           AND p.minted_count < p.mint_size`,
+    );
+    const collectiblesLive = eligibleSkus.length > 0;
     const emberShare = emberRolls / ROLLS;
-    check(`ember share near 70/95 (73.7%), got ${(emberShare * 100).toFixed(1)}%`, emberShare > 0.59 && emberShare < 0.88);
-    const { rows: collectibles } = await pool.query(
-        `SELECT COUNT(*)::int AS n FROM inventory_items WHERE user_id = $1 AND item_type = 'collectible'`, [roller.userId]);
-    check('zero collectible grants (no backend yet - weight redistributed, rolls never failed)', collectibles[0].n === 0);
+    const expected = collectiblesLive ? '70/100 (70.0%)' : '70/95 (73.7%)';
+    check(`ember share near ${expected}, got ${(emberShare * 100).toFixed(1)}%`,
+        collectiblesLive ? emberShare > 0.55 && emberShare < 0.85 : emberShare > 0.59 && emberShare < 0.88);
+    // Serial integrity for whatever cards the run minted: unique serials, all within
+    // 1..mint_size, and the pool counter at or past the highest issued serial. The
+    // roller's minted serials are permanently burned - cleanup deletes the rows but
+    // must NEVER rewind collectible_pools.minted_count (a freed serial would be
+    // re-issued and collide on idx_inventory_collectible_serial with any real mint
+    // issued in between). Gaps in the issued sequence are the accepted cost, which is
+    // also why this suite must never point at the production DB.
+    if (cardRolls > 0) {
+        const { rows: serialRows } = await pool.query(
+            `SELECT i.catalog_key,
+                    COUNT(*)::int AS n, COUNT(DISTINCT i.serial_number)::int AS distinct_n,
+                    MIN(i.serial_number)::int AS lo, MAX(i.serial_number)::int AS hi,
+                    p.mint_size, p.minted_count
+             FROM inventory_items i
+             JOIN collectible_pools p ON p.catalog_key = i.catalog_key
+             WHERE i.user_id = $1 AND i.item_type = 'collectible'
+             GROUP BY i.catalog_key, p.mint_size, p.minted_count`,
+            [roller.userId],
+        );
+        for (const s of serialRows) {
+            check(`${s.catalog_key}: serials distinct and within 1..${s.mint_size}`,
+                s.n === s.distinct_n && s.lo >= 1 && s.hi <= s.mint_size, JSON.stringify(s));
+            check(`${s.catalog_key}: pool counter >= highest issued serial`, s.minted_count >= s.hi, JSON.stringify(s));
+        }
+    } else if (collectiblesLive) {
+        // ~5% x 150 rolls: zero cards is possible (p ~ 0.05%) but suspicious enough to flag.
+        check('collectible SKU live but zero cards in 150 rolls (p~0.0005 - rerun to confirm)', false);
+    }
+    // Exhaustion renormalizes BEFORE the roll: a sold-out pool must never enter the
+    // eligible set. Proven with a throwaway zero-mint SKU, never by draining the real
+    // pool. (The catalog row is inert everywhere else: active=false and never granted.)
+    await pool.query(
+        `INSERT INTO items_catalog (key, item_type, name, price_rule_key, config, active)
+         VALUES ('collectible_acceptance_test', 'collectible', 'Acceptance Test Card', 'collectible_not_for_sale',
+                 '{"discovery_droppable": true}', false)
+         ON CONFLICT (key) DO NOTHING`,
+    );
+    await pool.query(
+        `INSERT INTO collectible_pools (catalog_key, mint_size, minted_count)
+         VALUES ('collectible_acceptance_test', 0, 0) ON CONFLICT (catalog_key) DO NOTHING`,
+    );
+    const { rows: exhausted } = await pool.query(
+        `SELECT 1 FROM items_catalog c
+         JOIN collectible_pools p ON p.catalog_key = c.key
+         WHERE c.key = 'collectible_acceptance_test' AND p.minted_count < p.mint_size`,
+    );
+    check('zero-mint pool is excluded from the eligible set', exhausted.length === 0);
+    await pool.query(`DELETE FROM collectible_pools WHERE catalog_key = 'collectible_acceptance_test'`);
+    await pool.query(`DELETE FROM items_catalog WHERE key = 'collectible_acceptance_test'`);
     // Food skew: cheap half of the catalog (price <= 20) carries ~70% of the food
     // weight at exponent 1 - it must out-draw the expensive half.
     const { rows: foodDist } = await pool.query(

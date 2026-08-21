@@ -40,6 +40,12 @@
 /assets/images/*
   Cache-Control: public, no-cache
 
+# Card-interior video (fixed filename, updatable in place, so not immutable) - but at
+# 1.4MB a revalidation-per-open is real weight, so let it sit for a day and serve
+# stale while revalidating rather than no-cache like the images above.
+/assets/videos/*
+  Cache-Control: public, max-age=86400, stale-while-revalidate=604800
+
 /images/*
   Cache-Control: public, no-cache
 

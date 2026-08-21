@@ -158,8 +158,9 @@ const NEW_SITE_IMAGES = [
     'market-movers-logo.webp',
     // Logged-out homepage register CTA card (renderExplore in homepage/render.ts).
     'register-here.webp',
-    // Homepage showcase stage backdrop - the cave the tank artifact rests in
-    // (components/ShowcaseBackdrop.css, mounted by homepage-client.tsx).
+    // Homepage tanks-panel backdrop - the cave the whole panel (pitch copy, tank
+    // artifact, sport buttons, picks-left footer) sits in (.hc-tanks-backdrop,
+    // server-rendered by homepage/render.ts).
     'tank-homepage-backdrop.webp',
     // Pet body sprite (components/petRender.ts) - subpath preserved on copy.
     'pets/mud_puppy_base_axol.png',
@@ -176,7 +177,46 @@ const NEW_SITE_IMAGES = [
     'food/food_stadium_dog.png',
     'food/food_worm_delicacy.png',
     'food/food_yogurt_parfait.png',
+    // Genesis Collection card cover art (items_catalog config.cover_image;
+    // CollectibleCard + the inventory Collectibles grid build the URL as
+    // /assets/images/<cover_image>).
+    'collectibles/gold_plated_card.jpg',
+    'collectibles/neon_og_card.jpg',
 ];
+
+// Videos follow the images' allowlist-copy model (assets/videos/ -> both output
+// trees), but unlike assets/images/* the source folder has no legacy noise, so
+// nothing is gitignored. Fixed filenames, updatable in place - cached a day via
+// public/_headers, not immutable.
+const NEW_SITE_VIDEOS = [
+    // Card-interior backdrop, soccer scene (components/CollectibleCard.tsx).
+    'soccerbackdrop.mp4',
+];
+
+function copyNewSiteVideos(): void {
+    const assetsVideosDir = path.join(process.cwd(), 'assets', 'videos');
+    if (!fs.existsSync(assetsVideosDir)) {
+        console.log('⚠ No assets/videos directory found, skipping new-site video copy');
+        return;
+    }
+
+    const distVideosDir = path.join(distDir, 'assets', 'videos');
+    const publicVideosDir = path.join(publicDir, 'assets', 'videos');
+    ensureDir(distVideosDir);
+    ensureDir(publicVideosDir);
+    let copied = 0;
+    for (const file of NEW_SITE_VIDEOS) {
+        const src = path.join(assetsVideosDir, file);
+        if (!fs.existsSync(src)) {
+            console.warn(`⚠ Expected new-site video not found: assets/videos/${file}`);
+            continue;
+        }
+        fs.copyFileSync(src, path.join(distVideosDir, file));
+        fs.copyFileSync(src, path.join(publicVideosDir, file));
+        copied++;
+    }
+    console.log(`✓ Copied ${copied} new-site video(s) to dist/assets/videos and public/assets/videos`);
+}
 
 /**
  * Copy just the new-site images (see NEW_SITE_IMAGES) - this runs unconditionally,
@@ -420,6 +460,7 @@ async function generateAllPages(): Promise<void> {
       copyAssets();
       copyPublicAssets();
       copyNewSiteImages();
+      copyNewSiteVideos();
       copyConfigFiles();
       console.log('');
 

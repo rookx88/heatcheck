@@ -98,7 +98,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     // Petless accounts no-op inside maybeDiscover before it touches anything - the
     // precondition lives in the module so every trigger surface inherits it.
     const outcome = await maybeDiscover(sql, { userId: session.userId, pet, feedingCfg });
-    if (outcome.kind === 'found_ember' || outcome.kind === 'found_food') {
+    if (outcome.kind === 'found_ember' || outcome.kind === 'found_food' || outcome.kind === 'found_collectible') {
         // Rare path: a find just landed - re-read so this response already carries the
         // new balance and the claimable notification instead of them popping in a
         // fetch later.
