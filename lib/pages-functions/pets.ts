@@ -117,15 +117,30 @@ export interface FeedInput {
     feedToken: string;          // client idempotency token
 }
 
-// Consume one food item AND top up the pet in ONE statement. Food is consumed only if
-// (a) the pet is available and this feedToken wasn't the pet's last (idempotency gate)
-// and (b) a unit is in stock; the pet is topped up only if the food was consumed. A
-// sequential double-submit with the same feedToken finds the pet's last_feed_token
-// already set and no-ops. (Feeding is cosmetic and fully recoverable - unlike the Ember
-// path - so we don't take a heavier lock to also cover the rare truly-simultaneous
-// same-token collision.) Returns the updated pet row, or null when nothing was consumed.
+// Serializes all feed attempts for one user, mirroring ledger.ts's spendLock() exactly
+// (same reasoning, different namespace so the two locks never collide): without it, two
+// truly-simultaneous feeds with the SAME feedToken both take their statement snapshot
+// before either commits, both see the pet's last_feed_token as the OLD value, and both
+// pass the idempotency EXISTS check - a double-consume of food that was supposed to be a
+// no-op retry. Food used to be free-to-replace, so this was accepted as a cosmetic risk;
+// it no longer is now that food costs Ember, so a double-consume is an indirect Ember
+// loss. Taking the lock as the transaction's first statement means a second concurrent
+// call's own statement only starts (and takes its snapshot) after the first has
+// committed, so it correctly observes the already-updated last_feed_token and no-ops.
+function feedLock(sql: NeonQueryFunction<false, false>, userId: string) {
+    return sql`SELECT pg_advisory_xact_lock(hashtext('pet_feed'), hashtext(${userId}))`;
+}
+
+// Consume one food item AND top up the pet in ONE statement, behind feedLock(). Food is
+// consumed only if (a) the pet is available and this feedToken wasn't the pet's last
+// (idempotency gate) and (b) a unit is in stock; the pet is topped up only if the food
+// was consumed. A sequential OR truly-simultaneous double-submit with the same feedToken
+// finds the pet's last_feed_token already set and no-ops. Returns the updated pet row,
+// or null when nothing was consumed.
 export async function feed(sql: NeonQueryFunction<false, false>, input: FeedInput): Promise<PetRow | null> {
-    const rows = await sql`
+    const [, rows] = await sql.transaction([
+        feedLock(sql, input.userId),
+        sql`
         WITH consumed AS (
             UPDATE inventory_items SET quantity = quantity - 1
             WHERE user_id = ${input.userId} AND catalog_key = ${input.foodCatalogKey}
@@ -145,6 +160,7 @@ export async function feed(sql: NeonQueryFunction<false, false>, input: FeedInpu
             last_feed_token = ${input.feedToken}
         WHERE user_id = ${input.userId} AND EXISTS (SELECT 1 FROM consumed)
         RETURNING id, color, render_mode, render_config, name, is_captain, satisfaction_at_last_feed, last_fed_at
-    `;
+    `,
+    ]);
     return rows.length ? (rows[0] as unknown as PetRow) : null;
 }
