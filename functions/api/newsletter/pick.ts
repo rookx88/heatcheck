@@ -19,6 +19,7 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../../lib/pages-functions/db';
 import { verifyToken } from '../../../lib/pages-functions/tokens';
 import { logEvent } from '../../../lib/pages-functions/events';
+import { hasKickoffPassed } from '../../../tank-deck-format';
 import type { NewsletterPickTokenPayload } from '../../../lib/newsletter-pick-token';
 
 interface PropOdds {
@@ -111,7 +112,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         return jsonResponse({ message: "Side does not match this Tank's call." }, { status: 400 });
     }
 
-    const snapshot = tank.game_snapshot as { prop?: { odds?: PropOdds | null } } | null;
+    const snapshot = tank.game_snapshot as { prop?: { odds?: PropOdds | null }; game?: { kickoff?: string } } | null;
+    if (hasKickoffPassed(snapshot?.game?.kickoff)) {
+        return jsonResponse({ message: 'This game has already started - picks are closed.' }, { status: 400 });
+    }
     const odds = snapshot?.prop?.odds ?? null;
     if (!odds || !Array.isArray(odds.outcomes) || !Array.isArray(odds.outcomePrices)) {
         return jsonResponse({ message: 'This prop has no odds on record and cannot be picked.' }, { status: 400 });

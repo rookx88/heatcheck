@@ -1227,6 +1227,7 @@ async function generateAllPages(): Promise<void> {
                         contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
                         oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
                         settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
+                        kickoff: game.kickoff,
                     },
                 };
             });

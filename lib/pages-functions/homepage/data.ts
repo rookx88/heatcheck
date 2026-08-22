@@ -96,6 +96,7 @@ export function toSportCardViewModel(row: HomepageTankRow, sport: Sport): SportC
             contextLabel: truncateHeaderLabel(propTag),
             oddsOrMarketLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
             settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
+            kickoff: game.kickoff,
         },
     };
 }

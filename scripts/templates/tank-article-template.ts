@@ -92,6 +92,7 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
         contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
         oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
         settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
+        kickoff: game.kickoff,
     }).replace(/</g, '\\u003c');
 
     return `<!DOCTYPE html>

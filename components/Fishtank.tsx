@@ -29,6 +29,7 @@ import {
 } from '../tank-pick-client';
 import { trackEvent } from '../tank-analytics-client';
 import { AllSetModal } from './AllSetModal';
+import { hasKickoffPassed } from '../tank-deck-format';
 
 // DeckPayload moved to tank-types.ts (pure, importable from lib/pages-functions
 // without a DOM/React module graph); re-exported here so existing consumers keep
@@ -554,7 +555,7 @@ const VerifyBlock: React.FC<{
         </form>
     );
 
-const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ call, slug }) => {
+const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?: string }> = ({ call, slug, kickoff }) => {
     const [submitState, setSubmitState] = useState<SubmitState>('idle');
     const [selectedSide, setSelectedSide] = useState<string | null>(null);
     const [selectedSideIndex, setSelectedSideIndex] = useState<number | null>(null);
@@ -675,6 +676,11 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
 
     const myPickHere = todayStatus?.picks.find((p) => p.slug === slug) ?? null;
     const remaining = todayStatus?.remaining ?? 3;
+    // UI-only convenience so a reader isn't offered a pick that would just 400 -
+    // functions/api/picks.ts's own hasKickoffPassed() check is what actually enforces
+    // this. Reuses the `now` tick already running for the cap-reset countdown, so this
+    // flips live within a minute of kickoff without needing a page reload.
+    const gameStarted = hasKickoffPassed(kickoff, now);
 
     const submitPickFor = async (side: string, sideIndex: number, submitterEmail: string) => {
         setSubmitState('submitting');
@@ -736,7 +742,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
     };
 
     const chooseSide = (side: string, index: number) => {
-        if (submitState === 'submitting' || myPickHere || remaining <= 0) return;
+        if (submitState === 'submitting' || myPickHere || remaining <= 0 || gameStarted) return;
         // Fires on the tap itself, independent of whether the submit call below
         // succeeds immediately or waits on the email-capture form - it's feedback
         // for the choice, not for the network result.
@@ -867,6 +873,21 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string }> = ({ ca
                 {accountKnown && verifyBlock}
                 {loginBlock}
                 {showAllSet && <AllSetModal email={email} onClose={() => setShowAllSet(false)} side={myPickHere.side} />}
+            </div>
+        );
+    }
+
+    // Not picked here, and the game already started - no point offering a choice
+    // that would just 400. Checked ahead of the cap branch below since "the game
+    // started" is the more specific, more useful thing to tell the reader.
+    if (gameStarted) {
+        return (
+            <div>
+                <p style={{ fontWeight: 600, color: '#f1f5f9', marginTop: 0 }}>{call.question}</p>
+                <p style={{ color: '#cbd5e1', fontSize: '0.85rem', marginTop: '0.75rem' }}>
+                    This game has already started — picks are closed.
+                </p>
+                {todayStatus && <p style={picksTodayLineStyle}>{todayStatus.picksToday} of {todayStatus.picksToday + todayStatus.remaining} picks used today{remaining > 0 ? ` · ${remaining} left` : ''}</p>}
             </div>
         );
     }
@@ -1053,7 +1074,7 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
         if (wall.kind === 'call') {
             return linkCall
                 ? <LinkCallContent call={payload.call} linkCall={linkCall} />
-                : <CallContent call={payload.call} slug={slug} />;
+                : <CallContent call={payload.call} slug={slug} kickoff={payload.kickoff} />;
         }
         const cardIndex = index - 1; // hook occupies index 0
         return <p style={{ margin: 0 }}>{cards[cardIndex]}</p>;

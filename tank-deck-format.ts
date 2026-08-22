@@ -73,6 +73,18 @@ export function effectiveSettleDate(
     return storedMs - kickoffMs > SETTLE_DEADLINE_SLACK_MS ? game.kickoff : stored;
 }
 
+// Picks close the instant the underlying game starts - a reader (or a replayed/
+// forged request) must never be able to lock in a call after kickoff, when the
+// prop's outcome may already be partly or fully known. Missing/unparseable kickoff
+// fails open (treated as not-yet-started) rather than blocking a legitimate prop
+// over a data gap - Game.kickoff is a required field at generation time, so this
+// only matters for stale pre-rebuild snapshots.
+export function hasKickoffPassed(kickoff: string | undefined | null, now: number = Date.now()): boolean {
+    if (!kickoff) return false;
+    const kickoffMs = new Date(kickoff).getTime();
+    return !isNaN(kickoffMs) && kickoffMs <= now;
+}
+
 export function formatSettleDate(iso: string): string {
     const date = new Date(iso);
     if (isNaN(date.getTime())) return 'Settle date TBD';

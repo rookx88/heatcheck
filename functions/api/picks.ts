@@ -19,6 +19,7 @@ import { getSql, jsonResponse, EMAIL_RE, UUID_RE, type Env } from '../../lib/pag
 import { sendVerificationEmail, generateVerificationCode } from '../../lib/pages-functions/email';
 import { getSession, requireSameOrigin, requireOnboarded } from '../../lib/pages-functions/session';
 import { logEvent } from '../../lib/pages-functions/events';
+import { hasKickoffPassed } from '../../tank-deck-format';
 
 // Defaults to 1/day (Phase 0) rather than the eventual 3/day Phase 1 standard -
 // deliberately gated behind DAILY_PICK_CAP (see lib/pages-functions/db.ts's Env) so
@@ -114,7 +115,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // The difficulty snapshot (implied_prob_at_lock) is mandatory, no exceptions - reject
     // the pick rather than ever store a null. sideIndex maps positionally into the frozen
     // game_snapshot's odds, which were generated in the same order as call.sides.
-    const snapshot = tankRows[0].game_snapshot as { prop?: { odds?: PropOdds | null } } | null;
+    const snapshot = tankRows[0].game_snapshot as { prop?: { odds?: PropOdds | null }; game?: { kickoff?: string } } | null;
+    if (hasKickoffPassed(snapshot?.game?.kickoff)) {
+        return jsonResponse({ message: 'This game has already started - picks are closed.' }, { status: 400 });
+    }
     const odds = snapshot?.prop?.odds ?? null;
     if (!odds || !Array.isArray(odds.outcomes) || !Array.isArray(odds.outcomePrices)) {
         return jsonResponse({ message: 'This prop has no odds on record and cannot be picked.' }, { status: 400 });
