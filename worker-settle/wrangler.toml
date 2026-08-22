@@ -10,6 +10,14 @@ crons = ["0 9 * * *"]
 [vars]
 SETTLE_URL = "https://heatchecks.io/api/settle"
 
+# Preview also gets settled on the same schedule (2026-08-22): production's /api/settle
+# doesn't carry the ticker-settlement code yet (that's still auth-sessions-only), so this
+# is the only place the tag/settle side of the Exchange tickers can be observed running
+# on a real automatic cadence rather than by hand. Drop this once the content pipeline
+# (and ticker settlement) is promoted to production and the split above goes away.
+PREVIEW_SETTLE_URL = "https://auth-sessions.heatcheck.pages.dev/api/settle"
+
 # SETTLE_SECRET is a real secret, not a plaintext var - set it with:
 #   npx wrangler secret put SETTLE_SECRET --config worker-settle/wrangler.toml
-# using the same value configured as SETTLE_SECRET for the Pages project.
+# using the same value configured as SETTLE_SECRET for the Pages project. The same
+# secret authenticates both SETTLE_URL and PREVIEW_SETTLE_URL (confirmed 2026-08-22).
