@@ -26,7 +26,7 @@ import {
     emptyHomepageData,
     type HomepageTankRow,
 } from '../lib/pages-functions/homepage/data';
-import { getTickerNews, getTickerSeries, getTickerValues, type SqlReader } from '../lib/pages-functions/tickers';
+import { getTickerNews, getTickerResults, getTickerSeries, getTickerValues, type SqlReader } from '../lib/pages-functions/tickers';
 import { emptyMarketMovers, toMarketMovers } from '../lib/pages-functions/market-movers';
 import { generateClaimYourSpotPageHtml } from './templates/claim-your-spot-template';
 import { generateNewsletterPickPageHtml } from './templates/newsletter-pick-template';
@@ -1285,10 +1285,10 @@ async function generateAllPages(): Promise<void> {
         };
         let marketMovers = emptyMarketMovers();
         try {
-            const [tickerValues, tickerSeries, tickerNews] = await Promise.all([
-                getTickerValues(sqlPg), getTickerSeries(sqlPg), getTickerNews(sqlPg, 2),
+            const [tickerValues, tickerSeries, tickerNews, tickerResults] = await Promise.all([
+                getTickerValues(sqlPg), getTickerSeries(sqlPg), getTickerNews(sqlPg, 2), getTickerResults(sqlPg, 3),
             ]);
-            marketMovers = toMarketMovers(tickerValues, tickerSeries, tickerNews);
+            marketMovers = toMarketMovers(tickerValues, tickerSeries, tickerNews, tickerResults);
         } catch (err) {
             console.warn('⚠ Ticker data unavailable for homepage fallback; rendering empty Market Movers:', (err as Error).message);
         }

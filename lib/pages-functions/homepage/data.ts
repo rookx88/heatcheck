@@ -19,7 +19,7 @@ import {
     deriveTaglineFallback,
     deriveSidesImpliedProb,
 } from '../../../tank-deck-format';
-import { getTickerNews, getTickerSeries, getTickerValues } from '../tickers';
+import { getTickerNews, getTickerResults, getTickerSeries, getTickerValues } from '../tickers';
 import { emptyMarketMovers, toMarketMovers, type MarketMoversData } from '../market-movers';
 
 export interface HomepageTankRow {
@@ -139,8 +139,8 @@ export async function fetchHomepageData(sql: NeonQueryFunction<false, false>): P
             ORDER BY (game_snapshot->'game'->>'kickoff')::timestamptz ASC
             LIMIT 100
         `,
-        Promise.all([getTickerValues(sql), getTickerSeries(sql), getTickerNews(sql, 2)])
-            .then(([values, series, news]) => toMarketMovers(values, series, news))
+        Promise.all([getTickerValues(sql), getTickerSeries(sql), getTickerNews(sql, 2), getTickerResults(sql, 3)])
+            .then(([values, series, news, results]) => toMarketMovers(values, series, news, results))
             .catch((err) => {
                 console.error('[homepage] Ticker data fetch failed; rendering empty Market Movers:', err);
                 return emptyMarketMovers();

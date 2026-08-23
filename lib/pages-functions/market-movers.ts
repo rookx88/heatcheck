@@ -22,6 +22,7 @@ import { escapeHtml } from '../../scripts/utils/html-escape';
 import {
     RETROSPECTIVE_NOTE,
     type TickerNewsItem,
+    type TickerResultItem,
     type TickerSeriesEvent,
     type TickerValue,
 } from './tickers';
@@ -47,6 +48,7 @@ export interface MarketMoverVM {
     series: TickerSeriesEvent[]; // capped (SERIES_CAP) tail; cumulative values stay truthful
     seriesTruncated: boolean;
     news: MarketMoverNewsVM[];
+    results: string[]; // already-composed "Recent Results" sentences, newest first
 }
 
 export interface MarketMoversData {
@@ -100,10 +102,48 @@ function utcShortDateLabel(iso: string): string {
         : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
+// "Lakers" -> "Lakers'"; "Celtics" -> "Celtics'"; "LeBron James" -> "LeBron James's" - the
+// standard English rule (names already ending in s just take the bare apostrophe).
+function possessive(name: string): string {
+    return /s$/i.test(name) ? `${name}'` : `${name}'s`;
+}
+
+// The "Team Name" / "Player" subject for a settled result: a player prop's real subject is
+// prop.player itself; a game-line market's prop.player is a matchup fallback ("Away vs.
+// Home" - tank-providers.ts), so the tagged side's own outcome label (a real team name for
+// moneylines/spreads) is the correct subject there instead. Same "_player_" substring test
+// formatMarketLabel() (tank-deck-format.ts) already uses to classify a market.
+function subjectFor(item: TickerResultItem): string {
+    const isPlayerProp = /_player_/.test(item.market);
+    return isPlayerProp ? item.player : (item.outcomeLabel || item.player);
+}
+
+// One newsline-style sentence per settled result, rotating through 3 phrasings so a card's
+// results list doesn't read as a repeated mad-lib. All three read the SAME two facts (won,
+// |delta| in points - deliberately not the %-formatted valueLabel per the "points, not
+// percent" ask) off the event; only the copy differs.
+function buildResultSentence(item: TickerResultItem, displayName: string, templateIndex: number): string {
+    const tickerWord = displayName.replace(/^\$/, '');
+    const points = Math.abs(item.delta).toFixed(1);
+    const subject = subjectFor(item);
+    const pick = item.pickLabel || subject;
+    switch (templateIndex % 3) {
+        case 0:
+            return `${displayName} ${item.won ? 'climbs' : 'sinks'} ${points} points with ${possessive(subject)} recent ${item.won ? 'win' : 'loss'}.`;
+        case 1:
+            return `The ${tickerWord} index experiences a local ${item.won ? 'high' : 'low'} as ${pick} ${item.won ? 'deliver' : "don't deliver"}.`;
+        default:
+            return item.won
+                ? `Buyers applaud heroics as ${pick} impress. The market climbs ${points} points.`
+                : `Buyers up in arms as ${pick} fails to impress. The market falls ${points} points.`;
+    }
+}
+
 export function toMarketMovers(
     values: TickerValue[],
     series: Record<string, TickerSeriesEvent[]>,
     news: Record<string, TickerNewsItem[]>,
+    results: Record<string, TickerResultItem[]>,
 ): MarketMoversData {
     const movers = values.map((t) => {
         const full = series[t.key] ?? [];
@@ -126,6 +166,7 @@ export function toMarketMovers(
                 league: n.league,
                 dateLabel: utcDateLabel(n.taggedAt),
             })),
+            results: (results[t.key] ?? []).map((r, i) => buildResultSentence(r, t.displayName, i)),
         };
     });
     // Default (no-JS) presentation order: biggest movers first, tab_order as tiebreak.
@@ -217,6 +258,12 @@ export function renderMarketMoverCard(vm: MarketMoverVM, role?: 'gainer' | 'lose
                 </li>`).join('')}
             </ul>`;
 
+    const resultsBlock = vm.results.length === 0
+        ? `<p class="hc-mm-results-empty">No settled results yet.</p>`
+        : `<ul class="hc-mm-results-list">${vm.results.map((sentence) => `
+                <li>${escapeHtml(sentence)}</li>`).join('')}
+            </ul>`;
+
     return `
         <article class="hc-mm-card" data-ticker="${escapeHtml(vm.key)}" data-sign="${vm.sign}"${role ? ` data-mm-role="${role}"` : ''}>
             <div class="hc-mm-top">
@@ -235,6 +282,10 @@ export function renderMarketMoverCard(vm: MarketMoverVM, role?: 'gainer' | 'lose
             <div class="hc-mm-news">
                 <h4 class="hc-mm-news-heading">Recent News</h4>
                 ${newsBlock}
+            </div>
+            <div class="hc-mm-results">
+                <h4 class="hc-mm-results-heading">Recent Results</h4>
+                ${resultsBlock}
             </div>
         </article>`;
 }
@@ -423,6 +474,16 @@ export function marketMoversStyles(): string {
             display: block; margin-left: 1rem; font-size: 0.66rem; font-weight: 800;
             letter-spacing: 0.08em; text-transform: uppercase; color: #24344f;
         }
+
+        .hc-mm-results-heading {
+            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
+            letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526; margin: 0.6rem 0 0.45rem;
+        }
+        .hc-mm-results-list { list-style: none; margin: 0; padding: 0 0 0 0.35rem; display: flex; flex-direction: column; gap: 0.55rem; }
+        .hc-mm-results-list li {
+            font-family: Georgia, 'Times New Roman', serif; font-size: 0.9rem; line-height: 1.4; color: #24344f;
+        }
+        .hc-mm-results-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: Georgia, 'Times New Roman', serif; }
 
         /* Same orange frame as #tanks (homepage/render.ts), at every viewport - not
            just inside the desktop-only white-panel treatment below - so the two

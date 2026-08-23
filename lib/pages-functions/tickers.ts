@@ -371,6 +371,70 @@ export async function getTickerNews(sql: SqlReader, limitPerTicker = 3): Promise
     return news;
 }
 
+export interface TickerResultItem {
+    tickerKey: string;
+    player: string;        // prop.player (matchup fallback for whole-game markets)
+    market: string;        // prop.market - used to detect "_player_" markets
+    outcomeLabel: string;  // odds.outcomes[relevant_side], '' if unavailable
+    pickLabel: string;     // call.sides[relevant_side], '' if unavailable
+    won: boolean;
+    delta: number;         // signed settle delta (points, not a percent string)
+    occurredAt: string;
+}
+
+// Most recently SETTLED tagged Tanks per ticker - the SSR "Recent Results" source. Only
+// event_type='settle' rows (a real win/loss outcome), same public-surface predicate as
+// getTickerNews. won is read from the settle event's own metadata (functions/api/settle.ts
+// writes { winningIndex, relevantSide } on every settle event) rather than inferred from
+// delta's sign, so a misconfigured zero-magnitude ticker can never misreport a loss as a win;
+// the sign check only backstops rows missing that metadata (e.g. hand-inserted fixtures).
+export async function getTickerResults(sql: SqlReader, limitPerTicker = 3): Promise<Record<string, TickerResultItem[]>> {
+    const rows = await sql`
+        SELECT ticker_key, player, market, outcomes, relevant_side, sides, delta, metadata, occurred_at FROM (
+            SELECT tt.ticker_key,
+                   t.game_snapshot->'prop'->>'player' AS player,
+                   t.game_snapshot->'prop'->>'market' AS market,
+                   t.game_snapshot->'prop'->'odds'->'outcomes' AS outcomes,
+                   tt.relevant_side,
+                   t.model_output->'call'->'sides' AS sides,
+                   te.delta::float8 AS delta,
+                   te.metadata,
+                   te.occurred_at,
+                   ROW_NUMBER() OVER (PARTITION BY tt.ticker_key ORDER BY te.occurred_at DESC, te.id) AS rn
+            FROM ticker_tags tt
+            JOIN tank_pages t ON t.id = tt.tank_id
+            JOIN ticker_events te ON te.ticker_tag_id = tt.id AND te.event_type = 'settle'
+            WHERE t.status = 'published' AND t.visibility = 'app'
+              AND t.slug IS NOT NULL AND t.model_output IS NOT NULL
+              AND tt.calculated_at IS NOT NULL
+        ) ranked
+        WHERE rn <= ${limitPerTicker}
+        ORDER BY ticker_key, rn
+    `;
+    const results: Record<string, TickerResultItem[]> = {};
+    for (const row of rows) {
+        const outcomes = Array.isArray(row.outcomes) ? (row.outcomes as unknown[]) : [];
+        const sides = Array.isArray(row.sides) ? (row.sides as unknown[]) : [];
+        const relevantSide = row.relevant_side as number;
+        const delta = row.delta as number;
+        const metadata = row.metadata as { winningIndex?: unknown; relevantSide?: unknown } | null;
+        const won = metadata && typeof metadata.winningIndex === 'number' && typeof metadata.relevantSide === 'number'
+            ? metadata.relevantSide === metadata.winningIndex
+            : delta >= 0;
+        (results[row.ticker_key as string] ??= []).push({
+            tickerKey: row.ticker_key as string,
+            player: (row.player as string | null) ?? '',
+            market: (row.market as string | null) ?? '',
+            outcomeLabel: typeof outcomes[relevantSide] === 'string' ? (outcomes[relevantSide] as string) : '',
+            pickLabel: typeof sides[relevantSide] === 'string' ? (sides[relevantSide] as string) : '',
+            won,
+            delta,
+            occurredAt: String(row.occurred_at),
+        });
+    }
+    return results;
+}
+
 // -----------------------------------------------------------------------------------
 // Tag sweep - the automated tagging path, run by /api/curate's daily cron (and safe to
 // run any time). Finds published, app-visible polymarket Tanks that have NO ticker
