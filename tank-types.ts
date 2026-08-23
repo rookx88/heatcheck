@@ -47,6 +47,11 @@ export interface FilterParams {
     marketWhitelist: string[];
     minProminence: number;
     perGameCap: number;
+    // Exclude any prop resolving sooner than this many days from `now` (see
+    // effectiveSettleDate in tank-deck-format.ts - the actual editorial resolve date,
+    // not Polymarket's sometimes-padded raw settleDate). 0 disables the filter.
+    minLeadDays: number;
+    now: Date;
 }
 
 export interface SelectedProp {

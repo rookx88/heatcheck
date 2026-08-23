@@ -2315,7 +2315,10 @@ app.get('/api/tank/props', apiKeyAuth, async (req: express.Request, res: express
             })
             .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
 
-        const filtered = filterProps(windowedGames, { marketWhitelist, minProminence, perGameCap });
+        // No automatic lead-time floor here - this route already takes explicit
+        // fromDate/toDate from the admin, who owns the date window directly (unlike
+        // functions/api/curate.ts's unattended cron run, which defaults to +2 days).
+        const filtered = filterProps(windowedGames, { marketWhitelist, minProminence, perGameCap, minLeadDays: 0, now: new Date() });
 
         res.json({ provider: (process.env.PROP_PROVIDER || 'mock'), games: filtered });
     } catch (error: any) {

@@ -51,6 +51,12 @@ const DEFAULT_MATCH_MAX_TOKENS = 4000;
 const DEFAULT_MARKET_WHITELIST: string[] = [];
 const DEFAULT_MIN_PROMINENCE = 0;
 const DEFAULT_PER_GAME_CAP = 3;
+// Reader-facing minimum lead time (2026-08-23): a Tank published this morning should
+// resolve at least 2 full days out, not the same day or tomorrow - by the time a reader
+// sees it and makes a call, a same-day resolve leaves no runway to actually follow the
+// story. Measured against effectiveSettleDate (tank-deck-format.ts), the corrected
+// editorial resolve date, not Polymarket's sometimes-padded raw settleDate.
+const DEFAULT_MIN_LEAD_DAYS = 2;
 
 // Sport groups the curator gives an independent shot at, per Sammy's request to stop
 // letting one sport's news cycle crowd out the others. Individual soccer leagues are
@@ -216,6 +222,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         : DEFAULT_MARKET_WHITELIST;
     const minProminence = numEnv(env.MIN_PROMINENCE, DEFAULT_MIN_PROMINENCE);
     const perGameCap = numEnv(env.PER_GAME_CAP, DEFAULT_PER_GAME_CAP);
+    const minLeadDays = numEnv(env.MIN_LEAD_DAYS, DEFAULT_MIN_LEAD_DAYS);
 
     const generationConfig: GenerationConfig = {
         apiKey: env.ANTHROPIC_API_KEY,
@@ -227,7 +234,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // 1. Live candidates, filtered the same way the manual admin flow filters them.
     const liveGames = await fetchLiveGames(undefined, windowHours);
-    const filtered = filterProps(liveGames, { marketWhitelist, minProminence, perGameCap });
+    const filtered = filterProps(liveGames, { marketWhitelist, minProminence, perGameCap, minLeadDays, now: new Date() });
 
     let allCandidates: CandidateEntry[] = [];
     for (const game of filtered) {

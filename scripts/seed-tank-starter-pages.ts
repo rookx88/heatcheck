@@ -137,7 +137,7 @@ async function buildGeneratedPages(pool: Pool, existingSlugs: Set<string>, count
     // stale high-prominence row for a past game can outrank a real upcoming one.
     const now = Date.now();
     const upcomingGames = games.filter(g => new Date(g.kickoff).getTime() > now);
-    const filtered = filterProps(upcomingGames, { marketWhitelist: MARKET_WHITELIST, minProminence: 70, perGameCap: 3 });
+    const filtered = filterProps(upcomingGames, { marketWhitelist: MARKET_WHITELIST, minProminence: 70, perGameCap: 3, minLeadDays: 0, now: new Date() });
 
     const candidates: { prop: Prop; game: Game }[] = [];
     for (const game of filtered) {

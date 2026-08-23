@@ -41,6 +41,7 @@ export interface Env {
     MARKET_WHITELIST?: string;
     MIN_PROMINENCE?: string;
     PER_GAME_CAP?: string;
+    MIN_LEAD_DAYS?: string;
     CURATE_WINDOW_HOURS?: string;
     CURATE_DEDUPE_DAYS?: string;
     CURATE_MAX_CANDIDATES?: string;
