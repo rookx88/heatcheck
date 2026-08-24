@@ -50,26 +50,54 @@ export async function exchangeDiscordCode(env: Env, code: string, redirectUri: s
     return { id: user.id, username: user.username };
 }
 
+const MAX_RATE_LIMIT_RETRIES = 3;
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /** Posts a message (embeds + components) to a channel as the bot. Requires the bot
  * to already be a member of that channel's server with Send Messages permission -
  * see the plan's Developer Portal setup steps. Buttons on a bot-sent message route
  * their click interactions back to this application's Interactions Endpoint URL,
- * which a plain incoming webhook message would not. Returns the created message id. */
+ * which a plain incoming webhook message would not. Returns the created message id.
+ *
+ * Discord's per-channel message-create limit is roughly 5 requests/5s - a sweep
+ * posting several Tanks back-to-back (functions/api/discord-sweep.ts) can trip it
+ * well within that burst, observed live: 3 of 10 posts 429'd on the first real run.
+ * Retries on 429 honoring the response's retry_after (seconds) rather than a guessed
+ * fixed delay, up to MAX_RATE_LIMIT_RETRIES - after that, throws so the caller's
+ * per-row error handling (discord_posted_at stays NULL) picks it up on the next sweep. */
 export async function postDiscordChannelMessage(
     env: Env,
     body: { embeds: unknown[]; components: unknown[] }
 ): Promise<string> {
-    const res = await fetch(`https://discord.com/api/v10/channels/${env.DISCORD_CHANNEL_ID}/messages`, {
-        method: 'POST',
-        headers: {
-            Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-    });
-    if (!res.ok) {
+    for (let attempt = 0; ; attempt++) {
+        const res = await fetch(`https://discord.com/api/v10/channels/${env.DISCORD_CHANNEL_ID}/messages`, {
+            method: 'POST',
+            headers: {
+                Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+        });
+        if (res.ok) {
+            const message = (await res.json()) as { id: string };
+            return message.id;
+        }
+        if (res.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
+            const responseText = await res.text();
+            let retryAfterSeconds = Number(res.headers.get('Retry-After'));
+            try {
+                const parsed = JSON.parse(responseText) as { retry_after?: number };
+                if (typeof parsed.retry_after === 'number') retryAfterSeconds = parsed.retry_after;
+            } catch {
+                // Fall back to the header value already read above.
+            }
+            if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds < 0) retryAfterSeconds = 1;
+            await sleep(retryAfterSeconds * 1000 + 100); // +100ms slack past Discord's own window
+            continue;
+        }
         throw new Error(`Discord message post failed: ${res.status} ${await res.text()}`);
     }
-    const message = (await res.json()) as { id: string };
-    return message.id;
 }
