@@ -14,7 +14,7 @@ import { PetWidget } from './components/PetWidget';
 import { RegisterModal } from './components/RegisterModal';
 import { NotificationsHost } from './components/NotificationsHost';
 import { dispatchInboxOpen } from './notifications-client';
-import { getTodayStatus, logout } from './tank-pick-client';
+import { getTodayStatus, logout, PICKS_UPDATED_EVENT } from './tank-pick-client';
 // The header chip's mini nav reuses the map pages' MapHud menu styling.
 import './components/MapHud.css';
 import { WorldMap } from './components/WorldMap';
@@ -183,6 +183,11 @@ function mountNotificationsHost() {
 // (getTodayStatus -> null) leaves the element empty, which CSS hides (:empty) - the
 // crawlable Tank HQ line below it always shows. When the cap is hit, the countdown
 // to the UTC-midnight reset re-renders every minute; a bfcache restore re-fetches.
+// Also re-fetches on PICKS_UPDATED_EVENT: the showcase's own Fishtank/CallContent
+// tracks today's picks in its own React state (independent of this footer's fetch),
+// so without this listener a pick made in the artifact updates the artifact's own
+// count immediately but leaves this footer showing the stale pre-pick number until a
+// full reload.
 function mountPicksStatus() {
     const el = document.getElementById('hc-picks-status');
     if (!el) return;
@@ -209,6 +214,7 @@ function mountPicksStatus() {
 
     refresh();
     window.addEventListener('pageshow', (e) => { if (e.persisted) refresh(); });
+    window.addEventListener(PICKS_UPDATED_EVENT, refresh);
 }
 
 function mount() {

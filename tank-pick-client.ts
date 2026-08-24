@@ -10,6 +10,18 @@ import { getOrCreateVisitorId } from './tank-analytics-client';
 
 const ACCOUNT_CACHE_KEY = 'hc_account';
 
+// Window event, mirroring notifications-client.ts's OPEN_INBOX_EVENT idiom: fired
+// whenever a pick response changes today's picksToday/remaining counts, so any other
+// mounted "picks left" display (e.g. the homepage's #hc-picks-status footer, which
+// fetches its own independent getTodayStatus() rather than sharing CallContent's
+// React state) knows to refetch instead of showing a stale count after a pick made
+// elsewhere on the page.
+export const PICKS_UPDATED_EVENT = 'hc:picks-updated';
+
+export function dispatchPicksUpdated(): void {
+    window.dispatchEvent(new CustomEvent(PICKS_UPDATED_EVENT));
+}
+
 // The account (email + verified) is the only thing worth persisting to localStorage
 // long-term - which picks exist and how many remain is now inherently a server-side,
 // day-scoped fact (see getTodayStatus below), unlike the old one-pick-ever model where

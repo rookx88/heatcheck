@@ -23,6 +23,7 @@ import {
     requestLoginLink,
     verifyEmailCode,
     resendVerificationCode,
+    dispatchPicksUpdated,
     PickConflictError,
     DailyCapError,
     type TodayStatus,
@@ -696,6 +697,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
                 remaining: res.remaining,
                 verified: res.verified,
             }));
+            dispatchPicksUpdated();
             setSubmitState('idle');
             setSelectedSide(null);
             setSelectedSideIndex(null);
@@ -712,6 +714,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
                         remaining: prev?.remaining ?? 2,
                         verified,
                     }));
+                    dispatchPicksUpdated();
                 }
                 setSubmitState('idle');
                 return;
@@ -732,6 +735,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
                     remaining: err.remaining,
                     verified: err.verified,
                 }));
+                dispatchPicksUpdated();
                 setErrorMessage(err.message);
                 setSubmitState('error');
                 return;
