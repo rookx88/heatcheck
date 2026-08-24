@@ -18,6 +18,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             verified: session.verified,
             username: session.username,
             onboarded: session.onboarded,
+            discordLinked: session.discordLinked,
+            discordUsername: session.discordUsername,
         },
         session.refreshedSetCookie ? { headers: { 'Set-Cookie': session.refreshedSetCookie } } : {}
     );

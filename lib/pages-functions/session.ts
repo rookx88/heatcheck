@@ -62,6 +62,11 @@ export interface Session {
     // Non-null when the throttled sliding refresh ran this request - the handler MUST
     // attach it as a Set-Cookie response header.
     refreshedSetCookie: string | null;
+    // discord_links (functions/api/discord/callback.ts). Joined here rather than a
+    // separate GET so the account page and header chrome get link status for free off
+    // the same request they already make.
+    discordLinked: boolean;
+    discordUsername: string | null;
 }
 
 // wrangler pages dev serves plain http on localhost, where a Secure cookie is
@@ -191,9 +196,11 @@ export async function getSession(request: RequestLike, env: Env): Promise<Sessio
     // expiry when it has drifted more than an hour behind the full 30 days.
     const rows = await sql`
         WITH s AS (
-            SELECT s.session_id, s.user_id, w.email, w.email_verified, w.username, w.onboarded_at
+            SELECT s.session_id, s.user_id, w.email, w.email_verified, w.username, w.onboarded_at,
+                   dl.discord_username
             FROM sessions s
             JOIN waitlist w ON w.id = s.user_id
+            LEFT JOIN discord_links dl ON dl.waitlist_id = w.id
             WHERE s.session_id = ${payload.sessionId}
               AND s.user_id = ${payload.userId}
               AND s.revoked_at IS NULL
@@ -214,6 +221,7 @@ export async function getSession(request: RequestLike, env: Env): Promise<Sessio
         email_verified: boolean;
         username: string | null;
         onboarded_at: string | null;
+        discord_username: string | null;
         did_refresh: boolean;
     };
 
@@ -235,5 +243,7 @@ export async function getSession(request: RequestLike, env: Env): Promise<Sessio
         onboarded: Boolean(row.onboarded_at),
         sessionId: row.session_id,
         refreshedSetCookie,
+        discordLinked: row.discord_username !== null,
+        discordUsername: row.discord_username ?? null,
     };
 }

@@ -25,3 +25,12 @@ export interface SessionTokenPayload extends Record<string, string | number | bo
     // expiry and revocation.
     sessionId: string;
 }
+
+// The Discord OAuth2 "state" param (functions/api/discord/link.ts + callback.ts).
+// Binds the callback back to the session that started the flow - Discord's redirect
+// is a top-level GET, so requireSameOrigin's Sec-Fetch-Site/Origin checks don't apply
+// to it; this signed, short-TTL token IS the CSRF protection for that leg instead.
+export interface DiscordLinkTokenPayload extends Record<string, string | number | boolean> {
+    userId: string; // waitlist.id
+    purpose: 'discord_link';
+}

@@ -55,6 +55,16 @@ export interface Env {
     // functions/api/picks.ts) until explicitly raised via this env var when Phase 1
     // is actually ready to go, no redeploy needed to flip it.
     DAILY_PICK_CAP?: string;
+    // Discord integration (functions/api/discord/*, functions/api/discord-sweep.ts).
+    // CLIENT_ID/PUBLIC_KEY/CHANNEL_ID are non-secret identifiers; CLIENT_SECRET and
+    // BOT_TOKEN are real secrets (wrangler secret put). The sweep endpoint reuses the
+    // existing CURATE_SECRET for its X-Curate-Secret machine auth - same trust domain
+    // as /api/ticker-sweep and /api/notify-sweep, so no separate secret for that.
+    DISCORD_CLIENT_ID: string;
+    DISCORD_CLIENT_SECRET: string;
+    DISCORD_BOT_TOKEN: string;
+    DISCORD_PUBLIC_KEY: string;
+    DISCORD_CHANNEL_ID: string;
 }
 
 export function getSql(env: Env): NeonQueryFunction<false, false> {

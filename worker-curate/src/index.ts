@@ -32,7 +32,11 @@ async function runCurate(env: Env): Promise<string> {
     // request, own budget, runs regardless of the earlier steps' outcomes.
     const notifyText = await postSibling(env, '/api/notify-sweep');
 
-    return JSON.stringify({ curate: text, tickerSweep: sweepText, notifySweep: notifyText });
+    // Post newly-published Tanks to Discord - same posture again: own request, own
+    // budget, runs regardless of the earlier steps' outcomes.
+    const discordText = await postSibling(env, '/api/discord-sweep');
+
+    return JSON.stringify({ curate: text, tickerSweep: sweepText, notifySweep: notifyText, discordSweep: discordText });
 }
 
 async function postSibling(env: Env, path: string): Promise<string> {
