@@ -11,7 +11,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { postDiscordChannelMessage } from '../../lib/pages-functions/discord-api';
-import { formatOddsLabel, deriveSidesImpliedProb, deriveTaglineFallback } from '../../tank-deck-format';
+import { deriveSidesImpliedProb, deriveTaglineFallback } from '../../tank-deck-format';
 import type { PropOdds } from '../../tank-types';
 
 const BUTTON_STYLE_PRIMARY = 1;
@@ -65,21 +65,27 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
 
         const odds = rawRow.game_snapshot?.prop?.odds ?? null;
-        const oddsLabel = formatOddsLabel(odds);
         const sidesImpliedProb = deriveSidesImpliedProb(odds, sides.length);
         const tagline = modelOutput.tagline?.trim() || deriveTaglineFallback(modelOutput.hook);
         const tankUrl = `https://heatchecks.io/the-tank/articles/${rawRow.slug}/`;
 
+        // Reuses the same branded OG card scripts/generate-og-image.ts already renders
+        // per Tank at build time (matchup, tagline, both sides, odds, resolve date, real
+        // logo, brand navy/gold/teal) - Discord's big embed image slot, not a second
+        // design built from scratch. If a Tank was published without a site rebuild
+        // since (so the PNG doesn't exist yet), Discord just renders the embed without
+        // an image rather than failing the post.
         const embed = {
+            author: { name: 'The Tank', icon_url: 'https://heatchecks.io/assets/images/heatchecks-logo.png' },
             title: tagline,
-            description: [
-                modelOutput.call.question,
-                oddsLabel ? `Market: ${oddsLabel}` : null,
-                `[Read the full Tank](${tankUrl})`,
-                'Connect your account at heatchecks.io/account/ to have your pick count.',
-            ].filter(Boolean).join('\n\n'),
             url: tankUrl,
+            description: modelOutput.call.question,
+            image: { url: `https://heatchecks.io/assets/og/${rawRow.slug}.png` },
             color: 0xffc72c,
+            footer: {
+                text: 'Connect your account at heatchecks.io/account to make your pick count',
+                icon_url: 'https://heatchecks.io/assets/images/mudpuppy-default.png',
+            },
         };
 
         const buttons = sides.map((side, i) => ({
