@@ -10,12 +10,14 @@ import { generateHeatPicksArticlePage } from './templates/heat-picks-article-tem
 import { generateDFSHubPage } from './templates/dfs-hub-template';
 import { generateHeatPicksHubPage } from './templates/heat-picks-hub-template';
 import { generateTankArticlePage, TankPageRecord } from './templates/tank-article-template';
+import { generateOgImage } from './generate-og-image';
 import { buildTankBundles } from './build-tank-bundles';
 import { formatMarketLabel, formatOddsLabel, formatSettleDate, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../tank-deck-format';
 import { buildWorldMap } from './build-world-map';
 import { buildNewsletterPick } from './build-newsletter-pick';
 import { buildLogin } from './build-login';
 import { buildWelcome } from './build-welcome';
+import { buildAccount } from './build-account';
 import { buildAnalyticsBeacon } from './build-analytics-beacon';
 import { generateBaseHtml } from './templates/base-template';
 import { generateBetaInfoPageHtml } from './templates/waitlist-landing-template';
@@ -32,6 +34,7 @@ import { generateClaimYourSpotPageHtml } from './templates/claim-your-spot-templ
 import { generateNewsletterPickPageHtml } from './templates/newsletter-pick-template';
 import { generateLoginPageHtml } from './templates/login-template';
 import { generateWelcomePageHtml } from './templates/welcome-template';
+import { generateAccountPageHtml } from './templates/account-template';
 import { generateTankPageHtml, TankPageEntry } from './templates/tank-template';
 import { generateTankLandPageHtml } from './templates/tank-land-template';
 import { generateHatcheryPageHtml } from './templates/hatchery-template';
@@ -348,6 +351,20 @@ function writeHtmlFile(relativePath: string, html: string): void {
         ensureDir(path.dirname(publicPath));
         fs.writeFileSync(publicPath, html, 'utf-8');
     }
+}
+
+// Binary counterpart to writeHtmlFile, always dual-written (unlike the html helper's
+// assets/ skip, which exists for vite-bundled JS/CSS this script never touches) - OG
+// card PNGs are this script's own generated output and need to be servable from public/
+// for the dev server exactly like dist/ is for production.
+function writeBinaryFile(relativePath: string, data: Buffer): void {
+    const distPath = path.join(distDir, relativePath);
+    ensureDir(path.dirname(distPath));
+    fs.writeFileSync(distPath, data);
+
+    const publicPath = path.join(publicDir, relativePath);
+    ensureDir(path.dirname(publicPath));
+    fs.writeFileSync(publicPath, data);
 }
 
 /**
@@ -845,6 +862,13 @@ async function generateAllPages(): Promise<void> {
         writeHtmlFile('welcome/index.html', generateWelcomePageHtml(baseUrl));
         console.log('✓ Built welcome bundle and page\n');
 
+        // Account page: the only place a logged-in user manages account-level settings
+        // (currently just the Discord link). Same standalone-bundle pattern as login/welcome.
+        console.log('Building account bundle...');
+        await buildAccount();
+        writeHtmlFile('account/index.html', generateAccountPageHtml(baseUrl));
+        console.log('✓ Built account bundle and page\n');
+
         // Generate about page (comprehensive SEO-optimized version)
         console.log('Generating about page...');
         const aboutContent = `
@@ -1191,7 +1215,30 @@ async function generateAllPages(): Promise<void> {
                     published_at: row.published_at,
                 };
                 tankPages.push(tankPage);
-                const html = generateTankArticlePage(tankPage, baseUrl);
+
+                // Per-article Twitter/OG card (scripts/generate-og-image.ts) - replaces
+                // the generic site-wide placeholder every Tank article used to share.
+                // Generation failure degrades to that placeholder for just this one
+                // article (renderHead's default) rather than failing the whole build.
+                let ogImageUrl: string | undefined;
+                try {
+                    const { prop, game } = tankPage.game_snapshot;
+                    const png = await generateOgImage({
+                        league: tankPage.league,
+                        contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
+                        tagline: truncateHeaderLabel(tankPage.model_output.tagline || deriveTaglineFallback(tankPage.model_output.hook)),
+                        hook: tankPage.model_output.hook,
+                        sides: tankPage.model_output.call.sides,
+                        oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
+                        settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
+                    });
+                    writeBinaryFile(`assets/og/${row.slug}.png`, png);
+                    ogImageUrl = `${baseUrl}/assets/og/${row.slug}.png`;
+                } catch (error: any) {
+                    console.warn(`⚠ OG card generation failed for ${row.slug}, falling back to the default share image:`, error.message);
+                }
+
+                const html = generateTankArticlePage(tankPage, baseUrl, ogImageUrl);
                 writeHtmlFile(`the-tank/articles/${row.slug}/index.html`, html);
                 tankArticleUrls.push({
                     loc: `${baseUrl}/the-tank/articles/${row.slug}/`,

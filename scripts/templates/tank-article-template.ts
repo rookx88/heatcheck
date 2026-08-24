@@ -28,7 +28,7 @@ export interface TankPageRecord {
  * directly under the topbar - the plain-text header/body/cards below it are the
  * crawlable, no-JS fallback, same progressive-enhancement pattern as the Tank hub.
  */
-export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 'https://heatchecks.io'): string {
+export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 'https://heatchecks.io', ogImageUrl?: string): string {
     const { prop, game } = page.game_snapshot;
     const { seo, body, hook, cards, call } = page.model_output;
     // tagline is the one new field on TankArticle - already-published rows generated
@@ -74,6 +74,7 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
             publishedTime,
             section: page.league,
         },
+        ogImage: ogImageUrl,
     });
 
     const bodyHtml = body

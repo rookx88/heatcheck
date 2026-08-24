@@ -19,13 +19,16 @@ interface HeadOptions {
         modifiedTime?: string;
         section?: string;
     };
+    // Per-page override - Tank articles pass their own generated card
+    // (scripts/generate-og-image.ts) here instead of the generic site-wide placeholder.
+    ogImage?: string;
 }
 
 export function renderHead(options: HeadOptions): string {
     const { title, description, path, baseUrl, schemaOrg, articleMeta } = options;
     const ogType = options.ogType || 'website';
     const url = `${baseUrl}${path}`;
-    const ogImage = `${baseUrl}/assets/images/og-share-world-map.jpg`;
+    const ogImage = options.ogImage || `${baseUrl}/assets/images/og-share-world-map.jpg`;
     const schemaScript = schemaOrg
         ? `<script type="application/ld+json">\n${JSON.stringify(schemaOrg, null, 2)}\n</script>`
         : '';
