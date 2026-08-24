@@ -11,7 +11,10 @@ compatibility_date = "2026-08-12"
 crons = ["0 10 * * *"]
 
 [vars]
-CURATE_URL = "https://heatchecks.io/api/curate"
+# Staging posture (2026-08-21): curation runs against the auth-sessions branch alias,
+# NOT production - only settlement is live on heatchecks.io for now. Flip this back to
+# https://heatchecks.io/api/curate when the content pipeline is promoted.
+CURATE_URL = "https://auth-sessions.heatcheck.pages.dev/api/curate"
 
 # CURATE_SECRET is a real secret, not a plaintext var - set it with:
 #   npx wrangler secret put CURATE_SECRET --config worker-curate/wrangler.toml
