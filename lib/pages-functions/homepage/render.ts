@@ -393,20 +393,20 @@ function homepageStyles(): string {
                     'explore explore'
                     'footer footer';
                 column-gap: 1.5rem;
-                /* Default (stretch) block alignment: the tanks and movers panels share
-                   the row, so the shorter one stretches to the taller one's height. */
             }
             .hc-home-header { grid-area: header; }
             .hc-ticker-tape { grid-area: tape; }
-            #tanks { grid-area: tanks; }
+            /* align-self: start (overriding the grid row's default stretch) so Tanks
+               sizes to its own content instead of being pulled down to match Market
+               Movers' height - Market Movers (chart + news + results per card) is the
+               naturally longer panel and should read that way, not get matched by an
+               artificially stretched Tanks panel. */
+            #tanks { grid-area: tanks; align-self: start; }
             #market-movers { grid-area: movers; }
             #explore { grid-area: explore; }
             .hc-footer { grid-area: footer; }
 
-            /* Tanks panel (base-styled above): stretched to the movers panel's
-               height with the footer pinned at the bottom. */
             #tanks { margin-top: 1.5rem; }
-            #tanks .hc-tanks-footer { margin-top: auto; padding-top: 1rem; }
 
             /* Explore: globe seated left on the page's own navy background (one
                consistent color story all the way down). Logged out, the register CTA

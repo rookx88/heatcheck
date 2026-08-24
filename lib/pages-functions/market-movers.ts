@@ -48,7 +48,12 @@ export interface MarketMoverVM {
     series: TickerSeriesEvent[]; // capped (SERIES_CAP) tail; cumulative values stay truthful
     seriesTruncated: boolean;
     news: MarketMoverNewsVM[];
-    results: string[]; // already-composed "Recent Results" sentences, newest first
+    results: MarketMoverResultVM[]; // "Recent Results" sentences, newest first
+}
+
+export interface MarketMoverResultVM {
+    text: string; // already-composed sentence
+    won: boolean; // this specific result's own outcome - independent of the card's overall sign
 }
 
 export interface MarketMoversData {
@@ -166,7 +171,7 @@ export function toMarketMovers(
                 league: n.league,
                 dateLabel: utcDateLabel(n.taggedAt),
             })),
-            results: (results[t.key] ?? []).map((r, i) => buildResultSentence(r, t.displayName, i)),
+            results: (results[t.key] ?? []).map((r, i) => ({ text: buildResultSentence(r, t.displayName, i), won: r.won })),
         };
     });
     // Default (no-JS) presentation order: biggest movers first, tab_order as tiebreak.
@@ -260,8 +265,8 @@ export function renderMarketMoverCard(vm: MarketMoverVM, role?: 'gainer' | 'lose
 
     const resultsBlock = vm.results.length === 0
         ? `<p class="hc-mm-results-empty">No settled results yet.</p>`
-        : `<ul class="hc-mm-results-list">${vm.results.map((sentence) => `
-                <li>${escapeHtml(sentence)}</li>`).join('')}
+        : `<ul class="hc-mm-results-list">${vm.results.map((r) => `
+                <li><span class="hc-mm-result-chip is-${r.won ? 'pos' : 'neg'}">${escapeHtml(vm.displayName)}</span> ${escapeHtml(r.text)}</li>`).join('')}
             </ul>`;
 
     return `
@@ -479,10 +484,24 @@ export function marketMoversStyles(): string {
             font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
             letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526; margin: 0.6rem 0 0.45rem;
         }
-        .hc-mm-results-list { list-style: none; margin: 0; padding: 0 0 0 0.35rem; display: flex; flex-direction: column; gap: 0.55rem; }
+        .hc-mm-results {
+            margin: 0.3rem 0 0; padding: 0.65rem 0.75rem 0.7rem; border-radius: 0 8px 8px 0;
+            background: rgba(11, 21, 38, 0.06); border-left: 3px solid #94a3b8;
+        }
+        .hc-mm-card[data-sign="pos"] .hc-mm-results { border-left-color: #2f9e1e; background: rgba(47, 158, 30, 0.1); }
+        .hc-mm-card[data-sign="neg"] .hc-mm-results { border-left-color: #e33a24; background: rgba(227, 58, 36, 0.1); }
+        .hc-mm-results-heading { margin-top: 0; }
+        .hc-mm-results-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
         .hc-mm-results-list li {
             font-family: Georgia, 'Times New Roman', serif; font-size: 0.9rem; line-height: 1.4; color: #24344f;
         }
+        .hc-mm-result-chip {
+            display: inline-block; font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
+            font-size: 0.72rem; letter-spacing: 0.03em; text-transform: uppercase; color: #ffffff;
+            border-radius: 999px; padding: 0.1rem 0.5rem; margin: 0 0.3rem 0.15rem 0; vertical-align: middle;
+        }
+        .hc-mm-result-chip.is-pos { background: #2f9e1e; }
+        .hc-mm-result-chip.is-neg { background: #e33a24; }
         .hc-mm-results-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: Georgia, 'Times New Roman', serif; }
 
         /* Same orange frame as #tanks (homepage/render.ts), at every viewport - not
@@ -530,7 +549,17 @@ export function marketMoversStyles(): string {
                 border-radius: 8px; padding: 0.45rem 0.7rem;
             }
             .hc-mm-tabs { margin-top: 0.5rem; }
-            .hc-mm-card { background: transparent; padding: 0.9rem 0.15rem 0.2rem; border-radius: 0; }
+            /* A fully transparent card read as flat/boring on the white panel -
+               a light tint plus a sign-colored left rail gives the card its own
+               presence instead of the text just floating on white. */
+            .hc-mm-card {
+                background: rgba(94, 193, 238, 0.22);
+                padding: 1rem 1.15rem 1.2rem; border-radius: 10px;
+                border-left: 5px solid #94a3b8;
+                box-shadow: 0 2px 10px rgba(11, 21, 38, 0.08);
+            }
+            .hc-mm-card[data-sign="pos"] { border-left-color: #2f9e1e; }
+            .hc-mm-card[data-sign="neg"] { border-left-color: #e33a24; }
             /* The white desc chip vanishes white-on-white - pale blue on desktop. */
             .hc-mm-desc { background: rgba(94, 193, 238, 0.35); }
         }
