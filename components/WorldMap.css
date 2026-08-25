@@ -293,7 +293,8 @@
 }
 
 .world-map__label-name {
-  font-family: 'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif;
+  font-family: 'Montserrat', 'Arial Black', 'Impact', 'Helvetica Neue', Arial, sans-serif;
+  font-weight: 800;
   font-size: clamp(0.7rem, 1.6vw, 1rem);
   color: #fff;
   letter-spacing: 0.03em;

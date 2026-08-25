@@ -112,7 +112,7 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
             text-align: center;
         }
         .tank-article-header p {
-            font-family: 'Nunito', sans-serif;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
             font-weight: 700;
             font-size: 0.8rem;
             letter-spacing: 0.06em;
@@ -175,7 +175,7 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
             text-align: center;
         }
         .tank-article-artifact-label {
-            font-family: 'Nunito', sans-serif;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
             font-weight: 800;
             font-size: 0.75rem;
             letter-spacing: 0.1em;

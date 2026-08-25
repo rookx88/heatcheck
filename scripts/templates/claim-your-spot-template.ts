@@ -34,7 +34,7 @@ export function generateClaimYourSpotPageHtml(baseUrl: string): string {
             display: inline-block;
             background: var(--hc-gold);
             color: #1a1200;
-            font-family: 'Baloo 2', 'Nunito', sans-serif;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
             font-weight: 800;
             font-size: clamp(0.95rem, 4vw, 1.15rem);
             text-transform: uppercase;

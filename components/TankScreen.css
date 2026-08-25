@@ -243,7 +243,7 @@
   justify-content: space-between;
   padding: 1rem 1.25rem;
   border-bottom: 1px solid rgba(47, 230, 217, 0.25);
-  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-family: 'Montserrat', 'Nunito', sans-serif;
   font-weight: 800;
   font-size: 1.05rem;
   letter-spacing: 0.04em;
@@ -283,7 +283,7 @@
 }
 
 .tank-modal-filter {
-  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-family: 'Montserrat', 'Nunito', sans-serif;
   font-weight: 700;
   font-size: 0.72rem;
   letter-spacing: 0.08em;

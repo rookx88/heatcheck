@@ -38,7 +38,7 @@ export function generateLoginPageHtml(baseUrl: string): string {
             text-shadow: 0 0 18px rgba(47, 230, 217, 0.25);
         }
         .hc-login-eyebrow {
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.72rem;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.72rem;
             letter-spacing: 0.14em; text-transform: uppercase; color: var(--hc-teal);
             text-shadow: 0 0 10px rgba(47, 230, 217, 0.45); margin: 0;
         }

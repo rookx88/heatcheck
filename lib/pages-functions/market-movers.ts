@@ -369,7 +369,7 @@ export function marketMoversStyles(): string {
         .hc-tape-group {
             list-style: none; display: flex; gap: 2.25rem; margin: 0; padding: 0.5rem 1.5rem 0.55rem;
             white-space: nowrap;
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
             font-size: 1.45rem; letter-spacing: 0.03em; text-transform: uppercase;
         }
         .hc-tape-item, .hc-tape-item .hc-mm-value { font-weight: 800; }
@@ -388,7 +388,7 @@ export function marketMoversStyles(): string {
 
         .hc-mm-tabs { display: flex; gap: 0.6rem; margin: 0.75rem 0 0; position: relative; z-index: 1; }
         .hc-mm-tab {
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
             font-size: clamp(0.95rem, 3.2vw, 1.25rem); letter-spacing: 0.04em; text-transform: uppercase;
             cursor: pointer; color: #ffffff; border: none;
             border-radius: 14px 14px 0 0; padding: 0.55rem 1.3rem 0.5rem;
@@ -420,13 +420,13 @@ export function marketMoversStyles(): string {
         .hc-mm-head { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; }
         .hc-mm-title { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; margin: 0; }
         .hc-mm-index {
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem;
             letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526;
         }
         .hc-mm-name { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 0.95rem; color: #0b1526; }
         .hc-mm-desc {
             align-self: flex-start; margin: 0.1rem 0 0;
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.68rem;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.68rem;
             letter-spacing: 0.12em; text-transform: uppercase; color: #10203a;
             background: rgba(255,255,255,0.92); border-radius: 6px; padding: 0.28rem 0.6rem;
         }
@@ -445,7 +445,7 @@ export function marketMoversStyles(): string {
             letter-spacing: 0.04em; fill: #10203a;
         }
         .hc-mm-chartrow .hc-mm-value {
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900;
             font-size: clamp(1.15rem, 4vw, 1.5rem); flex-shrink: 0;
             text-shadow:
                 1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff,
@@ -462,7 +462,7 @@ export function marketMoversStyles(): string {
         .hc-mm-news-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: Georgia, 'Times New Roman', serif; }
         .hc-mm-empty { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin: 1rem 0 0; }
         .hc-mm-news-heading {
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
             letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526; margin: 0.4rem 0 0.45rem;
         }
         .hc-mm-news-list { list-style: none; margin: 0; padding: 0 0 0 0.35rem; display: flex; flex-direction: column; gap: 0.7rem; }
@@ -476,12 +476,12 @@ export function marketMoversStyles(): string {
             color: #8b3a3a; margin: 0.15rem 0 0.2rem 1rem;
         }
         .hc-mm-news-meta {
-            display: block; margin-left: 1rem; font-size: 0.66rem; font-weight: 800;
+            display: block; margin-left: 1rem; font-family: 'Montserrat', 'Nunito', sans-serif; font-size: 0.66rem; font-weight: 800;
             letter-spacing: 0.08em; text-transform: uppercase; color: #24344f;
         }
 
         .hc-mm-results-heading {
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
             letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526; margin: 0.6rem 0 0.45rem;
         }
         .hc-mm-results {
@@ -496,7 +496,7 @@ export function marketMoversStyles(): string {
             font-family: Georgia, 'Times New Roman', serif; font-size: 0.9rem; line-height: 1.4; color: #24344f;
         }
         .hc-mm-result-chip {
-            display: inline-block; font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
+            display: inline-block; font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
             font-size: 0.72rem; letter-spacing: 0.03em; text-transform: uppercase; color: #ffffff;
             border-radius: 999px; padding: 0.1rem 0.5rem; margin: 0 0.3rem 0.15rem 0; vertical-align: middle;
         }

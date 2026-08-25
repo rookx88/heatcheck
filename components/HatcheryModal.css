@@ -7,7 +7,7 @@
 }
 
 .hatchery-balance {
-  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-family: 'Montserrat', 'Nunito', sans-serif;
   font-weight: 700;
   font-size: 0.8rem;
   letter-spacing: 0.06em;
@@ -50,7 +50,7 @@
 /* Neutral resting action (also the reveal card's Done). */
 .hatchery-buy {
   margin-top: 0.9rem;
-  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-family: 'Montserrat', 'Nunito', sans-serif;
   font-weight: 800;
   font-size: 0.95rem;
   letter-spacing: 0.04em;
@@ -84,7 +84,7 @@
 
 /* Considering state: ember/orange until the spend is committed. */
 .hatchery-confirm {
-  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-family: 'Montserrat', 'Nunito', sans-serif;
   font-weight: 800;
   font-size: 0.95rem;
   letter-spacing: 0.04em;

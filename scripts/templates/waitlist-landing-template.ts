@@ -75,7 +75,7 @@ export function renderHead(options: HeadOptions): string {
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&family=Montserrat:wght@800;900&display=swap" rel="stylesheet">
 
     <style>${sharedStyles()}</style>
     <script type="module" src="/assets/analytics-beacon.js" defer></script>`;
@@ -155,7 +155,7 @@ function sharedStyles(): string {
         }
         .hc-learn-more .hc-check-box img { width: 34px; height: auto; }
         .hc-learn-more span {
-            font-family: 'Nunito', sans-serif;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
             font-weight: 800;
             font-size: 0.7rem;
             letter-spacing: 0.04em;
@@ -216,8 +216,8 @@ function sharedStyles(): string {
             box-shadow: 0 8px 24px rgba(0,0,0,0.35);
         }
         .hc-bubble h1 {
-            font-family: 'Baloo 2', 'Nunito', sans-serif;
-            font-weight: 800;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
+            font-weight: 900;
             font-size: clamp(1.15rem, 5.5vw, 1.6rem);
             line-height: 1.12;
             margin: 0;

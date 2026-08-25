@@ -191,7 +191,7 @@ function homepageStyles(): string {
         }
         .hc-section { margin-top: 2.25rem; }
         .hc-section h2 {
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900;
             font-size: clamp(1.3rem, 4.5vw, 1.7rem); margin: 0; text-transform: uppercase;
         }
         .hc-section-sub { margin: 0.35rem 0 1rem; font-size: 0.88rem; color: rgba(255,255,255,0.7); }
@@ -353,7 +353,7 @@ function homepageStyles(): string {
            over the crawlable Tank HQ pointer. */
         .hc-tanks-footer { position: relative; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid rgba(47, 230, 217, 0.2); }
         .hc-picks-status {
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
             font-size: 0.95rem; letter-spacing: 0.05em; text-transform: uppercase;
             color: var(--hc-gold);
         }
