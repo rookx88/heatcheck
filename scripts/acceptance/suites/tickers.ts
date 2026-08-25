@@ -18,7 +18,7 @@
 
 import { pool, api, check, warn, near, section, type Suite } from '../harness';
 import {
-    insertTank, insertTagDirect, insertUserWithPick, findMarkets, tickerValue, settleEventDelta,
+    insertTank, insertTagDirect, insertUserWithPick, findMarkets, findKalshiMarkets, tickerValue, settleEventDelta,
     flipConfig, restoreConfig, cleanupUsersByEmailPrefix, cleanupTanksBySlugPrefix,
 } from '../fixtures';
 
@@ -76,7 +76,7 @@ async function run() {
     const unknownTicker = await tagPost({ slug: tankA, tickerKey: 'rockets', relevantSide: 0 });
     check('unknown ticker -> 404', unknownTicker.status === 404);
     const mock = await tagPost({ slug: mockTank, tickerKey: 'dogs', relevantSide: 1 });
-    check('non-polymarket tank -> 422 unsupported_provider', mock.status === 422 && mock.json?.code === 'unsupported_provider');
+    check('non-polymarket/kalshi tank -> 422 unsupported_provider', mock.status === 422 && mock.json?.code === 'unsupported_provider');
 
     for (const [ticker, side, prob] of [['dogs', 0, '0.62'], ['chalk', 1, '0.38'], ['locks', 0, '0.62'], ['moonshot', 1, '0.38']] as const) {
         const res = await tagPost({ slug: tankA, tickerKey: ticker, relevantSide: side });
@@ -98,6 +98,34 @@ async function run() {
     const { rows: evCount } = await pool.query(
         `SELECT COUNT(*)::int AS n FROM ticker_events e JOIN tank_pages t ON t.id = e.tank_id WHERE t.slug = $1`, [tankA]);
     check('duplicate did not append an event', evCount[0].n === 1);
+
+    // --- Kalshi: same tag-creation path, real trade-history delta instead of CLOB ---
+    section('Kalshi provider - tag creation success path (parallel to the polymarket path above)');
+    const kalshiMarkets = await findKalshiMarkets();
+    console.log(`Kalshi live market: ${kalshiMarkets.live.id}; resolved market: ${kalshiMarkets.resolved.id}`);
+    const tankK = `${SLUG_PREFIX}kalshi-live`;
+    await insertTank({
+        slug: tankK, provider: 'kalshi', marketId: kalshiMarkets.live.id,
+        outcomes: kalshiMarkets.live.outcomes, outcomePrices: [0.5, 0.5],
+    });
+    const kalshiTagOk = await tagPost({ slug: tankK, tickerKey: 'dogs', relevantSide: 1 });
+    check('eligible kalshi dogs tag -> 201', kalshiTagOk.status === 201, JSON.stringify(kalshiTagOk.json));
+    const kalshiDelta = kalshiTagOk.json?.delta;
+    check('kalshi delta is numeric, non-fabricated (historyPoints > 0 implied by success)', typeof kalshiDelta === 'number');
+    const kalshiDup = await tagPost({ slug: tankK, tickerKey: 'dogs', relevantSide: 1 });
+    check('duplicate kalshi (tank,ticker) -> 409', kalshiDup.status === 409);
+
+    // --- Kalshi settlement: hand-inserted tag on a real resolved Kalshi market ---
+    section('Kalshi provider - settlement (proves the settle.ts provider dispatch)');
+    const kW = kalshiMarkets.resolved.winningIndex;
+    const tankKRes = await insertTank({
+        slug: `${SLUG_PREFIX}kalshi-res`, provider: 'kalshi', marketId: kalshiMarkets.resolved.id,
+        outcomes: kalshiMarkets.resolved.outcomes, outcomePrices: kW === 0 ? [0.6, 0.4] : [0.4, 0.6],
+    });
+    const kDogsWin = await insertTagDirect(tankKRes, 'dogs', kW, 1.5);
+    const kalshiSettle = await settlePost();
+    const kTrFor = (tagId: string) => kalshiSettle.json?.tickerResults?.find((r: any) => r.tagId === tagId);
+    check('kalshi zero-pick dogs(win) tag settled +5', kTrFor(kDogsWin)?.status === 'settled_win' && near(await settleEventDelta(kDogsWin) ?? NaN, 5), JSON.stringify(kTrFor(kDogsWin)));
 
     // --- Config-driven behavior (no code change) ---
     section('Config tunables - version-flip changes behavior with no code change');

@@ -9,6 +9,7 @@
 import { pool, registerTeardown, api } from './harness';
 import { signAuthToken } from '../../lib/pages-functions/auth-tokens';
 import type { SessionTokenPayload, LoginTokenPayload } from '../../lib/auth-token-payloads';
+import { KALSHI_SERIES_MAP } from '../../kalshi';
 
 const SESSION_TOKEN_SECRET = process.env.SESSION_TOKEN_SECRET || '';
 
@@ -289,6 +290,67 @@ export async function findMarkets(): Promise<{ resolved: ResolvedMarket; live: L
         live: { id: live.id, outcomes: parseArr(live.outcomes) },
     };
     return cachedMarkets;
+}
+
+// ---------------------------------------------------------------------------------
+// Kalshi market discovery - the same role findMarkets() plays for Polymarket/Gamma
+// above, returning the identical { resolved, live } shape so suite code parameterized
+// by provider doesn't need separate destructuring logic. Only searches series in
+// KALSHI_SERIES_MAP (kalshi.ts) - the player-prop series this app actually curates
+// from - not Kalshi's full market catalog.
+// ---------------------------------------------------------------------------------
+
+interface KalshiMarketRaw {
+    ticker: string;
+    status: string;
+    result: string | null;
+    yes_bid_dollars?: string;
+    yes_ask_dollars?: string;
+}
+
+function kalshiOutcomesFor(ticker: string): string[] {
+    const seriesTicker = ticker.split('-')[0];
+    const info = KALSHI_SERIES_MAP[seriesTicker];
+    return info?.shape === 'ladder' ? ['Over', 'Under'] : ['Yes', 'No'];
+}
+
+let cachedKalshiMarkets: { resolved: ResolvedMarket; live: LiveMarket } | null = null;
+
+export async function findKalshiMarkets(): Promise<{ resolved: ResolvedMarket; live: LiveMarket }> {
+    if (cachedKalshiMarkets) return cachedKalshiMarkets;
+    const seriesTickers = Object.keys(KALSHI_SERIES_MAP);
+
+    let live: KalshiMarketRaw | undefined;
+    let resolved: KalshiMarketRaw | undefined;
+    for (const seriesTicker of seriesTickers) {
+        if (!live) {
+            const res = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${seriesTicker}&status=open&limit=20`, { headers: { Accept: 'application/json' } });
+            const body = (await res.json()) as { markets?: KalshiMarketRaw[] };
+            live = (body.markets ?? []).find((m) => {
+                const bid = Number(m.yes_bid_dollars);
+                const ask = Number(m.yes_ask_dollars);
+                return Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask < 1;
+            });
+        }
+        if (!resolved) {
+            const res = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${seriesTicker}&status=settled&limit=100`, { headers: { Accept: 'application/json' } });
+            const body = (await res.json()) as { markets?: KalshiMarketRaw[] };
+            resolved = (body.markets ?? []).find((m) => m.result === 'yes' || m.result === 'no');
+        }
+        if (live && resolved) break;
+    }
+    if (!live) throw new Error('No usable open Kalshi market found across KALSHI_SERIES_MAP.');
+    if (!resolved) throw new Error('No cleanly resolved (yes/no) Kalshi market found across KALSHI_SERIES_MAP.');
+
+    cachedKalshiMarkets = {
+        resolved: {
+            id: resolved.ticker,
+            outcomes: kalshiOutcomesFor(resolved.ticker),
+            winningIndex: resolved.result === 'yes' ? 0 : 1,
+        },
+        live: { id: live.ticker, outcomes: kalshiOutcomesFor(live.ticker) },
+    };
+    return cachedKalshiMarkets;
 }
 
 // Hand-inserted tag - the retrotagging path: settlement must fire for these even though

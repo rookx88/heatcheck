@@ -12,7 +12,7 @@
 
 import { pool, api, check, section, type Suite } from '../harness';
 import {
-    insertTank, insertUserWithPick, findMarkets, ledgerTotals,
+    insertTank, insertUserWithPick, findMarkets, findKalshiMarkets, ledgerTotals,
     cleanupUsersByEmailPrefix, cleanupTanksBySlugPrefix,
 } from '../fixtures';
 
@@ -191,6 +191,35 @@ async function run() {
         check(`${f.label}: still exactly one ember_ledger row after re-run`, (await ledgerRowCount(idemKey)) === 1);
         check(`${f.label}: still exactly one notification after re-run`, (await notificationCount(f.pickId)) === 1);
     }
+
+    // --- Kalshi provider: proves settle.ts's resolveOnce dispatcher reaches the same
+    // settleCall/ledger path for a genuine Kalshi resolution, not just Polymarket's.
+    // One win + one loss is enough here - the payout FORMULA itself is already proven
+    // exhaustively above (both cap ends, participation floor); this section is only
+    // exercising the provider dispatch and resolveMarket('scalar'->voided not hit here
+    // since findKalshiMarkets() only returns cleanly yes/no-resolved markets). ---
+    section('Kalshi provider - pick settlement (proves the settle.ts provider dispatch)');
+    const kalshiMarkets = await findKalshiMarkets();
+    const kW = kalshiMarkets.resolved.winningIndex;
+    const kL = 1 - kW;
+    const kRid = kalshiMarkets.resolved.id;
+    const kRo = kalshiMarkets.resolved.outcomes;
+    console.log(`Kalshi resolved market: ${kRid} (winner index ${kW})`);
+
+    const kWinTank = await insertTank({ slug: `${SLUG_PREFIX}kalshi-win`, provider: 'kalshi', marketId: kRid, outcomes: kRo, outcomePrices: [0.5, 0.5] });
+    const kWin = await insertUserWithPick(`${SLUG_PREFIX}kalshi-win@example.com`, kWinTank, `${SLUG_PREFIX}kalshi-win`, kW, 0.5);
+    const kLossTank = await insertTank({ slug: `${SLUG_PREFIX}kalshi-loss`, provider: 'kalshi', marketId: kRid, outcomes: kRo, outcomePrices: [0.5, 0.5] });
+    const kLoss = await insertUserWithPick(`${SLUG_PREFIX}kalshi-loss@example.com`, kLossTank, `${SLUG_PREFIX}kalshi-loss`, kL, 0.5);
+
+    const kalshiSettle = await authedSettle();
+    const kPrFor = (pickId: string) => kalshiSettle.json?.results?.find((r: any) => r.pickId === pickId);
+    const kExpectedWin = correctCallPayout(correctRule.config, 0.5);
+    check(`kalshi win settles correct with formula payout (${kExpectedWin})`,
+        kPrFor(kWin.pickId)?.status === 'settled_correct' && kPrFor(kWin.pickId)?.payoutAmount === kExpectedWin,
+        JSON.stringify(kPrFor(kWin.pickId)));
+    check(`kalshi loss settles incorrect, paid the participation floor (${expectedLoss})`,
+        kPrFor(kLoss.pickId)?.status === 'settled_incorrect' && kPrFor(kLoss.pickId)?.payoutAmount === expectedLoss,
+        JSON.stringify(kPrFor(kLoss.pickId)));
 
     await cleanup();
 }

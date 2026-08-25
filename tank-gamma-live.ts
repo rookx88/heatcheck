@@ -25,7 +25,14 @@ import {
 } from './polymarket';
 import { buildGamesFromFlatProps, type PolymarketPropsRow } from './tank-providers';
 
-export const DEFAULT_WINDOW_HOURS = 48;
+// 7 days, not 2: functions/api/curate.ts also filters out any candidate whose prop
+// resolves sooner than MIN_LEAD_DAYS (default 2 days from the curation run time). A 48h
+// candidate window mathematically cannot contain anything satisfying a 2-day (48h) lead
+// floor - "kicks off within the window" and "resolves >=2 days out" collide at exactly
+// the same boundary, so nothing could ever pass regardless of what's whitelisted.
+// Widening the pool to a week gives MIN_LEAD_DAYS an actual population of 2+-day-out
+// games to filter down from.
+export const DEFAULT_WINDOW_HOURS = 24 * 7;
 
 function withinWindow(event: GammaEvent, now: number, windowMs: number): boolean {
     const t = event.startTime || event.endDate;

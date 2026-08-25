@@ -35,6 +35,7 @@ import {
 } from '../fixtures';
 import { fireParallel } from '../concurrency';
 import { outcomeOrderMismatch } from '../../../lib/pages-functions/gamma';
+import { resolveMarket as kalshiResolveMarket } from '../../../lib/pages-functions/kalshi';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -415,6 +416,38 @@ async function runOutcomeOrderMismatchSection(markets: { resolved: { id: string;
 }
 
 // ---------------------------------------------------------------------------------
+// 4b. Kalshi has no outcome-order-mismatch equivalent - documented, not just assumed.
+// Polymarket's hazard exists because Gamma's `outcomes` array is reorderable and
+// winningIndex is derived from array POSITION, which a frozen snapshot's own order
+// could silently disagree with by the time settlement re-fetches it live. Kalshi's
+// resolveMarket (lib/pages-functions/kalshi.ts) reads a fixed `result: 'yes'|'no'`
+// STRING field directly and maps it to a hardcoded 0/1 convention - there is no live
+// array whose order could ever drift out from under a snapshot. This is a structural
+// proof (the resolved variant has no `outcomes` field to reorder at all, confirmed
+// below), not a runtime behavioral test like section 4 above - there'd be nothing for
+// a runtime check to compare against.
+// ---------------------------------------------------------------------------------
+async function runKalshiNoOutcomeOrderHazardSection() {
+    section('Kalshi - no outcome-order-mismatch equivalent (structural, not behavioral)');
+
+    const yesResolution = kalshiResolveMarket({ status: 'finalized', result: 'yes' });
+    const noResolution = kalshiResolveMarket({ status: 'finalized', result: 'no' });
+    check(
+        "resolved variant carries only winningIndex (0 for 'yes', 1 for 'no') - no outcomes array exists to reorder",
+        yesResolution.status === 'resolved' && yesResolution.winningIndex === 0
+        && noResolution.status === 'resolved' && noResolution.winningIndex === 1
+        && !('outcomes' in yesResolution) && !('outcomes' in noResolution),
+        JSON.stringify({ yesResolution, noResolution }),
+    );
+    const scalarResolution = kalshiResolveMarket({ status: 'finalized', result: 'scalar' });
+    check(
+        "a market that settles to a fair-value price (result:'scalar') resolves to 'voided', never a guessed winningIndex",
+        scalarResolution.status === 'voided',
+        JSON.stringify(scalarResolution),
+    );
+}
+
+// ---------------------------------------------------------------------------------
 // 5. "No pet, no roll" precondition (lib/pages-functions/discovery.ts).
 // ---------------------------------------------------------------------------------
 async function runNoPetNoRollSection() {
@@ -549,6 +582,7 @@ async function run() {
     const markets = await findMarkets();
     await runInjectionSection(markets);
     await runOutcomeOrderMismatchSection(markets);
+    await runKalshiNoOutcomeOrderHazardSection();
 
     await runNoPetNoRollSection();
     await runBruteForceSection();

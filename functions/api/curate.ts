@@ -37,6 +37,7 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import Anthropic from '@anthropic-ai/sdk';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { fetchLiveGames, DEFAULT_WINDOW_HOURS } from '../../tank-gamma-live';
+import { fetchLiveKalshiGames } from '../../kalshi-live';
 import { filterProps } from '../../tank-filter';
 import { generateTankArticle, extractJson, parseModelJson, type GenerationConfig } from '../../tank-generate';
 import { TANK_CURATOR_MATCH_PROMPT } from '../../scripts/prompts/tank-curator-match-prompt';
@@ -95,6 +96,7 @@ function isCuratorMatchResponse(value: any): value is CuratorMatchResponse {
 interface CandidateEntry {
     prop: Prop;
     game: Game;
+    provider: 'polymarket' | 'kalshi';
 }
 
 interface CurateGroupResult {
@@ -169,7 +171,7 @@ async function curateSportGroup(
             results.push({ candidateId: match.candidateId, status: 'unknown_candidate_id' });
             continue;
         }
-        const { prop, game } = candidate;
+        const { prop, game, provider } = candidate;
 
         try {
             const genResult = await generateTankArticle(prop, match.angle, game, [], config.generationConfig);
@@ -184,7 +186,7 @@ async function curateSportGroup(
             await sql`
                 INSERT INTO tank_pages (slug, provider, league, angle, game_snapshot, model_output, raw_output, generation_error, status)
                 VALUES (
-                    ${slug}, 'polymarket', ${game.league}, ${match.angle},
+                    ${slug}, ${provider}, ${game.league}, ${match.angle},
                     ${JSON.stringify({ prop, game })},
                     ${genResult.parsed ? JSON.stringify(genResult.parsed) : null},
                     ${genResult.parsed ? null : genResult.rawText},
@@ -232,14 +234,33 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(env);
 
-    // 1. Live candidates, filtered the same way the manual admin flow filters them.
-    const liveGames = await fetchLiveGames(undefined, windowHours);
-    const filtered = filterProps(liveGames, { marketWhitelist, minProminence, perGameCap, minLeadDays, now: new Date() });
+    // 1. Live candidates from both sources: Kalshi is the player-prop source now, so
+    // Polymarket's player-prop rows are dropped here (same "_player_" substring signal
+    // PLAYER_MARKET_TYPE_PATTERN already uses) - Polymarket keeps supplying
+    // game-lines/season-futures, Kalshi supplies player props exclusively. The two
+    // stay as separate Game[] populations (own ids, own prominence scoring) rather
+    // than being unified into shared Game objects - filterProps/downstream code
+    // doesn't care which physical game a candidate came from.
+    const [rawPolymarketGames, kalshiGames] = await Promise.all([
+        fetchLiveGames(undefined, windowHours),
+        fetchLiveKalshiGames(undefined, windowHours),
+    ]);
+    const polymarketGames = rawPolymarketGames
+        .map(g => ({ ...g, props: g.props.filter(p => !p.market.includes('_player_')) }))
+        .filter(g => g.props.length > 0);
+
+    const filteredPolymarket = filterProps(polymarketGames, { marketWhitelist, minProminence, perGameCap, minLeadDays, now: new Date() });
+    const filteredKalshi = filterProps(kalshiGames, { marketWhitelist, minProminence, perGameCap, minLeadDays, now: new Date() });
 
     let allCandidates: CandidateEntry[] = [];
-    for (const game of filtered) {
+    for (const game of filteredPolymarket) {
         for (const prop of game.props) {
-            allCandidates.push({ prop, game });
+            allCandidates.push({ prop, game, provider: 'polymarket' });
+        }
+    }
+    for (const game of filteredKalshi) {
+        for (const prop of game.props) {
+            allCandidates.push({ prop, game, provider: 'kalshi' });
         }
     }
 

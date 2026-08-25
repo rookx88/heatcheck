@@ -16,6 +16,7 @@ import {
     TaggingError,
     checkEligibility,
     fetchTagDelta,
+    fetchKalshiTagDelta,
     getTicker,
     getTickerConfig,
     insertTagWithEvent,
@@ -73,8 +74,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (tankRows.length === 0) return reject(404, 'tank_not_found', 'No Tank matches that id/slug.');
     const tank = tankRows[0] as unknown as TankRow;
 
-    if (tank.provider !== 'polymarket') {
-        return reject(422, 'unsupported_provider', `Only polymarket Tanks can be tagged (this one is "${tank.provider}") - no price history and no auto-settlement path.`);
+    if (!['polymarket', 'kalshi'].includes(tank.provider)) {
+        return reject(422, 'unsupported_provider', `Tanks from "${tank.provider}" can't be tagged - no price history and no auto-settlement path.`);
     }
     if (!tank.market_id) {
         return reject(422, 'missing_market_id', 'This Tank has no market id in its snapshot.');
@@ -103,7 +104,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     let tagDelta;
     try {
-        tagDelta = await fetchTagDelta(tank.market_id, relevantSide, cfg.tag_delta_cap_pct);
+        tagDelta = tank.provider === 'kalshi'
+            ? await fetchKalshiTagDelta(tank.market_id, relevantSide, cfg.tag_delta_cap_pct)
+            : await fetchTagDelta(tank.market_id, relevantSide, cfg.tag_delta_cap_pct);
     } catch (err) {
         if (err instanceof TaggingError) {
             return reject(err.retriable ? 502 : 422, err.code, err.message, { retriable: err.retriable });
@@ -130,6 +133,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 thinHistory: tagDelta.thinHistory,
                 snapshotProb: sideProb,
                 marketId: tank.market_id,
+                provider: tank.provider,
             },
         });
     } catch (err) {

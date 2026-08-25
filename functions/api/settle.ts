@@ -26,12 +26,26 @@ import {
     resolveMarket,
     type MarketResolution,
 } from '../../lib/pages-functions/gamma';
+import {
+    fetchMarket as fetchKalshiMarket,
+    resolveMarket as resolveKalshiMarket,
+    type KalshiMarketResolution,
+} from '../../lib/pages-functions/kalshi';
 import { settleTag } from '../../lib/pages-functions/tickers';
+
+// Settlement resolution is providerless downstream of this dispatch: both resolvers'
+// 'resolved' status carries the same { winningIndex } shape, so settleCall/settleTag
+// and the win/loss comparison below don't need to know which provider produced it.
+// Only outcomeOrderMismatch is Polymarket-specific (Kalshi's result field is fixed, not
+// a reorderable array - see kalshi.ts's KalshiMarketResolution comment) - skipped
+// entirely for Kalshi picks/tags below.
+type AnyMarketResolution = MarketResolution | KalshiMarketResolution;
 
 interface UnresolvedPick {
     id: string;
     waitlist_id: string;
     outcome_index: number;
+    provider: string;
     market_id: string | null;
     snapshot_outcomes: unknown;
     implied_prob_at_lock: number;
@@ -47,6 +61,7 @@ interface PendingTickerTag {
     ticker_key: string;
     tank_id: string;
     relevant_side: number;
+    provider: string;
     market_id: string | null;
     snapshot_outcomes: unknown;
     settle_win_pct: number;
@@ -61,27 +76,34 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(context.env);
 
-    // One Gamma fetch per distinct market per run - a Tank with both picks and pending
-    // ticker tags resolves once and both loops consume the same result. Within a single
-    // run (seconds) a market can't meaningfully flip, so caching skip statuses is safe;
-    // thrown fetch errors are deliberately NOT cached, so one network blip can't mark a
-    // market unresolvable for every later item in the run.
-    const resolutionCache = new Map<string, MarketResolution>();
-    async function resolveOnce(marketId: string): Promise<MarketResolution> {
-        const cached = resolutionCache.get(marketId);
+    // One resolution fetch per distinct (provider, market) per run - a Tank with both
+    // picks and pending ticker tags resolves once and both loops consume the same
+    // result. Within a single run (seconds) a market can't meaningfully flip, so
+    // caching skip statuses is safe; thrown fetch errors are deliberately NOT cached,
+    // so one network blip can't mark a market unresolvable for every later item in the
+    // run. Cache key includes provider - a Polymarket market id and a Kalshi ticker are
+    // never the same string shape (Kalshi tickers always start with "KX"), but this is
+    // cheap insurance against any future collision.
+    const resolutionCache = new Map<string, AnyMarketResolution>();
+    async function resolveOnce(provider: string, marketId: string): Promise<AnyMarketResolution> {
+        const cacheKey = `${provider}:${marketId}`;
+        const cached = resolutionCache.get(cacheKey);
         if (cached) return cached;
-        const resolution = resolveMarket(await fetchMarket(marketId));
-        resolutionCache.set(marketId, resolution);
+        const resolution = provider === 'kalshi'
+            ? resolveKalshiMarket(await fetchKalshiMarket(marketId))
+            : resolveMarket(await fetchMarket(marketId));
+        resolutionCache.set(cacheKey, resolution);
         return resolution;
     }
 
-    // Belt-and-suspenders on `t.provider = 'polymarket'`: functions/api/picks.ts already
-    // refuses to create picks on non-polymarket Tanks, but this keeps settlement correct
-    // even if that invariant is ever bypassed by a future code path. email + call_question
-    // are only for the settlement notification below, not resolution itself.
+    // Belt-and-suspenders on `t.provider IN ('polymarket','kalshi')`: functions/api/picks.ts
+    // already refuses to create picks on Tanks from other providers, but this keeps
+    // settlement correct even if that invariant is ever bypassed by a future code path.
+    // email + call_question are only for the settlement notification below, not
+    // resolution itself.
     const rows = await sql`
         SELECT p.id, p.waitlist_id, p.outcome_index, p.implied_prob_at_lock::float8 AS implied_prob_at_lock,
-               p.side,
+               p.side, t.provider,
                t.game_snapshot->'prop'->>'id' AS market_id,
                t.game_snapshot->'prop'->'odds'->'outcomes' AS snapshot_outcomes,
                t.game_snapshot->'game'->>'away' AS away,
@@ -90,7 +112,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         FROM picks p
         JOIN tank_pages t ON t.id = p.tank_page_id
         JOIN waitlist w ON w.id = p.waitlist_id
-        WHERE p.result IS NULL AND t.provider = 'polymarket'
+        WHERE p.result IS NULL AND t.provider IN ('polymarket', 'kalshi')
     `;
     const unresolved = rows as unknown as UnresolvedPick[];
 
@@ -106,15 +128,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             continue;
         }
         try {
-            const resolution = await resolveOnce(pick.market_id);
+            const resolution = await resolveOnce(pick.provider, pick.market_id);
             if (resolution.status !== 'resolved') {
                 results.push({ pickId: pick.id, status: resolution.status });
                 continue;
             }
             // outcome_index was stamped against the frozen snapshot's outcome order;
-            // winningIndex comes from the live Gamma array. If the names no longer line
-            // up positionally, skip (non-terminal) rather than possibly settle inverted.
-            if (outcomeOrderMismatch(resolution.outcomes, pick.snapshot_outcomes)) {
+            // winningIndex comes from the live array. If the names no longer line up
+            // positionally, skip (non-terminal) rather than possibly settle inverted.
+            // Not applicable to Kalshi: its winningIndex is a fixed 0=Yes/1=No
+            // convention, never a live reorderable array (see kalshi.ts's comment) -
+            // the KalshiMarketResolution 'resolved' variant has no `outcomes` field at
+            // all, hence the `in` check rather than a provider string check alone.
+            if ('outcomes' in resolution && outcomeOrderMismatch(resolution.outcomes, pick.snapshot_outcomes)) {
                 results.push({ pickId: pick.id, status: 'outcome_order_mismatch' });
                 continue;
             }
@@ -171,7 +197,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // its events are excluded at read time (functions/api/tickers*.ts), not at write
     // time. No email/logEvent either: nothing user-facing fires for a ticker move.
     const tagRows = await sql`
-        SELECT tt.id, tt.ticker_key, tt.tank_id, tt.relevant_side,
+        SELECT tt.id, tt.ticker_key, tt.tank_id, tt.relevant_side, t.provider,
                t.game_snapshot->'prop'->>'id' AS market_id,
                t.game_snapshot->'prop'->'odds'->'outcomes' AS snapshot_outcomes,
                tk.settle_win_pct::float8 AS settle_win_pct,
@@ -179,7 +205,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         FROM ticker_tags tt
         JOIN tank_pages t ON t.id = tt.tank_id
         JOIN tickers tk ON tk.key = tt.ticker_key
-        WHERE tt.calculated_at IS NULL AND t.provider = 'polymarket'
+        WHERE tt.calculated_at IS NULL AND t.provider IN ('polymarket', 'kalshi')
     `;
     const pendingTags = tagRows as unknown as PendingTickerTag[];
 
@@ -191,12 +217,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             continue;
         }
         try {
-            const resolution = await resolveOnce(tag.market_id);
+            const resolution = await resolveOnce(tag.provider, tag.market_id);
             if (resolution.status !== 'resolved') {
                 tickerResults.push({ tagId: tag.id, tickerKey: tag.ticker_key, status: resolution.status });
                 continue;
             }
-            if (outcomeOrderMismatch(resolution.outcomes, tag.snapshot_outcomes)) {
+            if ('outcomes' in resolution && outcomeOrderMismatch(resolution.outcomes, tag.snapshot_outcomes)) {
                 tickerResults.push({ tagId: tag.id, tickerKey: tag.ticker_key, status: 'outcome_order_mismatch' });
                 continue;
             }

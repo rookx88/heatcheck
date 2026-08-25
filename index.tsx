@@ -13842,27 +13842,51 @@ const getWebsiteReadySchema = () => ({ type: Type.OBJECT, properties: { websiteS
 
 const DEFAULT_MARKET_WHITELIST = [
   'basketball_player_points', 'basketball_player_rebounds', 'basketball_player_assists', 'basketball_player_triple_double',
+  'basketball_player_threes', 'basketball_player_steals', 'basketball_player_blocks', 'basketball_player_free_throws_made',
+  'basketball_player_points_rebounds_assists', 'basketball_player_points_assists', 'basketball_player_rebounds_assists',
+  'basketball_player_double_double',
   'football_player_passing_yards', 'football_player_rushing_yards', 'football_player_anytime_td',
-  'baseball_player_home_runs', 'baseball_player_hits',
-  'soccer_player_anytime_scorer', 'soccer_player_shots_on_target',
+  'football_player_receiving_yards', 'football_player_receptions', 'football_player_pass_completions',
+  'football_player_pass_attempts', 'football_player_interceptions_thrown', 'football_player_fantasy_points',
+  'baseball_player_home_runs', 'baseball_player_hits', 'baseball_player_rbis', 'baseball_player_strikeouts',
+  'soccer_player_anytime_scorer', 'soccer_player_shots_on_target', 'soccer_player_first_goalscorer',
   'moneyline', 'spreads', 'totals', 'team_totals',
   'season_futures',
 ];
 
 // Friendly grouping/labels for the raw market keys, so the filter UI reads as
 // "NBA: Points" instead of a wall of "basketball_player_points"-style checkboxes.
+// Kalshi is now the source for every "_player_"-keyed entry below (see kalshi.ts's
+// KALSHI_SERIES_MAP); Polymarket still supplies the Game Lines/Season Futures buckets.
 const MARKET_INFO: Record<string, { league: string; label: string }> = {
   basketball_player_points: { league: 'NBA', label: 'Points' },
   basketball_player_rebounds: { league: 'NBA', label: 'Rebounds' },
   basketball_player_assists: { league: 'NBA', label: 'Assists' },
   basketball_player_triple_double: { league: 'NBA', label: 'Triple-Double' },
+  basketball_player_threes: { league: 'NBA', label: 'Threes Made' },
+  basketball_player_steals: { league: 'NBA', label: 'Steals' },
+  basketball_player_blocks: { league: 'NBA', label: 'Blocks' },
+  basketball_player_free_throws_made: { league: 'NBA', label: 'Free Throws Made' },
+  basketball_player_points_rebounds_assists: { league: 'NBA', label: 'Pts + Reb + Ast' },
+  basketball_player_points_assists: { league: 'NBA', label: 'Pts + Ast' },
+  basketball_player_rebounds_assists: { league: 'NBA', label: 'Reb + Ast' },
+  basketball_player_double_double: { league: 'NBA', label: 'Double-Double' },
   football_player_passing_yards: { league: 'NFL', label: 'Passing Yards' },
   football_player_rushing_yards: { league: 'NFL', label: 'Rushing Yards' },
   football_player_anytime_td: { league: 'NFL', label: 'Anytime TD' },
+  football_player_receiving_yards: { league: 'NFL', label: 'Receiving Yards' },
+  football_player_receptions: { league: 'NFL', label: 'Receptions' },
+  football_player_pass_completions: { league: 'NFL', label: 'Pass Completions' },
+  football_player_pass_attempts: { league: 'NFL', label: 'Pass Attempts' },
+  football_player_interceptions_thrown: { league: 'NFL', label: 'Interceptions Thrown' },
+  football_player_fantasy_points: { league: 'NFL', label: 'Fantasy Points' },
   baseball_player_home_runs: { league: 'MLB', label: 'Home Runs' },
   baseball_player_hits: { league: 'MLB', label: 'Hits' },
+  baseball_player_rbis: { league: 'MLB', label: 'RBIs' },
+  baseball_player_strikeouts: { league: 'MLB', label: 'Strikeouts' },
   soccer_player_anytime_scorer: { league: 'Soccer', label: 'Anytime Scorer' },
   soccer_player_shots_on_target: { league: 'Soccer', label: 'Shots on Target' },
+  soccer_player_first_goalscorer: { league: 'Soccer', label: 'First Goalscorer' },
   // Team/game-level lines - generic across every league (disambiguated by the League
   // filter above, not by these keys), so they get their own pseudo-league bucket here.
   moneyline: { league: 'Game Lines', label: 'Moneyline' },

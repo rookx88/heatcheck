@@ -103,7 +103,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         // of that (e.g. from a preview) shouldn't be postable yet.
         return jsonResponse({ message: 'This issue has not been sent yet.' }, { status: 400 });
     }
-    if (tank.provider !== 'polymarket') {
+    if (!['polymarket', 'kalshi'].includes(tank.provider)) {
         return jsonResponse({ message: 'This Tank cannot be settled and is not accepting picks.' }, { status: 400 });
     }
 

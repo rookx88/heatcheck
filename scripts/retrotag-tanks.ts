@@ -89,7 +89,7 @@ async function main() {
     const { rows } = await pool.query(
         `SELECT slug, game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices
          FROM tank_pages
-         WHERE status = 'published' AND visibility = 'app' AND provider = 'polymarket'
+         WHERE status = 'published' AND visibility = 'app' AND provider IN ('polymarket', 'kalshi')
            AND slug IS NOT NULL AND model_output IS NOT NULL
            AND game_snapshot->'prop'->>'id' IS NOT NULL
          ORDER BY published_at NULLS LAST, created_at`);

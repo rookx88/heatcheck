@@ -12,6 +12,7 @@
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { fetchMarket, safeJsonParse } from './gamma';
+import { fetchMarket as fetchKalshiMarket, fetchKalshiTradesPage } from './kalshi';
 import { getGameConfig } from './pets';
 
 // Spec'd framing constraint: ticker values/charts are never presented as predictive.
@@ -198,6 +199,80 @@ export async function fetchTagDelta(marketId: string, relevantSide: number, capP
         price3dAgo,
         tokenId,
         historyPoints: points.length,
+        thinHistory,
+    };
+}
+
+const KALSHI_MAX_TRADE_PAGES = 20; // safety valve, mirrors kalshi.ts's (root) MAX_PAGES_PER_SERIES
+
+// Kalshi analog of fetchTagDelta above - same TagDelta shape and TaggingError codes, so
+// callers (sweepUntaggedTanks below, functions/api/ticker-tags.ts) don't need to know
+// which provider they're tagging. Kalshi has no CLOB-equivalent bucketed price-history
+// endpoint, so this pages the raw (newest-first) /markets/trades endpoint back to ~3
+// days ago instead of a single prices-history call.
+export async function fetchKalshiTagDelta(ticker: string, relevantSide: number, capPct: number): Promise<TagDelta> {
+    const market = await fetchKalshiMarket(ticker);
+    if (!market) {
+        throw new TaggingError('kalshi_unavailable', `Kalshi market ${ticker} could not be fetched - retry in a moment.`, true);
+    }
+    if (relevantSide !== 0 && relevantSide !== 1) {
+        throw new TaggingError('side_out_of_range', `relevantSide ${relevantSide} is out of range for Kalshi market ${ticker} (binary, 0 or 1 only).`, false);
+    }
+    const yesNow = Number(market.last_price_dollars ?? market.yes_bid_dollars ?? 0);
+    const priceNow = relevantSide === 0 ? yesNow : 1 - yesNow;
+
+    const cutoffMs = Date.now() - TAG_WINDOW_SECONDS * 1000;
+    let cursor: string | undefined;
+    let oldestYes: number | null = null;
+    let oldestTs = Infinity;
+    let pointCount = 0;
+
+    for (let page = 0; page < KALSHI_MAX_TRADE_PAGES; page++) {
+        let body: { trades: { yes_price_dollars: string; created_time: string }[]; cursor?: string };
+        try {
+            body = await fetchKalshiTradesPage(ticker, cursor);
+        } catch {
+            throw new TaggingError('kalshi_unavailable', `Kalshi trade history unavailable for ${ticker} - retry in a moment.`, true);
+        }
+        const trades = body.trades ?? [];
+        if (trades.length === 0) break;
+        pointCount += trades.length;
+
+        for (const trade of trades) {
+            const ts = new Date(trade.created_time).getTime();
+            if (!Number.isFinite(ts)) continue;
+            if (ts < oldestTs) {
+                oldestTs = ts;
+                oldestYes = Number(trade.yes_price_dollars);
+            }
+        }
+
+        const lastTs = new Date(trades[trades.length - 1].created_time).getTime();
+        if (!body.cursor || (Number.isFinite(lastTs) && lastTs <= cutoffMs)) break;
+        cursor = body.cursor;
+    }
+
+    if (oldestYes === null) {
+        // Empty trade history for a market Kalshi just confirmed exists most likely
+        // means a thin/never-traded market - reject rather than write a fabricated 0.
+        throw new TaggingError('empty_price_history', `Kalshi returned no trade history for ${ticker} - retry, or investigate the market.`, true);
+    }
+
+    const price3dAgo = relevantSide === 0 ? oldestYes : 1 - oldestYes;
+    // The oldest trade found is still newer than the cutoff: ran out of history before
+    // reaching 3 days back, i.e. the market is younger than the window - same meaning
+    // as fetchTagDelta's thinHistory (a single CLOB bucket) above.
+    const thinHistory = oldestTs > cutoffMs;
+    const rawDelta = (priceNow - price3dAgo) * 100;
+    const delta = Math.max(-capPct, Math.min(capPct, rawDelta));
+    return {
+        delta: Number(delta.toFixed(3)),
+        rawDelta: Number(rawDelta.toFixed(3)),
+        capped: Math.abs(rawDelta) > capPct,
+        priceNow,
+        price3dAgo,
+        tokenId: ticker,
+        historyPoints: pointCount,
         thinHistory,
     };
 }
@@ -472,11 +547,11 @@ export async function sweepUntaggedTanks(
         getTickerConfig(sql),
         getActiveTickers(sql),
         sql`
-            SELECT t.id, t.slug,
+            SELECT t.id, t.slug, t.provider,
                    t.game_snapshot->'prop'->>'id' AS market_id,
                    t.game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices
             FROM tank_pages t
-            WHERE t.status = 'published' AND t.visibility = 'app' AND t.provider = 'polymarket'
+            WHERE t.status = 'published' AND t.visibility = 'app' AND t.provider IN ('polymarket', 'kalshi')
               AND t.slug IS NOT NULL AND t.model_output IS NOT NULL
               AND t.game_snapshot->'prop'->>'id' IS NOT NULL
               AND t.published_at > NOW() - (INTERVAL '1 day' * ${opts.maxAgeDays})
@@ -493,6 +568,7 @@ export async function sweepUntaggedTanks(
     for (const row of rows) {
         const tankId = row.id as string;
         const slug = row.slug as string;
+        const provider = row.provider as string;
         const marketId = row.market_id as string;
         const probs = Array.isArray(row.outcome_prices) ? (row.outcome_prices as unknown[]).map(Number) : [];
         if (probs.length === 0 || probs.some((p) => !Number.isFinite(p))) {
@@ -507,10 +583,12 @@ export async function sweepUntaggedTanks(
                 continue;
             }
             sidesProcessed++;
-            // One CLOB fetch per SIDE, shared by every ticker tagging that side.
+            // One CLOB/trades fetch per SIDE, shared by every ticker tagging that side.
             let tagDelta: TagDelta;
             try {
-                tagDelta = await fetchTagDelta(marketId, side, cfg.tag_delta_cap_pct);
+                tagDelta = provider === 'kalshi'
+                    ? await fetchKalshiTagDelta(marketId, side, cfg.tag_delta_cap_pct)
+                    : await fetchTagDelta(marketId, side, cfg.tag_delta_cap_pct);
             } catch (err) {
                 const code = err instanceof TaggingError ? err.code : 'error';
                 const message = err instanceof Error ? err.message : String(err);
@@ -536,6 +614,7 @@ export async function sweepUntaggedTanks(
                             thinHistory: tagDelta.thinHistory,
                             snapshotProb: probs[side],
                             marketId,
+                            provider,
                             source: 'curate_sweep',
                         },
                     });

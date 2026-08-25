@@ -8,6 +8,7 @@
 
 import type { Pool } from 'pg';
 import type { Game, Prop, PropProvider } from './tank-types';
+import { parseKalshiTickerKickoff } from './kalshi';
 
 // --- Mock provider -------------------------------------------------------------------
 
@@ -250,10 +251,225 @@ export function createPolymarketPropProvider(pool: Pool): PropProvider {
     };
 }
 
+// --- Kalshi provider ---------------------------------------------------------------
+// Kalshi is the player-prop source (see kalshi.ts's header); Polymarket keeps supplying
+// game-lines/season-futures. This section mirrors the Polymarket provider section above
+// in shape (a flat-row type + a shared classification builder + a factory function),
+// but is a separate implementation, not a generalization of buildGamesFromFlatProps -
+// Kalshi's ladder-of-thresholds shape and Polymarket's single-O/U-market shape don't
+// share enough structure for one function to classify both without indirection.
+
+export interface KalshiPropsRow {
+    league: string;
+    event_ticker: string;
+    event_title: string | null;
+    away: string | null;
+    home: string | null;
+    market_ticker: string;
+    subject_name: string | null;
+    subject_key: string | null;
+    market_key: string;
+    shape: string; // 'ladder' | 'binary'
+    floor_strike: string | null;
+    yes_prob: string | null;
+    volume: string | null;
+    open_interest: string | null;
+    close_time: string | null;
+    occurrence_time: string | null;
+}
+
+// Collapses Kalshi's threshold-ladder markets (multiple binary Yes/No contracts per
+// player+stat, e.g. "75+"/"50+"/"100+" passing yards) into one representative Prop per
+// player+game+stat, and groups props into Games by event_ticker. Shared by the
+// cached-DB path (createKalshiPropProvider) and kalshi-live.ts's live-fetch path, the
+// same reason buildGamesFromFlatProps above is shared - so the two paths can't drift.
+export function buildGamesFromKalshiFlatProps(rows: KalshiPropsRow[]): Game[] {
+    // Step 1: group rows by (event, market, subject) - this is the ladder collapse
+    // grouping key. subject_key (Kalshi's own opaque player UUID from custom_strike)
+    // is exact and stable; subject_name/market_ticker are fallbacks only for rows that
+    // somehow lack it.
+    const groups = new Map<string, KalshiPropsRow[]>();
+    for (const row of rows) {
+        const subject = row.subject_key || row.subject_name || row.market_ticker;
+        const key = `${row.event_ticker}::${row.market_key}::${subject}`;
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(row);
+    }
+
+    interface CollapsedProp {
+        eventTicker: string; league: string; away: string | null; home: string | null;
+        marketTicker: string; subjectName: string | null; marketKey: string; isLadder: boolean;
+        line: number | null; yesProb: number; volume: number; closeTime: string | null; occurrenceTime: string | null;
+    }
+
+    const collapsed: CollapsedProp[] = [];
+    for (const groupRows of groups.values()) {
+        const first = groupRows[0];
+        const isLadder = first.shape === 'ladder';
+
+        // For a ladder, pick the rung whose yes-probability sits closest to 0.5 - the
+        // rung a sportsbook's own O/U line would land at. A binary series only ever
+        // has one rung (anytime TD, anytime goalscorer, ...), nothing to pick between.
+        const selected = isLadder
+            ? groupRows.reduce((best, r) => {
+                const p = r.yes_prob !== null ? Number(r.yes_prob) : 0.5;
+                const bestP = best.yes_prob !== null ? Number(best.yes_prob) : 0.5;
+                return Math.abs(p - 0.5) < Math.abs(bestP - 0.5) ? r : best;
+            }, groupRows[0])
+            : first;
+
+        const yesProb = selected.yes_prob !== null ? Number(selected.yes_prob) : 0.5;
+        const line = isLadder && selected.floor_strike !== null ? Number(selected.floor_strike) : null;
+        // volume+open_interest summed across every rung in the group, not just the
+        // selected one - prominence should reflect the player+stat's total market
+        // interest, not just whichever single rung happened to land closest to 50%.
+        const volume = groupRows.reduce((sum, r) => sum + (Number(r.volume) || 0) + (Number(r.open_interest) || 0), 0);
+
+        collapsed.push({
+            eventTicker: first.event_ticker, league: first.league, away: first.away, home: first.home,
+            marketTicker: selected.market_ticker, subjectName: selected.subject_name, marketKey: first.market_key,
+            isLadder, line, yesProb, volume,
+            closeTime: selected.close_time, occurrenceTime: selected.occurrence_time,
+        });
+    }
+
+    // Step 2: group collapsed props into Games by event_ticker.
+    const byEvent = new Map<string, CollapsedProp[]>();
+    for (const p of collapsed) {
+        if (!byEvent.has(p.eventTicker)) byEvent.set(p.eventTicker, []);
+        byEvent.get(p.eventTicker)!.push(p);
+    }
+
+    const games: Game[] = [];
+    for (const [eventTicker, props] of byEvent) {
+        const first = props[0];
+        const away = first.away || first.league;
+        const home = first.home || 'Kalshi Game';
+        // occurrence_time is the actual game start (see kalshi.ts's KalshiMarket
+        // comment) - distinct from close_time, which is when each individual market
+        // stops trading and is used for settleDate instead, matching Prop.settleDate's
+        // "this market's own resolution deadline" contract in tank-types.ts.
+        //
+        // Cross-checked against the event ticker's own encoded date/time
+        // (parseKalshiTickerKickoff) and the EARLIER of the two wins - occurrence_time
+        // has been observed wrong-and-later on a live market (see that function's
+        // comment), which let a pick land after the real game had already started.
+        // Taking the minimum can only make the picks-close cutoff more conservative,
+        // never less, so this is safe even when occurrence_time is correct.
+        const occurrenceKickoff = props.map(p => p.occurrenceTime).filter((t): t is string => !!t).sort()[0] || null;
+        const tickerKickoff = parseKalshiTickerKickoff(eventTicker);
+        const kickoffCandidates = [occurrenceKickoff, tickerKickoff]
+            .filter((t): t is string => !!t)
+            .map(t => new Date(t).getTime())
+            .filter(t => !Number.isNaN(t));
+        const kickoff = kickoffCandidates.length > 0
+            ? new Date(Math.min(...kickoffCandidates)).toISOString()
+            : new Date().toISOString();
+        const settleDate = props.map(p => p.closeTime).filter((t): t is string => !!t).sort().slice(-1)[0] || kickoff;
+
+        const scores = props.map(p => p.volume);
+        const prominences = computeProminenceRanks(scores);
+
+        const matchupFallback = `${away} vs. ${home}`;
+        const propsOut: Prop[] = props.map((p, i) => ({
+            id: p.marketTicker,
+            player: p.subjectName || matchupFallback,
+            team: null, // not derivable per-player from Kalshi's event/market payload, same limitation Polymarket has
+            market: p.marketKey,
+            line: p.line,
+            prominence: prominences[i],
+            odds: { outcomes: p.isLadder ? ['Over', 'Under'] : ['Yes', 'No'], outcomePrices: [p.yesProb, 1 - p.yesProb] },
+            settleDate: p.closeTime || undefined,
+        }));
+
+        games.push({
+            id: `kalshi:${eventTicker}`,
+            league: first.league,
+            away, home, kickoff, settleDate,
+            props: propsOut,
+        });
+    }
+
+    return games;
+}
+
+export function createKalshiPropProvider(pool: Pool): PropProvider {
+    return {
+        async fetchProps(): Promise<Game[]> {
+            const result = await pool.query<KalshiPropsRow>(
+                `SELECT league, event_ticker, event_title, away, home, market_ticker,
+                        subject_name, subject_key, market_key, shape, floor_strike, yes_prob,
+                        volume, open_interest, close_time, occurrence_time
+                 FROM kalshi_props
+                 WHERE status IS DISTINCT FROM 'finalized'
+                 ORDER BY event_ticker`
+            );
+
+            return buildGamesFromKalshiFlatProps(result.rows);
+        },
+    };
+}
+
+function normalizeTeamName(name: string): string {
+    return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+// Merges Polymarket's non-player-prop Games (game-lines/season-futures - Kalshi player
+// props are filtered out of Polymarket's contribution the same way curate.ts does it,
+// via the "_player_" substring PLAYER_MARKET_TYPE_PATTERN already relies on) with
+// Kalshi's player-prop Games. Merge key is (league, normalized away+home), not event
+// id - the two sources have unrelated id spaces. A matchup found in both sources merges
+// into one Game entry; an unmatched Kalshi game (no Polymarket game-line coverage for
+// that matchup, or team-name formatting didn't line up) stays as its own separate Game
+// entry rather than being dropped - worst case is a curator sees two rows for the same
+// matchup, never silent data loss.
+export function createComposedPropProvider(pool: Pool): PropProvider {
+    return {
+        async fetchProps(): Promise<Game[]> {
+            const [polymarketGames, kalshiGames] = await Promise.all([
+                createPolymarketPropProvider(pool).fetchProps(),
+                createKalshiPropProvider(pool).fetchProps(),
+            ]);
+
+            const polymarketNonPlayerGames = polymarketGames
+                .map(g => ({ ...g, props: g.props.filter(p => !p.market.includes('_player_')) }))
+                .filter(g => g.props.length > 0);
+
+            const merged: Game[] = [];
+            const usedKalshiIndices = new Set<number>();
+
+            for (const pmGame of polymarketNonPlayerGames) {
+                const pmAway = normalizeTeamName(pmGame.away);
+                const pmHome = normalizeTeamName(pmGame.home);
+                const matchIndex = kalshiGames.findIndex((kg, i) =>
+                    !usedKalshiIndices.has(i) &&
+                    kg.league === pmGame.league &&
+                    normalizeTeamName(kg.away) === pmAway &&
+                    normalizeTeamName(kg.home) === pmHome
+                );
+                if (matchIndex !== -1) {
+                    usedKalshiIndices.add(matchIndex);
+                    merged.push({ ...pmGame, props: [...pmGame.props, ...kalshiGames[matchIndex].props] });
+                } else {
+                    merged.push(pmGame);
+                }
+            }
+
+            kalshiGames.forEach((kg, i) => {
+                if (!usedKalshiIndices.has(i)) merged.push(kg);
+            });
+
+            return merged;
+        },
+    };
+}
+
 // --- Factory -------------------------------------------------------------------------
 
 export function getPropProvider(pool: Pool): PropProvider {
     const which = (process.env.PROP_PROVIDER || 'mock').toLowerCase();
     if (which === 'polymarket') return createPolymarketPropProvider(pool);
+    if (which === 'kalshi') return createKalshiPropProvider(pool);
+    if (which === 'both') return createComposedPropProvider(pool);
     return createMockProvider();
 }

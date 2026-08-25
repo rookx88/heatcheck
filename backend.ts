@@ -39,6 +39,15 @@ import {
     SUPPORTED_LEAGUES,
 } from './polymarket';
 import { getPropProvider } from './tank-providers';
+import {
+    ensureKalshiTable,
+    startKalshiScheduler,
+    syncAllKalshiLeagues,
+    lastKalshiSyncResults,
+    isKalshiSyncInProgress,
+    SUPPORTED_KALSHI_LEAGUES,
+    isKalshiPropId,
+} from './kalshi';
 import { filterProps } from './tank-filter';
 import { ensureTankPagesTable, generateTankArticle } from './tank-generate';
 import type { SelectedProp } from './tank-types';
@@ -2266,6 +2275,51 @@ app.post('/api/polymarket/sync', apiKeyAuth, async (req: express.Request, res: e
     }
 });
 
+// GET /api/kalshi/status - Sync health/freshness per league (auth required)
+app.get('/api/kalshi/status', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const result = await pool.query(
+            `SELECT league, COUNT(*)::int AS row_count, MAX(synced_at) AS last_synced_at
+             FROM kalshi_props GROUP BY league`
+        );
+        res.json({
+            supportedLeagues: SUPPORTED_KALSHI_LEAGUES,
+            syncInProgress: isKalshiSyncInProgress(),
+            lastSyncResults: lastKalshiSyncResults,
+            cacheCounts: result.rows,
+        });
+    } catch (error: any) {
+        console.error('[GET /api/kalshi/status] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// POST /api/kalshi/sync - Manually trigger a refresh from Kalshi (auth required)
+// Guarded by the same single-flight lock as the scheduled sync.
+app.post('/api/kalshi/sync', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const leagueParam = req.body?.league ? String(req.body.league).trim() : '';
+        if (leagueParam && !SUPPORTED_KALSHI_LEAGUES.includes(leagueParam)) {
+            return res.status(400).json({
+                message: `Unsupported league "${leagueParam}". Supported: ${SUPPORTED_KALSHI_LEAGUES.join(', ')}`,
+            });
+        }
+        const leagues = leagueParam ? [leagueParam] : SUPPORTED_KALSHI_LEAGUES;
+
+        if (isKalshiSyncInProgress()) {
+            return res.status(409).json({ message: 'A Kalshi sync is already in progress.' });
+        }
+
+        // Run in the background; respond immediately so the client isn't blocked on a
+        // multi-series sync that can take tens of seconds.
+        syncAllKalshiLeagues(pool, leagues).catch(err => console.error('[Kalshi] Manual sync error:', err));
+        res.status(202).json({ message: 'Kalshi sync started.', leagues });
+    } catch (error: any) {
+        console.error('[POST /api/kalshi/sync] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
 // --- HEATCHECKS THE TANK ---
 // Curator picks a prop + writes an angle, one Anthropic call turns it into a short
 // narrative article. Stage 1 (provider) and Stage 2 (filter) both run server-side here,
@@ -2388,6 +2442,12 @@ app.post('/api/tank/generate', apiKeyAuth, async (req: express.Request, res: exp
         // the throttled Polymarket sync.
         for (const selection of selections) {
             const { prop, game, angle } = selection;
+            // Kalshi ticker ids always start with "KX" (see kalshi.ts's isKalshiPropId
+            // comment) - a reliable, cheap way to stamp the correct provider per
+            // selection without threading an explicit provider field through
+            // SelectedProp, and correct regardless of whether PROP_PROVIDER is
+            // 'kalshi' or the composed 'both' mode.
+            const provider = isKalshiPropId(prop.id) ? 'kalshi' : (providerName === 'both' ? 'polymarket' : providerName);
             const result = await generateTankArticle(prop, angle, game, [], {
                 apiKey: process.env.ANTHROPIC_API_KEY!,
                 model: process.env.MODEL,
@@ -2408,7 +2468,7 @@ app.post('/api/tank/generate', apiKeyAuth, async (req: express.Request, res: exp
                 ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft')
                 RETURNING *`,
                 [
-                    slug, providerName, game.league, angle,
+                    slug, provider, game.league, angle,
                     JSON.stringify({ prop, game }),
                     result.parsed ? JSON.stringify(result.parsed) : null,
                     result.parsed ? null : result.rawText,
@@ -2541,11 +2601,13 @@ app.put('/api/tank/pages/:id', apiKeyAuth, async (req: express.Request, res: exp
             );
         }
 
-        // Exchange ticker tagging fires the moment a public polymarket Tank publishes -
-        // fire-and-forget like the static rebuild and deploy hook below; failures are
-        // logged and the daily curate sweep picks up anything missed.
+        // Exchange ticker tagging fires the moment a public Tank publishes - Kalshi
+        // Tanks get the same auto-tag as Polymarket ones now that both providers have a
+        // settlement/price-history path (see lib/pages-functions/kalshi.ts). Fire-and-
+        // forget like the static rebuild and deploy hook below; failures are logged and
+        // the daily curate sweep picks up anything missed.
         if (statusChangedToPublished && visibility === 'app'
-            && existing.rows[0].provider === 'polymarket' && result.rows[0].slug) {
+            && ['polymarket', 'kalshi'].includes(existing.rows[0].provider) && result.rows[0].slug) {
             if (TICKER_SECRET) {
                 tagPublishedTankOnTickers(result.rows[0].slug, existing.rows[0].game_snapshot)
                     .catch((err: any) => console.error('[Ticker Tags] ✗ Tagging pass failed:', err.message));
@@ -2951,8 +3013,24 @@ app.listen(port, () => {
         })
         .catch(err => console.error('[Polymarket] Failed to set up polymarket_props table:', err));
 
+    // Kalshi player-prop cache table + background poller, same pattern as Polymarket's
+    // above (own env vars so either sync can be disabled independently).
+    ensureKalshiTable(pool)
+        .then(() => {
+            const intervalMs = process.env.KALSHI_SYNC_INTERVAL_MS
+                ? parseInt(process.env.KALSHI_SYNC_INTERVAL_MS, 10)
+                : undefined;
+            if (process.env.KALSHI_SYNC_ENABLED === 'false') {
+                console.log('[Kalshi] Sync disabled via KALSHI_SYNC_ENABLED=false');
+            } else {
+                startKalshiScheduler(pool, intervalMs);
+                console.log(`[Kalshi] Background sync scheduled every ${intervalMs ?? 900000}ms for: ${SUPPORTED_KALSHI_LEAGUES.join(', ')}`);
+            }
+        })
+        .catch(err => console.error('[Kalshi] Failed to set up kalshi_props table:', err));
+
     ensureTankPagesTable(pool)
-        .then(() => console.log(`[Tank] tank_pages table ready. PROP_PROVIDER=${process.env.PROP_PROVIDER || 'mock'}`))
+        .then(() => console.log(`[Tank] tank_pages table ready. PROP_PROVIDER=${process.env.PROP_PROVIDER || 'mock'} (mock|polymarket|kalshi|both)`))
         .catch(err => console.error('[Tank] Failed to set up tank_pages table:', err));
 
     console.log('Registered routes:');
@@ -2978,6 +3056,8 @@ app.listen(port, () => {
     console.log('  GET    /api/polymarket/props/event/:eventSlug (auth required)');
     console.log('  GET    /api/polymarket/status (auth required)');
     console.log('  POST   /api/polymarket/sync (auth required)');
+    console.log('  GET    /api/kalshi/status (auth required)');
+    console.log('  POST   /api/kalshi/sync (auth required)');
     console.log('  GET    /api/tank/props (auth required)');
     console.log('  POST   /api/tank/generate (auth required)');
     console.log('  GET    /api/tank/pages?status=&active=true (auth required)');
