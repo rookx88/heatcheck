@@ -40,6 +40,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 
+    // Derived from the request itself rather than hardcoded/BASE_URL: worker-curate
+    // always calls this endpoint at a fixed, known URL for whichever environment is
+    // currently live (auth-sessions preview today, production after promotion - see
+    // worker-curate/wrangler.toml's CURATE_URL), and per-Tank content (the OG card,
+    // the article page) only exists on whichever domain actually built it. Deriving
+    // from the request self-corrects at promotion with no further code change.
+    const baseUrl = new URL(context.request.url).origin;
+
     const sql = getSql(context.env);
     const rows = await sql`
         SELECT id, slug, model_output, game_snapshot
@@ -67,7 +75,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         const odds = rawRow.game_snapshot?.prop?.odds ?? null;
         const sidesImpliedProb = deriveSidesImpliedProb(odds, sides.length);
         const tagline = modelOutput.tagline?.trim() || deriveTaglineFallback(modelOutput.hook);
-        const tankUrl = `https://heatchecks.io/the-tank/articles/${rawRow.slug}/`;
+        const tankUrl = `${baseUrl}/the-tank/articles/${rawRow.slug}/`;
 
         // Reuses the same branded OG card scripts/generate-og-image.ts already renders
         // per Tank at build time (matchup, tagline, both sides, odds, resolve date, real
@@ -76,15 +84,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         // since (so the PNG doesn't exist yet), Discord just renders the embed without
         // an image rather than failing the post.
         const embed = {
-            author: { name: 'The Tank', icon_url: 'https://heatchecks.io/assets/images/heatchecks-logo.png' },
+            author: { name: 'The Tank', icon_url: `${baseUrl}/assets/images/heatchecks-logo.png` },
             title: tagline,
             url: tankUrl,
             description: modelOutput.call.question,
-            image: { url: `https://heatchecks.io/assets/og/${rawRow.slug}.png` },
+            image: { url: `${baseUrl}/assets/og/${rawRow.slug}.png` },
             color: 0xffc72c,
             footer: {
-                text: 'Connect your account at heatchecks.io/account to make your pick count',
-                icon_url: 'https://heatchecks.io/assets/images/mudpuppy-default.png',
+                text: `Connect your account at ${baseUrl.replace(/^https?:\/\//, '')}/account to make your pick count`,
+                icon_url: `${baseUrl}/assets/images/mudpuppy-default.png`,
             },
         };
 
