@@ -1,4 +1,4 @@
-import { renderHead, topbar, footer } from './waitlist-landing-template';
+import { renderHead, footer } from './waitlist-landing-template';
 import { escapeHtml } from '../utils/html-escape';
 import type { Prop, Game, TankArticle } from '../../tank-types';
 import { formatMarketLabel, formatOddsLabel, formatSettleDate, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../../tank-deck-format';
@@ -197,33 +197,42 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
             text-decoration: none;
         }
         .tank-article-back:hover { color: #ffffff; }
-        .tank-article-register-row {
-            display: flex;
-            justify-content: flex-end;
-            margin-bottom: 0.5rem;
-        }
+        /* Replaces the shared topbar()'s "Learn more" slot on article pages only -
+           built inline here (reusing .hc-topbar/.hc-logo from waitlist-landing-
+           template's shared styles) rather than editing topbar() itself, since that
+           function is also used by login/account/welcome/claim-your-spot/newsletter
+           pages where "Learn more" still belongs. */
+        /* The shared topbar's nowrap default (fine for the small "Learn more" link
+           it was built for) overflows now that this slot holds a much bigger
+           banner - wrap it so the banner drops to its own line on narrow phones
+           instead of clipping past the viewport edge. */
+        .hc-topbar { flex-wrap: wrap; row-gap: 0.75rem; }
         .tank-article-register-banner {
             display: block;
-            width: clamp(140px, 32vw, 220px);
-            border-radius: 10px;
+            width: clamp(220px, 46vw, 420px);
+            border-radius: 12px;
             overflow: hidden;
-            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(47, 230, 217, 0.25);
+            flex-shrink: 0;
+            margin-left: auto;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(47, 230, 217, 0.25);
             transition: transform 0.15s ease, filter 0.2s ease;
         }
         .tank-article-register-banner img { display: block; width: 100%; height: auto; }
         .tank-article-register-banner:hover { transform: translateY(-2px); filter: brightness(1.05); }
-        .tank-article-register-banner:active { transform: scale(0.96); }
+        .tank-article-register-banner:active { transform: scale(0.97); }
         .tank-article-register-banner:focus-visible { outline: 3px solid var(--hc-teal); outline-offset: 3px; }
     </style>
 </head>
 <body>
     <main class="hc-page tank-article">
-        <div class="tank-article-register-row">
+        <div class="hc-topbar">
+            <a class="hc-logo" href="/" aria-label="Heatchecks home">
+                <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
+            </a>
             <a class="tank-article-register-banner" href="${baseUrl}/login/" aria-label="Register for HeatChecks - free to play">
                 <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
             </a>
         </div>
-        ${topbar(`${baseUrl}/beta/`)}
 
         <header class="tank-article-header">
             <p>${escapeHtml(game.league)} &middot; ${escapeHtml(eventName)}</p>

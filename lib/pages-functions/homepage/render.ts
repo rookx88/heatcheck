@@ -40,12 +40,22 @@ function renderHeader(user: HomepageUser | null): string {
             </div>`
         : `<a class="hc-cta-button hc-login-cta" href="/login/">Log in</a>`;
 
+    // Register banner (logged-out only) - left of Log in, same height as the logo.
+    // The island wires its click to the register modal via [data-hc-register].
+    const registerBanner = user ? '' : `
+            <button type="button" class="hc-register-cta" data-hc-register aria-haspopup="dialog" aria-label="Register to join HeatChecks">
+                <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
+            </button>`;
+
     return `
         <header class="hc-home-header">
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
                 <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
             </a>
-            ${authArea}
+            <div class="hc-header-right">
+                ${registerBanner}
+                ${authArea}
+            </div>
         </header>`;
 }
 
@@ -104,14 +114,8 @@ function renderSportRow(slots: SportSlot[]): string {
 }
 
 // Static world-map picture is the no-JS/crawler fallback inside #hc-map-root; the
-// island's createRoot().render() replaces it with the interactive WorldMap. Logged
-// out, the section also carries the register CTA card (mobile: under the world;
-// desktop: to its right) - the island wires its click to the register modal.
-function renderExplore(user: HomepageUser | null): string {
-    const registerCta = user ? '' : `
-                <button type="button" class="hc-register-cta" data-hc-register aria-haspopup="dialog" aria-label="Register to join HeatChecks">
-                    <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
-                </button>`;
+// island's createRoot().render() replaces it with the interactive WorldMap.
+function renderExplore(): string {
     return `
         <section id="explore" class="hc-section" aria-labelledby="hc-explore-heading">
             <h2 id="hc-explore-heading" class="hc-visually-hidden">Explore the world by sport</h2>
@@ -123,7 +127,7 @@ function renderExplore(user: HomepageUser | null): string {
                             <source srcset="/assets/images/world-map.webp" type="image/webp">
                             <img class="hc-world-map-static" src="/assets/images/world-map.png" alt="Illustrated map of the Heatchecks sports world, with themed islands for soccer, football, basketball, baseball, hockey, and golf surrounding a central aquarium" width="1120" height="1113" loading="lazy">
                         </picture>
-                    </div>${registerCta}
+                    </div>
                 </div>
             </div>
         </section>`;
@@ -137,10 +141,42 @@ function homepageStyles(): string {
         .hc-home { max-width: 1080px; margin: 0 auto; padding: 0.75rem 1.25rem 1rem; min-height: 100vh; display: flex; flex-direction: column; }
         .hc-home-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; }
         .hc-home-header .hc-logo img { width: clamp(120px, 26vw, 240px); height: auto; display: block; }
-        /* margin-left:auto (formerly on the nav, now removed) keeps the auth area
-           pinned to the header's right edge. */
-        .hc-login-cta { font-size: 0.95rem; padding: 0.5rem 1.4rem; flex-shrink: 0; margin-left: auto; }
-        .hc-auth { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; margin-left: auto; }
+        /* Register banner (logged out) + auth area, grouped so the whole cluster
+           pins to the header's right edge as one unit - margin-left:auto lives on
+           the wrapper, not the individual pieces, so it works whichever is first. */
+        .hc-header-right { display: flex; flex-wrap: wrap; align-items: center; gap: 0.9rem; margin-left: auto; }
+        .hc-login-cta { font-size: 0.95rem; padding: 0.5rem 1.4rem; flex-shrink: 0; }
+        .hc-auth { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
+        /* Register banner: same rendered height as the logo (logo's own clamp
+           divided by its 500:241 aspect ratio), width follows the banner's native
+           4:1 shape. */
+        .hc-header-right .hc-register-cta {
+            display: block; background: none; border: none; padding: 0; cursor: pointer;
+            height: clamp(58px, 12.53vw, 116px);
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 0.15s ease, filter 0.2s ease;
+        }
+        .hc-header-right .hc-register-cta img {
+            display: block; width: auto; height: 100%;
+            border-radius: 10px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(47, 230, 217, 0.25);
+        }
+        .hc-header-right .hc-register-cta:hover { transform: translateY(-2px) scale(1.02); filter: brightness(1.05); }
+        .hc-header-right .hc-register-cta:active { transform: scale(0.95); }
+        .hc-header-right .hc-register-cta:focus-visible { outline: 3px solid var(--hc-teal); outline-offset: 3px; border-radius: 10px; }
+        .hc-header-right .hc-register-cta.is-popping { animation: hc-register-pop 0.35s ease; }
+        @keyframes hc-register-pop {
+            0% { transform: scale(1); }
+            30% { transform: scale(0.92) rotate(-2deg); }
+            65% { transform: scale(1.05) rotate(1.5deg); }
+            100% { transform: scale(1); }
+        }
+        /* Narrow phones: logo + banner + Log in don't all fit on one line at
+           readable sizes. Force the banner+auth cluster onto its own row (still
+           right-aligned) instead of letting it overflow/clip the login button. */
+        @media (max-width: 480px) {
+            .hc-header-right { flex-basis: 100%; justify-content: flex-end; margin-left: 0; }
+        }
         /* The island turns the chip into the same mini-nav trigger the map pages'
            MapHud has; the dropdown (MapHud.css classes) hangs off its right edge. */
         .hc-auth--clickable { position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -342,33 +378,6 @@ function homepageStyles(): string {
         #hc-map-root { position: relative; z-index: 2; }
         .hc-world-map-static, #hc-map-root svg { display: block; width: 100%; height: auto; }
 
-        /* Register CTA card (logged-out only). Mobile: centered under the world,
-           before the footer. Click movement: hover lift, active squash, and the
-           island toggles .is-popping for a jiggle before the modal opens. */
-        .hc-register-cta {
-            display: block;
-            background: none; border: none; padding: 0; cursor: pointer;
-            margin: 2rem auto 0; /* clear breathing room under the world on mobile */
-            width: min(420px, 92%);
-            -webkit-tap-highlight-color: transparent;
-            transition: transform 0.15s ease, filter 0.2s ease;
-        }
-        .hc-register-cta img {
-            display: block; width: 100%; height: auto;
-            border-radius: 18px;
-            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(47, 230, 217, 0.25);
-        }
-        .hc-register-cta:hover { transform: translateY(-3px) scale(1.02); filter: brightness(1.05); }
-        .hc-register-cta:active { transform: scale(0.95); }
-        .hc-register-cta:focus-visible { outline: 3px solid var(--hc-teal); outline-offset: 4px; border-radius: 18px; }
-        .hc-register-cta.is-popping { animation: hc-register-pop 0.35s ease; }
-        @keyframes hc-register-pop {
-            0% { transform: scale(1); }
-            30% { transform: scale(0.92) rotate(-2deg); }
-            65% { transform: scale(1.05) rotate(1.5deg); }
-            100% { transform: scale(1); }
-        }
-
         @media (prefers-reduced-motion: reduce) {
             .hc-sport-row { scroll-behavior: auto; }
         }
@@ -409,18 +418,13 @@ function homepageStyles(): string {
             #tanks { margin-top: 1.5rem; }
 
             /* Explore: globe seated left on the page's own navy background (one
-               consistent color story all the way down). Logged out, the register CTA
-               card sits to the world's right; logged in, the open right half is
-               where the fixed pet widget visually lives. */
+               consistent color story all the way down). The open right half is
+               where the fixed pet widget visually lives when logged in. */
             #explore { margin-top: 2rem; }
             /* The logo stays IN FLOW above (so the world sits right under it, same
-               slight overlap as mobile via the logo's negative bottom margin). The
-               register CTA docks absolute at the wrap's TOP-RIGHT: level with the
-               EXPLORE logo, its right edge on the container edge - the same edge the
-               Market Movers panel above ends on. */
+               slight overlap as mobile via the logo's negative bottom margin). */
             #explore .hc-explore-wrap { margin-top: 0.5rem; }
             #hc-map-root { max-width: 620px; }
-            .hc-register-cta { position: absolute; top: 0; right: 0; width: 340px; margin: 0; }
             .hc-footer { padding-top: 1.25rem; }
         }
     `;
@@ -484,7 +488,7 @@ export function renderHomepage(options: RenderHomepageOptions): string {
         ${renderTickerTape(data.marketMovers.movers)}
         ${renderSportRow(data.sportSlots)}
         ${renderMarketMoversSection(data.marketMovers)}
-        ${renderExplore(user)}
+        ${renderExplore()}
         ${footer()}
     </main>
     <script type="application/json" id="homepage-data">${payloadJson}</script>
