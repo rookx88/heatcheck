@@ -18,8 +18,7 @@ import {
     SUPPORTED_KALSHI_LEAGUES,
     KALSHI_SERIES_MAP,
     seriesTickersForLeague,
-    fetchAllEventsForSeries,
-    parseKalshiMatchup,
+    fetchMarketsGroupedByEvent,
     parseKalshiSubjectName,
     extractSubjectKey,
     toNumberOrNull,
@@ -71,26 +70,33 @@ export async function fetchLiveKalshiGames(
             // (2026-08-25): an unhandled 429 on the first series thrown here propagated
             // all the way to functions/api/curate.ts's request handler and 500'd the
             // entire run, silently producing zero drafts for every sport that day.
-            let pairs: Awaited<ReturnType<typeof fetchAllEventsForSeries>>;
+            //
+            // Uses fetchMarketsGroupedByEvent (bulk markets only), not
+            // fetchAllEventsForSeries (which adds one GET /events/{ticker} call per
+            // distinct event) - also confirmed live (2026-08-25) that those per-event
+            // lookups, summed across every series/league in one curate run, push a
+            // single Pages Function invocation over Cloudflare's "Too many subrequests"
+            // ceiling. Trade-off: away/home stay null here (see the fallback in
+            // tank-providers.ts's buildGamesFromKalshiFlatProps) - real team names for
+            // Kalshi candidates aren't worth reintroducing that N+1 call pattern for.
+            let pairs: Awaited<ReturnType<typeof fetchMarketsGroupedByEvent>>;
             try {
-                pairs = await fetchAllEventsForSeries(seriesTicker, 'open');
+                pairs = await fetchMarketsGroupedByEvent(seriesTicker, 'open');
             } catch (err) {
                 console.error(`[Kalshi] Skipping series "${seriesTicker}" (${league}) after fetch failure:`, err instanceof Error ? err.message : err);
                 continue;
             }
 
-            for (const { event, markets } of pairs) {
-                const matchup = parseKalshiMatchup(event.sub_title);
-
+            for (const { eventTicker, markets } of pairs) {
                 for (const market of markets) {
                     if (!withinWindow(market, now, windowMs)) continue;
 
                     rows.push({
                         league,
-                        event_ticker: event.event_ticker,
-                        event_title: event.title || null,
-                        away: matchup?.away ?? null,
-                        home: matchup?.home ?? null,
+                        event_ticker: eventTicker,
+                        event_title: null,
+                        away: null,
+                        home: null,
                         market_ticker: market.ticker,
                         subject_name: parseKalshiSubjectName(market.yes_sub_title || market.title),
                         subject_key: extractSubjectKey(market),

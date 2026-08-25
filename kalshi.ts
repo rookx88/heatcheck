@@ -243,6 +243,29 @@ export async function fetchAllEventsForSeries(seriesTicker: string, status = 'op
     return results;
 }
 
+// Bulk markets grouped by event_ticker, with NO per-event metadata lookup - the
+// subrequest-cheap counterpart to fetchAllEventsForSeries above. That function's N+1
+// GET /events/{ticker} calls (one per distinct event, on top of the bulk markets call)
+// are fine for kalshi.ts's admin-tool sync path (a plain Node process, no subrequest
+// ceiling), but confirmed live (2026-08-25) to push a single Cloudflare Pages Function
+// invocation of curate.ts over "Too many subrequests by single Worker invocation" once
+// summed across every series/league in one run. kalshi-live.ts's production live-fetch
+// path uses this instead and accepts not having real event.title/sub_title - away/home
+// team names for a Kalshi-sourced candidate are a nice-to-have for the curator's
+// matching context, not load-bearing (tank-providers.ts's buildGamesFromKalshiFlatProps
+// already falls back to the league name / "Kalshi Game" when they're absent).
+export async function fetchMarketsGroupedByEvent(seriesTicker: string, status = 'open'): Promise<Array<{ eventTicker: string; markets: KalshiMarket[] }>> {
+    const markets = await fetchAllMarketsPages(seriesTicker, status);
+
+    const marketsByEvent = new Map<string, KalshiMarket[]>();
+    for (const market of markets) {
+        if (!marketsByEvent.has(market.event_ticker)) marketsByEvent.set(market.event_ticker, []);
+        marketsByEvent.get(market.event_ticker)!.push(market);
+    }
+
+    return Array.from(marketsByEvent, ([eventTicker, eventMarkets]) => ({ eventTicker, markets: eventMarkets }));
+}
+
 // Parses Kalshi's "AAA vs BBB (Mon DD)" event.sub_title convention. Display-only field
 // (doesn't touch settlement/odds/picks) - first-listed team is treated as away, second
 // as home, matching event.title's word order and the event_ticker's team-code suffix
