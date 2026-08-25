@@ -110,7 +110,7 @@ function renderSportRow(slots: SportSlot[]): string {
 function renderExplore(user: HomepageUser | null): string {
     const registerCta = user ? '' : `
                 <button type="button" class="hc-register-cta" data-hc-register aria-haspopup="dialog" aria-label="Register to join HeatChecks">
-                    <img src="/assets/images/register-here.webp" alt="Register here to join the fun" width="800" height="800" loading="lazy">
+                    <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
                 </button>`;
     return `
         <section id="explore" class="hc-section" aria-labelledby="hc-explore-heading">

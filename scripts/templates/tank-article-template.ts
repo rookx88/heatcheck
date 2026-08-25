@@ -197,10 +197,32 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
             text-decoration: none;
         }
         .tank-article-back:hover { color: #ffffff; }
+        .tank-article-register-row {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 0.5rem;
+        }
+        .tank-article-register-banner {
+            display: block;
+            width: clamp(140px, 32vw, 220px);
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(47, 230, 217, 0.25);
+            transition: transform 0.15s ease, filter 0.2s ease;
+        }
+        .tank-article-register-banner img { display: block; width: 100%; height: auto; }
+        .tank-article-register-banner:hover { transform: translateY(-2px); filter: brightness(1.05); }
+        .tank-article-register-banner:active { transform: scale(0.96); }
+        .tank-article-register-banner:focus-visible { outline: 3px solid var(--hc-teal); outline-offset: 3px; }
     </style>
 </head>
 <body>
     <main class="hc-page tank-article">
+        <div class="tank-article-register-row">
+            <a class="tank-article-register-banner" href="${baseUrl}/login/" aria-label="Register for HeatChecks - free to play">
+                <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
+            </a>
+        </div>
         ${topbar(`${baseUrl}/beta/`)}
 
         <header class="tank-article-header">

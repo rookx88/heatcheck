@@ -61,7 +61,7 @@ assets/images/*
 !assets/images/market-movers-logo.png
 !assets/images/market-movers-logo.webp
 !assets/images/heatchecks-logo-email.png
-!assets/images/register-here.webp
+!assets/images/register-banner.webp
 !assets/images/tank-homepage-backdrop.webp
 # Whole-directory exceptions (allowed because assets/images/* excludes contents, not
 # the folder itself - see NOTE above): food-shop item art and pet body sprites, both

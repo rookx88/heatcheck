@@ -173,6 +173,26 @@ async function buildExploreLogo(): Promise<void> {
     );
 }
 
+/**
+ * The register CTA banner (top-right of the homepage's logged-out explore section,
+ * and the article pages' top-right corner) - a plain-off-the-repo-root PNG-in-SVG
+ * export, no transparency to preserve (full-bleed rectangular banner art), so unlike
+ * buildExploreLogo() this is just a resize + webp encode. 840px = ~2x retina for the
+ * widest place it renders (homepage CTA, min(420px, 92%) on mobile).
+ */
+async function buildRegisterBanner(): Promise<void> {
+    const srcPath = path.join(process.cwd(), 'Heatchecks-register-banner.svg');
+    if (!fs.existsSync(srcPath)) {
+        console.log('⚠ Heatchecks-register-banner.svg not found at repo root, skipping register-banner');
+        return;
+    }
+    const webpPath = path.join(outDir, 'register-banner.webp');
+    const info = await sharp(srcPath).resize({ width: 840 }).webp({ quality: 85 }).toFile(webpPath);
+
+    const webpSize = fs.statSync(webpPath).size;
+    console.log(`✓ Heatchecks-register-banner.svg -> register-banner.webp (${(webpSize / 1024).toFixed(0)}KB) [${info.width}x${info.height}]`);
+}
+
 async function run(): Promise<void> {
     if (!fs.existsSync(outDir)) {
         fs.mkdirSync(outDir, { recursive: true });
@@ -181,6 +201,7 @@ async function run(): Promise<void> {
     await buildOgImage();
     await buildSettlementEmailImages();
     await buildExploreLogo();
+    await buildRegisterBanner();
 
     for (const job of jobs) {
         const svgPath = path.join(sourceDir, job.source);

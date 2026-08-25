@@ -159,8 +159,10 @@ const NEW_SITE_IMAGES = [
     'heatchecks-logo-email.png',
     'market-movers-logo.png',
     'market-movers-logo.webp',
-    // Logged-out homepage register CTA card (renderExplore in homepage/render.ts).
-    'register-here.webp',
+    // Register CTA banner - homepage logged-out explore section (renderExplore in
+    // homepage/render.ts) and the top-right corner of Tank article pages
+    // (tank-article-template.ts). Replaces the old register-here.webp card art.
+    'register-banner.webp',
     // Homepage tanks-panel backdrop - the cave the whole panel (pitch copy, tank
     // artifact, sport buttons, picks-left footer) sits in (.hc-tanks-backdrop,
     // server-rendered by homepage/render.ts).
