@@ -32,6 +32,25 @@ export interface RenderHomepageOptions {
 
 const EMBER_SVG = `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="currentColor"><path d="M12 2c.6 3.8-1.2 5.6-2.9 7.3C7.4 11 6 12.6 6 15a6 6 0 0 0 12 0c0-1.7-.6-3.1-1.5-4.5-.4 1-.9 1.7-1.8 2.3.3-3.4-1-6.5-2.7-8.8Z"/></svg>`;
 
+// Register banner (logged-out only) - rendered in TWO places: inline in the
+// header (desktop, left of Log in) and as its own row between the ticker and
+// the Tanks panel (mobile - see renderMobileRegisterBanner). homepageStyles()
+// shows exactly one copy per breakpoint via display:none, and
+// homepage-client.tsx's mountRegisterCta() wires a click listener onto every
+// [data-hc-register] match since only one copy is ever visible at a time.
+function renderRegisterBanner(user: HomepageUser | null): string {
+    if (user) return '';
+    return `
+            <button type="button" class="hc-register-cta" data-hc-register aria-haspopup="dialog" aria-label="Register to join HeatChecks">
+                <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
+            </button>`;
+}
+
+function renderMobileRegisterBanner(user: HomepageUser | null): string {
+    const banner = renderRegisterBanner(user);
+    return banner ? `<div class="hc-mobile-register-row">${banner}</div>` : '';
+}
+
 function renderHeader(user: HomepageUser | null): string {
     const authArea = user
         ? `<div class="hc-auth" data-testid="hc-auth-in">
@@ -40,20 +59,13 @@ function renderHeader(user: HomepageUser | null): string {
             </div>`
         : `<a class="hc-cta-button hc-login-cta" href="/login/">Log in</a>`;
 
-    // Register banner (logged-out only) - left of Log in, same height as the logo.
-    // The island wires its click to the register modal via [data-hc-register].
-    const registerBanner = user ? '' : `
-            <button type="button" class="hc-register-cta" data-hc-register aria-haspopup="dialog" aria-label="Register to join HeatChecks">
-                <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
-            </button>`;
-
     return `
         <header class="hc-home-header">
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
                 <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
             </a>
             <div class="hc-header-right">
-                ${registerBanner}
+                ${renderRegisterBanner(user)}
                 ${authArea}
             </div>
         </header>`;
@@ -171,11 +183,31 @@ function homepageStyles(): string {
             65% { transform: scale(1.05) rotate(1.5deg); }
             100% { transform: scale(1); }
         }
-        /* Narrow phones: logo + banner + Log in don't all fit on one line at
-           readable sizes. Force the banner+auth cluster onto its own row (still
-           right-aligned) instead of letting it overflow/clip the login button. */
-        @media (max-width: 480px) {
-            .hc-header-right { flex-basis: 100%; justify-content: flex-end; margin-left: 0; }
+        /* Mobile register banner: a second copy of the same button, its own
+           full-width row between the ticker and the Tanks panel - matches the
+           92%-width card size this image used before it moved into the
+           header. Hidden by default; the header's copy (shown above) is what
+           renders at desktop widths instead. */
+        .hc-mobile-register-row { display: none; }
+        .hc-mobile-register-row .hc-register-cta {
+            display: block; margin: 0 auto; background: none; border: none; padding: 0; cursor: pointer;
+            width: min(420px, 92%);
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 0.15s ease, filter 0.2s ease;
+        }
+        .hc-mobile-register-row .hc-register-cta img {
+            display: block; width: 100%; height: auto;
+            border-radius: 10px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(47, 230, 217, 0.25);
+        }
+        .hc-mobile-register-row .hc-register-cta:hover { transform: translateY(-2px) scale(1.02); filter: brightness(1.05); }
+        .hc-mobile-register-row .hc-register-cta:active { transform: scale(0.95); }
+        .hc-mobile-register-row .hc-register-cta:focus-visible { outline: 3px solid var(--hc-teal); outline-offset: 3px; border-radius: 10px; }
+        .hc-mobile-register-row .hc-register-cta.is-popping { animation: hc-register-pop 0.35s ease; }
+        /* Below the desktop breakpoint: swap which copy is visible. */
+        @media (max-width: 1023px) {
+            .hc-header-right .hc-register-cta { display: none; }
+            .hc-mobile-register-row { display: block; margin: 0.9rem 0; }
         }
         /* The island turns the chip into the same mini-nav trigger the map pages'
            MapHud has; the dropdown (MapHud.css classes) hangs off its right edge. */
@@ -254,7 +286,7 @@ function homepageStyles(): string {
            showcase wrapper for the transform version of the same trap. */
         #tanks {
             position: relative;
-            border: 3px solid #f89b4e;
+            border: 3px solid #000000;
             border-radius: 6px;
             background: #07050b;
             padding: 0 1.1rem 1.1rem;
@@ -486,6 +518,7 @@ export function renderHomepage(options: RenderHomepageOptions): string {
     <main class="hc-home">
         ${renderHeader(user)}
         ${renderTickerTape(data.marketMovers.movers)}
+        ${renderMobileRegisterBanner(user)}
         ${renderSportRow(data.sportSlots)}
         ${renderMarketMoversSection(data.marketMovers)}
         ${renderExplore()}

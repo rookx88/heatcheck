@@ -87,9 +87,13 @@ function mountMarketMoversToggle() {
 // Register CTA (logged-out only; the server renders the card only then). Click
 // plays the pop jiggle, then mounts the RegisterModal into a lazily-created body
 // root - body-level so the modal's fixed overlay isn't trapped by any ancestor.
+// The server renders TWO copies on the homepage (header for desktop, its own
+// row between the ticker and Tanks panel for mobile - see renderHomepage()),
+// CSS shows exactly one per breakpoint, so every match gets wired; only the
+// visible one is ever actually clickable, and both share one modal host.
 function mountRegisterCta() {
-    const cta = document.querySelector<HTMLElement>('[data-hc-register]');
-    if (!cta) return;
+    const ctas = document.querySelectorAll<HTMLElement>('[data-hc-register]');
+    if (!ctas.length) return;
     let modalHost: ReturnType<typeof createRoot> | null = null;
     let hostEl: HTMLDivElement | null = null;
 
@@ -105,14 +109,16 @@ function mountRegisterCta() {
         modalHost!.render(<RegisterModal onClose={closeModal} />);
     };
 
-    cta.addEventListener('click', () => {
-        cta.classList.remove('is-popping');
-        // Force a reflow so re-adding the class replays the animation.
-        void cta.offsetWidth;
-        cta.classList.add('is-popping');
-        window.setTimeout(openModal, 200); // mid-jiggle, so the movement reads
+    ctas.forEach((cta) => {
+        cta.addEventListener('click', () => {
+            cta.classList.remove('is-popping');
+            // Force a reflow so re-adding the class replays the animation.
+            void cta.offsetWidth;
+            cta.classList.add('is-popping');
+            window.setTimeout(openModal, 200); // mid-jiggle, so the movement reads
+        });
+        cta.addEventListener('animationend', () => cta.classList.remove('is-popping'));
     });
-    cta.addEventListener('animationend', () => cta.classList.remove('is-popping'));
 }
 
 // Header identity chip -> the same mini nav the map pages' MapHud has (Home /

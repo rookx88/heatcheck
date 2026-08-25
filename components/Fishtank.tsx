@@ -452,7 +452,7 @@ const pillButtonStyle = (state: 'idle' | 'selected' | 'locked', disabled?: boole
     padding: '0.5rem 0.9rem',
     borderRadius: 8,
     border:
-        state === 'selected' ? '2px solid #fb923c'
+        state === 'selected' ? '2px solid #f89b4e'
         : state === 'locked' ? '2px solid #2fe6d9'
         : '1px solid rgba(255,255,255,0.25)',
     background:
@@ -460,8 +460,10 @@ const pillButtonStyle = (state: 'idle' | 'selected' | 'locked', disabled?: boole
         : state === 'locked' ? 'rgba(47,230,217,0.15)'
         : 'transparent',
     color: state === 'selected' ? '#ffc72c' : state === 'locked' ? '#2fe6d9' : '#cbd5e1',
-    boxShadow: state === 'selected' ? '0 0 12px rgba(251,146,60,0.55)' : 'none',
+    boxShadow: state === 'selected' ? '0 0 12px rgba(248,155,78,0.55)' : 'none',
     cursor: disabled ? 'default' : 'pointer',
+    fontFamily: "'Montserrat', 'Nunito', sans-serif",
+    fontWeight: 800,
     fontSize: '0.85rem',
     opacity: disabled && state === 'idle' ? 0.4 : 1,
 });
@@ -478,13 +480,14 @@ const inputStyle: React.CSSProperties = {
 
 const submitButtonStyle: React.CSSProperties = {
     padding: '0.5rem 0.9rem',
-    borderRadius: 8,
-    border: '1px solid rgba(34,211,238,0.5)',
-    background: 'rgba(34,211,238,0.15)',
-    color: '#22d3ee',
+    borderRadius: 14,
+    border: '1px solid rgba(47,230,217,0.5)',
+    background: 'rgba(47,230,217,0.15)',
+    color: '#2fe6d9',
     cursor: 'pointer',
+    fontFamily: "'Montserrat', 'Nunito', sans-serif",
     fontSize: '0.85rem',
-    fontWeight: 600,
+    fontWeight: 800,
 };
 
 const linkButtonStyle: React.CSSProperties = {

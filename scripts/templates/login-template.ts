@@ -60,7 +60,7 @@ export function generateLoginPageHtml(baseUrl: string): string {
         }
         .hc-login-button {
             display: block; width: 100%; padding: 0.85rem 1rem; cursor: pointer;
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 1.05rem;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 1.05rem;
             background: var(--hc-gold); color: #1a1200; border: none; border-radius: 14px;
             box-shadow: 0 5px 0 var(--hc-gold-dark), 0 10px 22px rgba(0, 0, 0, 0.4);
             transition: transform 0.15s ease;

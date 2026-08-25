@@ -239,7 +239,7 @@ function sharedStyles(): string {
             display: inline-block;
             background: var(--hc-gold);
             color: #1a1200;
-            font-family: 'Baloo 2', 'Nunito', sans-serif;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
             font-weight: 800;
             font-size: 1.1rem;
             text-decoration: none;

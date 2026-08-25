@@ -364,7 +364,7 @@ export function renderMarketMoversSection(data: MarketMoversData): string {
 // visible date ticks below the panel). The page background itself stays untouched.
 export function marketMoversStyles(): string {
     return `
-        .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #a36114; }
+        .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #a36114; border-top: 2px solid #000000; border-bottom: 2px solid #000000; }
         .hc-tape-track { display: flex; width: max-content; animation: hc-tape 28s linear infinite; }
         .hc-tape-group {
             list-style: none; display: flex; gap: 2.25rem; margin: 0; padding: 0.5rem 1.5rem 0.55rem;
@@ -510,7 +510,7 @@ export function marketMoversStyles(): string {
            (global reset) keeps the added border from disturbing the desktop grid's
            stretch-alignment between the two panels. */
         #market-movers {
-            border: 3px solid #f89b4e;
+            border: 3px solid #000000;
             border-radius: 6px;
             padding: 0 1rem 1.1rem;
             overflow: hidden;
@@ -544,7 +544,7 @@ export function marketMoversStyles(): string {
             }
             .hc-mm-logo { width: clamp(140px, 14vw, 190px); margin: 0; flex-shrink: 0; }
             .hc-mm-note {
-                margin: 0; color: #ffffff; font-weight: 800; font-size: 0.78rem;
+                margin: 0; color: #ffffff; font-size: 0.78rem;
                 background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.35);
                 border-radius: 8px; padding: 0.45rem 0.7rem;
             }
