@@ -10,7 +10,7 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from '../../../lib/pages-functions/db';
 import { resolveLoginOrigin, createSession } from '../../../lib/pages-functions/session';
 import { verifyAuthToken } from '../../../lib/pages-functions/auth-tokens';
-import { exchangeDiscordCode } from '../../../lib/pages-functions/discord-api';
+import { exchangeDiscordCode, sendDiscordDirectMessage } from '../../../lib/pages-functions/discord-api';
 import type { DiscordLinkTokenPayload } from '../../../lib/auth-token-payloads';
 
 function redirectTo(url: string, extraHeaders?: Record<string, string>): Response {
@@ -117,6 +117,23 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         }
         console.error('[GET /api/discord/callback] Error creating account from Discord:', err);
         return redirectTo(`${origin}/login/?discord=error`);
+    }
+
+    // Best-effort confirmation back in Discord: the rest of this flow is a browser
+    // redirect chain with no interaction to reply ephemerally through, so without this
+    // a brand-new user who closes the tab after signing the welcome letter gets no
+    // signal in Discord itself that anything worked. Never blocks the redirect - a
+    // failed DM (e.g. the bot doesn't share a server with someone who signed up via
+    // /login/ directly) is not a reason to fail account creation, which already
+    // succeeded.
+    try {
+        await sendDiscordDirectMessage(
+            context.env,
+            discordUser.id,
+            "You're linked! Your Heatchecks account is ready — head back to any Tank post and make your pick."
+        );
+    } catch (err) {
+        console.error('[GET /api/discord/callback] Confirmation DM failed:', err);
     }
 
     const { setCookie } = await createSession(sql, context.env, waitlistId, context.request.url);

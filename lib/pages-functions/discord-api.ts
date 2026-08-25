@@ -67,6 +67,33 @@ export async function exchangeDiscordCode(env: Env, code: string, redirectUri: s
     };
 }
 
+/** Best-effort: opens (or reuses) a DM channel with the given Discord user and sends a
+ * message as the bot. Requires the bot to share a server with them - Discord's
+ * `POST /users/@me/channels` 403s (code 50007) otherwise, e.g. someone who signed up
+ * via /login/'s "Continue with Discord" button without ever joining the server.
+ * Callers should treat failure as non-fatal (catch and log, never block on it) - same
+ * posture as the verification-email send in functions/api/picks.ts. */
+export async function sendDiscordDirectMessage(env: Env, discordUserId: string, content: string): Promise<void> {
+    const dmRes = await fetch('https://discord.com/api/v10/users/@me/channels', {
+        method: 'POST',
+        headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient_id: discordUserId }),
+    });
+    if (!dmRes.ok) {
+        throw new Error(`Discord DM channel open failed: ${dmRes.status} ${await dmRes.text()}`);
+    }
+    const dmChannel = (await dmRes.json()) as { id: string };
+
+    const msgRes = await fetch(`https://discord.com/api/v10/channels/${dmChannel.id}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content }),
+    });
+    if (!msgRes.ok) {
+        throw new Error(`Discord DM send failed: ${msgRes.status} ${await msgRes.text()}`);
+    }
+}
+
 const MAX_RATE_LIMIT_RETRIES = 3;
 
 function sleep(ms: number): Promise<void> {
