@@ -8,21 +8,33 @@ import type { Env } from './db';
 export interface DiscordUser {
     id: string;
     username: string;
+    // Present only when the `email` scope was granted and Discord has a verified
+    // address on file for this account. emailVerified is Discord's own flag, not
+    // ours - callers (functions/api/discord/callback.ts's no-session branch) must
+    // check it before trusting email for account creation/matching; an unverified
+    // Discord email proves nothing about ownership.
+    email: string | null;
+    emailVerified: boolean;
 }
 
+// identify+email rather than identify alone: the no-session path in
+// functions/api/discord/callback.ts needs a verified email to create or match a
+// waitlist account. Requesting it unconditionally (even on the already-logged-in
+// "link" path) keeps this to one authorize-URL shape instead of two - harmless there,
+// since that path never reads DiscordUser.email at all.
 export function buildDiscordAuthorizeUrl(env: Env, redirectUri: string, state: string): string {
     const url = new URL('https://discord.com/oauth2/authorize');
     url.searchParams.set('client_id', env.DISCORD_CLIENT_ID);
     url.searchParams.set('redirect_uri', redirectUri);
     url.searchParams.set('response_type', 'code');
-    url.searchParams.set('scope', 'identify');
+    url.searchParams.set('scope', 'identify email');
     url.searchParams.set('state', state);
     return url.toString();
 }
 
 /** Exchanges an OAuth2 authorization code for an access token, then resolves it to
- * the identify-scope Discord user. Throws on any non-2xx response - callers decide
- * how to surface that (the callback route redirects to /account/?discord=error). */
+ * the Discord user (identify+email scope). Throws on any non-2xx response - callers
+ * decide how to surface that (the callback route redirects to an error state). */
 export async function exchangeDiscordCode(env: Env, code: string, redirectUri: string): Promise<DiscordUser> {
     const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
         method: 'POST',
@@ -46,8 +58,13 @@ export async function exchangeDiscordCode(env: Env, code: string, redirectUri: s
     if (!userRes.ok) {
         throw new Error(`Discord user fetch failed: ${userRes.status} ${await userRes.text()}`);
     }
-    const user = (await userRes.json()) as { id: string; username: string };
-    return { id: user.id, username: user.username };
+    const user = (await userRes.json()) as { id: string; username: string; email?: string | null; verified?: boolean };
+    return {
+        id: user.id,
+        username: user.username,
+        email: user.email ?? null,
+        emailVerified: Boolean(user.email && user.verified),
+    };
 }
 
 const MAX_RATE_LIMIT_RETRIES = 3;

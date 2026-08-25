@@ -94,7 +94,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         LIMIT 1
     `;
     if (linkRows.length === 0) {
-        return ephemeral('Connect your Heatchecks account first: log in at heatchecks.io, then visit heatchecks.io/account/ to link Discord.');
+        return ephemeral('Connect your Heatchecks account first: heatchecks.io/api/discord/link — takes a few seconds, and creates an account for you if you don\'t have one yet.');
     }
     const link = linkRows[0] as unknown as { waitlist_id: string; onboarded_at: string | null };
     if (!link.onboarded_at) {

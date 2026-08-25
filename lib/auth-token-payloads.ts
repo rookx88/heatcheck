@@ -30,7 +30,16 @@ export interface SessionTokenPayload extends Record<string, string | number | bo
 // Binds the callback back to the session that started the flow - Discord's redirect
 // is a top-level GET, so requireSameOrigin's Sec-Fetch-Site/Origin checks don't apply
 // to it; this signed, short-TTL token IS the CSRF protection for that leg instead.
+//
+// userId is '' rather than a real optional property (TokenPayload's index signature
+// can't express string|undefined) when the flow started with no session at all - a
+// Discord-originated visitor with no Heatchecks account yet, or one signing back in on
+// a new device. Non-empty when it started from an existing session (link.ts while
+// logged in - "connect Discord to my account"). The callback trusts whichever was true
+// when the flow started, not whatever session state happens to exist when Discord
+// redirects back - see callback.ts for the two branches this drives. '' is falsy, so
+// `if (payload.userId)` there already does the right thing with no extra handling.
 export interface DiscordLinkTokenPayload extends Record<string, string | number | boolean> {
-    userId: string; // waitlist.id
+    userId: string; // waitlist.id, or '' for no session
     purpose: 'discord_link';
 }

@@ -67,6 +67,26 @@ export function generateLoginPageHtml(baseUrl: string): string {
         }
         .hc-login-button:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--hc-gold-dark); }
         .hc-login-button:disabled { opacity: 0.6; cursor: default; }
+        .hc-login-button--discord {
+            text-decoration: none; box-sizing: border-box;
+            background: #5865F2; color: #ffffff;
+            box-shadow: 0 5px 0 #3a45c2, 0 10px 22px rgba(0, 0, 0, 0.4);
+        }
+        .hc-login-divider {
+            display: flex; align-items: center; gap: 0.75rem;
+            margin: 1.1rem 0; color: rgba(255, 255, 255, 0.4);
+            font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.78rem;
+            text-transform: uppercase; letter-spacing: 0.08em;
+        }
+        .hc-login-divider::before, .hc-login-divider::after {
+            content: ''; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.15);
+        }
+        .hc-login-notice {
+            font-family: 'Nunito', sans-serif; font-size: 0.88rem; line-height: 1.5;
+            color: var(--hc-teal); background: rgba(47, 230, 217, 0.1);
+            border: 1px solid rgba(47, 230, 217, 0.3); border-radius: 12px;
+            padding: 0.75rem 0.9rem; margin: 0 0 1.1rem;
+        }
         .hc-login-error {
             font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.88rem;
             color: #ff8f8f; margin: 0.9rem 0 0;

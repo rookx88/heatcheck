@@ -14,12 +14,20 @@ import { setCachedAccount } from './tank-pick-client';
 
 const RESEND_COOLDOWN_SECONDS = 60;
 
+// Set by GET /api/discord/callback's no-session branch when Discord didn't grant a
+// verified email to create/match an account from - a one-time notice, not state to
+// track beyond the initial read.
+function readDiscordNoEmailFlag(): boolean {
+    return new URLSearchParams(window.location.search).get('discord') === 'no_email';
+}
+
 function RequestLinkForm({ initialError }: { initialError: string | null }) {
     const [email, setEmail] = useState('');
     const [sending, setSending] = useState(false);
     const [sent, setSent] = useState(false);
     const [error, setError] = useState<string | null>(initialError);
     const [cooldown, setCooldown] = useState(0);
+    const [discordNoEmail] = useState(readDiscordNoEmailFlag);
 
     useEffect(() => {
         if (cooldown <= 0) return;
@@ -54,6 +62,12 @@ function RequestLinkForm({ initialError }: { initialError: string | null }) {
         <div className="hc-login">
             <p className="hc-login-eyebrow">Heatchecks Login</p>
             <h1>Get back in your tank</h1>
+            {discordNoEmail && (
+                <p className="hc-login-notice">
+                    Discord didn't share a verified email with us, so we couldn't create your account that way —
+                    enter your email below instead. You can still connect Discord afterward from your account page.
+                </p>
+            )}
             {sent ? (
                 <>
                     <p className="hc-login-copy">
@@ -64,24 +78,30 @@ function RequestLinkForm({ initialError }: { initialError: string | null }) {
                     </button>
                 </>
             ) : (
-                <form onSubmit={handleSubmit}>
-                    <p className="hc-login-copy">
-                        Enter your email and we'll send a one-tap login link. No password — there isn't one.
-                    </p>
-                    <input
-                        className="hc-login-input"
-                        type="email"
-                        required
-                        autoFocus
-                        placeholder="you@example.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        disabled={sending}
-                    />
-                    <button className="hc-login-button" type="submit" disabled={sending}>
-                        {sending ? 'Sending…' : 'Email me a login link'}
-                    </button>
-                </form>
+                <>
+                    <form onSubmit={handleSubmit}>
+                        <p className="hc-login-copy">
+                            Enter your email and we'll send a one-tap login link. No password — there isn't one.
+                        </p>
+                        <input
+                            className="hc-login-input"
+                            type="email"
+                            required
+                            autoFocus
+                            placeholder="you@example.com"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            disabled={sending}
+                        />
+                        <button className="hc-login-button" type="submit" disabled={sending}>
+                            {sending ? 'Sending…' : 'Email me a login link'}
+                        </button>
+                    </form>
+                    <div className="hc-login-divider"><span>or</span></div>
+                    <a className="hc-login-button hc-login-button--discord" href="/api/discord/link">
+                        Continue with Discord
+                    </a>
+                </>
             )}
             {error && <p className="hc-login-error">{error}</p>}
         </div>
