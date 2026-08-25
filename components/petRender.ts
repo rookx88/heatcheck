@@ -1,14 +1,16 @@
 // How a pet is drawn everywhere (hatch reveal, pet widget, feed modal portrait):
 // one shared base body image, tinted per pet. The base axolotl art is GREEN with
-// hue ~100deg, while catalog/render_config hues are ABSOLUTE color targets (red 0,
+// hue ~93deg, while catalog/render_config hues are ABSOLUTE color targets (red 0,
 // blue 220, green 120, purple 275) - and CSS hue-rotate is RELATIVE - so the filter
 // rotates by the difference. Desaturated pixels (white shorts, eyes) are untouched
-// by hue-rotate, which is exactly the wanted behavior. custom_asset pets (founder
-// ivory) render the base art unfiltered until their dedicated skin ships.
+// by hue-rotate, which is exactly the wanted behavior - except the shorts' racing
+// stripe, which is currently saturated and will shift color on non-green pets
+// (known follow-up, not yet fixed). custom_asset pets (founder ivory) render the
+// base art unfiltered until their dedicated skin ships.
 
 export const PET_IMAGE_SRC = '/assets/images/pets/mud_puppy_base_axol.png';
 
-const BASE_ART_HUE = 100;
+const BASE_ART_HUE = 93;
 
 export function petImageFilter(renderMode: string | null | undefined, renderConfig: Record<string, unknown> | null | undefined): string | undefined {
     if (renderMode !== 'filter') return undefined;
