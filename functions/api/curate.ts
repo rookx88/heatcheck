@@ -241,10 +241,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // stay as separate Game[] populations (own ids, own prominence scoring) rather
     // than being unified into shared Game objects - filterProps/downstream code
     // doesn't care which physical game a candidate came from.
-    const [rawPolymarketGames, kalshiGames] = await Promise.all([
+    //
+    // Promise.allSettled, not Promise.all: one source having a bad day (a Kalshi rate
+    // limit, a Gamma outage) must degrade to that source contributing zero candidates
+    // this run, not crash the whole request and silently zero out the OTHER source too
+    // - confirmed live (2026-08-25) that an uncaught Kalshi 429 took the entire run
+    // down, including Polymarket, which was working fine.
+    const [polymarketResult, kalshiResult] = await Promise.allSettled([
         fetchLiveGames(undefined, windowHours),
         fetchLiveKalshiGames(undefined, windowHours),
     ]);
+    if (polymarketResult.status === 'rejected') {
+        console.error('[POST /api/curate] Polymarket live fetch failed, continuing with zero Polymarket candidates:', polymarketResult.reason);
+    }
+    if (kalshiResult.status === 'rejected') {
+        console.error('[POST /api/curate] Kalshi live fetch failed, continuing with zero Kalshi candidates:', kalshiResult.reason);
+    }
+    const rawPolymarketGames = polymarketResult.status === 'fulfilled' ? polymarketResult.value : [];
+    const kalshiGames = kalshiResult.status === 'fulfilled' ? kalshiResult.value : [];
     const polymarketGames = rawPolymarketGames
         .map(g => ({ ...g, props: g.props.filter(p => !p.market.includes('_player_')) }))
         .filter(g => g.props.length > 0);

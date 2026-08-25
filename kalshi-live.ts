@@ -62,7 +62,22 @@ export async function fetchLiveKalshiGames(
     for (const league of leagues) {
         for (const seriesTicker of seriesTickersForLeague(league)) {
             const info = KALSHI_SERIES_MAP[seriesTicker];
-            const pairs = await fetchAllEventsForSeries(seriesTicker, 'open');
+
+            // One series's fetch failing (a 429 after exhausting retries, a transient
+            // 5xx, a network blip) must not take down every other series - or worse,
+            // the whole curate run, since this function's caller Promise.all's it
+            // alongside Polymarket's fetch. Mirrors polymarket.ts's syncLeague, which
+            // has the same per-league try/catch for the same reason. Confirmed live
+            // (2026-08-25): an unhandled 429 on the first series thrown here propagated
+            // all the way to functions/api/curate.ts's request handler and 500'd the
+            // entire run, silently producing zero drafts for every sport that day.
+            let pairs: Awaited<ReturnType<typeof fetchAllEventsForSeries>>;
+            try {
+                pairs = await fetchAllEventsForSeries(seriesTicker, 'open');
+            } catch (err) {
+                console.error(`[Kalshi] Skipping series "${seriesTicker}" (${league}) after fetch failure:`, err instanceof Error ? err.message : err);
+                continue;
+            }
 
             for (const { event, markets } of pairs) {
                 const matchup = parseKalshiMatchup(event.sub_title);
