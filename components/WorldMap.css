@@ -274,7 +274,7 @@
   padding: 0.5rem 1rem;
   border-radius: 999px;
   border: 1.5px solid var(--region-color, #fff);
-  background: rgba(8, 12, 20, 0.72);
+  background: rgba(13, 7, 17, 0.72);
   backdrop-filter: blur(6px);
   box-shadow: 0 0 18px -2px var(--region-color, #fff);
   pointer-events: none;

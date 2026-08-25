@@ -98,10 +98,11 @@ async function buildOgImage(): Promise<void> {
 
     const outPath = path.join(outDir, 'og-share-world-map.jpg');
     await sharp(pngBuffer)
-        // Flatten onto the same navy the page background uses, since the source has
-        // transparent padding and a JPG can't carry alpha - a transparent-turned-white
-        // background would look like a bug in every link preview.
-        .flatten({ background: '#0b1a45' })
+        // Flatten onto the same midnight-purple the page background uses, since the
+        // source has transparent padding and a JPG can't carry alpha - a
+        // transparent-turned-white background would look like a bug in every link
+        // preview.
+        .flatten({ background: '#160c27' })
         .resize(1200, 630, { fit: 'cover', position: 'attention' })
         .jpeg({ quality: 85 })
         .toFile(outPath);

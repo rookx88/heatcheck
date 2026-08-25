@@ -7,7 +7,7 @@
   inset: 0;
   width: 100vw;
   height: 100vh;
-  background: linear-gradient(180deg, #060c22 0%, #0b1a45 55%, #14275f 100%);
+  background: linear-gradient(180deg, #0b0713 0%, #160c27 55%, #23143e 100%);
 }
 
 /* Desktop backdrop: outer space. Two pseudo-element layers painted behind the card
@@ -148,7 +148,7 @@
   font-size: 34px;
   letter-spacing: 0.06em;
   paint-order: stroke;
-  stroke: rgba(5, 7, 15, 0.85);
+  stroke: rgba(7, 5, 11, 0.85);
   stroke-width: 8;
   filter: drop-shadow(0 0 10px rgba(47, 230, 217, 0.5));
   opacity: 0;

@@ -33,8 +33,8 @@ const LOGO_HEIGHT = 44;
 const LOGO_WIDTH = Math.round(LOGO_HEIGHT * (500 / 241)); // source logo's native aspect ratio
 
 const COLORS = {
-    navyDark: '#060c22',
-    navy: '#0b1a45',
+    navyDark: '#0b0713',
+    navy: '#160c27',
     gold: '#ffc72c',
     teal: '#2fe6d9',
     white: '#ffffff',
@@ -111,7 +111,7 @@ function pill(label: string, accent: string) {
                 justifyContent: 'center',
                 padding: '14px 24px',
                 borderRadius: 14,
-                background: 'rgba(6,12,34,0.45)',
+                background: 'rgba(11,7,19,0.45)',
                 borderLeft: `4px solid ${accent}`,
                 fontFamily: 'Nunito',
                 fontWeight: 700,
@@ -160,7 +160,7 @@ function buildTree(data: OgCardData, backgroundDataUri: string, logoDataUri: str
                             width: CARD_WIDTH,
                             height: CARD_HEIGHT,
                             display: 'flex',
-                            background: `linear-gradient(180deg, rgba(6,12,34,0.45) 0%, rgba(6,12,34,0.58) 35%, rgba(6,12,34,0.82) 75%, rgba(6,12,34,0.92) 100%)`,
+                            background: `linear-gradient(180deg, rgba(11,7,19,0.45) 0%, rgba(11,7,19,0.58) 35%, rgba(11,7,19,0.82) 75%, rgba(11,7,19,0.92) 100%)`,
                         },
                     },
                 },

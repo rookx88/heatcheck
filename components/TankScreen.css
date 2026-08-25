@@ -3,7 +3,7 @@
   inset: 0;
   width: 100vw;
   height: 100vh;
-  background: linear-gradient(180deg, #060c22 0%, #0b1a45 55%, #14275f 100%);
+  background: linear-gradient(180deg, #0b0713 0%, #160c27 55%, #23143e 100%);
 }
 
 /* Desktop backdrop: outer space - same starfield treatment as LandScreen.css (see
@@ -205,11 +205,11 @@
   overflow-y: auto;
   /* Artifact surfaces keep their own aesthetic: teal thumb instead of the global
      orange (see the sitewide scrollbar rules in waitlist-landing-template). */
-  scrollbar-color: var(--hc-teal, #2fe6d9) #05070f;
-  background: linear-gradient(180deg, #0b1a45 0%, #060c22 100%);
+  scrollbar-color: var(--hc-teal, #2fe6d9) #07050b;
+  background: linear-gradient(180deg, #160c27 0%, #0b0713 100%);
   border: 2px solid rgba(47, 230, 217, 0.5);
   border-radius: 20px;
-  box-shadow: 0 0 0 6px rgba(5, 7, 15, 0.6), 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(47, 230, 217, 0.15);
+  box-shadow: 0 0 0 6px rgba(7, 5, 11, 0.6), 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(47, 230, 217, 0.15);
   animation: tank-modal-pop-in 0.25s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
@@ -223,14 +223,14 @@
 }
 
 .tank-modal-panel::-webkit-scrollbar-track {
-  background: #05070f;
+  background: #07050b;
   border-radius: 0 20px 20px 0;
 }
 
 .tank-modal-panel::-webkit-scrollbar-thumb {
   background: linear-gradient(180deg, var(--hc-teal, #2fe6d9) 0%, rgba(47, 230, 217, 0.55) 100%);
   border-radius: 999px;
-  border: 2px solid #05070f;
+  border: 2px solid #07050b;
 }
 
 .tank-modal-panel::-webkit-scrollbar-thumb:hover {

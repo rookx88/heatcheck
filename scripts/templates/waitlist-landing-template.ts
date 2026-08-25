@@ -84,9 +84,9 @@ export function renderHead(options: HeadOptions): string {
 function sharedStyles(): string {
     return `
         :root {
-            --hc-navy-dark: #060c22;
-            --hc-navy: #0b1a45;
-            --hc-navy-light: #14275f;
+            --hc-navy-dark: #0b0713;
+            --hc-navy: #160c27;
+            --hc-navy-light: #23143e;
             --hc-gold: #ffc72c;
             --hc-gold-dark: #e8a800;
             --hc-teal: #2fe6d9;
@@ -209,7 +209,7 @@ function sharedStyles(): string {
         }
         .hc-bubble {
             background: var(--hc-bubble);
-            color: #0b1a45;
+            color: #160c27;
             border-radius: 22px 22px 22px 4px;
             padding: 0.6rem 0.9rem;
             margin-top: 0.85rem;

@@ -46,7 +46,7 @@
 }
 
 .pet-widget.is-expanded .pet-widget__row {
-  background: rgba(5, 7, 15, 0.78);
+  background: rgba(7, 5, 11, 0.78);
   border: 2px solid rgba(47, 230, 217, 0.45);
   border-radius: 18px;
   padding: 0.5rem 0.6rem;
@@ -123,7 +123,7 @@
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: #2fe6d9;
-  background: rgba(5, 7, 15, 0.75);
+  background: rgba(7, 5, 11, 0.75);
   border: 2px solid rgba(47, 230, 217, 0.6);
   border-radius: 999px;
   padding: 0.4rem 1rem;
@@ -148,8 +148,8 @@
   font-weight: 800;
   font-size: 1.15rem;
   color: #ffffff;
-  text-shadow: -2px -2px 0 rgba(5, 7, 15, 0.8), 2px -2px 0 rgba(5, 7, 15, 0.8),
-               -2px 2px 0 rgba(5, 7, 15, 0.8), 2px 2px 0 rgba(5, 7, 15, 0.8);
+  text-shadow: -2px -2px 0 rgba(7, 5, 11, 0.8), 2px -2px 0 rgba(7, 5, 11, 0.8),
+               -2px 2px 0 rgba(7, 5, 11, 0.8), 2px 2px 0 rgba(7, 5, 11, 0.8);
   margin-top: -0.35rem;
   margin-right: 4px;
   pointer-events: none;
@@ -250,9 +250,9 @@ button.pet-widget__name--prompt:focus-visible {
   width: 30px;
   height: 30px;
   border-radius: 50%;
-  border: 2px solid #05070f;
+  border: 2px solid #07050b;
   background: #ffc72c;
-  color: #05070f;
+  color: #07050b;
   font-family: 'Baloo 2', 'Nunito', sans-serif;
   font-weight: 800;
   font-size: 1.1rem;
@@ -286,7 +286,7 @@ button.pet-widget__name--prompt:focus-visible {
   align-items: flex-start;
   gap: 0.4rem;
   padding: 0.65rem 0.8rem;
-  background: linear-gradient(160deg, #0d1b33, #05070f);
+  background: linear-gradient(160deg, #180e2c, #07050b);
   border: 2px solid rgba(47, 230, 217, 0.55);
   border-radius: 14px;
   box-shadow: 0 0 18px rgba(47, 230, 217, 0.25), 0 10px 26px rgba(0, 0, 0, 0.55);

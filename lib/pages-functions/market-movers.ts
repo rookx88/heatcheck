@@ -239,7 +239,7 @@ export function renderTickerChartSvg(vm: MarketMoverVM): string {
     const summary = `${vm.displayName} cumulative chart: currently ${vm.valueLabel} over ${vm.eventCount} event${vm.eventCount === 1 ? '' : 's'}`;
     return `<svg class="hc-mm-svg" viewBox="0 0 ${CHART_W} ${CHART_H}" role="img" aria-label="${escapeHtml(summary)}">
                 <title>${escapeHtml(summary)}</title>
-                <rect x="0.75" y="0.75" width="${CHART_W - 1.5}" height="${PLOT_H - 1.5}" rx="8" fill="#0b1a45" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
+                <rect x="0.75" y="0.75" width="${CHART_W - 1.5}" height="${PLOT_H - 1.5}" rx="8" fill="#160c27" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
                 ${zeroAxis}
                 <polyline fill="none" points="${polyline}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
                 ${dots}
@@ -457,7 +457,7 @@ export function marketMoversStyles(): string {
         .hc-mm-chartrow .hc-mm-value.is-zero { color: #5b6572; }
         .hc-mm-chart-empty {
             font-size: 0.82rem; font-weight: 800; color: rgba(255,255,255,0.85); margin: 0;
-            background: #0b1a45; border: 1.5px solid rgba(47,230,217,0.4); border-radius: 8px; padding: 0.8rem 0.9rem;
+            background: #160c27; border: 1.5px solid rgba(47,230,217,0.4); border-radius: 8px; padding: 0.8rem 0.9rem;
         }
         .hc-mm-news-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: Georgia, 'Times New Roman', serif; }
         .hc-mm-empty { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin: 1rem 0 0; }

@@ -224,7 +224,7 @@ function homepageStyles(): string {
             width: 48px; height: 48px; padding: 0;
             display: flex; align-items: center; justify-content: center;
             font-size: 1.35rem; line-height: 1;
-            color: var(--hc-teal); background: rgba(5, 7, 15, 0.6); cursor: pointer;
+            color: var(--hc-teal); background: rgba(7, 5, 11, 0.6); cursor: pointer;
             border: 2px solid rgba(47, 230, 217, 0.35); border-radius: 50%;
             transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
         }
@@ -256,7 +256,7 @@ function homepageStyles(): string {
             position: relative;
             border: 3px solid #f89b4e;
             border-radius: 6px;
-            background: #05070f;
+            background: #07050b;
             padding: 0 1.1rem 1.1rem;
             overflow: hidden;
             display: flex;
@@ -296,13 +296,13 @@ function homepageStyles(): string {
             inset: 0;
             background: linear-gradient(
                 180deg,
-                rgba(5, 7, 15, 0.62) 0%,
-                rgba(5, 7, 15, 0.28) 26%,
-                rgba(5, 7, 15, 0) 46%,
-                rgba(5, 7, 15, 0) 64%,
-                rgba(5, 7, 15, 0.45) 100%
+                rgba(7, 5, 11, 0.62) 0%,
+                rgba(7, 5, 11, 0.28) 26%,
+                rgba(7, 5, 11, 0) 46%,
+                rgba(7, 5, 11, 0) 64%,
+                rgba(7, 5, 11, 0.45) 100%
             );
-            box-shadow: inset 0 0 42px 16px rgba(6, 12, 34, 0.7);
+            box-shadow: inset 0 0 42px 16px rgba(11, 7, 19, 0.7);
         }
 
         /* The wind: two soft, blurred light wisps drifting across the cave at

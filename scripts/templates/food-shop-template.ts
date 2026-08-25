@@ -40,7 +40,7 @@ export function generateFoodShopPageHtml(baseUrl: string, page: FoodShopPage): s
         #${page.rootId} {
             position: fixed;
             inset: 0;
-            background: linear-gradient(180deg, #060c22 0%, #0b1a45 55%, #14275f 100%);
+            background: linear-gradient(180deg, #0b0713 0%, #160c27 55%, #23143e 100%);
         }
     </style>
 </head>

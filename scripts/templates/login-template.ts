@@ -49,7 +49,7 @@ export function generateLoginPageHtml(baseUrl: string): string {
         .hc-login-input {
             display: block; width: 100%; box-sizing: border-box; padding: 0.8rem 1rem;
             font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 1rem;
-            color: #ffffff; background: rgba(5, 7, 15, 0.6);
+            color: #ffffff; background: rgba(7, 5, 11, 0.6);
             border: 2px solid rgba(47, 230, 217, 0.4); border-radius: 12px;
             margin-bottom: 0.85rem; outline: none;
             transition: border-color 0.2s ease, box-shadow 0.2s ease;

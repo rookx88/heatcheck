@@ -27,11 +27,11 @@
   max-width: 440px;
   max-height: 90vh;
   overflow-y: auto;
-  background: linear-gradient(180deg, #0b1a45 0%, #060c22 100%);
+  background: linear-gradient(180deg, #160c27 0%, #0b0713 100%);
   border: 2px solid rgba(255, 199, 44, 0.55);
   border-radius: 22px;
   padding: 1.75rem 1.5rem 1.5rem;
-  box-shadow: 0 0 0 6px rgba(5, 7, 15, 0.6), 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 50px rgba(255, 199, 44, 0.18);
+  box-shadow: 0 0 0 6px rgba(7, 5, 11, 0.6), 0 20px 60px rgba(0, 0, 0, 0.6), 0 0 50px rgba(255, 199, 44, 0.18);
   animation: allset-pop-in 0.3s cubic-bezier(0.22, 0.61, 0.36, 1);
   font-family: 'Nunito', 'Helvetica Neue', Arial, sans-serif;
   text-align: center;
