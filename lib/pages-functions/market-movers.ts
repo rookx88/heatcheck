@@ -364,7 +364,7 @@ export function renderMarketMoversSection(data: MarketMoversData): string {
 // visible date ticks below the panel). The page background itself stays untouched.
 export function marketMoversStyles(): string {
     return `
-        .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #f89b4e; }
+        .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #a36114; }
         .hc-tape-track { display: flex; width: max-content; animation: hc-tape 28s linear infinite; }
         .hc-tape-group {
             list-style: none; display: flex; gap: 2.25rem; margin: 0; padding: 0.5rem 1.5rem 0.55rem;
@@ -423,7 +423,7 @@ export function marketMoversStyles(): string {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem;
             letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526;
         }
-        .hc-mm-name { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 0.95rem; color: #0b1526; }
+        .hc-mm-name { font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.95rem; color: #0b1526; }
         .hc-mm-desc {
             align-self: flex-start; margin: 0.1rem 0 0;
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.68rem;
@@ -459,7 +459,7 @@ export function marketMoversStyles(): string {
             font-size: 0.82rem; font-weight: 800; color: rgba(255,255,255,0.85); margin: 0;
             background: #160c27; border: 1.5px solid rgba(47,230,217,0.4); border-radius: 8px; padding: 0.8rem 0.9rem;
         }
-        .hc-mm-news-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: Georgia, 'Times New Roman', serif; }
+        .hc-mm-news-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: 'Nunito', sans-serif; }
         .hc-mm-empty { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin: 1rem 0 0; }
         .hc-mm-news-heading {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
@@ -467,12 +467,12 @@ export function marketMoversStyles(): string {
         }
         .hc-mm-news-list { list-style: none; margin: 0; padding: 0 0 0 0.35rem; display: flex; flex-direction: column; gap: 0.7rem; }
         .hc-mm-news-list a {
-            font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 0.95rem;
+            font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.95rem;
             line-height: 1.35; color: #7a1f1f; text-decoration: none;
         }
         .hc-mm-news-list a:hover { text-decoration: underline; }
         .hc-mm-excerpt {
-            font-family: Georgia, 'Times New Roman', serif; font-size: 0.85rem; line-height: 1.45;
+            font-family: 'Nunito', sans-serif; font-size: 0.85rem; line-height: 1.45;
             color: #8b3a3a; margin: 0.15rem 0 0.2rem 1rem;
         }
         .hc-mm-news-meta {
@@ -493,7 +493,7 @@ export function marketMoversStyles(): string {
         .hc-mm-results-heading { margin-top: 0; }
         .hc-mm-results-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
         .hc-mm-results-list li {
-            font-family: Georgia, 'Times New Roman', serif; font-size: 0.9rem; line-height: 1.4; color: #24344f;
+            font-family: 'Nunito', sans-serif; font-size: 0.9rem; line-height: 1.4; color: #24344f;
         }
         .hc-mm-result-chip {
             display: inline-block; font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
@@ -502,7 +502,7 @@ export function marketMoversStyles(): string {
         }
         .hc-mm-result-chip.is-pos { background: #2f9e1e; }
         .hc-mm-result-chip.is-neg { background: #e33a24; }
-        .hc-mm-results-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: Georgia, 'Times New Roman', serif; }
+        .hc-mm-results-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: 'Nunito', sans-serif; }
 
         /* Same orange frame as #tanks (homepage/render.ts), at every viewport - not
            just inside the desktop-only white-panel treatment below - so the two

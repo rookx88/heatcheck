@@ -344,7 +344,7 @@ function homepageStyles(): string {
            them paint above .hc-tanks-backdrop - see that rule's comment. */
         #tanks h2 {
             position: relative;
-            background: var(--hc-gold); color: #1a1200;
+            background: #8b1c18; color: #ffffff;
             margin: 0 -1.1rem 0.75rem; padding: 0.65rem 1.1rem;
         }
         .hc-section-sub--tanks { position: relative; margin-top: 0; }
