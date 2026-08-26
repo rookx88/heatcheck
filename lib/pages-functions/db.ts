@@ -65,6 +65,10 @@ export interface Env {
     DISCORD_BOT_TOKEN: string;
     DISCORD_PUBLIC_KEY: string;
     DISCORD_CHANNEL_ID: string;
+    // Minimum settled picks before an account qualifies for /leaderboard - defaults to
+    // 5 (functions/api/discord/interactions.ts) so someone 1-for-1 can't top the
+    // board. Same tunable-via-env-var pattern as DAILY_PICK_CAP.
+    LEADERBOARD_MIN_PICKS?: string;
 }
 
 export function getSql(env: Env): NeonQueryFunction<false, false> {

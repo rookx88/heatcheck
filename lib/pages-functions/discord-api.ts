@@ -100,24 +100,30 @@ function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Posts a message (embeds + components) to a channel as the bot. Requires the bot
- * to already be a member of that channel's server with Send Messages permission -
- * see the plan's Developer Portal setup steps. Buttons on a bot-sent message route
- * their click interactions back to this application's Interactions Endpoint URL,
- * which a plain incoming webhook message would not. Returns the created message id.
+/** Posts a message (embeds + components) to the given channel as the bot. Requires
+ * the bot to already be a member of that channel's server with Send Messages
+ * permission - see the plan's Developer Portal setup steps. Buttons on a bot-sent
+ * message route their click interactions back to this application's Interactions
+ * Endpoint URL, which a plain incoming webhook message would not. Returns the
+ * created message id.
+ *
+ * channelId is per-call (not read off env) since the bot is now installable across
+ * many guilds, each with its own configured channel (discord_guild_configs) - see
+ * functions/api/discord-sweep.ts and functions/api/discord-settlement-sweep.ts.
  *
  * Discord's per-channel message-create limit is roughly 5 requests/5s - a sweep
- * posting several Tanks back-to-back (functions/api/discord-sweep.ts) can trip it
- * well within that burst, observed live: 3 of 10 posts 429'd on the first real run.
- * Retries on 429 honoring the response's retry_after (seconds) rather than a guessed
- * fixed delay, up to MAX_RATE_LIMIT_RETRIES - after that, throws so the caller's
- * per-row error handling (discord_posted_at stays NULL) picks it up on the next sweep. */
+ * posting several Tanks back-to-back can trip it well within that burst, observed
+ * live: 3 of 10 posts 429'd on the first real run. Retries on 429 honoring the
+ * response's retry_after (seconds) rather than a guessed fixed delay, up to
+ * MAX_RATE_LIMIT_RETRIES - after that, throws so the caller's per-row error handling
+ * (the posts row for that guild/Tank stays unwritten) picks it up on the next sweep. */
 export async function postDiscordChannelMessage(
     env: Env,
-    body: { embeds: unknown[]; components: unknown[] }
+    channelId: string,
+    body: { embeds: unknown[]; components?: unknown[] }
 ): Promise<string> {
     for (let attempt = 0; ; attempt++) {
-        const res = await fetch(`https://discord.com/api/v10/channels/${env.DISCORD_CHANNEL_ID}/messages`, {
+        const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
             method: 'POST',
             headers: {
                 Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
@@ -144,4 +150,36 @@ export async function postDiscordChannelMessage(
         }
         throw new Error(`Discord message post failed: ${res.status} ${await res.text()}`);
     }
+}
+
+export interface DiscordGuildMember {
+    user: { id: string; username: string; global_name?: string | null; bot?: boolean };
+}
+
+// Live guild-membership read for /leaderboard and the settlement-announcement sweep
+// (functions/api/discord/interactions.ts, functions/api/discord-settlement-sweep.ts) -
+// deliberately not cached/stored anywhere (no membership table to keep in sync or
+// leak), same "compute from source at read time" convention balance-from-ledger and
+// satisfaction-from-timestamp already follow elsewhere in this app. Requires the
+// Server Members Intent toggle in the Developer Portal - without it Discord returns
+// 403 even though this is a plain REST call, not a gateway subscription.
+export async function fetchGuildMembers(env: Env, guildId: string): Promise<DiscordGuildMember[]> {
+    const members: DiscordGuildMember[] = [];
+    let after: string | undefined;
+    // 10 pages * 1000 = 10k members ceiling - generous for this bot's expected scale;
+    // revisit if a guild this large actually installs it.
+    for (let page = 0; page < 10; page++) {
+        const url = new URL(`https://discord.com/api/v10/guilds/${guildId}/members`);
+        url.searchParams.set('limit', '1000');
+        if (after) url.searchParams.set('after', after);
+        const res = await fetch(url.toString(), { headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` } });
+        if (!res.ok) {
+            throw new Error(`Discord guild members fetch failed: ${res.status} ${await res.text()}`);
+        }
+        const pageMembers = (await res.json()) as DiscordGuildMember[];
+        members.push(...pageMembers);
+        if (pageMembers.length < 1000) break;
+        after = pageMembers[pageMembers.length - 1].user.id;
+    }
+    return members;
 }

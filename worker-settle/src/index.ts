@@ -9,6 +9,12 @@
 // only place the ticker tag/settle pipeline runs on a real schedule at all. The two
 // calls are independent (one failing/erroring never blocks or masks the other), same
 // posture as worker-curate's sibling sweep calls.
+//
+// Also fires the Discord settlement-announcement sweep (/api/discord-settlement-sweep)
+// as a sibling call right after each settle call, same "own request, own budget, runs
+// regardless of the earlier step's outcome" posture worker-curate's sweep chain uses -
+// it depends on settlement having just run, which only happens on THIS cron, not
+// worker-curate's, so it can't live there instead.
 
 export interface Env {
     SETTLE_URL: string;
@@ -16,11 +22,11 @@ export interface Env {
     SETTLE_SECRET: string;
 }
 
-async function callSettle(label: string, url: string, secret: string): Promise<string> {
+async function callWithSecret(label: string, url: string, secret: string, header: string): Promise<string> {
     try {
         const res = await fetch(url, {
             method: 'POST',
-            headers: { 'X-Settle-Secret': secret },
+            headers: { [header]: secret },
         });
         const text = await res.text();
         if (!res.ok) {
@@ -35,12 +41,27 @@ async function callSettle(label: string, url: string, secret: string): Promise<s
     }
 }
 
+async function callSettle(label: string, url: string, secret: string): Promise<string> {
+    return callWithSecret(label, url, secret, 'X-Settle-Secret');
+}
+
+async function callDiscordSettlementSweep(label: string, settleUrl: string, secret: string): Promise<string> {
+    const url = new URL('/api/discord-settlement-sweep', settleUrl).toString();
+    return callWithSecret(`${label} discord-settlement-sweep`, url, secret, 'X-Settle-Secret');
+}
+
 async function runSettle(env: Env): Promise<string> {
     const live = await callSettle('production', env.SETTLE_URL, env.SETTLE_SECRET);
-    const preview = env.PREVIEW_SETTLE_URL
-        ? await callSettle('preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET)
-        : '';
-    return JSON.stringify({ production: live, preview });
+    const liveDiscord = await callDiscordSettlementSweep('production', env.SETTLE_URL, env.SETTLE_SECRET);
+
+    let preview = '';
+    let previewDiscord = '';
+    if (env.PREVIEW_SETTLE_URL) {
+        preview = await callSettle('preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
+        previewDiscord = await callDiscordSettlementSweep('preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
+    }
+
+    return JSON.stringify({ production: live, productionDiscordSweep: liveDiscord, preview, previewDiscordSweep: previewDiscord });
 }
 
 export default {
