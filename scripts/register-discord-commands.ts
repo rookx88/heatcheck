@@ -46,13 +46,15 @@ const commands = [
     },
     {
         name: 'heatchecks-config',
-        description: 'Configure which sports post to this server, and auto-draw',
+        description: 'Configure sports, auto-draw, and display names for this server',
         type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
         default_member_permissions: MANAGE_GUILD_PERMISSION,
         options: [
             { name: 'sport', description: 'Sport to toggle (pair with enabled)', type: OPTION_TYPE_STRING, required: false, choices: sportChoices },
             { name: 'enabled', description: 'Enable or disable that sport', type: OPTION_TYPE_BOOLEAN, required: false },
             { name: 'auto_draw', description: 'Automatically draw a giveaway winner when something settles', type: OPTION_TYPE_BOOLEAN, required: false },
+            { name: 'points_name', description: 'Custom display name for "Community Points" in this server', type: OPTION_TYPE_STRING, required: false },
+            { name: 'leaderboard_name', description: 'Custom display name for "Leaderboard" in this server', type: OPTION_TYPE_STRING, required: false },
         ],
     },
     {

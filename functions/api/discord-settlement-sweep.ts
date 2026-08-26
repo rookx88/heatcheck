@@ -31,7 +31,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
-import { postDiscordChannelMessage, fetchGuildMembers } from '../../lib/pages-functions/discord-api';
+import { postDiscordChannelMessage, fetchGuildMembers, DEFAULT_COMMUNITY_POINTS_LABEL } from '../../lib/pages-functions/discord-api';
 import { deriveTaglineFallback } from '../../tank-deck-format';
 import { awardCommunityPoints } from '../../lib/pages-functions/community-points';
 import { drawGiveawayWinner } from '../../lib/pages-functions/discord-draw';
@@ -50,6 +50,7 @@ interface CandidateRow {
     tank_page_id: string;
     channel_id: string;
     auto_draw_enabled: boolean;
+    community_points_label: string | null;
     slug: string;
     model_output: ModelOutput | string;
 }
@@ -71,7 +72,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const sql = getSql(context.env);
 
     const candidates = (await sql`
-        SELECT dgp.guild_id, dgp.tank_page_id, dgc.channel_id, dgc.auto_draw_enabled, t.slug, t.model_output
+        SELECT dgp.guild_id, dgp.tank_page_id, dgc.channel_id, dgc.auto_draw_enabled, dgc.community_points_label, t.slug, t.model_output
         FROM discord_guild_posts dgp
         JOIN discord_guild_configs dgc ON dgc.guild_id = dgp.guild_id
         JOIN tank_pages t ON t.id = dgp.tank_page_id
@@ -137,7 +138,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 : `Tough one — 0/${total} of this server's pickers got it this time.`;
             // Additive text only when points were actually awarded - guilds that never
             // touch the Community Points feature see the exact same recap as before.
-            const pointsLine = correct > 0 ? `\n\n+${POINTS_PER_CORRECT_PICK} Community Point to ${correct} of you.` : '';
+            const pointsLabel = row.community_points_label || DEFAULT_COMMUNITY_POINTS_LABEL;
+            const pointsLine = correct > 0 ? `\n\n+${POINTS_PER_CORRECT_PICK} ${pointsLabel} to ${correct} of you.` : '';
 
             const embed = {
                 title: `${tagline} — settled`,

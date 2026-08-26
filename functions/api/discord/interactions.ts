@@ -32,7 +32,7 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from '../../../lib/pages-functions/db';
 import { verifyDiscordRequest } from '../../../lib/pages-functions/discord-verify';
 import { submitPick, type SubmitPickResult } from '../../../lib/pages-functions/picks';
-import { fetchGuildMembers } from '../../../lib/pages-functions/discord-api';
+import { fetchGuildMembers, getGuildLabels } from '../../../lib/pages-functions/discord-api';
 import {
     handleSetupCommand,
     handleConfigCommand,
@@ -248,11 +248,14 @@ interface LeaderboardRow {
 // Guild-scoped, computed fresh every call - see the file header comment for why
 // there's deliberately no stored membership table backing this.
 async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promise<string> {
-    const members = await fetchGuildMembers(env, guildId);
+    const sql = getSql(env);
+    const [members, { leaderboardLabel }] = await Promise.all([
+        fetchGuildMembers(env, guildId),
+        getGuildLabels(sql, guildId),
+    ]);
     const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
     if (memberIds.length === 0) return 'No members to rank in this server yet.';
 
-    const sql = getSql(env);
     const rows = (await sql`
         SELECT dl.discord_user_id, dl.discord_username,
                COUNT(*) FILTER (WHERE p.result = 'correct')::int AS correct,
@@ -285,5 +288,5 @@ async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promi
     }
 
     const lines = ranked.map((r, i) => `**${i + 1}.** ${r.name} — ${(r.accuracy * 100).toFixed(0)}% (${r.correct}/${r.settled})`);
-    return `**Heatchecks Leaderboard**\n${lines.join('\n')}`;
+    return `**Heatchecks ${leaderboardLabel}**\n${lines.join('\n')}`;
 }

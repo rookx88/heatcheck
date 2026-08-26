@@ -3,10 +3,33 @@
 // sweep (functions/api/discord-sweep.ts). No SDK - Discord's REST surface used here
 // is three plain HTTP calls, not worth a dependency.
 
+import type { NeonQueryFunction } from '@neondatabase/serverless';
 import type { Env } from './db';
 
 // Discord permission bit for "Manage Server" - https://discord.com/developers/docs/topics/permissions
 const MANAGE_GUILD_PERMISSION = 0x20n;
+
+export const DEFAULT_COMMUNITY_POINTS_LABEL = 'Community Points';
+export const DEFAULT_LEADERBOARD_LABEL = 'Leaderboard';
+
+export interface GuildLabels {
+    communityPointsLabel: string;
+    leaderboardLabel: string;
+}
+
+// Resolves a guild's custom display names for "Community Points" and "Leaderboard"
+// (set via /heatchecks-config, add_custom_labels_to_discord_guild_configs.sql),
+// falling back to the defaults when unset - purely cosmetic, every caller that
+// renders either word anywhere goes through this one place so a guild's choice is
+// never applied in some spots and missed in others.
+export async function getGuildLabels(sql: NeonQueryFunction<false, false>, guildId: string): Promise<GuildLabels> {
+    const rows = await sql`SELECT community_points_label, leaderboard_label FROM discord_guild_configs WHERE guild_id = ${guildId}`;
+    const row = rows[0] as unknown as { community_points_label: string | null; leaderboard_label: string | null } | undefined;
+    return {
+        communityPointsLabel: row?.community_points_label || DEFAULT_COMMUNITY_POINTS_LABEL,
+        leaderboardLabel: row?.leaderboard_label || DEFAULT_LEADERBOARD_LABEL,
+    };
+}
 
 // Server-authoritative permission check for every admin-only slash command
 // (/heatchecks-setup, /heatchecks-config, /heatchecks-post, /heatchecks-draw) -

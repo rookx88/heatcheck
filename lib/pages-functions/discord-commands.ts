@@ -24,7 +24,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage } from './discord-api';
+import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, getGuildLabels } from './discord-api';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
 import { buildCommunityPickCardMessage, buildGiveawayResultMessage, buildNoEligiblePoolMessage } from './discord-community-card';
 import { drawGiveawayWinner, type GiveawaySourceType } from './discord-draw';
@@ -121,9 +121,11 @@ export async function handleConfigCommand(context: RequestContext, interaction: 
     const sport = options.find((o: any) => o.name === 'sport')?.value as string | undefined;
     const enabledOpt = options.find((o: any) => o.name === 'enabled')?.value as boolean | undefined;
     const autoDrawOpt = options.find((o: any) => o.name === 'auto_draw')?.value as boolean | undefined;
+    const pointsNameOpt = options.find((o: any) => o.name === 'points_name')?.value as string | undefined;
+    const leaderboardNameOpt = options.find((o: any) => o.name === 'leaderboard_name')?.value as string | undefined;
 
-    if (sport === undefined && autoDrawOpt === undefined) {
-        return ephemeral('Specify a sport (with enabled:true/false) or auto_draw:true/false.');
+    if (sport === undefined && autoDrawOpt === undefined && pointsNameOpt === undefined && leaderboardNameOpt === undefined) {
+        return ephemeral('Specify a sport (with enabled:true/false), auto_draw:true/false, points_name, or leaderboard_name.');
     }
     if (sport !== undefined && enabledOpt === undefined) {
         return ephemeral('Specify enabled:true or enabled:false along with the sport.');
@@ -146,6 +148,17 @@ export async function handleConfigCommand(context: RequestContext, interaction: 
     if (autoDrawOpt !== undefined) {
         await sql`UPDATE discord_guild_configs SET auto_draw_enabled = ${autoDrawOpt} WHERE guild_id = ${guildId}`;
         replies.push(`Auto-draw is now ${autoDrawOpt ? 'on' : 'off'} for this server.`);
+    }
+    // Purely cosmetic - lib/pages-functions/discord-api.ts#getGuildLabels is the one
+    // place every renderer resolves these (falling back to the defaults on NULL), so
+    // setting them here is the only write path that matters.
+    if (pointsNameOpt !== undefined) {
+        await sql`UPDATE discord_guild_configs SET community_points_label = ${pointsNameOpt} WHERE guild_id = ${guildId}`;
+        replies.push(`Points are now called "${pointsNameOpt}" in this server.`);
+    }
+    if (leaderboardNameOpt !== undefined) {
+        await sql`UPDATE discord_guild_configs SET leaderboard_label = ${leaderboardNameOpt} WHERE guild_id = ${guildId}`;
+        replies.push(`The leaderboard is now called "${leaderboardNameOpt}" in this server.`);
     }
     return ephemeral(replies.join(' '));
 }
@@ -526,11 +539,14 @@ interface CommunityLeaderboardRow {
 }
 
 export async function buildCommunityPointsLeaderboardMessage(env: Env, guildId: string): Promise<string> {
-    const members = await fetchGuildMembers(env, guildId);
+    const sql = getSql(env);
+    const [members, { communityPointsLabel, leaderboardLabel }] = await Promise.all([
+        fetchGuildMembers(env, guildId),
+        getGuildLabels(sql, guildId),
+    ]);
     const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
     if (memberIds.length === 0) return 'No members to rank in this server yet.';
 
-    const sql = getSql(env);
     const rows = (await sql`
         SELECT discord_user_id, points FROM community_points
         WHERE guild_id = ${guildId} AND discord_user_id = ANY(${memberIds}::text[]) AND points > 0
@@ -538,9 +554,9 @@ export async function buildCommunityPointsLeaderboardMessage(env: Env, guildId: 
         LIMIT 10
     `) as unknown as CommunityLeaderboardRow[];
 
-    if (rows.length === 0) return 'Nobody in this server has any Community Points yet.';
+    if (rows.length === 0) return `Nobody in this server has any ${communityPointsLabel} yet.`;
 
     const nameById = new Map(members.map((m) => [m.user.id, m.user.global_name || m.user.username]));
-    const lines = rows.map((r, i) => `**${i + 1}.** ${nameById.get(r.discord_user_id) ?? 'Unknown'} — ${r.points} pts`);
-    return `**Community Points Leaderboard**\n${lines.join('\n')}`;
+    const lines = rows.map((r, i) => `**${i + 1}.** ${nameById.get(r.discord_user_id) ?? 'Unknown'} — ${r.points} ${communityPointsLabel}`);
+    return `**${communityPointsLabel} ${leaderboardLabel}**\n${lines.join('\n')}`;
 }
