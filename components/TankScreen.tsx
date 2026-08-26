@@ -5,7 +5,7 @@ import { MapHud } from './MapHud';
 import { NotificationsHost } from './NotificationsHost';
 import { trackEvent } from '../tank-analytics-client';
 import { SPORT_BY_LEAGUE, SPORT_ORDER, type Sport } from '../sport-map';
-import tanksBackgroundSrc from '../assets/new-website/Tanks- Background.svg';
+import tanksBackgroundSrc from '../assets/images/tanks-bg.webp';
 import './TankScreen.css';
 
 // Matches the SVG's own declared viewBox (assets/new-website/Tanks- Background.svg).

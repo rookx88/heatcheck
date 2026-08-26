@@ -7,7 +7,7 @@ import { LandScreen } from './LandScreen';
 import { EggShopModal } from './EggShopModal';
 import { IncubatorModal } from './IncubatorModal';
 import { trackEvent } from '../tank-analytics-client';
-import eggShopSrc from '../assets/new-website/egg-shop.svg';
+import eggShopSrc from '../assets/images/egg-shop-bg.webp';
 
 // Hand-traced over the embedded 1008x1792 artwork (px * 0.803571 = viewBox units).
 // The domed "Incubator" display case, left side of the room (sign baked into the art).

@@ -84,6 +84,90 @@ function extractEmbeddedPng(svgPath: string): Buffer {
 }
 
 /**
+ * Like extractEmbeddedPng, but permissive on both the attribute name (matches
+ * bare href="..." as well as xlink:href="...") and the embedded format (PNG or
+ * JPEG) - the game-screen backgrounds below (assets/new-website/Tank-land.svg
+ * etc.) embed JPEGs via a plain href, not xlink:href/PNG like the older brand
+ * exports extractEmbeddedPng was written for.
+ */
+function extractLargestEmbeddedRaster(svgPath: string): Buffer {
+    const svg = fs.readFileSync(svgPath, 'utf-8');
+    const re = /href="data:image\/(?:png|jpeg);base64,([^"]+)"/g;
+    let match: RegExpExecArray | null;
+    let largest: Buffer | null = null;
+    while ((match = re.exec(svg)) !== null) {
+        const buf = Buffer.from(match[1], 'base64');
+        if (!largest || buf.length > largest.length) {
+            largest = buf;
+        }
+    }
+    if (!largest) {
+        throw new Error(`No embedded raster image found in ${svgPath}`);
+    }
+    return largest;
+}
+
+interface GameBackgroundJob {
+    source: string;
+    outName: string;
+    /** World map only - composited over the homepage's own background, so the
+     * black canvas needs to become real transparency (see
+     * deriveAlphaFromBrightness). The others are full-bleed opaque screen
+     * backgrounds (confirmed via sharp metadata: hasAlpha:false, solid corner
+     * pixels) - nothing behind them, so no alpha step needed. */
+    blackBackground?: boolean;
+}
+
+/**
+ * The game screens' full-bleed backgrounds (Tank Land, Hatchery, Champions
+ * Terrace, Quickboost Delicacies, individual Tank pages, and the homepage's
+ * INTERACTIVE world map island) were never wired into this optimization
+ * pipeline - each ships its raw Canva SVG export directly
+ * (components/LandScreen.tsx and TankScreen.tsx consumers import straight
+ * from assets/new-website/*.svg), at 700KB-3.2MB apiece, because the
+ * lossless-PNG-or-barely-compressed-JPEG payload embedded in the SVG never
+ * got re-encoded. Unlike the `jobs` loop above, this must NOT trim or resize:
+ * LandScreen/TankScreen hand-trace hotspot paths and hardcode a VIEWBOX
+ * against the source's exact, untrimmed pixel dimensions (see the comments in
+ * components/LandScreen.tsx and worldMapRegions.ts) - changing the canvas
+ * size or cropping would shift every hotspot out of alignment with the
+ * artwork. Only the codec changes (PNG/JPEG -> WebP); same pixels, same
+ * canvas, dramatically smaller file.
+ */
+const gameBackgroundJobs: GameBackgroundJob[] = [
+    { source: 'Tank-land.svg', outName: 'tank-land-bg' },
+    { source: 'egg-shop.svg', outName: 'egg-shop-bg' },
+    { source: 'Champions_food_shop.svg', outName: 'champions-food-shop-bg' },
+    { source: 'Quickboost_food_shop.svg', outName: 'quickboost-food-shop-bg' },
+    { source: 'Tanks- Background.svg', outName: 'tanks-bg' },
+    // Distinct from the trimmed/resized 'world-map' job above (that one feeds
+    // the homepage's static SSR <picture> fallback) - the interactive island
+    // (components/WorldMap.tsx) needs the untrimmed 1254x1254 canvas its
+    // hand-traced region hotspots (worldMapRegions.ts) are calibrated to.
+    { source: 'HeatChecksWorldMap.svg', outName: 'world-map-interactive', blackBackground: true },
+];
+
+async function buildGameBackgrounds(): Promise<void> {
+    for (const job of gameBackgroundJobs) {
+        const svgPath = path.join(sourceDir, job.source);
+        let buffer = extractLargestEmbeddedRaster(svgPath);
+        if (job.blackBackground) {
+            buffer = await deriveAlphaFromBrightness(buffer);
+        }
+
+        const webpPath = path.join(outDir, `${job.outName}.webp`);
+        const info = await sharp(buffer).webp({ quality: 82 }).toFile(webpPath);
+
+        const webpSize = fs.statSync(webpPath).size;
+        const originalSize = fs.statSync(svgPath).size;
+        console.log(
+            `✓ ${job.source} (${(originalSize / 1024 / 1024).toFixed(1)}MB) -> ` +
+            `${job.outName}.webp (${(webpSize / 1024).toFixed(0)}KB) [${info.width}x${info.height}, unchanged]`
+        );
+    }
+}
+
+/**
  * The OG/Twitter share-card image (og-share-world-map.jpg) - separate from the `jobs`
  * loop above since it needs a fixed-dimension cover-crop (1200x630, the standard OG
  * card size) rather than a width-preserving resize. JPG (not WebP) deliberately -
@@ -203,6 +287,7 @@ async function run(): Promise<void> {
     await buildSettlementEmailImages();
     await buildExploreLogo();
     await buildRegisterBanner();
+    await buildGameBackgrounds();
 
     for (const job of jobs) {
         const svgPath = path.join(sourceDir, job.source);

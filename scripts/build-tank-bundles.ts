@@ -51,8 +51,12 @@ export async function buildTankBundles(): Promise<void> {
         // because the homepage entry brings a SECOND svg into this build - two assets
         // can't share one fixed output path.
         assetNames: 'tank-asset-[hash]',
-        publicPath: '/assets', // baked into the JS as the SVG's href
-        loader: { '.svg': 'file' }, // copy the SVG as a static file, don't inline as a data: URL
+        publicPath: '/assets', // baked into the JS as the SVG/webp's href
+        // Copy as static files, don't inline as data: URLs - .webp joined .svg here once
+        // the game-screen backgrounds (Tank Land, Hatchery, food shops, Tank pages, the
+        // interactive world map) moved off raw multi-MB SVG-wrapped exports onto
+        // pre-optimized WebP (scripts/optimize-landing-images.ts).
+        loader: { '.svg': 'file', '.webp': 'file' },
         metafile: true, // needed below to discover the shared chunk's hashed filename
     });
 

@@ -4,7 +4,7 @@ import {
   WORLD_MAP_VIEWBOX,
   type WorldMapRegion,
 } from './worldMapRegions';
-import worldMapSrc from '../assets/new-website/HeatChecksWorldMap.svg';
+import worldMapSrc from '../assets/images/world-map-interactive.webp';
 import './WorldMap.css';
 
 // Flip to true (or pass the `debugHotspots` prop) to visualize every SVG

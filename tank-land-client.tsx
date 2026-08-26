@@ -6,7 +6,7 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { LandScreen } from './components/LandScreen';
-import tankLandSrc from './assets/new-website/Tank-land.svg';
+import tankLandSrc from './assets/images/tank-land-bg.webp';
 
 // All paths hand-traced over the embedded 1008x1792 artwork (px * 0.803571 =
 // viewBox units).

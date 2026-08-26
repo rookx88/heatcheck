@@ -6,7 +6,7 @@ import React, { useCallback, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { LandScreen } from './components/LandScreen';
 import { FoodShopModal } from './components/FoodShopModal';
-import quickboostShopSrc from './assets/new-website/Quickboost_food_shop.svg';
+import quickboostShopSrc from './assets/images/quickboost-food-shop-bg.webp';
 // The modals ride the shared .tank-modal-* chrome from TankScreen.css.
 import './components/TankScreen.css';
 
