@@ -3,11 +3,20 @@
 // /api/curate endpoint over HTTP. All curation logic lives there
 // (functions/api/curate.ts), not here - this file has no DB or Anthropic dependency at
 // all.
+//
+// Two cadences (2026-08-26, see wrangler.toml's [triggers] comment for the full
+// rationale): the original once-daily slot ("0 10 * * *") runs the FULL chain below,
+// the other configured slots run ONLY runSweeps() - never /api/curate, since that's the
+// one step here that spends real Anthropic API credits every time it fires.
 
 export interface Env {
     CURATE_URL: string;
     CURATE_SECRET: string;
 }
+
+// The one slot allowed to spend Anthropic credits - see the event.cron branch in
+// scheduled() below. Every other configured cron slot runs sweeps only.
+const FULL_CHAIN_CRON = '0 10 * * *';
 
 async function runCurate(env: Env): Promise<string> {
     const res = await fetch(env.CURATE_URL, {
@@ -21,22 +30,30 @@ async function runCurate(env: Env): Promise<string> {
         console.log(`[worker-curate] curate run complete: ${text}`);
     }
 
+    const sweeps = await runSweeps(env);
+    return JSON.stringify({ curate: text, ...sweeps });
+}
+
+// The three free, idempotent housekeeping sweeps - none call Anthropic, all are safe to
+// re-run any number of times in a day (see each endpoint's own header comment). Split
+// out so the more-frequent cron slots can fire these without ever touching /api/curate.
+async function runSweeps(env: Env): Promise<{ tickerSweep: string; notifySweep: string; discordSweep: string }> {
     // Exchange ticker tag sweep - a SEPARATE request on purpose: each Pages Function
     // invocation has its own subrequest budget, and curation's traffic already runs
     // close to it (see functions/api/ticker-sweep.ts). Same secret, sibling path.
-    // Runs even when curation errored: the sweep is the catch-all for untagged
-    // published Tanks and doesn't depend on curation having succeeded.
-    const sweepText = await postSibling(env, '/api/ticker-sweep');
+    // Runs even when curation errored/didn't run this cycle: the sweep is the catch-all
+    // for untagged published Tanks and doesn't depend on curation having succeeded.
+    const tickerSweep = await postSibling(env, '/api/ticker-sweep');
 
-    // Daily notification sweep (pet-hungry + new-Tanks digest) - same posture: own
-    // request, own budget, runs regardless of the earlier steps' outcomes.
-    const notifyText = await postSibling(env, '/api/notify-sweep');
+    // Notification sweep (pet-hungry + new-Tanks digest) - same posture: own request,
+    // own budget, runs regardless of the earlier steps' outcomes.
+    const notifySweep = await postSibling(env, '/api/notify-sweep');
 
     // Post newly-published Tanks to Discord - same posture again: own request, own
     // budget, runs regardless of the earlier steps' outcomes.
-    const discordText = await postSibling(env, '/api/discord-sweep');
+    const discordSweep = await postSibling(env, '/api/discord-sweep');
 
-    return JSON.stringify({ curate: text, tickerSweep: sweepText, notifySweep: notifyText, discordSweep: discordText });
+    return { tickerSweep, notifySweep, discordSweep };
 }
 
 async function postSibling(env: Env, path: string): Promise<string> {
@@ -60,8 +77,17 @@ async function postSibling(env: Env, path: string): Promise<string> {
 }
 
 export default {
-    async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-        ctx.waitUntil(runCurate(env));
+    async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+        // event.cron tells us which configured schedule actually fired (wrangler.toml
+        // can list several sharing this one handler). Only FULL_CHAIN_CRON is allowed
+        // to reach /api/curate; every other slot is sweeps-only by construction, so a
+        // new cron slot added to wrangler.toml without updating this check safely
+        // defaults to sweeps-only rather than accidentally spending Anthropic credits.
+        if (event.cron === FULL_CHAIN_CRON) {
+            ctx.waitUntil(runCurate(env));
+        } else {
+            ctx.waitUntil(runSweeps(env));
+        }
     },
 
     // Manual-trigger shortcut for testing without waiting for the cron, e.g.

@@ -2,13 +2,21 @@ name = "heatchecks-curate-cron"
 main = "src/index.ts"
 compatibility_date = "2026-08-12"
 
-# Once daily, timed so drafts are waiting at 6:00 AM Eastern for morning review. Cloudflare
-# Cron Triggers run on fixed UTC time with no timezone/DST awareness: 10:00 UTC is 6 AM during
-# EDT (spring-fall); once the US falls back to EST in November this drifts to 5:00 AM Eastern
-# unless nudged to "0 11 * * *" for the winter months. Distinct from worker-settle's 0 9 * * *
-# so the two don't compete for the same window.
+# Two different cadences on one worker (2026-08-26): "0 10 * * *" is the original once-daily
+# slot, timed so drafts are waiting at 6:00 AM Eastern for morning review (Cloudflare Cron
+# Triggers run fixed UTC with no DST awareness: 10:00 UTC is 6 AM during EDT; once the US
+# falls back to EST in November this drifts to 5:00 AM Eastern unless nudged to "0 11 * * *"
+# for the winter months). Distinct from worker-settle's 0 9 * * * so the two don't compete for
+# the same window. scheduled() below branches on event.cron: ONLY this slot runs the full
+# chain (it's the one that spends real Anthropic API credits via /api/curate) - "0 18 * * *"
+# and "0 2 * * *" run just the three free/idempotent sweeps (ticker/notify/discord), spaced
+# ~8h apart so a Tank published any time of day gets tagged/posted/notified within a few
+# hours instead of waiting for the next morning's full run. Sammy asked for 3x/day on the
+# sweeps specifically (2026-08-26) - add more slots here if that cadence needs tightening,
+# but never add one that isn't handled in the event.cron branch below, or it'll silently
+# run the full (paid) chain instead of just the sweeps.
 [triggers]
-crons = ["0 10 * * *"]
+crons = ["0 10 * * *", "0 18 * * *", "0 2 * * *"]
 
 [vars]
 # Staging posture (2026-08-21): curation runs against the auth-sessions branch alias,
