@@ -188,7 +188,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         if (customId === 'tpselect') return handleTankPostSelect(context, interaction);
         if (customId.startsWith('tprepost:')) return handleTankRepostConfirm(context, interaction, customId);
         if (customId === 'tpcancel') return updateMessageResponse('Cancelled.');
-        if (customId === 'cpselect') return handleCommunityPickSelect(context, interaction);
+        if (customId.startsWith('cpselect')) return handleCommunityPickSelect(context, interaction, customId);
         if (customId.startsWith('cpcreate:')) return handleCommunityPickConfirm(context, interaction, customId);
         if (customId === 'cpcancel') return updateMessageResponse('Cancelled.');
         if (customId.startsWith('cpvote:')) return handleCommunityVote(context, interaction, customId);

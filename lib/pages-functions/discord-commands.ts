@@ -26,9 +26,10 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
 import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, getGuildLabels } from './discord-api';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
-import { buildCommunityPickCardMessage, buildGiveawayResultMessage, buildNoEligiblePoolMessage } from './discord-community-card';
+import { buildGiveawayResultMessage, buildNoEligiblePoolMessage } from './discord-community-card';
 import { drawGiveawayWinner, type GiveawaySourceType } from './discord-draw';
 import { fetchMarket, resolveMarket } from './gamma';
+import { createAndPostCommunityPick } from './community-pick-creation';
 import { fetchLiveGames } from '../../tank-gamma-live';
 
 const RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE = 4;
@@ -321,51 +322,80 @@ async function handleCommunityPickSearch(context: RequestContext, guildId: strin
     if (matches.length === 0) {
         return ephemeral(`No live two-sided markets found for ${sport}${term ? ` matching "${keyword}"` : ''}.`);
     }
-    return selectMenuResponse('cpselect', `Found ${matches.length} market(s) — pick one:`, matches);
+    // sport rides the select menu's own custom_id (":" -split, safe even for
+    // multi-word sports like "La Liga" since only literal colons split) so it
+    // survives into the confirm step - community_picks.sport needs it, and the
+    // select step itself only carries a market id as its value.
+    return selectMenuResponse(`cpselect:${sport}`, `Found ${matches.length} market(s) — pick one:`, matches);
 }
 
-export async function handleCommunityPickSelect(context: RequestContext, interaction: any): Promise<Response> {
+// Underdog-weighted split: the side less likely to win pays more. Returns null when
+// the market's odds aren't usable (missing, wrong count, out of (0,1] range) - callers
+// reject creation rather than silently falling back to an even split, same "don't
+// guess, stay pending" posture lib/pages-functions/gamma.ts#resolveMarket takes on
+// its own ambiguous cases.
+function computePointsSplit(outcomePrices: number[]): { sideAPoints: number; sideBPoints: number } | null {
+    if (outcomePrices.length !== 2) return null;
+    const [a, b] = outcomePrices;
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || a > 1 || b <= 0 || b > 1) return null;
+    return { sideAPoints: Math.round(100 * b), sideBPoints: Math.round(100 * a) };
+}
+
+function parseMarketOutcomes(market: any): { question: string; outcomes: string[]; outcomePrices: number[] } | null {
+    const question = market?.question as string | undefined;
+    let outcomes: string[] = [];
+    let outcomePrices: number[] = [];
+    try {
+        outcomes = JSON.parse(market?.outcomes ?? '[]');
+        outcomePrices = (JSON.parse(market?.outcomePrices ?? '[]') as string[]).map(Number);
+    } catch { /* leave empty, caught by the length check below */ }
+    if (!question || outcomes.length !== 2) return null;
+    return { question, outcomes, outcomePrices };
+}
+
+export async function handleCommunityPickSelect(context: RequestContext, interaction: any, customId: string): Promise<Response> {
+    const sport = customId.split(':')[1];
     const marketId: string | undefined = interaction.data?.values?.[0];
-    if (!marketId) return updateMessageResponse("Couldn't read your selection.");
+    if (!marketId || !sport) return updateMessageResponse("Couldn't read your selection.");
 
     const market = await fetchMarket(marketId);
     if (!market) return updateMessageResponse("Couldn't load that market's details - it may no longer be available.");
+    const parsed = parseMarketOutcomes(market);
+    if (!parsed) return updateMessageResponse("That market can't be used for a Community Pick (needs exactly two sides).");
 
-    const question = (market as any).question as string | undefined;
-    const outcomes: string[] = (() => {
-        try {
-            return JSON.parse((market as any).outcomes ?? '[]');
-        } catch {
-            return [];
-        }
-    })();
-    if (!question || outcomes.length !== 2) return updateMessageResponse("That market can't be used for a Community Pick (needs exactly two sides).");
+    // Estimated split for the preview only - the authoritative, stored value is
+    // always recomputed at confirm time from a fresh fetch (see
+    // handleCommunityPickConfirm), so this can legitimately differ slightly if odds
+    // moved in the seconds between clicks.
+    const split = computePointsSplit(parsed.outcomePrices);
+    const pointsPreview = split ? `\n${parsed.outcomes[0]} → ~${split.sideAPoints} pts  ·  ${parsed.outcomes[1]} → ~${split.sideBPoints} pts` : '';
 
-    return updateMessageResponse(`Create a Community Pick for:\n**${question}**\n${outcomes[0]} vs. ${outcomes[1]}?`, [
-        { label: 'Create', customId: `cpcreate:${marketId}` },
+    return updateMessageResponse(`Create a Community Pick for:\n**${parsed.question}**\n${parsed.outcomes[0]} vs. ${parsed.outcomes[1]}?${pointsPreview}`, [
+        { label: 'Create', customId: `cpcreate:${marketId}:${sport}` },
         { label: 'Cancel', customId: 'cpcancel' },
     ]);
 }
 
 export async function handleCommunityPickConfirm(context: RequestContext, interaction: any, customId: string): Promise<Response> {
     const guildId: string | undefined = interaction.guild_id;
-    const marketId = customId.split(':').slice(1).join(':'); // market ids are plain strings, no ':' expected, but don't truncate if one ever appears
+    const [, marketId, sport] = customId.split(':');
     const createdBy: string | undefined = interaction.member?.user?.id;
     if (!guildId || !marketId || !createdBy) return updateMessageResponse("Couldn't read your selection.");
 
     // Re-fetch fresh rather than trust the earlier preview - avoids acting on a market
-    // that moved/closed between the select step and this confirm.
+    // that moved/closed between the select step and this confirm. The points split
+    // stored below comes from THIS fetch, not the select step's - it's the one that
+    // actually gets locked in.
     const market = await fetchMarket(marketId);
     if (!market) return updateMessageResponse("Couldn't load that market anymore - it may no longer be available.");
-    const question = (market as any).question as string | undefined;
-    let outcomes: string[] = [];
-    try {
-        outcomes = JSON.parse((market as any).outcomes ?? '[]');
-    } catch { /* leave empty, caught below */ }
-    if (!question || outcomes.length !== 2) return updateMessageResponse("That market can't be used for a Community Pick anymore.");
+    const parsed = parseMarketOutcomes(market);
+    if (!parsed) return updateMessageResponse("That market can't be used for a Community Pick anymore.");
 
     const resolution = resolveMarket(market);
     if (resolution.status === 'resolved') return updateMessageResponse('That market has already resolved - pick a live one.');
+
+    const split = computePointsSplit(parsed.outcomePrices);
+    if (!split) return updateMessageResponse("This market's odds aren't usable for scoring right now - try a different one.");
 
     const sql = getSql(context.env);
     const configRows = await sql`SELECT channel_id FROM discord_guild_configs WHERE guild_id = ${guildId}`;
@@ -378,21 +408,15 @@ export async function handleCommunityPickConfirm(context: RequestContext, intera
     // exists for display copy on the card, not as the real gate on resolution.
     const resolveDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
 
-    const rows = await sql`
-        INSERT INTO community_picks (guild_id, created_by, source_market_id, question_text, side_a_label, side_b_label, source_outcomes, resolve_date)
-        VALUES (${guildId}, ${createdBy}, ${marketId}, ${question}, ${outcomes[0]}, ${outcomes[1]}, ${JSON.stringify(outcomes)}::jsonb, ${resolveDate})
-        RETURNING id
-    `;
-    const pickId = (rows[0] as unknown as { id: string }).id;
+    const result = await createAndPostCommunityPick(sql, context.env, {
+        guildId, channelId, createdBy, sport: sport || null, marketId,
+        question: parsed.question, sideALabel: parsed.outcomes[0], sideBLabel: parsed.outcomes[1],
+        sourceOutcomes: parsed.outcomes, sideAPoints: split.sideAPoints, sideBPoints: split.sideBPoints, resolveDate,
+    });
 
-    const card = buildCommunityPickCardMessage({ id: pickId, questionText: question, sideALabel: outcomes[0], sideBLabel: outcomes[1], resolveDate });
-    try {
-        await postDiscordChannelMessage(context.env, channelId, card);
-        return updateMessageResponse('Posted!');
-    } catch (err) {
-        console.error('[discord-commands] Failed to post Community Pick card:', err);
-        return updateMessageResponse('Created, but posting the card failed - try /heatchecks-post community-pick again shortly.');
-    }
+    if (result.status === 'duplicate') return updateMessageResponse('This market already has a Community Pick posted in this server.');
+    if (result.status === 'post_failed') return updateMessageResponse('Created, but posting the card failed - try /heatchecks-post community-pick again shortly.');
+    return updateMessageResponse('Posted!');
 }
 
 // ===================================================================================

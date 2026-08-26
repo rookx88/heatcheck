@@ -24,7 +24,6 @@ import { awardCommunityPoints } from '../../lib/pages-functions/community-points
 import { drawGiveawayWinner } from '../../lib/pages-functions/discord-draw';
 
 const MAX_PER_RUN = 20;
-const POINTS_PER_CORRECT_VOTE = 1;
 
 interface OpenPickRow {
     id: string;
@@ -36,6 +35,10 @@ interface OpenPickRow {
     side_a_label: string;
     side_b_label: string;
     source_outcomes: string[] | string;
+    // Underdog-weighted, locked at creation (see lib/pages-functions/community-pick-creation.ts) -
+    // awarded exactly as stored, never recomputed from odds at settlement time.
+    side_a_points: number;
+    side_b_points: number;
 }
 
 interface VoteRow {
@@ -53,7 +56,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const sql = getSql(context.env);
     const openPicks = (await sql`
         SELECT cp.id, cp.guild_id, dgc.channel_id, dgc.auto_draw_enabled,
-               cp.source_market_id, cp.question_text, cp.side_a_label, cp.side_b_label, cp.source_outcomes
+               cp.source_market_id, cp.question_text, cp.side_a_label, cp.side_b_label, cp.source_outcomes,
+               cp.side_a_points, cp.side_b_points
         FROM community_picks cp
         JOIN discord_guild_configs dgc ON dgc.guild_id = cp.guild_id
         WHERE cp.status = 'open'
@@ -102,12 +106,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             if (votes.length === 0) continue; // nobody voted - nothing to award or announce
 
             const correctVotes = votes.filter((v) => v.side_chosen === winningSide);
+            const payout = winningSide === 0 ? row.side_a_points : row.side_b_points;
             for (const vote of correctVotes) {
                 await awardCommunityPoints(sql, {
                     guildId: row.guild_id,
                     discordUserId: vote.discord_user_id,
                     linkedHeatchecksUserId: vote.linked_heatchecks_user_id,
-                    delta: POINTS_PER_CORRECT_VOTE,
+                    delta: payout,
                     sourceType: 'community_pick',
                     sourceId: row.id,
                 });

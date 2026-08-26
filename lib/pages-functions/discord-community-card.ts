@@ -15,6 +15,12 @@ export interface CommunityPickCardInput {
     questionText: string;
     sideALabel: string;
     sideBLabel: string;
+    // Underdog-weighted payout, locked at creation time (see
+    // lib/pages-functions/community-pick-creation.ts) - what's shown here is exactly
+    // what a correct voter earns, for this pick's whole life. Displaying it on the
+    // card itself (not just implied by the vote) is the point: nobody has to guess.
+    sideAPoints: number;
+    sideBPoints: number;
     resolveDate: string; // ISO 8601
 }
 
@@ -31,7 +37,7 @@ export function buildCommunityPickCardMessage(input: CommunityPickCardInput): Di
     const embed = {
         author: { name: '🎲 COMMUNITY PICK' },
         title: input.questionText,
-        description: `${input.sideALabel}  vs.  ${input.sideBLabel}\n\nResolves ${resolveDateLabel} — vote below. No account required to vote.`,
+        description: `${input.sideALabel} → ${input.sideAPoints} pts  ·  ${input.sideBLabel} → ${input.sideBPoints} pts\n\nResolves ${resolveDateLabel} — vote below. No account required to vote.`,
         // Distinct purple, deliberately not the real Tank card's brand gold (0xffc72c)
         // or the settlement recap's teal (0x2fe6d9) - a glance should tell the three
         // apart.
@@ -39,8 +45,8 @@ export function buildCommunityPickCardMessage(input: CommunityPickCardInput): Di
     };
 
     const buttons = [
-        { type: BUTTON_TYPE, style: BUTTON_STYLE_PRIMARY, label: input.sideALabel, custom_id: `cpvote:${input.id}:0` },
-        { type: BUTTON_TYPE, style: BUTTON_STYLE_SECONDARY, label: input.sideBLabel, custom_id: `cpvote:${input.id}:1` },
+        { type: BUTTON_TYPE, style: BUTTON_STYLE_PRIMARY, label: `${input.sideALabel} (${input.sideAPoints} pts)`, custom_id: `cpvote:${input.id}:0` },
+        { type: BUTTON_TYPE, style: BUTTON_STYLE_SECONDARY, label: `${input.sideBLabel} (${input.sideBPoints} pts)`, custom_id: `cpvote:${input.id}:1` },
     ];
 
     return { embeds: [embed], components: [{ type: ACTION_ROW_TYPE, components: buttons }] };
