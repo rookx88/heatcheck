@@ -22,13 +22,23 @@
 // every one of them got it wrong, the summary reports the aggregate only - there is
 // no stored "the answer was X" fact to report in that case, and inventing one would
 // be worse than omitting it.
+//
+// Also awards Community Points (lib/pages-functions/community-points.ts, fully
+// isolated from ember_ledger/ember_balances) to every correct picker in the guild,
+// and runs the giveaway draw when the guild has opted into auto-draw
+// (discord_guild_configs.auto_draw_enabled) - additive only, guilds that never touch
+// that feature just accumulate points nobody looks at and never see a draw.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { postDiscordChannelMessage, fetchGuildMembers } from '../../lib/pages-functions/discord-api';
 import { deriveTaglineFallback } from '../../tank-deck-format';
+import { awardCommunityPoints } from '../../lib/pages-functions/community-points';
+import { drawGiveawayWinner } from '../../lib/pages-functions/discord-draw';
+import { buildGiveawayResultMessage, buildNoEligiblePoolMessage } from '../../lib/pages-functions/discord-community-card';
 
 const MAX_ANNOUNCEMENTS_PER_RUN = 20;
+const POINTS_PER_CORRECT_PICK = 1;
 
 interface ModelOutput {
     tagline?: string;
@@ -39,6 +49,7 @@ interface CandidateRow {
     guild_id: string;
     tank_page_id: string;
     channel_id: string;
+    auto_draw_enabled: boolean;
     slug: string;
     model_output: ModelOutput | string;
 }
@@ -46,6 +57,8 @@ interface CandidateRow {
 interface PickerRow {
     side: string;
     result: string;
+    discord_user_id: string;
+    waitlist_id: string;
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -58,7 +71,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const sql = getSql(context.env);
 
     const candidates = (await sql`
-        SELECT dgp.guild_id, dgp.tank_page_id, dgc.channel_id, t.slug, t.model_output
+        SELECT dgp.guild_id, dgp.tank_page_id, dgc.channel_id, dgc.auto_draw_enabled, t.slug, t.model_output
         FROM discord_guild_posts dgp
         JOIN discord_guild_configs dgc ON dgc.guild_id = dgp.guild_id
         JOIN tank_pages t ON t.id = dgp.tank_page_id
@@ -78,7 +91,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
 
             const pickers = memberIds.length === 0 ? [] : ((await sql`
-                SELECT p.side, p.result
+                SELECT p.side, p.result, dl.discord_user_id, p.waitlist_id
                 FROM picks p
                 JOIN discord_links dl ON dl.waitlist_id = p.waitlist_id
                 WHERE p.tank_page_id = ${row.tank_page_id} AND dl.discord_user_id = ANY(${memberIds}::text[])
@@ -98,8 +111,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             }
 
             const total = pickers.length;
-            const correct = pickers.filter((p) => p.result === 'correct').length;
-            const winningSide = pickers.find((p) => p.result === 'correct')?.side ?? null;
+            const correctPickers = pickers.filter((p) => p.result === 'correct');
+            const correct = correctPickers.length;
+            const winningSide = correctPickers[0]?.side ?? null;
+
+            for (const picker of correctPickers) {
+                await awardCommunityPoints(sql, {
+                    guildId: row.guild_id,
+                    discordUserId: picker.discord_user_id,
+                    linkedHeatchecksUserId: picker.waitlist_id,
+                    delta: POINTS_PER_CORRECT_PICK,
+                    sourceType: 'tank',
+                    sourceId: row.tank_page_id,
+                });
+            }
 
             const modelOutput: ModelOutput | null = typeof row.model_output === 'string'
                 ? JSON.parse(row.model_output)
@@ -110,11 +135,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             const summary = winningSide
                 ? `**${winningSide}** was right. ${correct}/${total} of this server's pickers got it.`
                 : `Tough one — 0/${total} of this server's pickers got it this time.`;
+            // Additive text only when points were actually awarded - guilds that never
+            // touch the Community Points feature see the exact same recap as before.
+            const pointsLine = correct > 0 ? `\n\n+${POINTS_PER_CORRECT_PICK} Community Point to ${correct} of you.` : '';
 
             const embed = {
                 title: `${tagline} — settled`,
                 url: tankUrl,
-                description: summary,
+                description: summary + pointsLine,
                 color: 0x2fe6d9,
             };
 
@@ -124,6 +152,16 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 WHERE guild_id = ${row.guild_id} AND tank_page_id = ${row.tank_page_id}
             `;
             posted++;
+
+            if (row.auto_draw_enabled) {
+                const draw = await drawGiveawayWinner(sql, context.env, {
+                    guildId: row.guild_id, sourceType: 'tank', sourceId: row.tank_page_id, drawnBy: null,
+                });
+                const drawMessage = draw.status === 'no_pool'
+                    ? buildNoEligiblePoolMessage(tagline)
+                    : buildGiveawayResultMessage(tagline, draw.winnerDiscordUserId);
+                await postDiscordChannelMessage(context.env, row.channel_id, drawMessage);
+            }
         } catch (err) {
             console.error(`[POST /api/discord-settlement-sweep] Failed for guild ${row.guild_id}, tank ${row.tank_page_id}:`, err);
             errors.push(`${row.guild_id}:${row.tank_page_id}`);

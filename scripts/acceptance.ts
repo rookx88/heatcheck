@@ -45,7 +45,7 @@ dotenv.config();
 import { pool, initPool, setActiveSuite, printSummary, runTeardowns, type Suite } from './acceptance/harness';
 
 async function loadSuites(): Promise<Suite[]> {
-    const [tickers, discovery, settlement, pets, auth, homepage, concurrency, ledgerTrace, boundaries, security, kalshiLive, discordMultiGuildCap] = await Promise.all([
+    const [tickers, discovery, settlement, pets, auth, homepage, concurrency, ledgerTrace, boundaries, security, kalshiLive, discordMultiGuildCap, communityPointsIsolation] = await Promise.all([
         import('./acceptance/suites/tickers'),
         import('./acceptance/suites/discovery'),
         import('./acceptance/suites/settlement'),
@@ -58,11 +58,12 @@ async function loadSuites(): Promise<Suite[]> {
         import('./acceptance/suites/security'),
         import('./acceptance/suites/kalshi-live'),
         import('./acceptance/suites/discord-multi-guild-cap'),
+        import('./acceptance/suites/community-points-isolation'),
     ]);
     return [
         tickers.suite, discovery.suite, settlement.suite, pets.suite, auth.suite,
         homepage.suite, concurrency.suite, ledgerTrace.suite, boundaries.suite, security.suite,
-        kalshiLive.suite, discordMultiGuildCap.suite,
+        kalshiLive.suite, discordMultiGuildCap.suite, communityPointsIsolation.suite,
     ];
 }
 

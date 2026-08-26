@@ -11,13 +11,22 @@ import dotenv from 'dotenv';
 dotenv.config();
 
 const APPLICATION_COMMAND_TYPE_CHAT_INPUT = 1;
+const APPLICATION_COMMAND_TYPE_SUB_COMMAND = 1;
+const OPTION_TYPE_STRING = 3;
+const OPTION_TYPE_BOOLEAN = 5;
 const OPTION_TYPE_CHANNEL = 7;
 const CHANNEL_TYPE_GUILD_TEXT = 0;
 // Discord permission bit for "Manage Server", sent as a stringified bitfield -
 // default_member_permissions hides the command from members without it in Discord's
-// own UI. functions/api/discord/interactions.ts re-checks this at request time too
+// own UI. lib/pages-functions/discord-commands.ts re-checks this at request time too
 // (server-authoritative - never trust the UI-level gate alone).
 const MANAGE_GUILD_PERMISSION = '32';
+
+// Mirrors lib/pages-functions/discord-commands.ts's SUPPORTED_SPORTS (duplicated
+// rather than imported - this script stays a standalone Node/tsx entry point, not
+// coupled to the Workers-oriented lib/pages-functions module graph).
+const SUPPORTED_SPORTS = ['NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
+const sportChoices = SUPPORTED_SPORTS.map((s) => ({ name: s, value: s }));
 
 const commands = [
     {
@@ -36,9 +45,63 @@ const commands = [
         ],
     },
     {
-        name: 'leaderboard',
-        description: "Show this server's Heatchecks pick-accuracy leaderboard",
+        name: 'heatchecks-config',
+        description: 'Configure which sports post to this server, and auto-draw',
         type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
+        default_member_permissions: MANAGE_GUILD_PERMISSION,
+        options: [
+            { name: 'sport', description: 'Sport to toggle (pair with enabled)', type: OPTION_TYPE_STRING, required: false, choices: sportChoices },
+            { name: 'enabled', description: 'Enable or disable that sport', type: OPTION_TYPE_BOOLEAN, required: false },
+            { name: 'auto_draw', description: 'Automatically draw a giveaway winner when something settles', type: OPTION_TYPE_BOOLEAN, required: false },
+        ],
+    },
+    {
+        name: 'heatchecks-post',
+        description: 'Post a Tank or create a Community Pick on demand',
+        type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
+        default_member_permissions: MANAGE_GUILD_PERMISSION,
+        options: [
+            {
+                name: 'tank',
+                description: 'Post an existing real Tank right now',
+                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
+                options: [
+                    { name: 'search', description: 'Keyword to search Tanks', type: OPTION_TYPE_STRING, required: true },
+                ],
+            },
+            {
+                name: 'community-pick',
+                description: 'Create a Community Pick from a live Polymarket market',
+                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
+                options: [
+                    { name: 'sport', description: 'Sport to search', type: OPTION_TYPE_STRING, required: true, choices: sportChoices },
+                    { name: 'keyword', description: 'Optional keyword filter', type: OPTION_TYPE_STRING, required: false },
+                ],
+            },
+        ],
+    },
+    {
+        name: 'heatchecks-draw',
+        description: 'Randomly draw a giveaway winner from a settled Tank or Community Pick',
+        type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
+        default_member_permissions: MANAGE_GUILD_PERMISSION,
+    },
+    {
+        name: 'leaderboard',
+        description: "Show this server's Heatchecks leaderboard",
+        type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
+        options: [
+            {
+                name: 'view',
+                description: 'Which leaderboard to show (default: accuracy)',
+                type: OPTION_TYPE_STRING,
+                required: false,
+                choices: [
+                    { name: 'Accuracy', value: 'accuracy' },
+                    { name: 'Community Points', value: 'community' },
+                ],
+            },
+        ],
     },
 ];
 

@@ -11,10 +11,11 @@
 // posture as worker-curate's sibling sweep calls.
 //
 // Also fires the Discord settlement-announcement sweep (/api/discord-settlement-sweep)
-// as a sibling call right after each settle call, same "own request, own budget, runs
+// and the Community Pick resolution sweep (/api/community-pick-settlement-sweep) as
+// sibling calls right after each settle call, same "own request, own budget, runs
 // regardless of the earlier step's outcome" posture worker-curate's sweep chain uses -
-// it depends on settlement having just run, which only happens on THIS cron, not
-// worker-curate's, so it can't live there instead.
+// both depend on settlement/resolution having just run, which only happens on THIS
+// cron, not worker-curate's, so neither can live there instead.
 
 export interface Env {
     SETTLE_URL: string;
@@ -45,23 +46,29 @@ async function callSettle(label: string, url: string, secret: string): Promise<s
     return callWithSecret(label, url, secret, 'X-Settle-Secret');
 }
 
-async function callDiscordSettlementSweep(label: string, settleUrl: string, secret: string): Promise<string> {
-    const url = new URL('/api/discord-settlement-sweep', settleUrl).toString();
-    return callWithSecret(`${label} discord-settlement-sweep`, url, secret, 'X-Settle-Secret');
+async function callSiblingSweep(name: string, path: string, label: string, settleUrl: string, secret: string): Promise<string> {
+    const url = new URL(path, settleUrl).toString();
+    return callWithSecret(`${label} ${name}`, url, secret, 'X-Settle-Secret');
 }
 
 async function runSettle(env: Env): Promise<string> {
     const live = await callSettle('production', env.SETTLE_URL, env.SETTLE_SECRET);
-    const liveDiscord = await callDiscordSettlementSweep('production', env.SETTLE_URL, env.SETTLE_SECRET);
+    const liveDiscord = await callSiblingSweep('discord-settlement-sweep', '/api/discord-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
+    const liveCommunityPicks = await callSiblingSweep('community-pick-settlement-sweep', '/api/community-pick-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
 
     let preview = '';
     let previewDiscord = '';
+    let previewCommunityPicks = '';
     if (env.PREVIEW_SETTLE_URL) {
         preview = await callSettle('preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
-        previewDiscord = await callDiscordSettlementSweep('preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
+        previewDiscord = await callSiblingSweep('discord-settlement-sweep', '/api/discord-settlement-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
+        previewCommunityPicks = await callSiblingSweep('community-pick-settlement-sweep', '/api/community-pick-settlement-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
     }
 
-    return JSON.stringify({ production: live, productionDiscordSweep: liveDiscord, preview, previewDiscordSweep: previewDiscord });
+    return JSON.stringify({
+        production: live, productionDiscordSweep: liveDiscord, productionCommunityPickSweep: liveCommunityPicks,
+        preview, previewDiscordSweep: previewDiscord, previewCommunityPickSweep: previewCommunityPicks,
+    });
 }
 
 export default {

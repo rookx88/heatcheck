@@ -5,36 +5,48 @@
 // before it will even save the URL in the Developer Portal (see the plan's setup
 // steps), so that has to work standalone with no other config in place yet.
 //
-// Three interaction kinds handled, all through this same verify-first entry point -
-// no separate unverified path for the newer slash commands:
+// This file is a thin, verify-first dispatcher - every interaction kind routes
+// through the SAME signature check before anything else touches the body, no separate
+// unverified path for any command or component added since. The pick-button handler
+// (the original interaction this endpoint supported) stays inline below; every newer
+// admin command/component handler lives in
+// ../../../lib/pages-functions/discord-commands.ts, imported here.
 //
-// 1. MESSAGE_COMPONENT - a button click on a Tank post from
-//    functions/api/discord-sweep.ts, custom_id "pick:<slug>:<sideIndex>". The clicking
-//    Discord user is resolved to a Heatchecks account via discord_links (set by the
-//    /api/discord/link + /api/discord/callback OAuth flow) and the pick runs through
-//    the exact same lib/pages-functions/picks.ts#submitPick the website itself uses -
-//    same daily cap, same per-Tank conflict, same odds/kickoff validation. Guild
-//    context is irrelevant here on purpose: the cap is one shared pool per Heatchecks
-//    account, never per-guild (see submitPick's own cap query).
-//
-// 2. APPLICATION_COMMAND "heatchecks-setup" - upserts discord_guild_configs for the
-//    invoking guild. Gated on Discord's own Manage Server permission, re-checked here
-//    against interaction.member.permissions rather than trusted solely from Discord's
-//    UI-level command visibility (default_member_permissions at registration time,
-//    see scripts/register-discord-commands.ts) - server-authoritative, belt and
-//    suspenders.
-//
-// 3. APPLICATION_COMMAND "leaderboard" - guild-scoped accuracy leaderboard. Computes
-//    guild membership LIVE (fetchGuildMembers) rather than from any stored table, so
-//    there's nothing to keep in sync or leak. Deferred (type 5) since fetching a
-//    guild's member list plus the DB query can exceed Discord's 3-second initial-
-//    response window; the real reply follows via a webhook PATCH once ready.
+// - MESSAGE_COMPONENT "pick:<slug>:<sideIndex>" - a button click on a Tank post from
+//   functions/api/discord-sweep.ts. The clicking Discord user is resolved to a
+//   Heatchecks account via discord_links and the pick runs through the exact same
+//   lib/pages-functions/picks.ts#submitPick the website itself uses - same daily cap,
+//   same per-Tank conflict, same odds/kickoff validation. Guild context is
+//   irrelevant here on purpose: the cap is one shared pool per Heatchecks account,
+//   never per-guild (see submitPick's own cap query).
+// - APPLICATION_COMMAND "leaderboard" - guild-scoped leaderboard (accuracy by
+//   default, or Community Points via the `view` option). Computes guild membership
+//   LIVE (fetchGuildMembers) rather than from any stored table. Deferred (type 5)
+//   since the member fetch + DB query can exceed Discord's 3-second window; the real
+//   reply follows via a webhook PATCH once ready.
+// - Everything else (heatchecks-setup/-config/-post/-draw, and every
+//   search-select/confirm component those commands drive) is handled in
+//   discord-commands.ts - see that file's own header for the full rundown.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from '../../../lib/pages-functions/db';
 import { verifyDiscordRequest } from '../../../lib/pages-functions/discord-verify';
 import { submitPick, type SubmitPickResult } from '../../../lib/pages-functions/picks';
 import { fetchGuildMembers } from '../../../lib/pages-functions/discord-api';
+import {
+    handleSetupCommand,
+    handleConfigCommand,
+    handlePostCommand,
+    handleDrawCommand,
+    handleTankPostSelect,
+    handleTankRepostConfirm,
+    handleCommunityPickSelect,
+    handleCommunityPickConfirm,
+    handleCommunityVote,
+    handleDrawSelect,
+    updateMessageResponse,
+    buildCommunityPointsLeaderboardMessage,
+} from '../../../lib/pages-functions/discord-commands';
 
 const DISCORD_PING = 1;
 const DISCORD_APPLICATION_COMMAND = 2;
@@ -43,8 +55,6 @@ const RESPONSE_PONG = 1;
 const RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE = 4;
 const RESPONSE_DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE = 5;
 const EPHEMERAL_FLAG = 64;
-// Discord permission bit for "Manage Server" - https://discord.com/developers/docs/topics/permissions
-const MANAGE_GUILD_PERMISSION = 0x20n;
 const DEFAULT_LEADERBOARD_MIN_PICKS = 5;
 const LEADERBOARD_SIZE = 10;
 
@@ -77,43 +87,15 @@ function messageForResult(result: SubmitPickResult): string {
     }
 }
 
-export const onRequestPost: PagesFunction<Env> = async (context) => {
-    const rawBody = await context.request.text();
-    const verified = await verifyDiscordRequest(
-        rawBody,
-        context.request.headers.get('X-Signature-Ed25519'),
-        context.request.headers.get('X-Signature-Timestamp'),
-        context.env.DISCORD_PUBLIC_KEY
-    );
-    if (!verified) return new Response('Invalid request signature.', { status: 401 });
+// Avoids importing EventContext's generic signature directly - matches whatever
+// PagesFunction<Env>'s own context parameter type resolves to. Shared shape with
+// discord-commands.ts's own identical local alias (kept separate per-file rather than
+// exported, to avoid a needless cross-file type dependency for a one-line alias).
+type RequestContext = Parameters<PagesFunction<Env>>[0];
 
-    let interaction: any;
-    try {
-        interaction = JSON.parse(rawBody);
-    } catch {
-        return new Response('Invalid JSON body.', { status: 400 });
-    }
-
-    if (interaction.type === DISCORD_PING) {
-        return new Response(JSON.stringify({ type: RESPONSE_PONG }), { headers: { 'Content-Type': 'application/json' } });
-    }
-
-    if (interaction.type === DISCORD_APPLICATION_COMMAND) {
-        const commandName = interaction.data?.name;
-        if (commandName === 'heatchecks-setup') return handleSetupCommand(context, interaction);
-        if (commandName === 'leaderboard') return handleLeaderboardCommand(context, interaction);
-        return new Response('Unknown command.', { status: 400 });
-    }
-
-    if (interaction.type !== DISCORD_MESSAGE_COMPONENT) {
-        return new Response('Unhandled interaction type.', { status: 400 });
-    }
-
-    const customId = typeof interaction.data?.custom_id === 'string' ? interaction.data.custom_id : '';
+async function handlePickButton(context: RequestContext, interaction: any, customId: string): Promise<Response> {
     const parts = customId.split(':');
-    if (parts.length !== 3 || parts[0] !== 'pick') {
-        return ephemeral("Couldn't process that button.");
-    }
+    if (parts.length !== 3) return ephemeral("Couldn't process that button.");
     const slug = parts[1];
     const sideIndex = Number(parts[2]);
     if (!slug || !Number.isInteger(sideIndex)) {
@@ -167,41 +149,55 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     return ephemeral(messageForResult(result));
-};
+}
 
-// Avoids importing EventContext's generic signature directly - matches whatever
-// PagesFunction<Env>'s own context parameter type resolves to.
-type RequestContext = Parameters<PagesFunction<Env>>[0];
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+    const rawBody = await context.request.text();
+    const verified = await verifyDiscordRequest(
+        rawBody,
+        context.request.headers.get('X-Signature-Ed25519'),
+        context.request.headers.get('X-Signature-Timestamp'),
+        context.env.DISCORD_PUBLIC_KEY
+    );
+    if (!verified) return new Response('Invalid request signature.', { status: 401 });
 
-async function handleSetupCommand(context: RequestContext, interaction: any): Promise<Response> {
-    const guildId: string | undefined = interaction.guild_id;
-    if (!guildId) return ephemeral('Run this in a server, not a DM.');
-
-    // Defense-in-depth on top of the command's own default_member_permissions
-    // (scripts/register-discord-commands.ts) - Discord sends the invoking member's
-    // real permission bitfield as a string (can exceed JS's safe integer range,
-    // hence BigInt) on every guild interaction; trust that, not just Discord's UI-
-    // level command visibility, per the server-authoritative non-negotiable.
-    const permissions = BigInt(interaction.member?.permissions ?? '0');
-    if ((permissions & MANAGE_GUILD_PERMISSION) === 0n) {
-        return ephemeral('You need the "Manage Server" permission to run this.');
+    let interaction: any;
+    try {
+        interaction = JSON.parse(rawBody);
+    } catch {
+        return new Response('Invalid JSON body.', { status: 400 });
     }
 
-    const channelId: string | undefined = interaction.data?.options?.find((o: any) => o.name === 'channel')?.value;
-    const configuredBy: string | undefined = interaction.member?.user?.id;
-    if (!channelId || !configuredBy) return ephemeral("Couldn't read that command's input - try again.");
+    if (interaction.type === DISCORD_PING) {
+        return new Response(JSON.stringify({ type: RESPONSE_PONG }), { headers: { 'Content-Type': 'application/json' } });
+    }
 
-    const sql = getSql(context.env);
-    await sql`
-        INSERT INTO discord_guild_configs (guild_id, channel_id, configured_by_discord_user_id)
-        VALUES (${guildId}, ${channelId}, ${configuredBy})
-        ON CONFLICT (guild_id) DO UPDATE
-            SET channel_id = EXCLUDED.channel_id,
-                configured_by_discord_user_id = EXCLUDED.configured_by_discord_user_id,
-                configured_at = NOW()
-    `;
-    return ephemeral(`Done — Tank posts will now go to <#${channelId}>.`);
-}
+    if (interaction.type === DISCORD_APPLICATION_COMMAND) {
+        const commandName = interaction.data?.name;
+        if (commandName === 'heatchecks-setup') return handleSetupCommand(context, interaction);
+        if (commandName === 'heatchecks-config') return handleConfigCommand(context, interaction);
+        if (commandName === 'heatchecks-post') return handlePostCommand(context, interaction);
+        if (commandName === 'heatchecks-draw') return handleDrawCommand(context, interaction);
+        if (commandName === 'leaderboard') return handleLeaderboardCommand(context, interaction);
+        return new Response('Unknown command.', { status: 400 });
+    }
+
+    if (interaction.type === DISCORD_MESSAGE_COMPONENT) {
+        const customId = typeof interaction.data?.custom_id === 'string' ? interaction.data.custom_id : '';
+        if (customId.startsWith('pick:')) return handlePickButton(context, interaction, customId);
+        if (customId === 'tpselect') return handleTankPostSelect(context, interaction);
+        if (customId.startsWith('tprepost:')) return handleTankRepostConfirm(context, interaction, customId);
+        if (customId === 'tpcancel') return updateMessageResponse('Cancelled.');
+        if (customId === 'cpselect') return handleCommunityPickSelect(context, interaction);
+        if (customId.startsWith('cpcreate:')) return handleCommunityPickConfirm(context, interaction, customId);
+        if (customId === 'cpcancel') return updateMessageResponse('Cancelled.');
+        if (customId.startsWith('cpvote:')) return handleCommunityVote(context, interaction, customId);
+        if (customId === 'dwselect') return handleDrawSelect(context, interaction);
+        return ephemeral("Couldn't process that.");
+    }
+
+    return new Response('Unhandled interaction type.', { status: 400 });
+};
 
 function handleLeaderboardCommand(context: RequestContext, interaction: any): Response {
     const guildId: string | undefined = interaction.guild_id;
@@ -211,12 +207,18 @@ function handleLeaderboardCommand(context: RequestContext, interaction: any): Re
     const interactionToken: string | undefined = interaction.token;
     if (!applicationId || !interactionToken) return ephemeral("Couldn't process that command - try again.");
 
+    const view = interaction.data?.options?.find((o: any) => o.name === 'view')?.value ?? 'accuracy';
+
     // Deferred: fetchGuildMembers (paginated REST calls) plus the DB query can exceed
     // Discord's 3-second initial-response window, especially for a larger server.
     // waitUntil keeps the background work alive after this function returns its
     // immediate ack; the real content arrives via a webhook PATCH to @original.
+    const buildMessage = view === 'community'
+        ? buildCommunityPointsLeaderboardMessage(context.env, guildId)
+        : buildAccuracyLeaderboardMessage(context.env, guildId);
+
     context.waitUntil(
-        buildLeaderboardMessage(context.env, guildId)
+        buildMessage
             .catch((err) => {
                 console.error('[POST /api/discord/interactions] Leaderboard build failed:', err);
                 return 'Could not build the leaderboard right now — try again shortly.';
@@ -245,7 +247,7 @@ interface LeaderboardRow {
 
 // Guild-scoped, computed fresh every call - see the file header comment for why
 // there's deliberately no stored membership table backing this.
-async function buildLeaderboardMessage(env: Env, guildId: string): Promise<string> {
+async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promise<string> {
     const members = await fetchGuildMembers(env, guildId);
     const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
     if (memberIds.length === 0) return 'No members to rank in this server yet.';

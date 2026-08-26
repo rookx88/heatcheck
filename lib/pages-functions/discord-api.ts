@@ -5,6 +5,20 @@
 
 import type { Env } from './db';
 
+// Discord permission bit for "Manage Server" - https://discord.com/developers/docs/topics/permissions
+const MANAGE_GUILD_PERMISSION = 0x20n;
+
+// Server-authoritative permission check for every admin-only slash command
+// (/heatchecks-setup, /heatchecks-config, /heatchecks-post, /heatchecks-draw) -
+// re-checked here against the invoking member's real permission bitfield rather than
+// trusted solely from Discord's UI-level command visibility
+// (default_member_permissions at registration time, scripts/register-discord-commands.ts).
+// Discord sends permissions as a STRING (can exceed JS's safe integer range), hence BigInt.
+export function hasManageGuildPermission(interaction: any): boolean {
+    const permissions = BigInt(interaction?.member?.permissions ?? '0');
+    return (permissions & MANAGE_GUILD_PERMISSION) !== 0n;
+}
+
 export interface DiscordUser {
     id: string;
     username: string;
