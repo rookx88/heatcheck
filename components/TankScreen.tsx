@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Fishtank, type DeckPayload } from './Fishtank';
 import { trackEvent } from '../tank-analytics-client';
-import tanksBackgroundSrc from '../assets/new-website/Tanks- Background.svg';
+import tanksBackgroundSrc from '../assets/images/tanks-bg.webp';
 import './TankScreen.css';
 
 // Matches the SVG's own declared viewBox (assets/new-website/Tanks- Background.svg).

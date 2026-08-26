@@ -56,6 +56,11 @@ assets/images/*
 !assets/images/world-map.webp
 !assets/images/tank-email-correct.jpg
 !assets/images/tank-email-incorrect.jpg
+# Game-screen backgrounds (components/WorldMap.tsx, TankScreen.tsx consumers)
+# - imported directly by those TSX files via esbuild, so the built file must
+# exist in the repo for Cloudflare's from-source build.
+!assets/images/world-map-interactive.webp
+!assets/images/tanks-bg.webp
 
 # Retired prediction-app content, relocated out of public/ so Cloudflare Pages
 # doesn't upload it and it stays out of the live site's build. Preserved here

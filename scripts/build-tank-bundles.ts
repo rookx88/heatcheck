@@ -36,8 +36,11 @@ export async function buildTankBundles(): Promise<void> {
         // The source filename ("Tanks- Background.svg") has a stray space/hyphen;
         // force a clean fixed output name instead of deriving one from it.
         assetNames: 'tanks-background',
-        publicPath: '/assets', // baked into the JS as the SVG's href
-        loader: { '.svg': 'file' }, // copy the SVG as a static file, don't inline as a data: URL
+        publicPath: '/assets', // baked into the JS as the image's href
+        // Copy as a static file, don't inline as a data: URL - .webp joined .svg
+        // here once the Tank background moved off its raw multi-MB SVG-wrapped
+        // export onto a pre-optimized WebP (scripts/optimize-landing-images.ts).
+        loader: { '.svg': 'file', '.webp': 'file' },
         metafile: true, // needed below to discover the shared chunk's hashed filename
     });
 

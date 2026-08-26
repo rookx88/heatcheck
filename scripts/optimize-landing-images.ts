@@ -84,6 +84,84 @@ function extractEmbeddedPng(svgPath: string): Buffer {
 }
 
 /**
+ * Like extractEmbeddedPng, but permissive on both the attribute name (matches
+ * bare href="..." as well as xlink:href="...") and the embedded format (PNG or
+ * JPEG) - the game-screen backgrounds below (assets/new-website/Tanks-
+ * Background.svg) embed a JPEG via a plain href, not xlink:href/PNG like the
+ * older brand exports extractEmbeddedPng was written for.
+ */
+function extractLargestEmbeddedRaster(svgPath: string): Buffer {
+    const svg = fs.readFileSync(svgPath, 'utf-8');
+    const re = /href="data:image\/(?:png|jpeg);base64,([^"]+)"/g;
+    let match: RegExpExecArray | null;
+    let largest: Buffer | null = null;
+    while ((match = re.exec(svg)) !== null) {
+        const buf = Buffer.from(match[1], 'base64');
+        if (!largest || buf.length > largest.length) {
+            largest = buf;
+        }
+    }
+    if (!largest) {
+        throw new Error(`No embedded raster image found in ${svgPath}`);
+    }
+    return largest;
+}
+
+interface GameBackgroundJob {
+    source: string;
+    outName: string;
+    /** World map only - composited over the page's own background, so the
+     * black canvas needs to become real transparency (see
+     * deriveAlphaFromBrightness). The Tank background is a full-bleed opaque
+     * screen background (confirmed via sharp metadata: hasAlpha:false, solid
+     * corner pixel) - nothing behind it, so no alpha step needed. */
+    blackBackground?: boolean;
+}
+
+/**
+ * The game screens' full-bleed backgrounds (the interactive world map island
+ * and individual Tank pages) were never wired into this optimization
+ * pipeline - each ships its raw Canva SVG export directly
+ * (components/WorldMap.tsx and components/TankScreen.tsx import straight from
+ * assets/new-website/*.svg), at 3.2MB and 3.1MB respectively, because the
+ * lossless-PNG-or-barely-compressed-JPEG payload embedded in the SVG never
+ * got re-encoded. Unlike the `jobs` loop above, this must NOT trim or resize:
+ * these components hand-trace hotspot paths and hardcode a VIEWBOX against
+ * the source's exact, untrimmed pixel dimensions - changing the canvas size
+ * or cropping would shift every hotspot out of alignment with the artwork.
+ * Only the codec changes (PNG/JPEG -> WebP); same pixels, same canvas,
+ * dramatically smaller file.
+ */
+const gameBackgroundJobs: GameBackgroundJob[] = [
+    { source: 'Tanks- Background.svg', outName: 'tanks-bg' },
+    // Distinct from the trimmed/resized 'world-map' job above (that one feeds
+    // the static waitlist page's <img>) - the interactive island
+    // (components/WorldMap.tsx) needs the untrimmed canvas its hand-traced
+    // region hotspots are calibrated to.
+    { source: 'HeatChecksWorldMap.svg', outName: 'world-map-interactive', blackBackground: true },
+];
+
+async function buildGameBackgrounds(): Promise<void> {
+    for (const job of gameBackgroundJobs) {
+        const svgPath = path.join(sourceDir, job.source);
+        let buffer = extractLargestEmbeddedRaster(svgPath);
+        if (job.blackBackground) {
+            buffer = await deriveAlphaFromBrightness(buffer);
+        }
+
+        const webpPath = path.join(outDir, `${job.outName}.webp`);
+        const info = await sharp(buffer).webp({ quality: 82 }).toFile(webpPath);
+
+        const webpSize = fs.statSync(webpPath).size;
+        const originalSize = fs.statSync(svgPath).size;
+        console.log(
+            `✓ ${job.source} (${(originalSize / 1024 / 1024).toFixed(1)}MB) -> ` +
+            `${job.outName}.webp (${(webpSize / 1024).toFixed(0)}KB) [${info.width}x${info.height}, unchanged]`
+        );
+    }
+}
+
+/**
  * The OG/Twitter share-card image (og-share-world-map.jpg) - separate from the `jobs`
  * loop above since it needs a fixed-dimension cover-crop (1200x630, the standard OG
  * card size) rather than a width-preserving resize. JPG (not WebP) deliberately -
@@ -146,6 +224,7 @@ async function run(): Promise<void> {
     }
 
     await buildOgImage();
+    await buildGameBackgrounds();
     await buildSettlementEmailImages();
 
     for (const job of jobs) {
