@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 import { MotionConfig } from 'motion/react';
 import { Fishtank, formatTimeUntilReset, type DeckPayload } from './components/Fishtank';
 import { PetWidget } from './components/PetWidget';
+import { MudPuppyPromo } from './components/MudPuppyPromo';
 import { RegisterModal } from './components/RegisterModal';
 import { NotificationsHost } from './components/NotificationsHost';
 import { dispatchInboxOpen } from './notifications-client';
@@ -339,6 +340,10 @@ function mount() {
                             openWall="promo"
                             scale={showcaseScale}
                         />
+                        {/* Logged-out echo of the fixed PetWidget above - no real pet yet,
+                            so a click opens an info panel about Mud Puppies instead,
+                            ending in the register flow. */}
+                        <MudPuppyPromo variant="fixed" />
                     </div>
                 )}
             </MotionConfig>

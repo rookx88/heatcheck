@@ -1,0 +1,25 @@
+/* Logged-out echo of PetWidget: no real pet yet, so clicking it opens an info
+   panel about what a Mud Puppy is instead of the Feed/Inventory row, ending in
+   a register CTA. Reuses .pet-widget/.tank-modal-* chrome (PetWidget.css,
+   TankScreen.css) for visual consistency rather than duplicating it. */
+
+.mudpuppy-promo-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+}
+
+.mudpuppy-promo-body p {
+    margin: 0;
+    max-width: 380px;
+    font-family: 'Nunito', sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.55;
+    color: rgba(255, 255, 255, 0.85);
+}
+
+.mudpuppy-promo-cta {
+    width: 100%;
+    max-width: 380px;
+}
