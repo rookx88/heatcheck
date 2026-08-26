@@ -57,7 +57,13 @@ import type { Prop, Game } from '../../tank-types';
 export const DEFAULT_DEDUPE_DAYS = 7;
 export const DEFAULT_MAX_CANDIDATES = 80;
 export const DEFAULT_MAX_MATCHES_PER_RUN = 6;
-export const DEFAULT_WEB_SEARCH_MAX_USES = 8;
+// Lowered 8 -> 4 (2026-08-26, cost pass): each search is $10/1,000 uses PLUS its
+// result content counts as input tokens on every subsequent turn of the same call -
+// the single biggest cost driver in a matching call. 4 is still enough for the
+// "simple factual query" range (1-3 searches) with headroom for a genuinely
+// multi-entity storyline check, per Anthropic's own web-search sizing guidance.
+// Override via CURATE_WEB_SEARCH_MAX_USES if a sport group needs more some day.
+export const DEFAULT_WEB_SEARCH_MAX_USES = 4;
 export const DEFAULT_MATCH_MAX_TOKENS = 4000;
 export const DEFAULT_MARKET_WHITELIST: string[] = [];
 export const DEFAULT_MIN_PROMINENCE = 0;
@@ -149,10 +155,24 @@ export async function curateSportGroup(
         model: env.MODEL || 'claude-sonnet-5',
         max_tokens: config.matchMaxTokens,
         thinking: { type: 'disabled' },
-        system: TANK_CURATOR_MATCH_PROMPT,
+        // Cached (2026-08-26, cost pass): TANK_CURATOR_MATCH_PROMPT is identical on
+        // every call - across all 4 sport groups in one run, and across days, since
+        // nothing in it varies per-request. Caching this ~1000-token prefix cuts its
+        // cost by ~90% on every call after the first (5-min default TTL comfortably
+        // covers the handful of seconds between this run's own group calls, and often
+        // survives to the next day's first call too). The tools array and this system
+        // block are both static and render before `messages` in the cache prefix
+        // (tools -> system -> messages), so nothing upstream of this breakpoint varies
+        // and invalidates it.
+        system: [{ type: 'text', text: TANK_CURATOR_MATCH_PROMPT, cache_control: { type: 'ephemeral' } }],
         tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: config.webSearchMaxUses }],
         messages: [{ role: 'user', content: JSON.stringify({ candidates: candidatePayload }) }],
     });
+
+    // Cost visibility (2026-08-26): cache_read_input_tokens > 0 confirms the prompt-cache
+    // breakpoint above is actually landing, and web_search_requests confirms the lowered
+    // cap is taking effect - both are otherwise invisible outside the Console usage page.
+    console.log(`[POST /api/curate] [${sportGroup}] usage:`, JSON.stringify(response.usage));
 
     // Search tool-use responses can interleave multiple text/tool rounds - the final
     // answer is the last text block, not necessarily the only one (unlike the single-shot
