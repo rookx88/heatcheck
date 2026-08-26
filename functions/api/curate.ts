@@ -32,40 +32,51 @@
 // run's Gamma + Anthropic + Neon traffic already sits close to it. The sweep runs as
 // its own request with its own budget - POST /api/ticker-sweep, fired by
 // worker-curate/ immediately after this endpoint.
+//
+// Kalshi (kalshi-live.ts) is DISABLED here for now (2026-08-25): merging its fetch into
+// this same request pushed the whole invocation over Cloudflare's subrequest ceiling in
+// production - this endpoint's Polymarket + Anthropic + Neon traffic alone already sits
+// close to the limit (see the per-group try/catch below, which predates Kalshi and
+// exists for exactly this scenario). Re-enabling Kalshi needs its own sibling request
+// (matching the ticker-sweep split above), not a merge back into this one - the
+// SPORT_GROUPS/curateSportGroup/numEnv/isCuratorMatchResponse machinery below is
+// already exported in anticipation of that. The Kalshi module itself (kalshi.ts,
+// kalshi-live.ts, tank-providers.ts's buildGamesFromKalshiFlatProps) is unaffected and
+// still fully wired into the admin tool (backend.ts, PROP_PROVIDER=kalshi|both).
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import Anthropic from '@anthropic-ai/sdk';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { fetchLiveGames, DEFAULT_WINDOW_HOURS } from '../../tank-gamma-live';
-import { fetchLiveKalshiGames } from '../../kalshi-live';
 import { filterProps } from '../../tank-filter';
 import { generateTankArticle, extractJson, parseModelJson, type GenerationConfig } from '../../tank-generate';
 import { TANK_CURATOR_MATCH_PROMPT } from '../../scripts/prompts/tank-curator-match-prompt';
 import { generateSlug, ensureUniqueSlug } from '../../scripts/utils/slug-generator';
 import type { Prop, Game } from '../../tank-types';
 
-const DEFAULT_DEDUPE_DAYS = 7;
-const DEFAULT_MAX_CANDIDATES = 80;
-const DEFAULT_MAX_MATCHES_PER_RUN = 6;
-const DEFAULT_WEB_SEARCH_MAX_USES = 8;
-const DEFAULT_MATCH_MAX_TOKENS = 4000;
-const DEFAULT_MARKET_WHITELIST: string[] = [];
-const DEFAULT_MIN_PROMINENCE = 0;
-const DEFAULT_PER_GAME_CAP = 3;
+export const DEFAULT_DEDUPE_DAYS = 7;
+export const DEFAULT_MAX_CANDIDATES = 80;
+export const DEFAULT_MAX_MATCHES_PER_RUN = 6;
+export const DEFAULT_WEB_SEARCH_MAX_USES = 8;
+export const DEFAULT_MATCH_MAX_TOKENS = 4000;
+export const DEFAULT_MARKET_WHITELIST: string[] = [];
+export const DEFAULT_MIN_PROMINENCE = 0;
+export const DEFAULT_PER_GAME_CAP = 3;
 // Reader-facing minimum lead time (2026-08-23): a Tank published this morning should
 // resolve at least 2 full days out, not the same day or tomorrow - by the time a reader
 // sees it and makes a call, a same-day resolve leaves no runway to actually follow the
 // story. Measured against effectiveSettleDate (tank-deck-format.ts), the corrected
 // editorial resolve date, not Polymarket's sometimes-padded raw settleDate.
-const DEFAULT_MIN_LEAD_DAYS = 2;
+export const DEFAULT_MIN_LEAD_DAYS = 2;
 
 // Sport groups the curator gives an independent shot at, per Sammy's request to stop
 // letting one sport's news cycle crowd out the others. Individual soccer leagues are
 // grouped under one "Soccer" pass rather than run separately - the ask was sport-level
 // coverage (Soccer/Basketball/Baseball/Football), not one guaranteed match per league.
 // A league absent here (or with no live candidates that run) simply isn't grouped/run -
-// not an error, just nothing to curate for it right now.
-const SPORT_GROUPS: Record<string, string[]> = {
+// not an error, just nothing to curate for it right now. Shared with curate-kalshi.ts
+// so both endpoints group leagues identically.
+export const SPORT_GROUPS: Record<string, string[]> = {
     Soccer: ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'],
     Basketball: ['NBA'],
     Baseball: ['MLB'],
@@ -81,7 +92,7 @@ interface CuratorMatchResponse {
     matches: CuratorMatch[];
 }
 
-function numEnv(value: string | undefined, fallback: number): number {
+export function numEnv(value: string | undefined, fallback: number): number {
     if (!value) return fallback;
     const n = Number(value);
     return Number.isFinite(n) ? n : fallback;
@@ -93,13 +104,13 @@ function isCuratorMatchResponse(value: any): value is CuratorMatchResponse {
     );
 }
 
-interface CandidateEntry {
+export interface CandidateEntry {
     prop: Prop;
     game: Game;
     provider: 'polymarket' | 'kalshi';
 }
 
-interface CurateGroupResult {
+export interface CurateGroupResult {
     sportGroup: string;
     candidatesConsidered: number;
     matchesFound: number;
@@ -111,7 +122,9 @@ interface CurateGroupResult {
 // call per genuine match) against a single sport group's candidate list. Pulled out of
 // the request handler so each sport group gets its own isolated call/budget instead of
 // sharing one pool - see the file header for why that's the point of this refactor.
-async function curateSportGroup(
+// Exported so curate-kalshi.ts's sibling endpoint reuses this exact logic rather than
+// duplicating it and risking drift between the two providers' match/generate behavior.
+export async function curateSportGroup(
     sportGroup: string,
     candidates: CandidateEntry[],
     env: Env,
@@ -234,47 +247,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(env);
 
-    // 1. Live candidates from both sources: Kalshi is the player-prop source now, so
-    // Polymarket's player-prop rows are dropped here (same "_player_" substring signal
-    // PLAYER_MARKET_TYPE_PATTERN already uses) - Polymarket keeps supplying
-    // game-lines/season-futures, Kalshi supplies player props exclusively. The two
-    // stay as separate Game[] populations (own ids, own prominence scoring) rather
-    // than being unified into shared Game objects - filterProps/downstream code
-    // doesn't care which physical game a candidate came from.
-    //
-    // Promise.allSettled, not Promise.all: one source having a bad day (a Kalshi rate
-    // limit, a Gamma outage) must degrade to that source contributing zero candidates
-    // this run, not crash the whole request and silently zero out the OTHER source too
-    // - confirmed live (2026-08-25) that an uncaught Kalshi 429 took the entire run
-    // down, including Polymarket, which was working fine.
-    const [polymarketResult, kalshiResult] = await Promise.allSettled([
-        fetchLiveGames(undefined, windowHours),
-        fetchLiveKalshiGames(undefined, windowHours),
-    ]);
-    if (polymarketResult.status === 'rejected') {
-        console.error('[POST /api/curate] Polymarket live fetch failed, continuing with zero Polymarket candidates:', polymarketResult.reason);
-    }
-    if (kalshiResult.status === 'rejected') {
-        console.error('[POST /api/curate] Kalshi live fetch failed, continuing with zero Kalshi candidates:', kalshiResult.reason);
-    }
-    const rawPolymarketGames = polymarketResult.status === 'fulfilled' ? polymarketResult.value : [];
-    const kalshiGames = kalshiResult.status === 'fulfilled' ? kalshiResult.value : [];
-    const polymarketGames = rawPolymarketGames
-        .map(g => ({ ...g, props: g.props.filter(p => !p.market.includes('_player_')) }))
-        .filter(g => g.props.length > 0);
-
-    const filteredPolymarket = filterProps(polymarketGames, { marketWhitelist, minProminence, perGameCap, minLeadDays, now: new Date() });
-    const filteredKalshi = filterProps(kalshiGames, { marketWhitelist, minProminence, perGameCap, minLeadDays, now: new Date() });
+    // 1. Live candidates. Polymarket only for now - see the file header for why Kalshi
+    // (kalshi-live.ts) is disabled here rather than merged into this same request.
+    const liveGames = await fetchLiveGames(undefined, windowHours);
+    const filtered = filterProps(liveGames, { marketWhitelist, minProminence, perGameCap, minLeadDays, now: new Date() });
 
     let allCandidates: CandidateEntry[] = [];
-    for (const game of filteredPolymarket) {
+    for (const game of filtered) {
         for (const prop of game.props) {
             allCandidates.push({ prop, game, provider: 'polymarket' });
-        }
-    }
-    for (const game of filteredKalshi) {
-        for (const prop of game.props) {
-            allCandidates.push({ prop, game, provider: 'kalshi' });
         }
     }
 
