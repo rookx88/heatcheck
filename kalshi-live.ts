@@ -31,6 +31,21 @@ import { buildGamesFromKalshiFlatProps, type KalshiPropsRow } from './tank-provi
 // candidate pool needs a wider window than that floor to have anything left to filter.
 export const DEFAULT_KALSHI_WINDOW_HOURS = 24 * 7;
 
+// Cloudflare Pages Functions cap outbound fetches per invocation at 50 ("Too many
+// subrequests by single Worker invocation" - confirmed live 2026-08-25, is the same
+// constraint functions/api/curate.ts's own header comment already documents for
+// ticker-sweep, which is why that runs as its own separate request rather than inside
+// this one). curate.ts's single request already spends part of that budget on
+// Polymarket's fetch, Anthropic's match/generate calls, and a few DB queries, so
+// Kalshi's live-fetch (sharing the SAME request/budget, not a separate one) can only
+// afford a slice of KALSHI_SERIES_MAP's ~36 series, not all of them, every run. Capping
+// per LEAGUE (not globally) keeps every league in the rotation rather than letting
+// whichever league iterates first (NBA, alphabetically-ish in the map) crowd out the
+// rest - each league's series are already ordered highest-value-first in the map
+// (points/passing-yards/home-runs/anytime-scorer before the rarer stat types), so
+// slicing keeps the series most likely to matter.
+const MAX_KALSHI_SERIES_PER_LEAGUE = 3;
+
 function withinWindow(market: KalshiMarket, now: number, windowMs: number): boolean {
     const t = market.occurrence_datetime;
     if (!t) return false;
@@ -59,7 +74,7 @@ export async function fetchLiveKalshiGames(
     const rows: KalshiPropsRow[] = [];
 
     for (const league of leagues) {
-        for (const seriesTicker of seriesTickersForLeague(league)) {
+        for (const seriesTicker of seriesTickersForLeague(league).slice(0, MAX_KALSHI_SERIES_PER_LEAGUE)) {
             const info = KALSHI_SERIES_MAP[seriesTicker];
 
             // One series's fetch failing (a 429 after exhausting retries, a transient
