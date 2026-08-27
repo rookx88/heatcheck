@@ -1,8 +1,3 @@
-# Trivial comment-only change (2026-08-27) to verify .github/workflows/deploy-cron-workers.yml
-# actually fires on a real push to this branch/directory, before Sammy provisions the
-# CLOUDFLARE_API_TOKEN/CLOUDFLARE_ACCOUNT_ID secrets - this commit is expected to trigger
-# the workflow and have detect-changes succeed while deploy-curate fails cleanly on the
-# missing secret, proving the "fails loudly, never silently" design goal.
 name = "heatchecks-curate-cron"
 main = "src/index.ts"
 compatibility_date = "2026-08-12"
