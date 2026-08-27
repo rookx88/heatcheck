@@ -15,6 +15,29 @@ import * as esbuild from 'esbuild';
 import path from 'path';
 import fs from 'fs';
 
+// Both chunkNames and assetNames below are content-hashed ('tank-shared-[hash]',
+// 'tank-asset-[hash]') so a changed dependency graph or a re-optimized SVG/webp gets a
+// brand new filename - but esbuild only ever WRITES the current build's output, it never
+// deletes a previous run's now-unreferenced hash file. Since public/assets/ is a
+// persistent, git-committed directory (not a wiped-per-build dist/ dir), that garbage
+// silently accumulates release over release. Observed live 2026-08: 14 of 20
+// tank-shared-*.js files in public/assets/ were orphaned, referenced by nothing.
+const ORPHAN_PATTERNS = [/^tank-shared-.*\.(js|css)$/, /^tank-asset-.*\.[a-z0-9]+$/];
+
+// Deletes any file in `dir` matching one of ORPHAN_PATTERNS whose name isn't in
+// `keepBasenames` - i.e. wasn't just emitted by this build. Never touches fixed-name
+// entry outputs (tank-page.js, homepage.js, etc.) or anything outside the two hashed
+// prefixes this script itself owns.
+function pruneOrphanedHashedFiles(dir: string, keepBasenames: Set<string>): void {
+    if (!fs.existsSync(dir)) return;
+    for (const name of fs.readdirSync(dir)) {
+        if (keepBasenames.has(name)) continue;
+        if (!ORPHAN_PATTERNS.some((re) => re.test(name))) continue;
+        fs.unlinkSync(path.join(dir, name));
+        console.log(`  pruned orphaned build artifact: ${path.join(path.basename(dir), name)}`);
+    }
+}
+
 export async function buildTankBundles(): Promise<void> {
     const outdir = path.join(process.cwd(), 'public', 'assets');
     fs.mkdirSync(outdir, { recursive: true });
@@ -66,14 +89,22 @@ export async function buildTankBundles(): Promise<void> {
     const distOutdir = path.join(process.cwd(), 'dist', 'assets');
     fs.mkdirSync(distOutdir, { recursive: true });
     const emittedCount = Object.keys(result.metafile!.outputs).length;
+    const emittedBasenames = new Set<string>();
     for (const outputPath of Object.keys(result.metafile!.outputs)) {
         const absSrc = path.resolve(process.cwd(), outputPath);
         const rel = path.relative(outdir, absSrc);
         if (rel.startsWith('..')) continue; // not one of ours (shouldn't happen)
+        emittedBasenames.add(rel);
         const dest = path.join(distOutdir, rel);
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.copyFileSync(absSrc, dest);
     }
+
+    // Prune stale hash-named chunks/assets left behind by PREVIOUS runs - this build's
+    // own fresh output is always kept (emittedBasenames), only now-unreferenced leftovers
+    // get removed. See ORPHAN_PATTERNS' comment for why this is needed at all.
+    pruneOrphanedHashedFiles(outdir, emittedBasenames);
+    pruneOrphanedHashedFiles(distOutdir, emittedBasenames);
 
     console.log(`✓ Built Tank bundles (${emittedCount} file(s), shared chunk extracted) and copied to dist/assets/`);
 }
