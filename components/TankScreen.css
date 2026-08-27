@@ -116,12 +116,18 @@
   transition: opacity 0.35s ease;
 }
 
+/* Idle shimmer: the outline sits at a low resting opacity (rather than fully
+   invisible) and breathes slowly, and the scanline sweeps continuously at low
+   intensity - both read as "this screen is alive, click it" before any
+   hover/focus. .is-active (below) boosts both to their full hover strength,
+   so interacting still reads as a clear step up, not just "more of the same". */
 .tank-screen__outline {
   stroke: #2fe6d9;
   stroke-width: 2.5;
-  opacity: 0;
+  opacity: 0.32;
   filter: drop-shadow(0 0 6px #2fe6d9);
   transition: opacity 0.3s ease;
+  animation: tank-hotspot-idle-shimmer 3.2s ease-in-out infinite;
 }
 
 .tank-screen__brighten {
@@ -139,8 +145,9 @@
 
 .tank-screen__scanline {
   fill: url(#tank-screen-scanline-gradient);
-  opacity: 0;
+  opacity: 0.16;
   transition: opacity 0.4s ease;
+  animation: tank-scanline-sweep 4.5s linear infinite;
 }
 
 .tank-screen__hit {
@@ -155,6 +162,7 @@
 
 .tank-screen__hotspot.is-active .tank-screen__outline {
   opacity: 1;
+  animation: none; /* full strength beats the idle breathe, not adds to it */
 }
 
 .tank-screen__hotspot.is-active .tank-screen__brighten {
@@ -169,6 +177,13 @@
 @keyframes tank-hotspot-pulse {
   0%, 100% { stroke-width: 8; opacity: 0.6; }
   50% { stroke-width: 13; opacity: 0.9; }
+}
+
+/* Idle-only (pre-hover) breathe on the outline - subtle, so the screen reads
+   as "alive"/clickable without competing with the stronger .is-active pulse. */
+@keyframes tank-hotspot-idle-shimmer {
+  0%, 100% { opacity: 0.22; }
+  50% { opacity: 0.5; }
 }
 
 @keyframes tank-scanline-sweep {
@@ -400,10 +415,16 @@
 
 @media (prefers-reduced-motion: reduce) {
   .tank-screen__glow,
+  .tank-screen__outline,
+  .tank-screen__scanline,
   .tank-screen::after,
   .tank-modal-overlay,
   .tank-modal-panel {
     animation: none !important;
     transition-duration: 0.01ms !important;
   }
+  /* The idle shimmer relies on the animation to be visible at all - freeze it
+     at a fixed low-but-present opacity instead of losing the affordance. */
+  .tank-screen__outline { opacity: 0.4; }
+  .tank-screen__scanline { opacity: 0.16; }
 }
