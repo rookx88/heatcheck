@@ -46,13 +46,13 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&family=Montserrat:wght@800;900&display=swap" rel="stylesheet">
 
     <style>
         :root {
-            --hc-navy-dark: #060c22;
-            --hc-navy: #0b1a45;
-            --hc-navy-light: #14275f;
+            --hc-navy-dark: #0b0713;
+            --hc-navy: #160c27;
+            --hc-navy-light: #23143e;
             --hc-gold: #ffc72c;
             --hc-gold-dark: #e8a800;
             --hc-teal: #2fe6d9;
@@ -121,7 +121,7 @@
         }
         .hc-learn-more .hc-check-box img { width: 34px; height: auto; }
         .hc-learn-more span {
-            font-family: 'Nunito', sans-serif;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
             font-weight: 800;
             font-size: 0.7rem;
             letter-spacing: 0.04em;
@@ -175,15 +175,15 @@
         }
         .hc-bubble {
             background: var(--hc-bubble);
-            color: #0b1a45;
+            color: #160c27;
             border-radius: 22px 22px 22px 4px;
             padding: 0.6rem 0.9rem;
             margin-top: 0.85rem;
             box-shadow: 0 8px 24px rgba(0,0,0,0.35);
         }
         .hc-bubble h1 {
-            font-family: 'Baloo 2', 'Nunito', sans-serif;
-            font-weight: 800;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
+            font-weight: 900;
             font-size: clamp(1.15rem, 5.5vw, 1.6rem);
             line-height: 1.12;
             margin: 0;
@@ -205,7 +205,7 @@
             display: inline-block;
             background: var(--hc-gold);
             color: #1a1200;
-            font-family: 'Baloo 2', 'Nunito', sans-serif;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
             font-weight: 800;
             font-size: 1.1rem;
             text-decoration: none;
@@ -268,10 +268,62 @@
         .hc-home { max-width: 1080px; margin: 0 auto; padding: 0.75rem 1.25rem 1rem; min-height: 100vh; display: flex; flex-direction: column; }
         .hc-home-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; }
         .hc-home-header .hc-logo img { width: clamp(120px, 26vw, 240px); height: auto; display: block; }
-        /* margin-left:auto (formerly on the nav, now removed) keeps the auth area
-           pinned to the header's right edge. */
-        .hc-login-cta { font-size: 0.95rem; padding: 0.5rem 1.4rem; flex-shrink: 0; margin-left: auto; }
-        .hc-auth { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; margin-left: auto; }
+        /* Register banner (logged out) + auth area, grouped so the whole cluster
+           pins to the header's right edge as one unit - margin-left:auto lives on
+           the wrapper, not the individual pieces, so it works whichever is first. */
+        .hc-header-right { display: flex; flex-wrap: wrap; align-items: center; gap: 0.9rem; margin-left: auto; }
+        .hc-login-cta { font-size: 0.95rem; padding: 0.5rem 1.4rem; flex-shrink: 0; }
+        .hc-auth { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
+        /* Register banner: same rendered height as the logo (logo's own clamp
+           divided by its 500:241 aspect ratio), width follows the banner's native
+           4:1 shape. */
+        .hc-header-right .hc-register-cta {
+            display: block; background: none; border: none; padding: 0; cursor: pointer;
+            height: clamp(58px, 12.53vw, 116px);
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 0.15s ease, filter 0.2s ease;
+        }
+        .hc-header-right .hc-register-cta img {
+            display: block; width: auto; height: 100%;
+            border-radius: 10px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(47, 230, 217, 0.25);
+        }
+        .hc-header-right .hc-register-cta:hover { transform: translateY(-2px) scale(1.02); filter: brightness(1.05); }
+        .hc-header-right .hc-register-cta:active { transform: scale(0.95); }
+        .hc-header-right .hc-register-cta:focus-visible { outline: 3px solid var(--hc-teal); outline-offset: 3px; border-radius: 10px; }
+        .hc-header-right .hc-register-cta.is-popping { animation: hc-register-pop 0.35s ease; }
+        @keyframes hc-register-pop {
+            0% { transform: scale(1); }
+            30% { transform: scale(0.92) rotate(-2deg); }
+            65% { transform: scale(1.05) rotate(1.5deg); }
+            100% { transform: scale(1); }
+        }
+        /* Mobile register banner: a second copy of the same button, its own
+           full-width row between the ticker and the Tanks panel - matches the
+           92%-width card size this image used before it moved into the
+           header. Hidden by default; the header's copy (shown above) is what
+           renders at desktop widths instead. */
+        .hc-mobile-register-row { display: none; }
+        .hc-mobile-register-row .hc-register-cta {
+            display: block; margin: 0 auto; background: none; border: none; padding: 0; cursor: pointer;
+            width: min(420px, 92%);
+            -webkit-tap-highlight-color: transparent;
+            transition: transform 0.15s ease, filter 0.2s ease;
+        }
+        .hc-mobile-register-row .hc-register-cta img {
+            display: block; width: 100%; height: auto;
+            border-radius: 10px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(47, 230, 217, 0.25);
+        }
+        .hc-mobile-register-row .hc-register-cta:hover { transform: translateY(-2px) scale(1.02); filter: brightness(1.05); }
+        .hc-mobile-register-row .hc-register-cta:active { transform: scale(0.95); }
+        .hc-mobile-register-row .hc-register-cta:focus-visible { outline: 3px solid var(--hc-teal); outline-offset: 3px; border-radius: 10px; }
+        .hc-mobile-register-row .hc-register-cta.is-popping { animation: hc-register-pop 0.35s ease; }
+        /* Below the desktop breakpoint: swap which copy is visible. */
+        @media (max-width: 1023px) {
+            .hc-header-right .hc-register-cta { display: none; }
+            .hc-mobile-register-row { display: block; margin: 0.9rem 0; }
+        }
         /* The island turns the chip into the same mini-nav trigger the map pages'
            MapHud has; the dropdown (MapHud.css classes) hangs off its right edge. */
         .hc-auth--clickable { position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
@@ -286,7 +338,7 @@
         }
         .hc-section { margin-top: 2.25rem; }
         .hc-section h2 {
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900;
             font-size: clamp(1.3rem, 4.5vw, 1.7rem); margin: 0; text-transform: uppercase;
         }
         .hc-section-sub { margin: 0.35rem 0 1rem; font-size: 0.88rem; color: rgba(255,255,255,0.7); }
@@ -319,7 +371,7 @@
             width: 48px; height: 48px; padding: 0;
             display: flex; align-items: center; justify-content: center;
             font-size: 1.35rem; line-height: 1;
-            color: var(--hc-teal); background: rgba(5, 7, 15, 0.6); cursor: pointer;
+            color: var(--hc-teal); background: rgba(7, 5, 11, 0.6); cursor: pointer;
             border: 2px solid rgba(47, 230, 217, 0.35); border-radius: 50%;
             transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
         }
@@ -349,9 +401,9 @@
            showcase wrapper for the transform version of the same trap. */
         #tanks {
             position: relative;
-            border: 3px solid #f89b4e;
+            border: 3px solid #000000;
             border-radius: 6px;
-            background: #05070f;
+            background: #07050b;
             padding: 0 1.1rem 1.1rem;
             overflow: hidden;
             display: flex;
@@ -391,13 +443,13 @@
             inset: 0;
             background: linear-gradient(
                 180deg,
-                rgba(5, 7, 15, 0.62) 0%,
-                rgba(5, 7, 15, 0.28) 26%,
-                rgba(5, 7, 15, 0) 46%,
-                rgba(5, 7, 15, 0) 64%,
-                rgba(5, 7, 15, 0.45) 100%
+                rgba(7, 5, 11, 0.62) 0%,
+                rgba(7, 5, 11, 0.28) 26%,
+                rgba(7, 5, 11, 0) 46%,
+                rgba(7, 5, 11, 0) 64%,
+                rgba(7, 5, 11, 0.45) 100%
             );
-            box-shadow: inset 0 0 42px 16px rgba(6, 12, 34, 0.7);
+            box-shadow: inset 0 0 42px 16px rgba(11, 7, 19, 0.7);
         }
 
         /* The wind: two soft, blurred light wisps drifting across the cave at
@@ -439,7 +491,7 @@
            them paint above .hc-tanks-backdrop - see that rule's comment. */
         #tanks h2 {
             position: relative;
-            background: var(--hc-gold); color: #1a1200;
+            background: #8b1c18; color: #ffffff;
             margin: 0 -1.1rem 0.75rem; padding: 0.65rem 1.1rem;
         }
         .hc-section-sub--tanks { position: relative; margin-top: 0; }
@@ -448,7 +500,7 @@
            over the crawlable Tank HQ pointer. */
         .hc-tanks-footer { position: relative; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid rgba(47, 230, 217, 0.2); }
         .hc-picks-status {
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
             font-size: 0.95rem; letter-spacing: 0.05em; text-transform: uppercase;
             color: var(--hc-gold);
         }
@@ -472,33 +524,6 @@
         }
         #hc-map-root { position: relative; z-index: 2; }
         .hc-world-map-static, #hc-map-root svg { display: block; width: 100%; height: auto; }
-
-        /* Register CTA card (logged-out only). Mobile: centered under the world,
-           before the footer. Click movement: hover lift, active squash, and the
-           island toggles .is-popping for a jiggle before the modal opens. */
-        .hc-register-cta {
-            display: block;
-            background: none; border: none; padding: 0; cursor: pointer;
-            margin: 2rem auto 0; /* clear breathing room under the world on mobile */
-            width: min(420px, 92%);
-            -webkit-tap-highlight-color: transparent;
-            transition: transform 0.15s ease, filter 0.2s ease;
-        }
-        .hc-register-cta img {
-            display: block; width: 100%; height: auto;
-            border-radius: 18px;
-            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5), 0 0 0 2px rgba(47, 230, 217, 0.25);
-        }
-        .hc-register-cta:hover { transform: translateY(-3px) scale(1.02); filter: brightness(1.05); }
-        .hc-register-cta:active { transform: scale(0.95); }
-        .hc-register-cta:focus-visible { outline: 3px solid var(--hc-teal); outline-offset: 4px; border-radius: 18px; }
-        .hc-register-cta.is-popping { animation: hc-register-pop 0.35s ease; }
-        @keyframes hc-register-pop {
-            0% { transform: scale(1); }
-            30% { transform: scale(0.92) rotate(-2deg); }
-            65% { transform: scale(1.05) rotate(1.5deg); }
-            100% { transform: scale(1); }
-        }
 
         @media (prefers-reduced-motion: reduce) {
             .hc-sport-row { scroll-behavior: auto; }
@@ -524,43 +549,38 @@
                     'explore explore'
                     'footer footer';
                 column-gap: 1.5rem;
-                /* Default (stretch) block alignment: the tanks and movers panels share
-                   the row, so the shorter one stretches to the taller one's height. */
             }
             .hc-home-header { grid-area: header; }
             .hc-ticker-tape { grid-area: tape; }
-            #tanks { grid-area: tanks; }
+            /* align-self: start (overriding the grid row's default stretch) so Tanks
+               sizes to its own content instead of being pulled down to match Market
+               Movers' height - Market Movers (chart + news + results per card) is the
+               naturally longer panel and should read that way, not get matched by an
+               artificially stretched Tanks panel. */
+            #tanks { grid-area: tanks; align-self: start; }
             #market-movers { grid-area: movers; }
             #explore { grid-area: explore; }
             .hc-footer { grid-area: footer; }
 
-            /* Tanks panel (base-styled above): stretched to the movers panel's
-               height with the footer pinned at the bottom. */
             #tanks { margin-top: 1.5rem; }
-            #tanks .hc-tanks-footer { margin-top: auto; padding-top: 1rem; }
 
             /* Explore: globe seated left on the page's own navy background (one
-               consistent color story all the way down). Logged out, the register CTA
-               card sits to the world's right; logged in, the open right half is
-               where the fixed pet widget visually lives. */
+               consistent color story all the way down). The open right half is
+               where the fixed pet widget visually lives when logged in. */
             #explore { margin-top: 2rem; }
             /* The logo stays IN FLOW above (so the world sits right under it, same
-               slight overlap as mobile via the logo's negative bottom margin). The
-               register CTA docks absolute at the wrap's TOP-RIGHT: level with the
-               EXPLORE logo, its right edge on the container edge - the same edge the
-               Market Movers panel above ends on. */
+               slight overlap as mobile via the logo's negative bottom margin). */
             #explore .hc-explore-wrap { margin-top: 0.5rem; }
             #hc-map-root { max-width: 620px; }
-            .hc-register-cta { position: absolute; top: 0; right: 0; width: 340px; margin: 0; }
             .hc-footer { padding-top: 1.25rem; }
         }
     
-        .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #f89b4e; }
+        .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #a36114; border-top: 2px solid #000000; border-bottom: 2px solid #000000; }
         .hc-tape-track { display: flex; width: max-content; animation: hc-tape 28s linear infinite; }
         .hc-tape-group {
             list-style: none; display: flex; gap: 2.25rem; margin: 0; padding: 0.5rem 1.5rem 0.55rem;
             white-space: nowrap;
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
             font-size: 1.45rem; letter-spacing: 0.03em; text-transform: uppercase;
         }
         .hc-tape-item, .hc-tape-item .hc-mm-value { font-weight: 800; }
@@ -579,7 +599,7 @@
 
         .hc-mm-tabs { display: flex; gap: 0.6rem; margin: 0.75rem 0 0; position: relative; z-index: 1; }
         .hc-mm-tab {
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
             font-size: clamp(0.95rem, 3.2vw, 1.25rem); letter-spacing: 0.04em; text-transform: uppercase;
             cursor: pointer; color: #ffffff; border: none;
             border-radius: 14px 14px 0 0; padding: 0.55rem 1.3rem 0.5rem;
@@ -611,13 +631,13 @@
         .hc-mm-head { flex: 1 1 220px; min-width: 0; display: flex; flex-direction: column; }
         .hc-mm-title { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; margin: 0; }
         .hc-mm-index {
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem;
             letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526;
         }
-        .hc-mm-name { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 0.95rem; color: #0b1526; }
+        .hc-mm-name { font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.95rem; color: #0b1526; }
         .hc-mm-desc {
             align-self: flex-start; margin: 0.1rem 0 0;
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.68rem;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.68rem;
             letter-spacing: 0.12em; text-transform: uppercase; color: #10203a;
             background: rgba(255,255,255,0.92); border-radius: 6px; padding: 0.28rem 0.6rem;
         }
@@ -636,7 +656,7 @@
             letter-spacing: 0.04em; fill: #10203a;
         }
         .hc-mm-chartrow .hc-mm-value {
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-style: italic;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900;
             font-size: clamp(1.15rem, 4vw, 1.5rem); flex-shrink: 0;
             text-shadow:
                 1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff,
@@ -648,28 +668,52 @@
         .hc-mm-chartrow .hc-mm-value.is-zero { color: #5b6572; }
         .hc-mm-chart-empty {
             font-size: 0.82rem; font-weight: 800; color: rgba(255,255,255,0.85); margin: 0;
-            background: #0b1a45; border: 1.5px solid rgba(47,230,217,0.4); border-radius: 8px; padding: 0.8rem 0.9rem;
+            background: #160c27; border: 1.5px solid rgba(47,230,217,0.4); border-radius: 8px; padding: 0.8rem 0.9rem;
         }
-        .hc-mm-news-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: Georgia, 'Times New Roman', serif; }
+        .hc-mm-news-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: 'Nunito', sans-serif; }
         .hc-mm-empty { font-size: 0.85rem; color: rgba(255,255,255,0.6); margin: 1rem 0 0; }
         .hc-mm-news-heading {
-            font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
             letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526; margin: 0.4rem 0 0.45rem;
         }
         .hc-mm-news-list { list-style: none; margin: 0; padding: 0 0 0 0.35rem; display: flex; flex-direction: column; gap: 0.7rem; }
         .hc-mm-news-list a {
-            font-family: Georgia, 'Times New Roman', serif; font-weight: 700; font-size: 0.95rem;
+            font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.95rem;
             line-height: 1.35; color: #7a1f1f; text-decoration: none;
         }
         .hc-mm-news-list a:hover { text-decoration: underline; }
         .hc-mm-excerpt {
-            font-family: Georgia, 'Times New Roman', serif; font-size: 0.85rem; line-height: 1.45;
+            font-family: 'Nunito', sans-serif; font-size: 0.85rem; line-height: 1.45;
             color: #8b3a3a; margin: 0.15rem 0 0.2rem 1rem;
         }
         .hc-mm-news-meta {
-            display: block; margin-left: 1rem; font-size: 0.66rem; font-weight: 800;
+            display: block; margin-left: 1rem; font-family: 'Montserrat', 'Nunito', sans-serif; font-size: 0.66rem; font-weight: 800;
             letter-spacing: 0.08em; text-transform: uppercase; color: #24344f;
         }
+
+        .hc-mm-results-heading {
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
+            letter-spacing: 0.14em; text-transform: uppercase; color: #0b1526; margin: 0.6rem 0 0.45rem;
+        }
+        .hc-mm-results {
+            margin: 0.3rem 0 0; padding: 0.65rem 0.75rem 0.7rem; border-radius: 0 8px 8px 0;
+            background: rgba(11, 21, 38, 0.06); border-left: 3px solid #94a3b8;
+        }
+        .hc-mm-card[data-sign="pos"] .hc-mm-results { border-left-color: #2f9e1e; background: rgba(47, 158, 30, 0.1); }
+        .hc-mm-card[data-sign="neg"] .hc-mm-results { border-left-color: #e33a24; background: rgba(227, 58, 36, 0.1); }
+        .hc-mm-results-heading { margin-top: 0; }
+        .hc-mm-results-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.55rem; }
+        .hc-mm-results-list li {
+            font-family: 'Nunito', sans-serif; font-size: 0.9rem; line-height: 1.4; color: #24344f;
+        }
+        .hc-mm-result-chip {
+            display: inline-block; font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
+            font-size: 0.72rem; letter-spacing: 0.03em; text-transform: uppercase; color: #ffffff;
+            border-radius: 999px; padding: 0.1rem 0.5rem; margin: 0 0.3rem 0.15rem 0; vertical-align: middle;
+        }
+        .hc-mm-result-chip.is-pos { background: #2f9e1e; }
+        .hc-mm-result-chip.is-neg { background: #e33a24; }
+        .hc-mm-results-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: 'Nunito', sans-serif; }
 
         /* Same orange frame as #tanks (homepage/render.ts), at every viewport - not
            just inside the desktop-only white-panel treatment below - so the two
@@ -677,7 +721,7 @@
            (global reset) keeps the added border from disturbing the desktop grid's
            stretch-alignment between the two panels. */
         #market-movers {
-            border: 3px solid #f89b4e;
+            border: 3px solid #000000;
             border-radius: 6px;
             padding: 0 1rem 1.1rem;
             overflow: hidden;
@@ -711,12 +755,22 @@
             }
             .hc-mm-logo { width: clamp(140px, 14vw, 190px); margin: 0; flex-shrink: 0; }
             .hc-mm-note {
-                margin: 0; color: #ffffff; font-weight: 800; font-size: 0.78rem;
+                margin: 0; color: #ffffff; font-size: 0.78rem;
                 background: rgba(255,255,255,0.14); border: 1px solid rgba(255,255,255,0.35);
                 border-radius: 8px; padding: 0.45rem 0.7rem;
             }
             .hc-mm-tabs { margin-top: 0.5rem; }
-            .hc-mm-card { background: transparent; padding: 0.9rem 0.15rem 0.2rem; border-radius: 0; }
+            /* A fully transparent card read as flat/boring on the white panel -
+               a light tint plus a sign-colored left rail gives the card its own
+               presence instead of the text just floating on white. */
+            .hc-mm-card {
+                background: rgba(94, 193, 238, 0.22);
+                padding: 1rem 1.15rem 1.2rem; border-radius: 10px;
+                border-left: 5px solid #94a3b8;
+                box-shadow: 0 2px 10px rgba(11, 21, 38, 0.08);
+            }
+            .hc-mm-card[data-sign="pos"] { border-left-color: #2f9e1e; }
+            .hc-mm-card[data-sign="neg"] { border-left-color: #e33a24; }
             /* The white desc chip vanishes white-on-white - pale blue on desktop. */
             .hc-mm-desc { background: rgba(94, 193, 238, 0.35); }
         }
@@ -735,23 +789,33 @@
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
                 <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
             </a>
-            <a class="hc-cta-button hc-login-cta" href="/login/">Log in</a>
+            <div class="hc-header-right">
+                
+            <button type="button" class="hc-register-cta" data-hc-register aria-haspopup="dialog" aria-label="Register to join HeatChecks">
+                <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
+            </button>
+                <a class="hc-cta-button hc-login-cta" href="/login/">Log in</a>
+            </div>
         </header>
         
         <div class="hc-ticker-tape" aria-label="Ticker values — how tagged storylines have gone, not a forecast">
             <div class="hc-tape-track">
                 <ul class="hc-tape-group">
-                <li class="hc-tape-item is-neg">$DOGS <span class="hc-mm-value is-neg">−41.0%</span></li>
-                <li class="hc-tape-item is-pos">$CHALK <span class="hc-mm-value is-pos">+29.5%</span></li>
-                <li class="hc-tape-item is-pos">$LOCKS <span class="hc-mm-value is-pos">+6.0%</span></li>
-                <li class="hc-tape-item is-neg">$MOONSHOT <span class="hc-mm-value is-neg">−2.0%</span></li></ul>
+                <li class="hc-tape-item is-neg">$DOGS <span class="hc-mm-value is-neg">−117.5%</span></li>
+                <li class="hc-tape-item is-pos">$CHALK <span class="hc-mm-value is-pos">+106.5%</span></li>
+                <li class="hc-tape-item is-pos">$LOCKS <span class="hc-mm-value is-pos">+22.0%</span></li>
+                <li class="hc-tape-item is-neg">$MOONSHOT <span class="hc-mm-value is-neg">−13.0%</span></li></ul>
                 <ul class="hc-tape-group" aria-hidden="true">
-                <li class="hc-tape-item is-neg">$DOGS <span class="hc-mm-value is-neg">−41.0%</span></li>
-                <li class="hc-tape-item is-pos">$CHALK <span class="hc-mm-value is-pos">+29.5%</span></li>
-                <li class="hc-tape-item is-pos">$LOCKS <span class="hc-mm-value is-pos">+6.0%</span></li>
-                <li class="hc-tape-item is-neg">$MOONSHOT <span class="hc-mm-value is-neg">−2.0%</span></li></ul>
+                <li class="hc-tape-item is-neg">$DOGS <span class="hc-mm-value is-neg">−117.5%</span></li>
+                <li class="hc-tape-item is-pos">$CHALK <span class="hc-mm-value is-pos">+106.5%</span></li>
+                <li class="hc-tape-item is-pos">$LOCKS <span class="hc-mm-value is-pos">+22.0%</span></li>
+                <li class="hc-tape-item is-neg">$MOONSHOT <span class="hc-mm-value is-neg">−13.0%</span></li></ul>
             </div>
         </div>
+        <div class="hc-mobile-register-row">
+            <button type="button" class="hc-register-cta" data-hc-register aria-haspopup="dialog" aria-label="Register to join HeatChecks">
+                <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
+            </button></div>
         
         <section id="tanks" class="hc-section" aria-labelledby="hc-tanks-heading">
             <!-- The ember-lit cave behind the WHOLE panel interior: pitch copy, tank
@@ -769,9 +833,9 @@
                 <div id="hc-showcase-root" aria-hidden="true"></div>
                 <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
                     
-            <button type="button" class="hc-sport-btn is-selected" data-sport="Baseball" data-live aria-pressed="true" title="Baseball" aria-label="Show the baseball Tank: Joshua Báez homered in his first three career at-bats. No one in modern MLB history had ever done that."><span aria-hidden="true">⚾</span></button>
-            <button type="button" class="hc-sport-btn" data-sport="Football" data-live aria-pressed="false" title="Football" aria-label="Show the football Tank: Rodgers is out. Rudolph is out. The only thing on the line tonight is a job."><span aria-hidden="true">🏈</span></button>
-            <button type="button" class="hc-sport-btn" data-sport="Soccer" data-live aria-pressed="false" title="Soccer" aria-label="Show the soccer Tank: No table, no form, no history. Just Marseille and Strasbourg kicking off the entire Ligue 1 season at the Vélodrome."><span aria-hidden="true">⚽</span></button>
+            <button type="button" class="hc-sport-btn is-selected" data-sport="Baseball" data-live aria-pressed="true" title="Baseball" aria-label="Show the baseball Tank: Jim Crane fired his GM mid-playoff-race and put himself in charge. First game under the new regime is against the Mets."><span aria-hidden="true">⚾</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Football" data-live aria-pressed="false" title="Football" aria-label="Show the football Tank: The Bills are trying to win a football game the same week they&#039;re trying to hold each other up."><span aria-hidden="true">🏈</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Soccer" data-live aria-pressed="false" title="Soccer" aria-label="Show the soccer Tank: The most expensive attacker in British history makes his road trip to the City Ground."><span aria-hidden="true">⚽</span></button>
             <button type="button" class="hc-sport-btn" data-sport="Basketball" disabled title="Basketball" aria-label="Basketball: nothing live today"><span aria-hidden="true">🏀</span></button>
                 </div>
             </div>
@@ -803,14 +867,14 @@
                     <p class="hc-mm-desc">Favorite storylines - sides priced at 50% or better.</p>
                 </header>
                 <div class="hc-mm-chartrow">
-                    <span class="hc-mm-value is-pos">+29.5%</span>
-                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$CHALK cumulative chart: currently +29.5% over 41 events">
-                <title>$CHALK cumulative chart: currently +29.5% over 41 events</title>
-                <rect x="0.75" y="0.75" width="258.5" height="70.5" rx="8" fill="#0b1a45" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
-                <line x1="6" x2="254" y1="44.8" y2="44.8" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 4" stroke-width="1"/>
-                <polyline fill="none" points="6.0,44.8 12.0,50.1 18.1,48.5 24.1,48.5 30.2,49.0 36.2,48.5 42.3,48.5 48.3,48.5 54.4,48.5 60.4,49.0 66.5,50.1 72.5,55.4 78.6,60.7 84.6,66.0 90.7,60.7 96.7,60.7 102.8,54.8 108.8,53.3 114.9,52.2 120.9,52.2 127.0,52.2 133.0,52.2 139.1,46.9 145.1,46.9 151.2,46.9 157.2,41.6 163.3,36.3 169.3,36.3 175.4,36.3 181.4,31.0 187.5,25.6 193.5,25.6 199.6,21.9 205.6,16.6 211.7,11.3 217.7,6.0 223.8,11.3 229.8,11.3 235.9,12.4 241.9,12.4 248.0,12.4 254.0,13.4" stroke="#3ddc64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-                <circle cx="12.0" cy="50.1" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · −5.0% (running: −5.0%)</title></circle><circle cx="18.1" cy="48.5" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +1.5% (running: −3.5%)</title></circle><circle cx="24.1" cy="48.5" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="30.2" cy="49.0" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · −0.5% (running: −4.0%)</title></circle><circle cx="36.2" cy="48.5" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.5% (running: −3.5%)</title></circle><circle cx="42.3" cy="48.5" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="48.3" cy="48.5" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="54.4" cy="48.5" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −3.5%)</title></circle><circle cx="60.4" cy="49.0" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · −0.5% (running: −4.0%)</title></circle><circle cx="66.5" cy="50.1" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · −1.0% (running: −5.0%)</title></circle><circle cx="72.5" cy="55.4" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · −5.0% (running: −10.0%)</title></circle><circle cx="78.6" cy="60.7" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · −5.0% (running: −15.0%)</title></circle><circle cx="84.6" cy="66.0" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · −5.0% (running: −20.0%)</title></circle><circle cx="90.7" cy="60.7" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · +5.0% (running: −15.0%)</title></circle><circle cx="96.7" cy="60.7" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −15.0%)</title></circle><circle cx="102.8" cy="54.8" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +5.5% (running: −9.5%)</title></circle><circle cx="108.8" cy="53.3" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +1.5% (running: −8.0%)</title></circle><circle cx="114.9" cy="52.2" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +1.0% (running: −7.0%)</title></circle><circle cx="120.9" cy="52.2" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −7.0%)</title></circle><circle cx="127.0" cy="52.2" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −7.0%)</title></circle><circle cx="133.0" cy="52.2" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −7.0%)</title></circle><circle cx="139.1" cy="46.9" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · +5.0% (running: −2.0%)</title></circle><circle cx="145.1" cy="46.9" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −2.0%)</title></circle><circle cx="151.2" cy="46.9" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −2.0%)</title></circle><circle cx="157.2" cy="41.6" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · +5.0% (running: +3.0%)</title></circle><circle cx="163.3" cy="36.3" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · +5.0% (running: +8.0%)</title></circle><circle cx="169.3" cy="36.3" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: +8.0%)</title></circle><circle cx="175.4" cy="36.3" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: +8.0%)</title></circle><circle cx="181.4" cy="31.0" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · +5.0% (running: +13.0%)</title></circle><circle cx="187.5" cy="25.6" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · +5.0% (running: +18.0%)</title></circle><circle cx="193.5" cy="25.6" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: +18.0%)</title></circle><circle cx="199.6" cy="21.9" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · +3.5% (running: +21.5%)</title></circle><circle cx="205.6" cy="16.6" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +5.0% (running: +26.5%)</title></circle><circle cx="211.7" cy="11.3" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +5.0% (running: +31.5%)</title></circle><circle cx="217.7" cy="6.0" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +5.0% (running: +36.5%)</title></circle><circle cx="223.8" cy="11.3" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · −5.0% (running: +31.5%)</title></circle><circle cx="229.8" cy="11.3" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · +0.0% (running: +31.5%)</title></circle><circle cx="235.9" cy="12.4" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · −1.0% (running: +30.5%)</title></circle><circle cx="241.9" cy="12.4" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · +0.0% (running: +30.5%)</title></circle><circle cx="248.0" cy="12.4" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · +0.0% (running: +30.5%)</title></circle><circle cx="254.0" cy="13.4" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · −1.0% (running: +29.5%)</title></circle>
-                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 20</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Aug 21</text>
+                    <span class="hc-mm-value is-pos">+106.5%</span>
+                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$CHALK cumulative chart: currently +106.5% over 77 events">
+                <title>$CHALK cumulative chart: currently +106.5% over 77 events</title>
+                <rect x="0.75" y="0.75" width="258.5" height="70.5" rx="8" fill="#160c27" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
+                <line x1="6" x2="254" y1="62.3" y2="62.3" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 4" stroke-width="1"/>
+                <polyline fill="none" points="6.0,66.0 10.2,66.0 14.4,66.0 18.6,66.0 22.8,63.4 27.0,63.4 31.2,63.4 35.4,60.7 39.6,58.1 43.8,58.1 48.0,58.1 52.2,55.4 56.4,52.8 60.6,52.8 64.8,50.9 69.1,48.3 73.3,45.6 77.5,43.0 81.7,45.6 85.9,45.6 90.1,46.2 94.3,46.2 98.5,46.2 102.7,46.7 106.9,44.1 111.1,41.4 115.3,38.8 119.5,38.2 123.7,38.2 127.9,35.6 132.1,38.2 136.3,35.6 140.5,35.6 144.7,35.6 148.9,38.2 153.1,35.6 157.3,33.0 161.5,35.6 165.7,35.3 169.9,35.3 174.1,35.3 178.3,32.7 182.5,30.1 186.7,27.4 190.9,30.1 195.2,27.4 199.4,24.8 203.6,19.5 207.8,21.1 212.0,18.4 216.2,15.8 220.4,13.1 224.6,13.4 228.8,12.9 233.0,12.3 237.2,12.3 241.4,8.4 245.6,7.6 249.8,8.9 254.0,6.0" stroke="#3ddc64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="6.0" cy="66.0" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +1.0% (running: −7.0%)</title></circle><circle cx="10.2" cy="66.0" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −7.0%)</title></circle><circle cx="14.4" cy="66.0" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −7.0%)</title></circle><circle cx="18.6" cy="66.0" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −7.0%)</title></circle><circle cx="22.8" cy="63.4" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · +5.0% (running: −2.0%)</title></circle><circle cx="27.0" cy="63.4" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −2.0%)</title></circle><circle cx="31.2" cy="63.4" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: −2.0%)</title></circle><circle cx="35.4" cy="60.7" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · +5.0% (running: +3.0%)</title></circle><circle cx="39.6" cy="58.1" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · +5.0% (running: +8.0%)</title></circle><circle cx="43.8" cy="58.1" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: +8.0%)</title></circle><circle cx="48.0" cy="58.1" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: +8.0%)</title></circle><circle cx="52.2" cy="55.4" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · +5.0% (running: +13.0%)</title></circle><circle cx="56.4" cy="52.8" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · settle · +5.0% (running: +18.0%)</title></circle><circle cx="60.6" cy="52.8" r="2.5" fill="#3ddc64"><title>Aug 20, 2026 · tag · +0.0% (running: +18.0%)</title></circle><circle cx="64.8" cy="50.9" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · +3.5% (running: +21.5%)</title></circle><circle cx="69.1" cy="48.3" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +5.0% (running: +26.5%)</title></circle><circle cx="73.3" cy="45.6" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +5.0% (running: +31.5%)</title></circle><circle cx="77.5" cy="43.0" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +5.0% (running: +36.5%)</title></circle><circle cx="81.7" cy="45.6" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · −5.0% (running: +31.5%)</title></circle><circle cx="85.9" cy="45.6" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · +0.0% (running: +31.5%)</title></circle><circle cx="90.1" cy="46.2" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · −1.0% (running: +30.5%)</title></circle><circle cx="94.3" cy="46.2" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · +0.0% (running: +30.5%)</title></circle><circle cx="98.5" cy="46.2" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · +0.0% (running: +30.5%)</title></circle><circle cx="102.7" cy="46.7" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · −1.0% (running: +29.5%)</title></circle><circle cx="106.9" cy="44.1" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +5.0% (running: +34.5%)</title></circle><circle cx="111.1" cy="41.4" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +5.0% (running: +39.5%)</title></circle><circle cx="115.3" cy="38.8" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +5.0% (running: +44.5%)</title></circle><circle cx="119.5" cy="38.2" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · tag · +1.0% (running: +45.5%)</title></circle><circle cx="123.7" cy="38.2" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · tag · +0.0% (running: +45.5%)</title></circle><circle cx="127.9" cy="35.6" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · settle · +5.0% (running: +50.5%)</title></circle><circle cx="132.1" cy="38.2" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · settle · −5.0% (running: +45.5%)</title></circle><circle cx="136.3" cy="35.6" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · settle · +5.0% (running: +50.5%)</title></circle><circle cx="140.5" cy="35.6" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · tag · +0.0% (running: +50.5%)</title></circle><circle cx="144.7" cy="35.6" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · tag · +0.0% (running: +50.5%)</title></circle><circle cx="148.9" cy="38.2" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · settle · −5.0% (running: +45.5%)</title></circle><circle cx="153.1" cy="35.6" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · settle · +5.0% (running: +50.5%)</title></circle><circle cx="157.3" cy="33.0" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · settle · +5.0% (running: +55.5%)</title></circle><circle cx="161.5" cy="35.6" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · settle · −5.0% (running: +50.5%)</title></circle><circle cx="165.7" cy="35.3" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · tag · +0.5% (running: +51.0%)</title></circle><circle cx="169.9" cy="35.3" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · tag · +0.0% (running: +51.0%)</title></circle><circle cx="174.1" cy="35.3" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · tag · +0.0% (running: +51.0%)</title></circle><circle cx="178.3" cy="32.7" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · +5.0% (running: +56.0%)</title></circle><circle cx="182.5" cy="30.1" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · +5.0% (running: +61.0%)</title></circle><circle cx="186.7" cy="27.4" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · +5.0% (running: +66.0%)</title></circle><circle cx="190.9" cy="30.1" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · −5.0% (running: +61.0%)</title></circle><circle cx="195.2" cy="27.4" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · +5.0% (running: +66.0%)</title></circle><circle cx="199.4" cy="24.8" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · +5.0% (running: +71.0%)</title></circle><circle cx="203.6" cy="19.5" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · tag · +10.0% (running: +81.0%)</title></circle><circle cx="207.8" cy="21.1" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · tag · −3.0% (running: +78.0%)</title></circle><circle cx="212.0" cy="18.4" r="2.5" fill="#3ddc64"><title>Aug 25, 2026 · settle · +5.0% (running: +83.0%)</title></circle><circle cx="216.2" cy="15.8" r="2.5" fill="#3ddc64"><title>Aug 25, 2026 · settle · +5.0% (running: +88.0%)</title></circle><circle cx="220.4" cy="13.1" r="2.5" fill="#3ddc64"><title>Aug 26, 2026 · tag · +5.0% (running: +93.0%)</title></circle><circle cx="224.6" cy="13.4" r="2.5" fill="#3ddc64"><title>Aug 26, 2026 · tag · −0.5% (running: +92.5%)</title></circle><circle cx="228.8" cy="12.9" r="2.5" fill="#3ddc64"><title>Aug 26, 2026 · tag · +1.0% (running: +93.5%)</title></circle><circle cx="233.0" cy="12.3" r="2.5" fill="#3ddc64"><title>Aug 26, 2026 · tag · +1.0% (running: +94.5%)</title></circle><circle cx="237.2" cy="12.3" r="2.5" fill="#3ddc64"><title>Aug 26, 2026 · tag · +0.0% (running: +94.5%)</title></circle><circle cx="241.4" cy="8.4" r="2.5" fill="#3ddc64"><title>Aug 27, 2026 · tag · +7.5% (running: +102.0%)</title></circle><circle cx="245.6" cy="7.6" r="2.5" fill="#3ddc64"><title>Aug 27, 2026 · tag · +1.5% (running: +103.5%)</title></circle><circle cx="249.8" cy="8.9" r="2.5" fill="#3ddc64"><title>Aug 27, 2026 · tag · −2.5% (running: +101.0%)</title></circle><circle cx="254.0" cy="6.0" r="2.5" fill="#3ddc64"><title>Aug 27, 2026 · tag · +5.5% (running: +106.5%)</title></circle>
+                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 20</text><text class="hc-mm-tick" x="127.9" y="84" text-anchor="middle">Aug 22</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Aug 27</text>
             </svg></div>
                 </div>
             </div>
@@ -818,15 +882,23 @@
                 <h4 class="hc-mm-news-heading">Recent News</h4>
                 <ul class="hc-mm-news-list">
                 <li>
-                    <a href="/the-tank/articles/man-united-hull-city-santos-tielemans-debut-spread/">United&#039;s rebuilt midfield makes its competitive debut at Hull, and the spread is really a referendum on chemistry.</a>
-                    <p class="hc-mm-excerpt">Andrey Santos and Youri Tielemans debut together for Manchester United at Hull City, both fresh off summer moves.</p>
-                    <span class="hc-mm-news-meta">EPL · Aug 21, 2026</span>
+                    <a href="/the-tank/articles/steelers-bills-ed-oliver-moneyline/">The Bills are trying to win a football game the same week they&#039;re trying to hold each other up.</a>
+                    <p class="hc-mm-excerpt">Ed Oliver lost his young son this week, and the news has sat over the entire Bills building since.</p>
+                    <span class="hc-mm-news-meta">NFL · Aug 27, 2026</span>
                 </li>
                 <li>
-                    <a href="/the-tank/articles/bears-bengals-joe-burrow-super-bowl-manifesto/">Joe Burrow just said the quiet part out loud: no more next year, this is the Super Bowl season.</a>
-                    <p class="hc-mm-excerpt">Burrow is tired of saying next year. He said it flat out this week, no hedge, no coach-speak. That is the loudest quote in the league right now.</p>
-                    <span class="hc-mm-news-meta">NFL · Aug 21, 2026</span>
+                    <a href="/the-tank/articles/newcastle-tottenham-savio-debut-total-goals/">Spurs got humiliated on opening day and panic bought their way out of it. Newcastle is round one of finding out if it worked.</a>
+                    <p class="hc-mm-excerpt">Tottenham lost 3-0 on opening day and responded by breaking the bank for Sávio, the kind of move that screams crisis mode.</p>
+                    <span class="hc-mm-news-meta">EPL · Aug 27, 2026</span>
                 </li>
+            </ul>
+            </div>
+            <div class="hc-mm-results">
+                <h4 class="hc-mm-results-heading">Recent Results</h4>
+                <ul class="hc-mm-results-list">
+                <li><span class="hc-mm-result-chip is-pos">$CHALK</span> $CHALK climbs 5.0 points with Tampa Bay Rays&#039; recent win.</li>
+                <li><span class="hc-mm-result-chip is-pos">$CHALK</span> The CHALK index experiences a local high as Chelsea don&#039;t win deliver.</li>
+                <li><span class="hc-mm-result-chip is-pos">$CHALK</span> Buyers applaud heroics as Under 0.5 HR impress. The market climbs 5.0 points.</li>
             </ul>
             </div>
         </article>
@@ -840,14 +912,14 @@
                     <p class="hc-mm-desc">Underdog storylines - sides priced below 50%.</p>
                 </header>
                 <div class="hc-mm-chartrow">
-                    <span class="hc-mm-value is-neg">−41.0%</span>
-                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$DOGS cumulative chart: currently −41.0% over 41 events">
-                <title>$DOGS cumulative chart: currently −41.0% over 41 events</title>
-                <rect x="0.75" y="0.75" width="258.5" height="70.5" rx="8" fill="#0b1a45" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
-                <line x1="6" x2="254" y1="15.0" y2="15.0" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 4" stroke-width="1"/>
-                <polyline fill="none" points="6.0,15.0 12.0,19.3 18.1,21.4 24.1,21.4 30.2,23.0 36.2,23.0 42.3,23.0 48.3,23.0 54.4,23.0 60.4,23.0 66.5,21.9 72.5,16.6 78.6,11.3 84.6,6.0 90.7,11.3 96.7,11.3 102.8,17.2 108.8,18.7 114.9,19.8 120.9,19.8 127.0,19.8 133.0,19.8 139.1,25.1 145.1,25.1 151.2,30.4 157.2,30.4 163.3,30.4 169.3,35.7 175.4,35.7 181.4,41.0 187.5,41.0 193.5,46.4 199.6,50.1 205.6,55.4 211.7,60.7 217.7,66.0 223.8,60.7 229.8,60.7 235.9,59.6 241.9,59.6 248.0,59.6 254.0,58.6" stroke="#ff6b57" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-                <circle cx="12.0" cy="19.3" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · tag · −4.0% (running: −4.0%)</title></circle><circle cx="18.1" cy="21.4" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · tag · −2.0% (running: −6.0%)</title></circle><circle cx="24.1" cy="21.4" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · tag · +0.0% (running: −6.0%)</title></circle><circle cx="30.2" cy="23.0" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · tag · −1.5% (running: −7.5%)</title></circle><circle cx="36.2" cy="23.0" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · tag · +0.0% (running: −7.5%)</title></circle><circle cx="42.3" cy="23.0" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · tag · +0.0% (running: −7.5%)</title></circle><circle cx="48.3" cy="23.0" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · tag · +0.0% (running: −7.5%)</title></circle><circle cx="54.4" cy="23.0" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · tag · +0.0% (running: −7.5%)</title></circle><circle cx="60.4" cy="23.0" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · tag · +0.0% (running: −7.5%)</title></circle><circle cx="66.5" cy="21.9" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · tag · +1.0% (running: −6.5%)</title></circle><circle cx="72.5" cy="16.6" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · settle · +5.0% (running: −1.5%)</title></circle><circle cx="78.6" cy="11.3" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · settle · +5.0% (running: +3.5%)</title></circle><circle cx="84.6" cy="6.0" r="2.5" fill="#ff6b57"><title>Aug 19, 2026 · settle · +5.0% (running: +8.5%)</title></circle><circle cx="90.7" cy="11.3" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: +3.5%)</title></circle><circle cx="96.7" cy="11.3" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: +3.5%)</title></circle><circle cx="102.8" cy="17.2" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · −5.5% (running: −2.0%)</title></circle><circle cx="108.8" cy="18.7" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · −1.5% (running: −3.5%)</title></circle><circle cx="114.9" cy="19.8" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · −1.0% (running: −4.5%)</title></circle><circle cx="120.9" cy="19.8" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −4.5%)</title></circle><circle cx="127.0" cy="19.8" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −4.5%)</title></circle><circle cx="133.0" cy="19.8" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −4.5%)</title></circle><circle cx="139.1" cy="25.1" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −9.5%)</title></circle><circle cx="145.1" cy="25.1" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −9.5%)</title></circle><circle cx="151.2" cy="30.4" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −14.5%)</title></circle><circle cx="157.2" cy="30.4" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −14.5%)</title></circle><circle cx="163.3" cy="30.4" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −14.5%)</title></circle><circle cx="169.3" cy="35.7" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −19.5%)</title></circle><circle cx="175.4" cy="35.7" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −19.5%)</title></circle><circle cx="181.4" cy="41.0" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −24.5%)</title></circle><circle cx="187.5" cy="41.0" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −24.5%)</title></circle><circle cx="193.5" cy="46.4" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −29.5%)</title></circle><circle cx="199.6" cy="50.1" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · −3.5% (running: −33.0%)</title></circle><circle cx="205.6" cy="55.4" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −5.0% (running: −38.0%)</title></circle><circle cx="211.7" cy="60.7" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −5.0% (running: −43.0%)</title></circle><circle cx="217.7" cy="66.0" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −5.0% (running: −48.0%)</title></circle><circle cx="223.8" cy="60.7" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · +5.0% (running: −43.0%)</title></circle><circle cx="229.8" cy="60.7" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +0.0% (running: −43.0%)</title></circle><circle cx="235.9" cy="59.6" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +1.0% (running: −42.0%)</title></circle><circle cx="241.9" cy="59.6" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +0.0% (running: −42.0%)</title></circle><circle cx="248.0" cy="59.6" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +0.0% (running: −42.0%)</title></circle><circle cx="254.0" cy="58.6" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +1.0% (running: −41.0%)</title></circle>
-                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 19</text><text class="hc-mm-tick" x="133" y="84" text-anchor="middle">Aug 20</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Aug 21</text>
+                    <span class="hc-mm-value is-neg">−117.5%</span>
+                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$DOGS cumulative chart: currently −117.5% over 76 events">
+                <title>$DOGS cumulative chart: currently −117.5% over 76 events</title>
+                <rect x="0.75" y="0.75" width="258.5" height="70.5" rx="8" fill="#160c27" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
+                
+                <polyline fill="none" points="6.0,7.8 10.2,8.3 14.4,8.3 18.6,8.3 22.8,8.3 27.0,10.9 31.2,10.9 35.4,13.4 39.6,13.4 43.8,13.4 48.0,16.0 52.2,16.0 56.4,18.5 60.6,18.5 64.8,21.1 69.1,22.9 73.3,25.4 77.5,28.0 81.7,30.5 85.9,28.0 90.1,28.0 94.3,27.4 98.5,27.4 102.7,27.4 106.9,26.9 111.1,29.5 115.3,32.0 119.5,34.6 123.7,35.1 127.9,35.1 132.1,37.7 136.3,35.1 140.5,37.7 144.7,37.7 148.9,37.7 153.1,35.1 157.3,37.7 161.5,40.2 165.7,37.7 169.9,37.9 174.1,37.9 178.3,37.9 182.5,40.5 186.7,43.0 190.9,45.6 195.2,43.0 199.4,45.6 203.6,48.1 207.8,53.2 212.0,52.0 216.2,54.5 220.4,57.1 224.6,59.6 228.8,59.4 233.0,59.9 237.2,59.9 241.4,63.7 245.6,64.5 249.8,63.2 254.0,66.0" stroke="#ff6b57" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="6.0" cy="7.8" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · −1.5% (running: −3.5%)</title></circle><circle cx="10.2" cy="8.3" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · −1.0% (running: −4.5%)</title></circle><circle cx="14.4" cy="8.3" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −4.5%)</title></circle><circle cx="18.6" cy="8.3" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −4.5%)</title></circle><circle cx="22.8" cy="8.3" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −4.5%)</title></circle><circle cx="27.0" cy="10.9" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −9.5%)</title></circle><circle cx="31.2" cy="10.9" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −9.5%)</title></circle><circle cx="35.4" cy="13.4" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −14.5%)</title></circle><circle cx="39.6" cy="13.4" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −14.5%)</title></circle><circle cx="43.8" cy="13.4" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −14.5%)</title></circle><circle cx="48.0" cy="16.0" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −19.5%)</title></circle><circle cx="52.2" cy="16.0" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −19.5%)</title></circle><circle cx="56.4" cy="18.5" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −24.5%)</title></circle><circle cx="60.6" cy="18.5" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −24.5%)</title></circle><circle cx="64.8" cy="21.1" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −5.0% (running: −29.5%)</title></circle><circle cx="69.1" cy="22.9" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · −3.5% (running: −33.0%)</title></circle><circle cx="73.3" cy="25.4" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −5.0% (running: −38.0%)</title></circle><circle cx="77.5" cy="28.0" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −5.0% (running: −43.0%)</title></circle><circle cx="81.7" cy="30.5" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −5.0% (running: −48.0%)</title></circle><circle cx="85.9" cy="28.0" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · +5.0% (running: −43.0%)</title></circle><circle cx="90.1" cy="28.0" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +0.0% (running: −43.0%)</title></circle><circle cx="94.3" cy="27.4" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +1.0% (running: −42.0%)</title></circle><circle cx="98.5" cy="27.4" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +0.0% (running: −42.0%)</title></circle><circle cx="102.7" cy="27.4" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +0.0% (running: −42.0%)</title></circle><circle cx="106.9" cy="26.9" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +1.0% (running: −41.0%)</title></circle><circle cx="111.1" cy="29.5" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −5.0% (running: −46.0%)</title></circle><circle cx="115.3" cy="32.0" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −5.0% (running: −51.0%)</title></circle><circle cx="119.5" cy="34.6" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −5.0% (running: −56.0%)</title></circle><circle cx="123.7" cy="35.1" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · tag · −1.0% (running: −57.0%)</title></circle><circle cx="127.9" cy="35.1" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · tag · +0.0% (running: −57.0%)</title></circle><circle cx="132.1" cy="37.7" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · settle · −5.0% (running: −62.0%)</title></circle><circle cx="136.3" cy="35.1" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · settle · +5.0% (running: −57.0%)</title></circle><circle cx="140.5" cy="37.7" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · settle · −5.0% (running: −62.0%)</title></circle><circle cx="144.7" cy="37.7" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · tag · +0.0% (running: −62.0%)</title></circle><circle cx="148.9" cy="37.7" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · tag · +0.0% (running: −62.0%)</title></circle><circle cx="153.1" cy="35.1" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · +5.0% (running: −57.0%)</title></circle><circle cx="157.3" cy="37.7" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · −5.0% (running: −62.0%)</title></circle><circle cx="161.5" cy="40.2" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · −5.0% (running: −67.0%)</title></circle><circle cx="165.7" cy="37.7" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · +5.0% (running: −62.0%)</title></circle><circle cx="169.9" cy="37.9" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · tag · −0.5% (running: −62.5%)</title></circle><circle cx="174.1" cy="37.9" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · tag · +0.0% (running: −62.5%)</title></circle><circle cx="178.3" cy="37.9" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · tag · +0.0% (running: −62.5%)</title></circle><circle cx="182.5" cy="40.5" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −5.0% (running: −67.5%)</title></circle><circle cx="186.7" cy="43.0" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −5.0% (running: −72.5%)</title></circle><circle cx="190.9" cy="45.6" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −5.0% (running: −77.5%)</title></circle><circle cx="195.2" cy="43.0" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · +5.0% (running: −72.5%)</title></circle><circle cx="199.4" cy="45.6" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −5.0% (running: −77.5%)</title></circle><circle cx="203.6" cy="48.1" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −5.0% (running: −82.5%)</title></circle><circle cx="207.8" cy="53.2" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · tag · −10.0% (running: −92.5%)</title></circle><circle cx="212.0" cy="52.0" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · tag · +2.5% (running: −90.0%)</title></circle><circle cx="216.2" cy="54.5" r="2.5" fill="#ff6b57"><title>Aug 25, 2026 · settle · −5.0% (running: −95.0%)</title></circle><circle cx="220.4" cy="57.1" r="2.5" fill="#ff6b57"><title>Aug 25, 2026 · settle · −5.0% (running: −100.0%)</title></circle><circle cx="224.6" cy="59.6" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · −5.0% (running: −105.0%)</title></circle><circle cx="228.8" cy="59.4" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · +0.5% (running: −104.5%)</title></circle><circle cx="233.0" cy="59.9" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · −1.0% (running: −105.5%)</title></circle><circle cx="237.2" cy="59.9" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · +0.0% (running: −105.5%)</title></circle><circle cx="241.4" cy="63.7" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · −7.5% (running: −113.0%)</title></circle><circle cx="245.6" cy="64.5" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · −1.5% (running: −114.5%)</title></circle><circle cx="249.8" cy="63.2" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · +2.5% (running: −112.0%)</title></circle><circle cx="254.0" cy="66.0" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · −5.5% (running: −117.5%)</title></circle>
+                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 20</text><text class="hc-mm-tick" x="127.9" y="84" text-anchor="middle">Aug 22</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Aug 27</text>
             </svg></div>
                 </div>
             </div>
@@ -855,15 +927,23 @@
                 <h4 class="hc-mm-news-heading">Recent News</h4>
                 <ul class="hc-mm-news-list">
                 <li>
-                    <a href="/the-tank/articles/man-united-hull-city-santos-tielemans-debut-spread/">United&#039;s rebuilt midfield makes its competitive debut at Hull, and the spread is really a referendum on chemistry.</a>
-                    <p class="hc-mm-excerpt">Andrey Santos and Youri Tielemans debut together for Manchester United at Hull City, both fresh off summer moves.</p>
-                    <span class="hc-mm-news-meta">EPL · Aug 21, 2026</span>
+                    <a href="/the-tank/articles/steelers-bills-ed-oliver-moneyline/">The Bills are trying to win a football game the same week they&#039;re trying to hold each other up.</a>
+                    <p class="hc-mm-excerpt">Ed Oliver lost his young son this week, and the news has sat over the entire Bills building since.</p>
+                    <span class="hc-mm-news-meta">NFL · Aug 27, 2026</span>
                 </li>
                 <li>
-                    <a href="/the-tank/articles/bears-bengals-joe-burrow-super-bowl-manifesto/">Joe Burrow just said the quiet part out loud: no more next year, this is the Super Bowl season.</a>
-                    <p class="hc-mm-excerpt">Burrow is tired of saying next year. He said it flat out this week, no hedge, no coach-speak. That is the loudest quote in the league right now.</p>
-                    <span class="hc-mm-news-meta">NFL · Aug 21, 2026</span>
+                    <a href="/the-tank/articles/newcastle-tottenham-savio-debut-total-goals/">Spurs got humiliated on opening day and panic bought their way out of it. Newcastle is round one of finding out if it worked.</a>
+                    <p class="hc-mm-excerpt">Tottenham lost 3-0 on opening day and responded by breaking the bank for Sávio, the kind of move that screams crisis mode.</p>
+                    <span class="hc-mm-news-meta">EPL · Aug 27, 2026</span>
                 </li>
+            </ul>
+            </div>
+            <div class="hc-mm-results">
+                <h4 class="hc-mm-results-heading">Recent Results</h4>
+                <ul class="hc-mm-results-list">
+                <li><span class="hc-mm-result-chip is-neg">$DOGS</span> $DOGS sinks 5.0 points with Detroit Tigers&#039; recent loss.</li>
+                <li><span class="hc-mm-result-chip is-neg">$DOGS</span> The DOGS index experiences a local low as Chelsea win don&#039;t deliver.</li>
+                <li><span class="hc-mm-result-chip is-neg">$DOGS</span> Buyers up in arms as Over 0.5 HR fails to impress. The market falls 5.0 points.</li>
             </ul>
             </div>
         </article></div>
@@ -880,9 +960,6 @@
                             <img class="hc-world-map-static" src="/assets/images/world-map.png" alt="Illustrated map of the Heatchecks sports world, with themed islands for soccer, football, basketball, baseball, hockey, and golf surrounding a central aquarium" width="1120" height="1113" loading="lazy">
                         </picture>
                     </div>
-                <button type="button" class="hc-register-cta" data-hc-register aria-haspopup="dialog" aria-label="Register to join HeatChecks">
-                    <img src="/assets/images/register-here.webp" alt="Register here to join the fun" width="800" height="800" loading="lazy">
-                </button>
                 </div>
             </div>
         </section>
@@ -891,7 +968,7 @@
             &copy; 2026 Heatchecks &middot; <a href="/">Home</a>
         </div>
     </main>
-    <script type="application/json" id="homepage-data">{"initialSport":"Baseball","loggedIn":false,"sports":[{"sport":"Baseball","live":true,"slug":"joshua-baez-home-run-prop-cardinals-phillies","href":"/the-tank/articles/joshua-baez-home-run-prop-cardinals-phillies/","deck":{"hook":"Joshua Báez homered in his first three career at-bats. No one in modern MLB history had ever done that.","cards":["Three swings, three home runs, a record nobody had touched. That's Báez's entire MLB resume so far.","Cardinals take the show to Philadelphia next, and the home run prop follows him onto the field."],"call":{"sides":["Over 0.5 HR","Under 0.5 HR"],"question":"Does Joshua Báez hit a home run against the Phillies?","sidesImpliedProb":[0.075,0.925]},"tagline":"The Hottest Start Ever","contextLabel":"O 0.5 Home Runs","oddsOrMarketLabel":"MLB · Joshua Báez","settleDateLabel":"Resolves Aug 21, 2026"}},{"sport":"Basketball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Football","live":true,"slug":"jets-steelers-total-preseason-qb-battle","href":"/the-tank/articles/jets-steelers-total-preseason-qb-battle/","deck":{"hook":"Rodgers is out. Rudolph is out. The only thing on the line tonight is a job.","cards":["Pittsburgh's backup quarterback competition just became the entire storyline of this game, playing out live with real roster stakes behind it.","Guys fighting for a job don't play like guys who already have one. That unpredictability is exactly what's baked into this total."],"call":{"sides":["Over 36.5","Under 36.5"],"question":"Does the Jets-Steelers total go over or under 36.5?","sidesImpliedProb":[0.495,0.505]},"tagline":"Backup QB Audition","contextLabel":"O 36.5 Totals","oddsOrMarketLabel":"NFL · New York Jets vs. Pittsburgh Steelers","settleDateLabel":"Resolves Aug 21, 2026"}},{"sport":"Soccer","live":true,"slug":"marseille-vs-strasbourg-ligue-1-season-opener","href":"/the-tank/articles/marseille-vs-strasbourg-ligue-1-season-opener/","deck":{"hook":"No table, no form, no history. Just Marseille and Strasbourg kicking off the entire Ligue 1 season at the Vélodrome.","cards":["Every club in France is 0-0-0 right now, and Marseille gets to end that first, at home, under a new manager who's never coached them in a real game that counts.","Bruno Genesio's whole project starts getting graded the moment this kicks off. Fair or not, night one always gets read like a verdict."],"call":{"sides":["Marseille","Strasbourg"],"question":"Who wins the Ligue 1 season opener: Marseille or Strasbourg?","sidesImpliedProb":[0.215,0.785]},"tagline":"Ligue 1 Kicks Off","contextLabel":"Moneyline","oddsOrMarketLabel":"Ligue 1 · RC Strasbourg Alsace vs. Olympique de Marseille","settleDateLabel":"Resolves Aug 21, 2026"}}]}</script>
+    <script type="application/json" id="homepage-data">{"initialSport":"Baseball","loggedIn":false,"sports":[{"sport":"Baseball","live":true,"slug":"astros-mets-jim-crane-front-office-shakeup","href":"/the-tank/articles/astros-mets-jim-crane-front-office-shakeup/","deck":{"hook":"Jim Crane fired his GM mid-playoff-race and put himself in charge. First game under the new regime is against the Mets.","cards":["No transition period, no interim search. Crane fired Dana Brown and stepped into baseball ops himself, right as Houston fights for a division.","The Astros clubhouse has seen turnover before, but never the owner himself calling the shots during a pennant race."],"call":{"sides":["Houston Astros","New York Mets"],"question":"Front-office chaos and all, who wins this one: Astros or Mets?","sidesImpliedProb":[0.495,0.505]},"tagline":"Owner Takes Over","contextLabel":"Moneyline","oddsOrMarketLabel":"MLB · Houston Astros vs. New York Mets","settleDateLabel":"Resolves Aug 28, 2026","gameTimeLabel":"Fri, Aug 28 · 7:10 PM ET","kickoff":"2026-08-28T23:10:00Z"}},{"sport":"Basketball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Football","live":true,"slug":"steelers-bills-ed-oliver-moneyline","href":"/the-tank/articles/steelers-bills-ed-oliver-moneyline/","deck":{"hook":"The Bills are trying to win a football game the same week they're trying to hold each other up.","cards":["Ed Oliver lost his young son this week, and the news has sat over the entire Bills building since.","Josh Allen didn't dodge it. He said the team is going to continue to love up on him, plainly, without being asked to be poetic about it."],"call":{"sides":["Steelers","Bills"],"question":"Steelers or Bills, straight up?","sidesImpliedProb":[0.41,0.59]},"tagline":"Playing for Ed Oliver","contextLabel":"Moneyline","oddsOrMarketLabel":"NFL · Pittsburgh Steelers vs. Buffalo Bills","settleDateLabel":"Resolves Aug 27, 2026","gameTimeLabel":"Thu, Aug 27 · 7:00 PM ET","kickoff":"2026-08-27T23:00:00Z"}},{"sport":"Soccer","live":true,"slug":"nottingham-forest-liverpool-isak-moneyline","href":"/the-tank/articles/nottingham-forest-liverpool-isak-moneyline/","deck":{"hook":"The most expensive attacker in British history makes his road trip to the City Ground.","cards":["Alexander Isak forced his way out of Newcastle for a British record fee, and Newcastle fans have made their feelings known every time he's stepped back on a pitch against them.","Now he's the focal point of Liverpool's attack, and every match is a referendum on whether the move was worth it."],"call":{"sides":["Yes","No"],"question":"Does Liverpool beat Nottingham Forest?","sidesImpliedProb":[0.205,0.795]},"tagline":"Isak's Attack, Live","contextLabel":"Moneyline","oddsOrMarketLabel":"EPL · Nottingham Forest FC vs. Liverpool FC","settleDateLabel":"Resolves Aug 29, 2026","gameTimeLabel":"Sat, Aug 29 · 7:30 AM ET","kickoff":"2026-08-29T11:30:00Z"}}]}</script>
     <script type="module" src="/assets/homepage.js" defer></script>
 </body>
 </html>

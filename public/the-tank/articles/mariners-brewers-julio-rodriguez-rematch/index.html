@@ -9,7 +9,7 @@
 
     <meta property="og:title" content="Mariners vs Brewers: Julio Rodriguez Faces the Rematch">
     <meta property="og:description" content="A night after Julio Rodriguez tossed a live ball into the stands in a 22-0 Brewers blowout, Seattle is back in Milwaukee. Pick the moneyline.">
-    <meta property="og:image" content="https://heatchecks.io/assets/images/og-share-world-map.jpg">
+    <meta property="og:image" content="https://heatchecks.io/assets/og/mariners-brewers-julio-rodriguez-rematch.png">
     <meta property="og:url" content="https://heatchecks.io/the-tank/articles/mariners-brewers-julio-rodriguez-rematch/">
     <meta property="og:type" content="article">
     <meta property="og:site_name" content="HeatChecks">
@@ -21,7 +21,7 @@
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="Mariners vs Brewers: Julio Rodriguez Faces the Rematch">
     <meta name="twitter:description" content="A night after Julio Rodriguez tossed a live ball into the stands in a 22-0 Brewers blowout, Seattle is back in Milwaukee. Pick the moneyline.">
-    <meta name="twitter:image" content="https://heatchecks.io/assets/images/og-share-world-map.jpg">
+    <meta name="twitter:image" content="https://heatchecks.io/assets/og/mariners-brewers-julio-rodriguez-rematch.png">
 
     <script type="application/ld+json">
 [
@@ -63,13 +63,13 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&family=Montserrat:wght@800;900&display=swap" rel="stylesheet">
 
     <style>
         :root {
-            --hc-navy-dark: #060c22;
-            --hc-navy: #0b1a45;
-            --hc-navy-light: #14275f;
+            --hc-navy-dark: #0b0713;
+            --hc-navy: #160c27;
+            --hc-navy-light: #23143e;
             --hc-gold: #ffc72c;
             --hc-gold-dark: #e8a800;
             --hc-teal: #2fe6d9;
@@ -138,7 +138,7 @@
         }
         .hc-learn-more .hc-check-box img { width: 34px; height: auto; }
         .hc-learn-more span {
-            font-family: 'Nunito', sans-serif;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
             font-weight: 800;
             font-size: 0.7rem;
             letter-spacing: 0.04em;
@@ -192,15 +192,15 @@
         }
         .hc-bubble {
             background: var(--hc-bubble);
-            color: #0b1a45;
+            color: #160c27;
             border-radius: 22px 22px 22px 4px;
             padding: 0.6rem 0.9rem;
             margin-top: 0.85rem;
             box-shadow: 0 8px 24px rgba(0,0,0,0.35);
         }
         .hc-bubble h1 {
-            font-family: 'Baloo 2', 'Nunito', sans-serif;
-            font-weight: 800;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
+            font-weight: 900;
             font-size: clamp(1.15rem, 5.5vw, 1.6rem);
             line-height: 1.12;
             margin: 0;
@@ -222,7 +222,7 @@
             display: inline-block;
             background: var(--hc-gold);
             color: #1a1200;
-            font-family: 'Baloo 2', 'Nunito', sans-serif;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
             font-weight: 800;
             font-size: 1.1rem;
             text-decoration: none;
@@ -289,7 +289,7 @@
             text-align: center;
         }
         .tank-article-header p {
-            font-family: 'Nunito', sans-serif;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
             font-weight: 700;
             font-size: 0.8rem;
             letter-spacing: 0.06em;
@@ -297,6 +297,16 @@
             color: var(--hc-teal);
             margin: 0 0 0.6rem;
             text-shadow: 0 0 12px rgba(47,230,217,0.45);
+        }
+        .tank-article-header .tank-article-gametime {
+            font-family: 'Montserrat', 'Nunito', sans-serif;
+            font-weight: 600;
+            font-size: 0.7rem;
+            letter-spacing: 0.04em;
+            text-transform: none;
+            color: rgba(255,255,255,0.55);
+            margin: 0 0 0.6rem;
+            text-shadow: none;
         }
         .tank-article-header h1 {
             font-family: 'Baloo 2', 'Nunito', sans-serif;
@@ -352,7 +362,7 @@
             text-align: center;
         }
         .tank-article-artifact-label {
-            font-family: 'Nunito', sans-serif;
+            font-family: 'Montserrat', 'Nunito', sans-serif;
             font-weight: 800;
             font-size: 0.75rem;
             letter-spacing: 0.1em;
@@ -374,25 +384,46 @@
             text-decoration: none;
         }
         .tank-article-back:hover { color: #ffffff; }
+        /* Replaces the shared topbar()'s "Learn more" slot on article pages only -
+           built inline here (reusing .hc-topbar/.hc-logo from waitlist-landing-
+           template's shared styles) rather than editing topbar() itself, since that
+           function is also used by login/account/welcome/claim-your-spot/newsletter
+           pages where "Learn more" still belongs. */
+        /* The shared topbar's nowrap default (fine for the small "Learn more" link
+           it was built for) overflows now that this slot holds a much bigger
+           banner - wrap it so the banner drops to its own line on narrow phones
+           instead of clipping past the viewport edge. */
+        .hc-topbar { flex-wrap: wrap; row-gap: 0.75rem; }
+        .tank-article-register-banner {
+            display: block;
+            width: clamp(220px, 46vw, 420px);
+            border-radius: 12px;
+            overflow: hidden;
+            flex-shrink: 0;
+            margin-left: auto;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(47, 230, 217, 0.25);
+            transition: transform 0.15s ease, filter 0.2s ease;
+        }
+        .tank-article-register-banner img { display: block; width: 100%; height: auto; }
+        .tank-article-register-banner:hover { transform: translateY(-2px); filter: brightness(1.05); }
+        .tank-article-register-banner:active { transform: scale(0.97); }
+        .tank-article-register-banner:focus-visible { outline: 3px solid var(--hc-teal); outline-offset: 3px; }
     </style>
 </head>
 <body>
     <main class="hc-page tank-article">
-        
         <div class="hc-topbar">
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
                 <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
             </a>
-            <a class="hc-learn-more" href="https://heatchecks.io/beta/">
-                <span class="hc-check-box">
-                    <img src="/assets/images/checknav.webp" alt="" width="140" height="200">
-                </span>
-                <span>Learn more</span>
+            <a class="tank-article-register-banner" href="https://heatchecks.io/login/" aria-label="Register for HeatChecks - free to play">
+                <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
             </a>
         </div>
 
         <header class="tank-article-header">
             <p>MLB &middot; Seattle Mariners @ Milwaukee Brewers</p>
+            <p class="tank-article-gametime">Thu, Aug 20 · 2:10 PM ET</p>
             <h1>Mariners vs Brewers: Julio Rodriguez Faces the Rematch</h1>
             <div class="tank-article-divider"></div>
         </header>
@@ -414,7 +445,7 @@
             <p class="tank-article-artifact-label">Make The Call</p>
             <div class="tank-article-artifact">
                 <div id="tank-article-deck-root" data-hook="Julio Rodriguez threw a live ball into the stands thinking the inning was over. Now he has to walk back into that same ballpark the very next night."></div>
-                <script type="application/json" id="tank-article-deck-data">{"hook":"Julio Rodriguez threw a live ball into the stands thinking the inning was over. Now he has to walk back into that same ballpark the very next night.","cards":["One night after a 22-0 humiliation and a blooper that will follow him forever, Julio Rodriguez and the Mariners are right back in Milwaukee.","The Brewers don't need revenge, they already have the blowout and the highlight. They just need to prove last night wasn't a fluke.","Seattle needs to prove the opposite: that the joke stops here. A loss tonight and the clip follows them out of town too.","No stat line fixes a viral gaffe. Only a win does. Who gets it?"],"slug":"mariners-brewers-julio-rodriguez-rematch","call":{"sides":["Seattle Mariners","Milwaukee Brewers"],"question":"Who wins the rematch: Mariners or Brewers?","sidesImpliedProb":[0.455,0.545]},"tagline":"The Julio Rewind","contextLabel":"MLB · Seattle Mariners vs. Milwaukee Brewers","oddsOrMarketLabel":"Seattle Mariners 45.5% / Milwaukee Brewers 54.5%","settleDateLabel":"Resolves Aug 20, 2026"}</script>
+                <script type="application/json" id="tank-article-deck-data">{"hook":"Julio Rodriguez threw a live ball into the stands thinking the inning was over. Now he has to walk back into that same ballpark the very next night.","cards":["One night after a 22-0 humiliation and a blooper that will follow him forever, Julio Rodriguez and the Mariners are right back in Milwaukee.","The Brewers don't need revenge, they already have the blowout and the highlight. They just need to prove last night wasn't a fluke.","Seattle needs to prove the opposite: that the joke stops here. A loss tonight and the clip follows them out of town too.","No stat line fixes a viral gaffe. Only a win does. Who gets it?"],"slug":"mariners-brewers-julio-rodriguez-rematch","call":{"sides":["Seattle Mariners","Milwaukee Brewers"],"question":"Who wins the rematch: Mariners or Brewers?","sidesImpliedProb":[0.455,0.545]},"tagline":"The Julio Rewind","contextLabel":"MLB · Seattle Mariners vs. Milwaukee Brewers","oddsOrMarketLabel":"Seattle Mariners 45.5% / Milwaukee Brewers 54.5%","settleDateLabel":"Resolves Aug 20, 2026","gameTimeLabel":"Thu, Aug 20 · 2:10 PM ET","kickoff":"2026-08-20T18:10:00Z"}</script>
             </div>
         </div>
 

@@ -2,49 +2,49 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://heatchecks.io/</loc>
-    <lastmod>2026-08-21</lastmod>
+    <lastmod>2026-08-27</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/claim-your-spot/</loc>
-    <lastmod>2026-08-21</lastmod>
+    <lastmod>2026-08-27</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/the-tank/</loc>
-    <lastmod>2026-08-21</lastmod>
+    <lastmod>2026-08-27</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/the-tank-hq/</loc>
-    <lastmod>2026-08-21</lastmod>
+    <lastmod>2026-08-27</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/the-hatchery/</loc>
-    <lastmod>2026-08-21</lastmod>
+    <lastmod>2026-08-27</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/champions-terrace/</loc>
-    <lastmod>2026-08-21</lastmod>
+    <lastmod>2026-08-27</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/quickboost-delicacies/</loc>
-    <lastmod>2026-08-21</lastmod>
+    <lastmod>2026-08-27</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/beta/</loc>
-    <lastmod>2026-08-21</lastmod>
+    <lastmod>2026-08-27</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -55,14 +55,56 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/the-tank/articles/man-united-hull-city-santos-tielemans-debut-spread/</loc>
+    <lastmod>2026-08-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/tarik-skubal-strikeouts-dodgers-pirates/</loc>
+    <lastmod>2026-08-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/devers-fenway-return-giants-red-sox/</loc>
+    <lastmod>2026-08-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/the-tank/articles/coventry-city-arsenal-premier-league-opener/</loc>
     <lastmod>2026-08-20</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/the-tank/articles/isak-return-newcastle-liverpool-moneyline/</loc>
+    <lastmod>2026-08-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/wilyer-abreu-hits-red-sox-marlins/</loc>
+    <lastmod>2026-08-25</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/barcelona-athletic-club-gavi-injury-scare/</loc>
+    <lastmod>2026-08-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/the-tank/articles/kyle-schwarber-home-run-phillies-cardinals/</loc>
     <lastmod>2026-08-12</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/newcastle-tottenham-savio-debut-total-goals/</loc>
+    <lastmod>2026-08-27</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -75,6 +117,18 @@
   <url>
     <loc>https://heatchecks.io/the-tank/articles/coventry-city-vs-arsenal-moneyline/</loc>
     <lastmod>2026-08-20</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/barcelona-elche-la-liga-opener-without-star-signing/</loc>
+    <lastmod>2026-08-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/chelsea-fulham-xabi-alonso-premier-league-debut/</loc>
+    <lastmod>2026-08-23</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -93,6 +147,12 @@
   <url>
     <loc>https://heatchecks.io/the-tank/articles/byron-buxton-twins-phillies-home-run-prop/</loc>
     <lastmod>2026-08-13</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/joshua-baez-home-run-prop-cardinals-phillies/</loc>
+    <lastmod>2026-08-21</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -139,8 +199,86 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/the-tank/articles/bournemouth-vs-manchester-city-doku-out-opener/</loc>
+    <lastmod>2026-08-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/the-tank/articles/mike-vrabel-patriots-hot-seat-fired-2026/</loc>
     <lastmod>2026-08-13</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/red-sox-yankees-wild-card-race-without-judge/</loc>
+    <lastmod>2026-08-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/jets-titans-breece-hall-injury-spread/</loc>
+    <lastmod>2026-08-17</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/pete-crow-armstrong-home-run-prop-cubs-white-sox/</loc>
+    <lastmod>2026-08-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/atletico-madrid-malaga-julian-alvarez-total-goals/</loc>
+    <lastmod>2026-08-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/gunnar-henderson-home-run-orioles-yankees/</loc>
+    <lastmod>2026-08-19</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/patriots-browns-preseason-finale-total-points/</loc>
+    <lastmod>2026-08-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/real-madrid-espanyol-mourinho-mbappe-la-liga-opener/</loc>
+    <lastmod>2026-08-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/bears-bengals-joe-burrow-super-bowl-manifesto/</loc>
+    <lastmod>2026-08-21</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/seahawks-titans-preseason-spread-defense-test/</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/vladimir-guerrero-jr-home-run-blue-jays-yankees-return/</loc>
+    <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/rays-tigers-detroit-losing-streak-moneyline/</loc>
+    <lastmod>2026-08-24</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/nottingham-forest-liverpool-isak-moneyline/</loc>
+    <lastmod>2026-08-26</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -157,32 +295,38 @@
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/the-tank/articles/jets-titans-breece-hall-injury-spread/</loc>
-    <lastmod>2026-08-17</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>0.6</priority>
-  </url>
-  <url>
     <loc>https://heatchecks.io/the-tank/articles/jets-steelers-total-preseason-qb-battle/</loc>
     <lastmod>2026-08-20</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/the-tank/articles/pete-crow-armstrong-home-run-prop-cubs-white-sox/</loc>
-    <lastmod>2026-08-19</lastmod>
+    <loc>https://heatchecks.io/the-tank/articles/patriots-browns-deshaun-watson-week-1-starter/</loc>
+    <lastmod>2026-08-24</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/the-tank/articles/gunnar-henderson-home-run-orioles-yankees/</loc>
-    <lastmod>2026-08-19</lastmod>
+    <loc>https://heatchecks.io/the-tank/articles/diamondbacks-giants-rotation-crisis-moneyline/</loc>
+    <lastmod>2026-08-26</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://heatchecks.io/the-tank/articles/atletico-madrid-malaga-julian-alvarez-total-goals/</loc>
-    <lastmod>2026-08-19</lastmod>
+    <loc>https://heatchecks.io/the-tank/articles/astros-mets-jim-crane-front-office-shakeup/</loc>
+    <lastmod>2026-08-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/commanders-ravens-spread-tunsil-injury/</loc>
+    <lastmod>2026-08-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/steelers-bills-ed-oliver-moneyline/</loc>
+    <lastmod>2026-08-27</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
