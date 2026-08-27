@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from '@google/genai';
 import Chart from 'chart.js/auto';
 import { apiClient } from './apiClient';
-import { effectiveSettleDate } from './tank-deck-format';
+import { effectiveSettleDate, formatGameTime } from './tank-deck-format';
 import { PublicHomePage } from './pages/index';
 import { parseExcelFile } from './scripts/utils/excelParser';
 import { analyzeDFSSlate } from './scripts/services/dfsAnalysisService';
@@ -14317,6 +14317,14 @@ const draftSettleDate = (page: TankPageRow): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 
+// Raw game kickoff, distinct from draftSettleDate above (which is the market's
+// resolution date - often padded past the actual game). Same access pattern as
+// TankCurator's own kickoff read.
+const draftKickoff = (page: TankPageRow): string | undefined => {
+  const snapshot: any = page.game_snapshot;
+  return snapshot?.game?.kickoff;
+};
+
 const TankDrafts: React.FC = () => {
   const [draftPages, setDraftPages] = useState<TankPageRow[]>([]);
   const [isLoadingPages, setIsLoadingPages] = useState(false);
@@ -14386,10 +14394,12 @@ const TankDrafts: React.FC = () => {
         const settleLabel = settle
           ? settle.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
           : 'unknown';
+        const kickoff = draftKickoff(page);
+        const gameTimeLabel = kickoff ? formatGameTime(kickoff) : null;
         return (
           <div className="card" key={page.id} style={{ marginBottom: '1rem' }}>
             <p style={{ margin: '0 0 0.5rem', fontSize: '0.8rem', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              {page.league} · Settles: {settleLabel}
+              {page.league}{gameTimeLabel ? ` · ${gameTimeLabel}` : ''} · Settles: {settleLabel}
             </p>
             {page.model_output ? (
               <>

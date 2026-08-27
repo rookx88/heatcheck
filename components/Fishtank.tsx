@@ -41,6 +41,7 @@ export type { DeckPayload };
 interface Wall {
     kind: 'hook' | 'card' | 'call' | 'promo';
     label: string;
+    sublabel?: string;
     icon: React.ComponentType<{ size?: number; style?: React.CSSProperties }>;
     rotateY: number;
 }
@@ -83,7 +84,7 @@ function buildWalls(payload: DeckPayload, promoWall?: PromoWall): Wall[] {
     const pieces: Omit<Wall, 'rotateY'>[] = [
         { kind: 'hook', label: payload.tagline, icon: Flame },
         ...cards.map((_, i) => ({ kind: 'card' as const, label: payload[CARD_HEADER_KEYS[i]] as string, icon: Zap })),
-        { kind: 'call', label: payload.settleDateLabel, icon: Swords },
+        { kind: 'call', label: payload.gameTimeLabel, sublabel: payload.settleDateLabel, icon: Swords },
         ...(promoWall ? [{ kind: 'promo' as const, label: promoWall.label, icon: Sparkles }] : []),
     ];
     const n = pieces.length;
@@ -197,12 +198,24 @@ const WallPanel: React.FC<{
                         what 2 lines could hold at this width). The header row is
                         flexShrink:0 above a scrollable body div, so a taller header just
                         pushes the body down instead of breaking the panel's layout. */}
-                    <h4 style={{
-                        fontSize: '0.68rem', fontWeight: 700, color: '#f1f5f9', letterSpacing: '0.06em',
-                        textTransform: 'uppercase', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.7)',
-                        minWidth: 0, lineHeight: 1.35, flex: 1,
-                        overflowWrap: 'break-word',
-                    }}>{wall.label}</h4>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                        <h4 style={{
+                            fontSize: '0.68rem', fontWeight: 700, color: '#f1f5f9', letterSpacing: '0.06em',
+                            textTransform: 'uppercase', margin: 0, textShadow: '0 1px 4px rgba(0,0,0,0.7)',
+                            minWidth: 0, lineHeight: 1.35,
+                            overflowWrap: 'break-word',
+                        }}>{wall.label}</h4>
+                        {/* Call wall only: the real game start time (ET), secondary to
+                            the primary label above it - see buildWalls()'s sublabel. */}
+                        {wall.sublabel && (
+                            <p style={{
+                                fontSize: '0.58rem', fontWeight: 600, color: 'rgba(226,232,240,0.72)',
+                                letterSpacing: '0.05em', textTransform: 'uppercase', margin: '0.15rem 0 0',
+                                textShadow: '0 1px 4px rgba(0,0,0,0.7)', lineHeight: 1.3,
+                                overflowWrap: 'break-word',
+                            }}>{wall.sublabel}</p>
+                        )}
+                    </div>
                     {/* Masthead mark - the same wordmark used in the page chrome around
                         the artifact, printed small on every wall like a magazine running
                         its nameplate on every page. */}

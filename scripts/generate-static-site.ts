@@ -12,7 +12,7 @@ import { generateHeatPicksHubPage } from './templates/heat-picks-hub-template';
 import { generateTankArticlePage, TankPageRecord } from './templates/tank-article-template';
 import { generateOgImage } from './generate-og-image';
 import { buildTankBundles } from './build-tank-bundles';
-import { formatMarketLabel, formatOddsLabel, formatSettleDate, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../tank-deck-format';
+import { formatMarketLabel, formatOddsLabel, formatSettleDate, formatGameTime, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../tank-deck-format';
 import { buildWorldMap } from './build-world-map';
 import { buildNewsletterPick } from './build-newsletter-pick';
 import { buildLogin } from './build-login';
@@ -1276,6 +1276,7 @@ async function generateAllPages(): Promise<void> {
                         contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
                         oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
                         settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
+                        gameTimeLabel: truncateHeaderLabel(formatGameTime(game.kickoff)),
                         kickoff: game.kickoff,
                     },
                 };

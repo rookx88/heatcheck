@@ -1,7 +1,7 @@
 import { renderHead, footer } from './waitlist-landing-template';
 import { escapeHtml } from '../utils/html-escape';
 import type { Prop, Game, TankArticle } from '../../tank-types';
-import { formatMarketLabel, formatOddsLabel, formatSettleDate, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../../tank-deck-format';
+import { formatMarketLabel, formatOddsLabel, formatSettleDate, formatGameTime, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../../tank-deck-format';
 
 export interface TankPageRecord {
     id: string;
@@ -93,6 +93,7 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
         contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
         oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
         settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
+        gameTimeLabel: truncateHeaderLabel(formatGameTime(game.kickoff)),
         kickoff: game.kickoff,
     }).replace(/</g, '\\u003c');
 
@@ -120,6 +121,16 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
             color: var(--hc-teal);
             margin: 0 0 0.6rem;
             text-shadow: 0 0 12px rgba(47,230,217,0.45);
+        }
+        .tank-article-header .tank-article-gametime {
+            font-family: 'Montserrat', 'Nunito', sans-serif;
+            font-weight: 600;
+            font-size: 0.7rem;
+            letter-spacing: 0.04em;
+            text-transform: none;
+            color: rgba(255,255,255,0.55);
+            margin: 0 0 0.6rem;
+            text-shadow: none;
         }
         .tank-article-header h1 {
             font-family: 'Baloo 2', 'Nunito', sans-serif;
@@ -236,6 +247,7 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
 
         <header class="tank-article-header">
             <p>${escapeHtml(game.league)} &middot; ${escapeHtml(eventName)}</p>
+            <p class="tank-article-gametime">${escapeHtml(formatGameTime(game.kickoff))}</p>
             <h1>${escapeHtml(seo.title)}</h1>
             <div class="tank-article-divider"></div>
         </header>

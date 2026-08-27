@@ -101,6 +101,7 @@ export interface DeckPayload {
     contextLabel: string;      // Take 1 header - "{league} · {subject}"
     oddsOrMarketLabel: string; // Take 2 header - live odds, or the market label if no odds
     settleDateLabel: string;   // Call wall header - "Resolves {date}"
+    gameTimeLabel: string;     // Call wall header, above settleDateLabel - "{weekday, month day} · {time} ET"
     // Raw ISO 8601 game start time (Game.kickoff), passed through un-formatted so the
     // client can compare it against its own clock at render time - unlike the other
     // *Label fields, this can't be pre-computed server-side, since a static page can

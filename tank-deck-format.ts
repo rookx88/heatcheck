@@ -93,6 +93,27 @@ export function formatSettleDate(iso: string): string {
     return `Resolves ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })}`;
 }
 
+// "Sat, Aug 29 · 7:05 PM ET"
+// Always labeled "ET" generically rather than computing literal EST/EDT - standard
+// sports-media convention, and it sidesteps DST: Intl.DateTimeFormat with an IANA
+// timeZone always resolves the correct UTC offset for whichever DST regime is active
+// on the given date, so the displayed clock time is already correct - only the "ET"
+// suffix is a fixed literal. No year (kickoff is always near-term, and this sits right
+// next to settleDateLabel which already carries a year - avoid redundant clutter in a
+// small header). Same Intl.DateTimeFormat/America-New_York pattern already used
+// server-side in backend.ts and client-side in index.tsx's getTodayDateNY().
+export function formatGameTime(iso: string): string {
+    const date = new Date(iso);
+    if (isNaN(date.getTime())) return 'Game time TBD';
+    const datePart = date.toLocaleDateString('en-US', {
+        weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/New_York',
+    });
+    const timePart = date.toLocaleTimeString('en-US', {
+        hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York',
+    });
+    return `${datePart} · ${timePart} ET`;
+}
+
 // All four wall headers get clamped through this. It's a safety ceiling against a
 // genuinely pathological, unbounded string (the model's "2 to 6 words" tagline
 // guidance is a target, not a guarantee) - NOT a fit-to-width limit; the wall panel
