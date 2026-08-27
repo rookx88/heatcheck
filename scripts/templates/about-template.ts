@@ -33,7 +33,7 @@ interface HeatcheckPost {
 export function generateAboutPage(
     posts: HeatcheckPost[],
     recentDates: RecentDate[],
-    baseUrl: string = 'https://heatchecks.com'
+    baseUrl: string = 'https://heatchecks.io'
 ): string {
     const crawlerNav = generateCrawlerNav(recentDates);
     
