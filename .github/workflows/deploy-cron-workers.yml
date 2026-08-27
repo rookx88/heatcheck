@@ -1,0 +1,99 @@
+name: Deploy Cron Workers
+
+# worker-curate/ and worker-settle/ are standalone Cloudflare Workers, separate from
+# the Pages project (which auto-deploys via Cloudflare's own native GitHub integration
+# on every push). Nothing previously redeployed these two on a source change - code
+# only went live when a human remembered to run `wrangler deploy` from inside the
+# directory by hand. That silently bit twice in one week (a Discord-posting feature and
+# a weekly NFL-slate cron both sat fully committed for days without ever running). This
+# workflow makes that class of bug structurally impossible: any push to auth-sessions
+# that touches either worker directory redeploys just that worker, automatically.
+
+on:
+  push:
+    branches:
+      - auth-sessions
+    paths:
+      - "worker-curate/**"
+      - "worker-settle/**"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-cron-workers-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      curate: ${{ steps.compute.outputs.curate }}
+      settle: ${{ steps.compute.outputs.settle }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # full history so paths-filter's merge-base search can't come up short
+
+      - name: Detect changed worker directories
+        if: github.event_name == 'push'
+        id: filter
+        uses: dorny/paths-filter@v4
+        with:
+          # Defaults to the repo's default branch (main), which is stale/unpromoted
+          # right now - must pin to auth-sessions or every push would diff against main
+          # and misreport "everything changed".
+          base: auth-sessions
+          filters: |
+            curate:
+              - 'worker-curate/**'
+            settle:
+              - 'worker-settle/**'
+
+      - name: Compute deploy targets
+        id: compute
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            # Manual run = force-deploy both, regardless of diff. Escape hatch for drift
+            # (e.g. after a force-push, or to re-sync live cron triggers by hand).
+            echo "curate=true" >> "$GITHUB_OUTPUT"
+            echo "settle=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "curate=${{ steps.filter.outputs.curate }}" >> "$GITHUB_OUTPUT"
+            echo "settle=${{ steps.filter.outputs.settle }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy-curate:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.curate == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Deploy worker-curate
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker-curate
+          # Pinned to match the root repo's package.json wrangler devDependency -
+          # neither worker directory has its own package.json, so this input lets the
+          # action install/run wrangler itself rather than depending on one being there.
+          wranglerVersion: "4.122.0"
+          command: deploy
+
+  deploy-settle:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.settle == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Deploy worker-settle
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: worker-settle
+          wranglerVersion: "4.122.0"
+          command: deploy
