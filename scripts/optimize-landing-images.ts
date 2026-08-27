@@ -119,25 +119,86 @@ interface GameBackgroundJob {
 }
 
 /**
+ * These Canva exports don't embed the raster at a plain 1:1 scale - each
+ * wraps it in a `<g transform="matrix(a,0,0,d,e,f)">` that maps raw pixel
+ * space onto the SVG's OWN top-level viewBox (its declared `viewBox="0 0 W
+ * H"`, which is the correct reference frame here - NOT whatever size the
+ * consuming React component later requests when it embeds the whole file;
+ * that's a separate, later uniform rescale that only avoids distorting
+ * anything when this inner step is already right). HeatChecksWorldMap.svg
+ * happens to embed its raster at exactly 1:1 with its own viewBox (no crop
+ * needed - verified by computing this and finding the visible region equals
+ * the full raster), but Tanks- Background.svg does not: its raster is
+ * oversized and off-center relative to the viewBox, so only a cropped
+ * sub-region is ever actually visible. Extracting the FULL raster unchanged
+ * (as an earlier version of this script did) reproduced the wrong pixels at
+ * the wrong scale once esbuild stopped going through the SVG's own viewBox
+ * math and started embedding the raster directly - same file size win, but
+ * it silently shifted the artwork relative to the hand-traced hotspot on the
+ * Tank screen. Computing and applying this crop up front means the output
+ * file's own aspect ratio already matches the target viewBox exactly, so a
+ * plain `<image width height>` embed needs no further scaling to reproduce
+ * the original placement.
+ */
+function computeVisibleRasterCrop(
+    svgPath: string,
+    nativeWidth: number,
+    nativeHeight: number,
+): { left: number; top: number; width: number; height: number } {
+    const svg = fs.readFileSync(svgPath, 'utf-8');
+    const viewBoxMatch = svg.match(/<svg[^>]*viewBox="0 0 ([\d.]+) ([\d.]+)"/);
+    const gMatch = svg.match(/<g transform="matrix\(([^)]+)\)">/);
+    if (!viewBoxMatch || !gMatch) {
+        throw new Error(`Could not find the outer viewBox / embedding transform in ${svgPath}`);
+    }
+    const [, vbWStr, vbHStr] = viewBoxMatch;
+    const [a, , , d, e, f] = gMatch[1].split(',').map(Number);
+    const vbW = Number(vbWStr);
+    const vbH = Number(vbHStr);
+
+    // Invert the transform: which raw-pixel range maps onto the visible
+    // [0,vbW] x [0,vbH] window?
+    const pxMin = -e / a;
+    const pxMax = (vbW - e) / a;
+    const pyMin = -f / d;
+    const pyMax = (vbH - f) / d;
+
+    const left = Math.round(pxMin);
+    const top = Math.round(pyMin);
+    const width = Math.round(pxMax - pxMin);
+    const height = Math.round(pyMax - pyMin);
+
+    if (left < 0 || top < 0 || left + width > nativeWidth || top + height > nativeHeight) {
+        throw new Error(
+            `${svgPath}: computed crop [${left},${top},${width}x${height}] falls outside the ` +
+            `native raster (${nativeWidth}x${nativeHeight}) - this source needs padding, not `+
+            `cropping; extend the script rather than guessing.`
+        );
+    }
+    return { left, top, width, height };
+}
+
+/**
  * The game screens' full-bleed backgrounds (the interactive world map island
  * and individual Tank pages) were never wired into this optimization
  * pipeline - each ships its raw Canva SVG export directly
  * (components/WorldMap.tsx and components/TankScreen.tsx import straight from
  * assets/new-website/*.svg), at 3.2MB and 3.1MB respectively, because the
  * lossless-PNG-or-barely-compressed-JPEG payload embedded in the SVG never
- * got re-encoded. Unlike the `jobs` loop above, this must NOT trim or resize:
- * these components hand-trace hotspot paths and hardcode a VIEWBOX against
- * the source's exact, untrimmed pixel dimensions - changing the canvas size
- * or cropping would shift every hotspot out of alignment with the artwork.
- * Only the codec changes (PNG/JPEG -> WebP); same pixels, same canvas,
- * dramatically smaller file.
+ * got re-encoded. Unlike the `jobs` loop above, this must NOT trim or resize
+ * beyond the exact visible-region crop computed above: these components
+ * hand-trace hotspot paths and hardcode a VIEWBOX against the source's exact
+ * pixel framing - cropping any differently (or not at all, when the source
+ * needs it) shifts every hotspot out of alignment with the artwork. Only the
+ * codec changes (PNG/JPEG -> WebP) and the crop that reproduces the SVG's own
+ * original framing; dramatically smaller file, identical picture.
  */
 const gameBackgroundJobs: GameBackgroundJob[] = [
     { source: 'Tanks- Background.svg', outName: 'tanks-bg' },
     // Distinct from the trimmed/resized 'world-map' job above (that one feeds
     // the static waitlist page's <img>) - the interactive island
-    // (components/WorldMap.tsx) needs the untrimmed canvas its hand-traced
-    // region hotspots are calibrated to.
+    // (components/WorldMap.tsx) needs the canvas its hand-traced region
+    // hotspots are calibrated to.
     { source: 'HeatChecksWorldMap.svg', outName: 'world-map-interactive', blackBackground: true },
 ];
 
@@ -145,6 +206,9 @@ async function buildGameBackgrounds(): Promise<void> {
     for (const job of gameBackgroundJobs) {
         const svgPath = path.join(sourceDir, job.source);
         let buffer = extractLargestEmbeddedRaster(svgPath);
+        const nativeMeta = await sharp(buffer).metadata();
+        const crop = computeVisibleRasterCrop(svgPath, nativeMeta.width!, nativeMeta.height!);
+        buffer = await sharp(buffer).extract(crop).toBuffer();
         if (job.blackBackground) {
             buffer = await deriveAlphaFromBrightness(buffer);
         }
@@ -154,9 +218,11 @@ async function buildGameBackgrounds(): Promise<void> {
 
         const webpSize = fs.statSync(webpPath).size;
         const originalSize = fs.statSync(svgPath).size;
+        const cropped = crop.width !== nativeMeta.width || crop.height !== nativeMeta.height;
         console.log(
             `✓ ${job.source} (${(originalSize / 1024 / 1024).toFixed(1)}MB) -> ` +
-            `${job.outName}.webp (${(webpSize / 1024).toFixed(0)}KB) [${info.width}x${info.height}, unchanged]`
+            `${job.outName}.webp (${(webpSize / 1024).toFixed(0)}KB) [${info.width}x${info.height}` +
+            `${cropped ? `, cropped from native ${nativeMeta.width}x${nativeMeta.height}` : ', native size'}]`
         );
     }
 }
