@@ -20,6 +20,17 @@
 // Iterates guilds-then-Tanks, so total work scales with guilds x unposted Tanks per
 // run - fine at this bot's current scale (a handful of installs); revisit with
 // pagination/budgeting if that grows.
+//
+// ARTICLE-LIVE GATE (2026-08-27): a Tank is 'published' the moment its DB row flips,
+// but its article page is a build-time static file that only exists on this deployment
+// after the next Cloudflare build (publish in the admin UI -> deploy hook / git push
+// -> build). Posting off DB state alone can therefore hand Discord a 404 link. Before
+// posting, the sweep probes the article URL on its own origin and skips any Tank whose
+// page isn't live yet - no discord_guild_posts row is written, so the Tank is retried
+// naturally on the next sweep slot once the page deploys. One probe per distinct Tank
+// per run (cached across guilds); a probe failure counts as not-live, never post on
+// uncertainty. The on-demand /heatchecks-post admin command is deliberately ungated -
+// explicit human action, latency-sensitive interaction flow.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
@@ -59,6 +70,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // from the request self-corrects at promotion with no further code change.
     const baseUrl = new URL(context.request.url).origin;
 
+    // See the ARTICLE-LIVE GATE header comment. Cached per slug for this run so a Tank
+    // checked for one guild isn't re-probed for the next - keeps the added subrequest
+    // cost to one per distinct unposted Tank.
+    const articleLiveBySlug = new Map<string, boolean>();
+    async function articleIsLive(slug: string): Promise<boolean> {
+        const cached = articleLiveBySlug.get(slug);
+        if (cached !== undefined) return cached;
+        let live = false;
+        try {
+            const res = await fetch(`${baseUrl}/the-tank/articles/${slug}/`, { method: 'HEAD' });
+            live = res.ok;
+        } catch {
+            live = false;
+        }
+        articleLiveBySlug.set(slug, live);
+        return live;
+    }
+
     const sql = getSql(context.env);
     const guildRows = (await sql`
         SELECT guild_id, channel_id, disabled_sports FROM discord_guild_configs
@@ -67,6 +96,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     let candidates = 0;
     let posted = 0;
     let skippedByFilter = 0;
+    let skippedNotLive = 0;
     const errors: string[] = [];
 
     for (const guild of guildRows) {
@@ -90,6 +120,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         for (const rawRow of rows) {
             if (disabledSports.includes(rawRow.league)) {
                 skippedByFilter++;
+                continue;
+            }
+
+            // Article-live gate: skip (and retry next run) until the static page this
+            // card would link to actually exists on this deployment.
+            if (!(await articleIsLive(rawRow.slug))) {
+                skippedNotLive++;
                 continue;
             }
 
@@ -125,5 +162,5 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
     }
 
-    return jsonResponse({ guilds: guildRows.length, candidates, posted, skippedByFilter, errors });
+    return jsonResponse({ guilds: guildRows.length, candidates, posted, skippedByFilter, skippedNotLive, errors });
 };

@@ -13,8 +13,11 @@ SETTLE_URL = "https://heatchecks.io/api/settle"
 # Preview also gets settled on the same schedule (2026-08-22): production's /api/settle
 # doesn't carry the ticker-settlement code yet (that's still auth-sessions-only), so this
 # is the only place the tag/settle side of the Exchange tickers can be observed running
-# on a real automatic cadence rather than by hand. Drop this once the content pipeline
-# (and ticker settlement) is promoted to production and the split above goes away.
+# on a real automatic cadence rather than by hand. Preview is called BEFORE production
+# (2026-08-27, see runSettle() in src/index.ts): both point at the same DB, and preview's
+# settle is the hardened superset (outcome-order-mismatch guard, Kalshi, tickers), so it
+# must win the race for pending picks. Drop this once the content pipeline (and ticker
+# settlement) is promoted to production and the split above goes away.
 PREVIEW_SETTLE_URL = "https://auth-sessions.heatcheck.pages.dev/api/settle"
 
 # SETTLE_SECRET is a real secret, not a plaintext var - set it with:

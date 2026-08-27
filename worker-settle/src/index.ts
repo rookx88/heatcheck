@@ -4,9 +4,10 @@
 // (functions/api/settle.ts), not here, so it stays testable and reusable independent of
 // the cron - this file has no DB dependency at all.
 //
-// Fires at BOTH SETTLE_URL (production) and PREVIEW_SETTLE_URL (auth-sessions preview) -
-// see wrangler.toml's comment for why preview needs its own settle: it's currently the
-// only place the ticker tag/settle pipeline runs on a real schedule at all. The two
+// Fires at BOTH PREVIEW_SETTLE_URL (auth-sessions preview) and SETTLE_URL (production),
+// IN THAT ORDER - see runSettle()'s comment for why preview must go first (shared DB;
+// preview carries the hardened settle code, production is stale main until promotion)
+// and wrangler.toml's comment for why preview needs its own settle at all. The two
 // calls are independent (one failing/erroring never blocks or masks the other), same
 // posture as worker-curate's sibling sweep calls.
 //
@@ -52,10 +53,14 @@ async function callSiblingSweep(name: string, path: string, label: string, settl
 }
 
 async function runSettle(env: Env): Promise<string> {
-    const live = await callSettle('production', env.SETTLE_URL, env.SETTLE_SECRET);
-    const liveDiscord = await callSiblingSweep('discord-settlement-sweep', '/api/discord-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
-    const liveCommunityPicks = await callSiblingSweep('community-pick-settlement-sweep', '/api/community-pick-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
-
+    // Preview FIRST, production second - deliberate, not cosmetic (2026-08-27). Both
+    // targets share the same Neon DB, so whichever /api/settle runs first claims every
+    // pending pick. Preview (auth-sessions) carries the hardened settle code - the
+    // outcome-order-mismatch guard, Kalshi resolution, ticker-tag settlement, the
+    // side/matchup email copy - while production is stale main without any of that.
+    // Running preview first means the guarded code settles everything and production's
+    // pass is a redundant no-op fallback (kept in case the preview deploy ever breaks).
+    // At promotion this ordering stops mattering and PREVIEW_SETTLE_URL goes away.
     let preview = '';
     let previewDiscord = '';
     let previewCommunityPicks = '';
@@ -64,6 +69,10 @@ async function runSettle(env: Env): Promise<string> {
         previewDiscord = await callSiblingSweep('discord-settlement-sweep', '/api/discord-settlement-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
         previewCommunityPicks = await callSiblingSweep('community-pick-settlement-sweep', '/api/community-pick-settlement-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
     }
+
+    const live = await callSettle('production', env.SETTLE_URL, env.SETTLE_SECRET);
+    const liveDiscord = await callSiblingSweep('discord-settlement-sweep', '/api/discord-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
+    const liveCommunityPicks = await callSiblingSweep('community-pick-settlement-sweep', '/api/community-pick-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
 
     return JSON.stringify({
         production: live, productionDiscordSweep: liveDiscord, productionCommunityPickSweep: liveCommunityPicks,
