@@ -28,17 +28,34 @@
 // and runs the giveaway draw when the guild has opted into auto-draw
 // (discord_guild_configs.auto_draw_enabled) - additive only, guilds that never touch
 // that feature just accumulate points nobody looks at and never see a draw.
+//
+// Community Points here use the exact same underdog-weighted formula Community
+// Picks use (lib/pages-functions/community-points-formula.ts) - round(100 * the
+// losing side's probability) - computed ONCE per Tank from its own frozen
+// game_snapshot (never per-picker: every correct picker on a Tank necessarily
+// picked the same winning outcome_index, so they all get the identical payout,
+// same as everyone who votes the winning side of a Community Pick). This is
+// completely separate from Ember, which keeps its own capped formula
+// (lib/pages-functions/ledger.ts#correctCallPayout) driven by each picker's own
+// individually-locked implied_prob_at_lock - nothing here touches that.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { postDiscordChannelMessage, fetchGuildMembers, DEFAULT_COMMUNITY_POINTS_LABEL } from '../../lib/pages-functions/discord-api';
 import { deriveTaglineFallback } from '../../tank-deck-format';
 import { awardCommunityPoints } from '../../lib/pages-functions/community-points';
+import { pointsForProbability } from '../../lib/pages-functions/community-points-formula';
 import { drawGiveawayWinner } from '../../lib/pages-functions/discord-draw';
 import { buildGiveawayResultMessage, buildNoEligiblePoolMessage } from '../../lib/pages-functions/discord-community-card';
+import type { PropOdds } from '../../tank-types';
 
 const MAX_ANNOUNCEMENTS_PER_RUN = 20;
-const POINTS_PER_CORRECT_PICK = 1;
+// Defensive-only floor - should never actually trigger, since a published Tank's
+// game_snapshot always carries valid 2-sided odds (the same guarantee picks.ts
+// already relies on to accept a submission). Mirrors
+// lib/pages-functions/ledger.ts#correctCallPayout's own posture: degrade to the
+// safe minimum rather than fail the whole sweep over one malformed snapshot.
+const FALLBACK_POINTS_PER_CORRECT_PICK = 1;
 
 interface ModelOutput {
     tagline?: string;
@@ -53,6 +70,7 @@ interface CandidateRow {
     community_points_label: string | null;
     slug: string;
     model_output: ModelOutput | string;
+    game_snapshot: { prop?: { odds?: PropOdds | null } } | null;
 }
 
 interface PickerRow {
@@ -60,6 +78,7 @@ interface PickerRow {
     result: string;
     discord_user_id: string;
     waitlist_id: string;
+    outcome_index: number;
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -72,7 +91,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const sql = getSql(context.env);
 
     const candidates = (await sql`
-        SELECT dgp.guild_id, dgp.tank_page_id, dgc.channel_id, dgc.auto_draw_enabled, dgc.community_points_label, t.slug, t.model_output
+        SELECT dgp.guild_id, dgp.tank_page_id, dgc.channel_id, dgc.auto_draw_enabled, dgc.community_points_label, t.slug, t.model_output, t.game_snapshot
         FROM discord_guild_posts dgp
         JOIN discord_guild_configs dgc ON dgc.guild_id = dgp.guild_id
         JOIN tank_pages t ON t.id = dgp.tank_page_id
@@ -92,7 +111,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
 
             const pickers = memberIds.length === 0 ? [] : ((await sql`
-                SELECT p.side, p.result, dl.discord_user_id, p.waitlist_id
+                SELECT p.side, p.result, dl.discord_user_id, p.waitlist_id, p.outcome_index
                 FROM picks p
                 JOIN discord_links dl ON dl.waitlist_id = p.waitlist_id
                 WHERE p.tank_page_id = ${row.tank_page_id} AND dl.discord_user_id = ANY(${memberIds}::text[])
@@ -116,12 +135,25 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             const correct = correctPickers.length;
             const winningSide = correctPickers[0]?.side ?? null;
 
+            // One locked split per Tank, not per-picker: every correct picker shares the
+            // same outcome_index by definition of "correct," so the losing side's price
+            // (and therefore the payout) only needs computing once here.
+            const winningIndex = correctPickers[0]?.outcome_index;
+            const odds = row.game_snapshot?.prop?.odds;
+            const oddsUsable = !!odds && odds.outcomes.length === 2 && (winningIndex === 0 || winningIndex === 1);
+            let pointsAwarded = FALLBACK_POINTS_PER_CORRECT_PICK;
+            if (oddsUsable) {
+                pointsAwarded = pointsForProbability(odds!.outcomePrices[1 - winningIndex!]) ?? FALLBACK_POINTS_PER_CORRECT_PICK;
+            } else if (correct > 0) {
+                console.error(`[POST /api/discord-settlement-sweep] Tank ${row.tank_page_id} has unusable odds for Community Points - falling back to ${FALLBACK_POINTS_PER_CORRECT_PICK}`);
+            }
+
             for (const picker of correctPickers) {
                 await awardCommunityPoints(sql, {
                     guildId: row.guild_id,
                     discordUserId: picker.discord_user_id,
                     linkedHeatchecksUserId: picker.waitlist_id,
-                    delta: POINTS_PER_CORRECT_PICK,
+                    delta: pointsAwarded,
                     sourceType: 'tank',
                     sourceId: row.tank_page_id,
                 });
@@ -139,7 +171,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             // Additive text only when points were actually awarded - guilds that never
             // touch the Community Points feature see the exact same recap as before.
             const pointsLabel = row.community_points_label || DEFAULT_COMMUNITY_POINTS_LABEL;
-            const pointsLine = correct > 0 ? `\n\n+${POINTS_PER_CORRECT_PICK} ${pointsLabel} to ${correct} of you.` : '';
+            const pointsLine = correct > 0 ? `\n\n+${pointsAwarded} ${pointsLabel} to ${correct} of you.` : '';
 
             const embed = {
                 title: `${tagline} — settled`,

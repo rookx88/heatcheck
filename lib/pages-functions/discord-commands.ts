@@ -30,6 +30,7 @@ import { buildGiveawayResultMessage, buildNoEligiblePoolMessage } from './discor
 import { drawGiveawayWinner, type GiveawaySourceType } from './discord-draw';
 import { fetchMarket, resolveMarket } from './gamma';
 import { createAndPostCommunityPick } from './community-pick-creation';
+import { computePointsSplit } from './community-points-formula';
 import { fetchLiveGames } from '../../tank-gamma-live';
 
 const RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE = 4;
@@ -327,18 +328,6 @@ async function handleCommunityPickSearch(context: RequestContext, guildId: strin
     // survives into the confirm step - community_picks.sport needs it, and the
     // select step itself only carries a market id as its value.
     return selectMenuResponse(`cpselect:${sport}`, `Found ${matches.length} market(s) — pick one:`, matches);
-}
-
-// Underdog-weighted split: the side less likely to win pays more. Returns null when
-// the market's odds aren't usable (missing, wrong count, out of (0,1] range) - callers
-// reject creation rather than silently falling back to an even split, same "don't
-// guess, stay pending" posture lib/pages-functions/gamma.ts#resolveMarket takes on
-// its own ambiguous cases.
-function computePointsSplit(outcomePrices: number[]): { sideAPoints: number; sideBPoints: number } | null {
-    if (outcomePrices.length !== 2) return null;
-    const [a, b] = outcomePrices;
-    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || a > 1 || b <= 0 || b > 1) return null;
-    return { sideAPoints: Math.round(100 * b), sideBPoints: Math.round(100 * a) };
 }
 
 function parseMarketOutcomes(market: any): { question: string; outcomes: string[]; outcomePrices: number[] } | null {

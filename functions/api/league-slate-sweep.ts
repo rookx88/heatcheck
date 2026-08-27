@@ -23,19 +23,13 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { fetchLiveGames } from '../../tank-gamma-live';
 import { createAndPostCommunityPick } from '../../lib/pages-functions/community-pick-creation';
+import { computePointsSplit } from '../../lib/pages-functions/community-points-formula';
 
 const LEAGUE_SPORT = 'NFL';
 
 interface ActiveLeagueGuildRow {
     guild_id: string;
     channel_id: string;
-}
-
-function computePointsSplit(outcomePrices: number[]): { sideAPoints: number; sideBPoints: number } | null {
-    if (outcomePrices.length !== 2) return null;
-    const [a, b] = outcomePrices;
-    if (!Number.isFinite(a) || !Number.isFinite(b) || a <= 0 || a > 1 || b <= 0 || b > 1) return null;
-    return { sideAPoints: Math.round(100 * b), sideBPoints: Math.round(100 * a) };
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
