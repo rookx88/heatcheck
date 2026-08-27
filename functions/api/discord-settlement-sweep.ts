@@ -68,6 +68,7 @@ interface CandidateRow {
     channel_id: string;
     auto_draw_enabled: boolean;
     community_points_label: string | null;
+    settlement_visibility: string;
     slug: string;
     model_output: ModelOutput | string;
     game_snapshot: { prop?: { odds?: PropOdds | null } } | null;
@@ -91,7 +92,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const sql = getSql(context.env);
 
     const candidates = (await sql`
-        SELECT dgp.guild_id, dgp.tank_page_id, dgc.channel_id, dgc.auto_draw_enabled, dgc.community_points_label, t.slug, t.model_output, t.game_snapshot
+        SELECT dgp.guild_id, dgp.tank_page_id, dgc.channel_id, dgc.auto_draw_enabled, dgc.community_points_label, dgc.settlement_visibility, t.slug, t.model_output, t.game_snapshot
         FROM discord_guild_posts dgp
         JOIN discord_guild_configs dgc ON dgc.guild_id = dgp.guild_id
         JOIN tank_pages t ON t.id = dgp.tank_page_id
@@ -180,7 +181,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 color: 0x2fe6d9,
             };
 
-            await postDiscordChannelMessage(context.env, row.channel_id, { embeds: [embed] });
+            if (row.settlement_visibility !== 'private') {
+                await postDiscordChannelMessage(context.env, row.channel_id, { embeds: [embed] });
+            }
             await sql`
                 UPDATE discord_guild_posts SET settlement_posted_at = NOW()
                 WHERE guild_id = ${row.guild_id} AND tank_page_id = ${row.tank_page_id}

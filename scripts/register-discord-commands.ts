@@ -61,6 +61,16 @@ const commands = [
             { name: 'auto_draw', description: 'Automatically draw a giveaway winner when something settles', type: OPTION_TYPE_BOOLEAN, required: false },
             { name: 'points_name', description: 'Custom display name for "Community Points" in this server', type: OPTION_TYPE_STRING, required: false },
             { name: 'leaderboard_name', description: 'Custom display name for "Leaderboard" in this server', type: OPTION_TYPE_STRING, required: false },
+            {
+                name: 'settlement_visibility',
+                description: 'Post settlement results to the channel, or keep them private (members use /my-results)',
+                type: OPTION_TYPE_STRING,
+                required: false,
+                choices: [
+                    { name: 'Channel', value: 'channel' },
+                    { name: 'Private', value: 'private' },
+                ],
+            },
         ],
     },
     {
@@ -118,6 +128,14 @@ const commands = [
                 ],
             },
         ],
+    },
+    {
+        name: 'my-results',
+        description: 'Privately check your own recent settled results and points in this server',
+        type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
+        // No default_member_permissions - available to every member, not an admin
+        // command. Always ephemeral (visible only to the caller) regardless of the
+        // server's settlement_visibility setting.
     },
     {
         name: 'leaderboard',

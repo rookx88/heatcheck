@@ -39,6 +39,7 @@ interface OpenPickRow {
     // awarded exactly as stored, never recomputed from odds at settlement time.
     side_a_points: number;
     side_b_points: number;
+    settlement_visibility: string;
 }
 
 interface VoteRow {
@@ -57,7 +58,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const openPicks = (await sql`
         SELECT cp.id, cp.guild_id, dgc.channel_id, dgc.auto_draw_enabled,
                cp.source_market_id, cp.question_text, cp.side_a_label, cp.side_b_label, cp.source_outcomes,
-               cp.side_a_points, cp.side_b_points
+               cp.side_a_points, cp.side_b_points, dgc.settlement_visibility
         FROM community_picks cp
         JOIN discord_guild_configs dgc ON dgc.guild_id = cp.guild_id
         WHERE cp.status = 'open'
@@ -127,7 +128,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 correctCount: correctVotes.length,
                 totalCount: votes.length,
             });
-            await postDiscordChannelMessage(context.env, row.channel_id, recap);
+            if (row.settlement_visibility !== 'private') {
+                await postDiscordChannelMessage(context.env, row.channel_id, recap);
+            }
 
             if (row.auto_draw_enabled) {
                 const draw = await drawGiveawayWinner(sql, context.env, {

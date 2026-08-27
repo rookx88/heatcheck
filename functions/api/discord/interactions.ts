@@ -45,6 +45,7 @@ import {
     handleCommunityVote,
     handleDrawSelect,
     handleLeagueCommand,
+    handleMyResultsCommand,
     updateMessageResponse,
     buildCommunityPointsLeaderboardMessage,
     buildLeagueLeaderboardMessage,
@@ -181,6 +182,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         if (commandName === 'heatchecks-post') return handlePostCommand(context, interaction);
         if (commandName === 'heatchecks-draw') return handleDrawCommand(context, interaction);
         if (commandName === 'heatchecks-league') return handleLeagueCommand(context, interaction);
+        if (commandName === 'my-results') return handleMyResultsCommand(context, interaction);
         if (commandName === 'leaderboard') return handleLeaderboardCommand(context, interaction);
         return new Response('Unknown command.', { status: 400 });
     }

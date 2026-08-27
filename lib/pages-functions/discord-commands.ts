@@ -32,6 +32,7 @@ import { fetchMarket, resolveMarket } from './gamma';
 import { createAndPostCommunityPick } from './community-pick-creation';
 import { computePointsSplit } from './community-points-formula';
 import { fetchLiveGames } from '../../tank-gamma-live';
+import { deriveTaglineFallback } from '../../tank-deck-format';
 
 const RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE = 4;
 const RESPONSE_UPDATE_MESSAGE = 7;
@@ -125,9 +126,10 @@ export async function handleConfigCommand(context: RequestContext, interaction: 
     const autoDrawOpt = options.find((o: any) => o.name === 'auto_draw')?.value as boolean | undefined;
     const pointsNameOpt = options.find((o: any) => o.name === 'points_name')?.value as string | undefined;
     const leaderboardNameOpt = options.find((o: any) => o.name === 'leaderboard_name')?.value as string | undefined;
+    const settlementVisibilityOpt = options.find((o: any) => o.name === 'settlement_visibility')?.value as string | undefined;
 
-    if (sport === undefined && autoDrawOpt === undefined && pointsNameOpt === undefined && leaderboardNameOpt === undefined) {
-        return ephemeral('Specify a sport (with enabled:true/false), auto_draw:true/false, points_name, or leaderboard_name.');
+    if (sport === undefined && autoDrawOpt === undefined && pointsNameOpt === undefined && leaderboardNameOpt === undefined && settlementVisibilityOpt === undefined) {
+        return ephemeral('Specify a sport (with enabled:true/false), auto_draw:true/false, points_name, leaderboard_name, or settlement_visibility.');
     }
     if (sport !== undefined && enabledOpt === undefined) {
         return ephemeral('Specify enabled:true or enabled:false along with the sport.');
@@ -161,6 +163,14 @@ export async function handleConfigCommand(context: RequestContext, interaction: 
     if (leaderboardNameOpt !== undefined) {
         await sql`UPDATE discord_guild_configs SET leaderboard_label = ${leaderboardNameOpt} WHERE guild_id = ${guildId}`;
         replies.push(`The leaderboard is now called "${leaderboardNameOpt}" in this server.`);
+    }
+    if (settlementVisibilityOpt !== undefined) {
+        await sql`UPDATE discord_guild_configs SET settlement_visibility = ${settlementVisibilityOpt} WHERE guild_id = ${guildId}`;
+        replies.push(
+            settlementVisibilityOpt === 'private'
+                ? 'Settlement results are now private - no recap posts to the channel; members check /my-results instead.'
+                : 'Settlement results now post to the channel again.'
+        );
     }
     return ephemeral(replies.join(' '));
 }
@@ -689,4 +699,99 @@ export async function buildLeagueLeaderboardMessage(env: Env, guildId: string, s
     const nameById = new Map(members.map((m) => [m.user.id, m.user.global_name || m.user.username]));
     const lines = rows.map((r, i) => `**${i + 1}.** ${nameById.get(r.discord_user_id) ?? 'Unknown'} — ${r.points} pts`);
     return `**${sport} League Leaderboard**\n${lines.join('\n')}`;
+}
+
+// ===================================================================================
+// /my-results - a pull, not a push: always ephemeral (visible only to the caller,
+// same RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE + EPHEMERAL_FLAG every other reply in
+// this file uses), so it's the one place a picker can see their own recent results
+// and awarded points without a channel broadcast or a DM - the alternative when a
+// guild has set /heatchecks-config settlement_visibility:Private (see
+// functions/api/discord-settlement-sweep.ts and
+// functions/api/community-pick-settlement-sweep.ts, which skip their channel post
+// in that mode but keep awarding points exactly as before). Works the same way
+// regardless of that setting - a personal recap-on-demand is useful in Channel mode
+// too, not just as the Private-mode fallback.
+// ===================================================================================
+
+const MY_RESULTS_LIMIT = 5;
+
+interface MyTankResultRow {
+    slug: string;
+    model_output: { tagline?: string; hook: string } | string;
+    side: string;
+    result: string;
+    points_awarded: number | null;
+}
+
+interface MyCommunityPickResultRow {
+    question_text: string;
+    side_a_label: string;
+    side_b_label: string;
+    side_chosen: number;
+    winning_side: number;
+    points_awarded: number | null;
+}
+
+export async function handleMyResultsCommand(context: RequestContext, interaction: any): Promise<Response> {
+    const guildId: string | undefined = interaction.guild_id;
+    const discordUserId: string | undefined = interaction.member?.user?.id;
+    if (!guildId || !discordUserId) return ephemeral('Run this in a server, not a DM.');
+
+    const sql = getSql(context.env);
+    const [tankRows, pickRows] = await Promise.all([
+        sql`
+            SELECT t.slug, t.model_output, p.side, p.result, cpt.delta AS points_awarded
+            FROM picks p
+            JOIN discord_links dl ON dl.waitlist_id = p.waitlist_id
+            JOIN tank_pages t ON t.id = p.tank_page_id
+            JOIN discord_guild_posts dgp ON dgp.guild_id = ${guildId} AND dgp.tank_page_id = t.id
+            LEFT JOIN community_points_transactions cpt
+                ON cpt.guild_id = ${guildId} AND cpt.discord_user_id = ${discordUserId}
+                AND cpt.source_type = 'tank' AND cpt.source_id = t.id::text
+            WHERE dl.discord_user_id = ${discordUserId} AND p.result IS NOT NULL
+            ORDER BY p.settled_at DESC NULLS LAST
+            LIMIT ${MY_RESULTS_LIMIT}
+        ` as unknown as Promise<MyTankResultRow[]>,
+        sql`
+            SELECT cp.question_text, cp.side_a_label, cp.side_b_label, cpv.side_chosen, cp.winning_side, cpt.delta AS points_awarded
+            FROM community_picks_votes cpv
+            JOIN community_picks cp ON cp.id = cpv.community_pick_id AND cp.guild_id = ${guildId}
+            LEFT JOIN community_points_transactions cpt
+                ON cpt.guild_id = ${guildId} AND cpt.discord_user_id = ${discordUserId}
+                AND cpt.source_type = 'community_pick' AND cpt.source_id = cp.id::text
+            WHERE cpv.discord_user_id = ${discordUserId} AND cp.status = 'settled'
+            ORDER BY cp.created_at DESC
+            LIMIT ${MY_RESULTS_LIMIT}
+        ` as unknown as Promise<MyCommunityPickResultRow[]>,
+    ]);
+
+    if (tankRows.length === 0 && pickRows.length === 0) {
+        return ephemeral("No settled results yet - once something you picked or voted on settles, check back here.");
+    }
+
+    // points_awarded is read back from the already-stored transaction, never
+    // recomputed here - same "never recompute, only display what was locked in"
+    // discipline the cards themselves follow.
+    const resultLine = (label: string, correct: boolean, points: number | null) =>
+        correct ? `✓ ${label} — correct${points !== null ? ` (+${points} pts)` : ''}` : `✗ ${label} — incorrect`;
+
+    const sections: string[] = [];
+    if (tankRows.length > 0) {
+        const lines = tankRows.map((r) => {
+            const modelOutput = typeof r.model_output === 'string' ? JSON.parse(r.model_output) : r.model_output;
+            const tagline = modelOutput?.tagline?.trim() || (modelOutput ? deriveTaglineFallback(modelOutput.hook) : r.slug);
+            return resultLine(`${tagline} (${r.side})`, r.result === 'correct', r.points_awarded);
+        });
+        sections.push(`**Real Tanks**\n${lines.join('\n')}`);
+    }
+    if (pickRows.length > 0) {
+        const lines = pickRows.map((r) => {
+            const pickedLabel = r.side_chosen === 0 ? r.side_a_label : r.side_b_label;
+            return resultLine(`${r.question_text} (${pickedLabel})`, r.side_chosen === r.winning_side, r.points_awarded);
+        });
+        sections.push(`**Community Picks**\n${lines.join('\n')}`);
+    }
+
+    return ephemeral(`**Your recent results in this server**\n\n${sections.join('\n\n')}`);
 }
