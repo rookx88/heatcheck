@@ -44,8 +44,10 @@ import {
     handleCommunityPickConfirm,
     handleCommunityVote,
     handleDrawSelect,
+    handleLeagueCommand,
     updateMessageResponse,
     buildCommunityPointsLeaderboardMessage,
+    buildLeagueLeaderboardMessage,
 } from '../../../lib/pages-functions/discord-commands';
 
 const DISCORD_PING = 1;
@@ -178,6 +180,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         if (commandName === 'heatchecks-config') return handleConfigCommand(context, interaction);
         if (commandName === 'heatchecks-post') return handlePostCommand(context, interaction);
         if (commandName === 'heatchecks-draw') return handleDrawCommand(context, interaction);
+        if (commandName === 'heatchecks-league') return handleLeagueCommand(context, interaction);
         if (commandName === 'leaderboard') return handleLeaderboardCommand(context, interaction);
         return new Response('Unknown command.', { status: 400 });
     }
@@ -208,12 +211,16 @@ function handleLeaderboardCommand(context: RequestContext, interaction: any): Re
     if (!applicationId || !interactionToken) return ephemeral("Couldn't process that command - try again.");
 
     const view = interaction.data?.options?.find((o: any) => o.name === 'view')?.value ?? 'accuracy';
+    const sport = interaction.data?.options?.find((o: any) => o.name === 'sport')?.value as string | undefined;
+    if (view === 'league' && !sport) return ephemeral('Pick a sport to view the league leaderboard (e.g. sport:NFL).');
 
     // Deferred: fetchGuildMembers (paginated REST calls) plus the DB query can exceed
     // Discord's 3-second initial-response window, especially for a larger server.
     // waitUntil keeps the background work alive after this function returns its
     // immediate ack; the real content arrives via a webhook PATCH to @original.
-    const buildMessage = view === 'community'
+    const buildMessage = view === 'league'
+        ? buildLeagueLeaderboardMessage(context.env, guildId, sport as string)
+        : view === 'community'
         ? buildCommunityPointsLeaderboardMessage(context.env, guildId)
         : buildAccuracyLeaderboardMessage(context.env, guildId);
 

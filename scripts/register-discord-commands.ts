@@ -28,6 +28,12 @@ const MANAGE_GUILD_PERMISSION = '32';
 const SUPPORTED_SPORTS = ['NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
 const sportChoices = SUPPORTED_SPORTS.map((s) => ({ name: s, value: s }));
 
+// Mirrors lib/pages-functions/discord-commands.ts's SUPPORTED_LEAGUE_SPORTS -
+// season-long leagues start NFL-only, a deliberately narrower list than the sports
+// above.
+const LEAGUE_SPORTS = ['NFL'];
+const leagueSportChoices = LEAGUE_SPORTS.map((s) => ({ name: s, value: s }));
+
 const commands = [
     {
         name: 'heatchecks-setup',
@@ -89,6 +95,31 @@ const commands = [
         default_member_permissions: MANAGE_GUILD_PERMISSION,
     },
     {
+        name: 'heatchecks-league',
+        description: 'Join or leave a season-long league leaderboard',
+        type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
+        // No default_member_permissions - joining/leaving a league is a member
+        // action, not an admin one (unlike every other heatchecks-* command).
+        options: [
+            {
+                name: 'join',
+                description: 'Join this server\'s league for a sport',
+                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
+                options: [
+                    { name: 'sport', description: 'Sport league to join', type: OPTION_TYPE_STRING, required: true, choices: leagueSportChoices },
+                ],
+            },
+            {
+                name: 'leave',
+                description: 'Leave this server\'s league for a sport',
+                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
+                options: [
+                    { name: 'sport', description: 'Sport league to leave', type: OPTION_TYPE_STRING, required: true, choices: leagueSportChoices },
+                ],
+            },
+        ],
+    },
+    {
         name: 'leaderboard',
         description: "Show this server's Heatchecks leaderboard",
         type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
@@ -101,7 +132,15 @@ const commands = [
                 choices: [
                     { name: 'Accuracy', value: 'accuracy' },
                     { name: 'Community Points', value: 'community' },
+                    { name: 'League', value: 'league' },
                 ],
+            },
+            {
+                name: 'sport',
+                description: 'Sport league to view (required for view:League)',
+                type: OPTION_TYPE_STRING,
+                required: false,
+                choices: leagueSportChoices,
             },
         ],
     },

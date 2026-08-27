@@ -4,10 +4,11 @@
 // (functions/api/curate.ts), not here - this file has no DB or Anthropic dependency at
 // all.
 //
-// Two cadences (2026-08-26, see wrangler.toml's [triggers] comment for the full
+// Three cadences (2026-08-26, see wrangler.toml's [triggers] comment for the full
 // rationale): the original once-daily slot ("0 10 * * *") runs the FULL chain below,
-// the other configured slots run ONLY runSweeps() - never /api/curate, since that's the
-// one step here that spends real Anthropic API credits every time it fires.
+// the twice-daily sweep slots run ONLY runSweeps() - never /api/curate, since that's
+// the one step here that spends real Anthropic API credits every time it fires - and
+// the weekly Tuesday slot runs ONLY the NFL league auto-slate.
 
 export interface Env {
     CURATE_URL: string;
@@ -17,6 +18,11 @@ export interface Env {
 // The one slot allowed to spend Anthropic credits - see the event.cron branch in
 // scheduled() below. Every other configured cron slot runs sweeps only.
 const FULL_CHAIN_CRON = '0 10 * * *';
+
+// Weekly NFL league auto-slate (Tuesday, after Monday Night Football concludes and
+// the week's lines settle) - see the event.cron branch in scheduled() below. Neither
+// the full chain nor the regular sweeps; its own third case.
+const LEAGUE_SLATE_CRON = '0 12 * * 2';
 
 async function runCurate(env: Env): Promise<string> {
     const res = await fetch(env.CURATE_URL, {
@@ -56,6 +62,14 @@ async function runSweeps(env: Env): Promise<{ tickerSweep: string; notifySweep: 
     return { tickerSweep, notifySweep, discordSweep };
 }
 
+// Weekly NFL season-league auto-slate: creates a Community Pick per live NFL
+// moneyline market for every guild with an active league_seasons row. Own request,
+// same X-Curate-Secret trust domain as the other sweeps - see
+// functions/api/league-slate-sweep.ts.
+async function runLeagueSlateSweep(env: Env): Promise<string> {
+    return postSibling(env, '/api/league-slate-sweep');
+}
+
 async function postSibling(env: Env, path: string): Promise<string> {
     try {
         const url = new URL(path, env.CURATE_URL).toString();
@@ -85,6 +99,8 @@ export default {
         // defaults to sweeps-only rather than accidentally spending Anthropic credits.
         if (event.cron === FULL_CHAIN_CRON) {
             ctx.waitUntil(runCurate(env));
+        } else if (event.cron === LEAGUE_SLATE_CRON) {
+            ctx.waitUntil(runLeagueSlateSweep(env));
         } else {
             ctx.waitUntil(runSweeps(env));
         }

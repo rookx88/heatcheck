@@ -2,7 +2,7 @@ name = "heatchecks-curate-cron"
 main = "src/index.ts"
 compatibility_date = "2026-08-12"
 
-# Two different cadences on one worker (2026-08-26): "0 10 * * *" is the original once-daily
+# Three different cadences on one worker (2026-08-26): "0 10 * * *" is the original once-daily
 # slot, timed so drafts are waiting at 6:00 AM Eastern for morning review (Cloudflare Cron
 # Triggers run fixed UTC with no DST awareness: 10:00 UTC is 6 AM during EDT; once the US
 # falls back to EST in November this drifts to 5:00 AM Eastern unless nudged to "0 11 * * *"
@@ -15,8 +15,13 @@ compatibility_date = "2026-08-12"
 # sweeps specifically (2026-08-26) - add more slots here if that cadence needs tightening,
 # but never add one that isn't handled in the event.cron branch below, or it'll silently
 # run the full (paid) chain instead of just the sweeps.
+#
+# "0 12 * * 2" (Tuesday, 2026-08-26) is a fourth, distinct slot: the weekly NFL season-
+# league auto-slate (/api/league-slate-sweep via runLeagueSlateSweep in src/index.ts),
+# timed after Monday Night Football concludes and the week's lines settle. Not a sweep,
+# not the full chain - its own third branch in event.cron below.
 [triggers]
-crons = ["0 10 * * *", "0 18 * * *", "0 2 * * *"]
+crons = ["0 10 * * *", "0 18 * * *", "0 2 * * *", "0 12 * * 2"]
 
 [vars]
 # Staging posture (2026-08-21): curation runs against the auth-sessions branch alias,

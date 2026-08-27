@@ -584,3 +584,120 @@ export async function buildCommunityPointsLeaderboardMessage(env: Env, guildId: 
     const lines = rows.map((r, i) => `**${i + 1}.** ${nameById.get(r.discord_user_id) ?? 'Unknown'} — ${r.points} ${communityPointsLabel}`);
     return `**${communityPointsLabel} ${leaderboardLabel}**\n${lines.join('\n')}`;
 }
+
+// ===================================================================================
+// /heatchecks-league join|leave - season-long, opt-in leagues layered on top of
+// Community Points. A league is purely a membership filter over the same
+// community_points_transactions data everything else already writes to - joining
+// creates no points of its own, it just decides who counts on the league leaderboard
+// and from when (joined_at is the cutoff - see buildLeagueLeaderboardMessage).
+// NFL-only for now (SUPPORTED_LEAGUE_SPORTS below), not the full SUPPORTED_SPORTS
+// list, per the brief's "start with NFL only, generalize later if it proves out."
+// ===================================================================================
+
+export const SUPPORTED_LEAGUE_SPORTS = ['NFL'];
+
+// A placeholder length matching a real NFL season's rough span (regular season plus
+// some margin) - easy to retune later; there's no admin-facing date config for this
+// in v1, per the plan's "no admin date-config command needed."
+const LEAGUE_SEASON_LENGTH_DAYS = 150;
+
+async function resolveOrCreateActiveLeagueSeason(sql: ReturnType<typeof getSql>, guildId: string, sport: string): Promise<string> {
+    const existing = await sql`
+        SELECT id FROM league_seasons
+        WHERE guild_id = ${guildId} AND sport = ${sport} AND end_date > NOW()
+        ORDER BY start_date DESC LIMIT 1
+    `;
+    if (existing.length > 0) return (existing[0] as unknown as { id: string }).id;
+
+    const startDate = new Date();
+    const endDate = new Date(startDate.getTime() + LEAGUE_SEASON_LENGTH_DAYS * 24 * 60 * 60 * 1000);
+    const created = await sql`
+        INSERT INTO league_seasons (guild_id, sport, start_date, end_date)
+        VALUES (${guildId}, ${sport}, ${startDate.toISOString()}, ${endDate.toISOString()})
+        RETURNING id
+    `;
+    return (created[0] as unknown as { id: string }).id;
+}
+
+export async function handleLeagueCommand(context: RequestContext, interaction: any): Promise<Response> {
+    const guildId: string | undefined = interaction.guild_id;
+    const discordUserId: string | undefined = interaction.member?.user?.id;
+    if (!guildId || !discordUserId) return ephemeral('Run this in a server, not a DM.');
+
+    const sub = interaction.data?.options?.[0];
+    const subName: string | undefined = sub?.name;
+    const sport: string | undefined = sub?.options?.find((o: any) => o.name === 'sport')?.value;
+    if (!subName || !sport || !SUPPORTED_LEAGUE_SPORTS.includes(sport)) return ephemeral("Couldn't read that command.");
+
+    const sql = getSql(context.env);
+
+    if (subName === 'join') {
+        const seasonId = await resolveOrCreateActiveLeagueSeason(sql, guildId, sport);
+        await sql`
+            INSERT INTO league_memberships (league_season_id, discord_user_id)
+            VALUES (${seasonId}, ${discordUserId})
+            ON CONFLICT (league_season_id, discord_user_id) DO NOTHING
+        `;
+        return ephemeral(`You're in! Points from ${sport} Community Picks count toward this server's ${sport} league leaderboard from now on.`);
+    }
+
+    if (subName === 'leave') {
+        const rows = await sql`
+            SELECT id FROM league_seasons
+            WHERE guild_id = ${guildId} AND sport = ${sport} AND end_date > NOW()
+            ORDER BY start_date DESC LIMIT 1
+        `;
+        if (rows.length === 0) return ephemeral(`There's no active ${sport} league in this server.`);
+        const seasonId = (rows[0] as unknown as { id: string }).id;
+        await sql`DELETE FROM league_memberships WHERE league_season_id = ${seasonId} AND discord_user_id = ${discordUserId}`;
+        return ephemeral(`You've left this server's ${sport} league.`);
+    }
+
+    return ephemeral("Couldn't read that command.");
+}
+
+interface LeagueLeaderboardRow {
+    discord_user_id: string;
+    points: number;
+}
+
+// Scoped to a guild's currently-active season for the sport - past (end_date-passed)
+// seasons stay queryable in the DB but aren't what this command shows; there's no
+// "view a past season" option in v1. created_at >= joined_at is the whole point of a
+// membership table existing at all: a mid-season joiner's total only ever reflects
+// points earned after they joined, never retroactive.
+export async function buildLeagueLeaderboardMessage(env: Env, guildId: string, sport: string): Promise<string> {
+    const sql = getSql(env);
+    const seasonRows = await sql`
+        SELECT id FROM league_seasons
+        WHERE guild_id = ${guildId} AND sport = ${sport} AND end_date > NOW()
+        ORDER BY start_date DESC LIMIT 1
+    `;
+    if (seasonRows.length === 0) return `No active ${sport} league in this server yet — run /heatchecks-league join sport:${sport} to start one.`;
+    const seasonId = (seasonRows[0] as unknown as { id: string }).id;
+
+    const [rows, members] = await Promise.all([
+        sql`
+            SELECT lm.discord_user_id, SUM(cpt.delta)::int AS points
+            FROM league_memberships lm
+            JOIN community_points_transactions cpt
+                ON cpt.guild_id = ${guildId}
+                AND cpt.discord_user_id = lm.discord_user_id
+                AND cpt.source_type = 'community_pick'
+                AND cpt.created_at >= lm.joined_at
+            JOIN community_picks cp ON cp.id::text = cpt.source_id AND cp.sport = ${sport}
+            WHERE lm.league_season_id = ${seasonId}
+            GROUP BY lm.discord_user_id
+            ORDER BY points DESC
+            LIMIT 10
+        ` as unknown as Promise<LeagueLeaderboardRow[]>,
+        fetchGuildMembers(env, guildId),
+    ]);
+
+    if (rows.length === 0) return `Nobody in this server's ${sport} league has scored any points yet.`;
+
+    const nameById = new Map(members.map((m) => [m.user.id, m.user.global_name || m.user.username]));
+    const lines = rows.map((r, i) => `**${i + 1}.** ${nameById.get(r.discord_user_id) ?? 'Unknown'} — ${r.points} pts`);
+    return `**${sport} League Leaderboard**\n${lines.join('\n')}`;
+}
