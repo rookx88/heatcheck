@@ -17,6 +17,10 @@
 
 import satori from 'satori';
 import { initWasm, Resvg } from '@resvg/resvg-wasm';
+// Static import, not dynamic - Cloudflare's Functions bundler compiles a .wasm import
+// into a WebAssembly.Module at build time, but only reliably recognizes STATIC import
+// declarations for that transform, not a runtime `import('...')` call.
+import RESVG_WASM from '@resvg/resvg-wasm/index_bg.wasm';
 import { buildLeaderboardRowEmbeds, colorForRank, type LeaderboardRowInput } from './discord-leaderboard-card';
 
 const IMAGE_WIDTH = 720;
@@ -39,12 +43,10 @@ function textColorForRank(rank: number): string {
 
 let wasmInitPromise: Promise<void> | null = null;
 function ensureWasmInit(): Promise<void> {
+    // Guarded by this module-level promise so init only ever runs once per warm
+    // isolate, not once per request.
     if (!wasmInitPromise) {
-        // Dynamic import of the package's own .wasm binary - Cloudflare Pages
-        // Functions compile a .wasm import into a WebAssembly.Module directly, which
-        // is exactly the shape initWasm accepts. Guarded by this module-level
-        // promise so it only ever runs once per warm isolate, not once per request.
-        wasmInitPromise = import('@resvg/resvg-wasm/index_bg.wasm').then((mod) => initWasm(mod.default));
+        wasmInitPromise = initWasm(RESVG_WASM);
     }
     return wasmInitPromise;
 }
@@ -200,22 +202,42 @@ export async function sendLeaderboardResult(
     rows: LeaderboardRowInput[]
 ): Promise<void> {
     const patchUrl = `https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`;
-    const headerLabel = content.replace(/\*\*/g, '');
-    const png = rows.length > 0 ? await renderLeaderboardImage(baseUrl, headerLabel, rows) : null;
 
-    if (png) {
-        const form = new FormData();
-        form.append('payload_json', JSON.stringify({ content: '', embeds: [{ image: { url: 'attachment://leaderboard.png' } }] }));
-        form.append('files[0]', new Blob([png], { type: 'image/png' }), 'leaderboard.png');
-        const res = await fetch(patchUrl, { method: 'PATCH', body: form });
-        if (res.ok) return;
-        console.error(`[leaderboard-image] Multipart PATCH failed (${res.status}), falling back to embeds`);
+    // Top-level guard: renderLeaderboardImage already catches its own failures, but
+    // this wraps EVERYTHING else too (FormData/Blob construction, the multipart PATCH
+    // itself) - a Discord interaction that never gets its follow-up PATCH shows the
+    // user "The application did not respond" with no way to retry, which is worse
+    // than any fallback content this function could send instead. Nothing here should
+    // ever throw past this function.
+    try {
+        const headerLabel = content.replace(/\*\*/g, '');
+        const png = rows.length > 0 ? await renderLeaderboardImage(baseUrl, headerLabel, rows) : null;
+
+        if (png) {
+            const form = new FormData();
+            form.append('payload_json', JSON.stringify({ content: '', embeds: [{ image: { url: 'attachment://leaderboard.png' } }] }));
+            form.append('files[0]', new Blob([png], { type: 'image/png' }), 'leaderboard.png');
+            const res = await fetch(patchUrl, { method: 'PATCH', body: form });
+            if (res.ok) return;
+            console.error(`[leaderboard-image] Multipart PATCH failed (${res.status}), falling back to embeds`);
+        }
+
+        const embeds = buildLeaderboardRowEmbeds(rows);
+        await fetch(patchUrl, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content, embeds }),
+        });
+    } catch (err) {
+        console.error('[leaderboard-image] sendLeaderboardResult failed entirely, sending plain content:', err);
+        try {
+            await fetch(patchUrl, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ content: content || 'Could not build the leaderboard right now — try again shortly.' }),
+            });
+        } catch (finalErr) {
+            console.error('[leaderboard-image] Final fallback PATCH also failed:', finalErr);
+        }
     }
-
-    const embeds = buildLeaderboardRowEmbeds(rows);
-    await fetch(patchUrl, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content, embeds }),
-    });
 }
