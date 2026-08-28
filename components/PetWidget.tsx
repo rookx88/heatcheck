@@ -120,26 +120,26 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
 
     return (
         <div className={`pet-widget pet-widget--${variant}${expanded ? ' is-expanded' : ''}`}>
-            {expanded && (
-                <div className="pet-widget__actions">
-                    <button className="pet-widget__action" onClick={() => setOpenModal('feed')}>
-                        Feed
-                    </button>
-                    <button className="pet-widget__action" onClick={() => setOpenModal('inventory')}>
-                        Inventory
-                    </button>
-                    {/* Inbox access wherever the pet lives - crucially including tank
-                        article pages, which have no header menu. The modal renders in
-                        the page's NotificationsHost, not here. */}
-                    <button
-                        className="pet-widget__action"
-                        onClick={() => { setExpanded(false); dispatchInboxOpen(); }}
-                    >
-                        Inbox
-                    </button>
-                </div>
-            )}
             <div className="pet-widget__row">
+                {expanded && (
+                    <div className="pet-widget__actions">
+                        <button className="pet-widget__action" onClick={() => setOpenModal('feed')}>
+                            Feed
+                        </button>
+                        <button className="pet-widget__action" onClick={() => setOpenModal('inventory')}>
+                            Inventory
+                        </button>
+                        {/* Inbox access wherever the pet lives - crucially including tank
+                            article pages, which have no header menu. The modal renders in
+                            the page's NotificationsHost, not here. */}
+                        <button
+                            className="pet-widget__action"
+                            onClick={() => { setExpanded(false); dispatchInboxOpen(); }}
+                        >
+                            Inbox
+                        </button>
+                    </div>
+                )}
                 <button
                     className="pet-widget__pet"
                     onClick={() => setExpanded((e) => !e)}

@@ -94,9 +94,11 @@
   flex-direction: column;
   align-items: stretch;
   gap: 0.4rem;
-  margin-bottom: 0.5rem;
   padding: 0.55rem 0.6rem;
-  max-width: min(220px, calc(100vw - 24px));
+  /* Sits beside the 140px mobile pet in the same row (gap 0.5rem) - budget the
+     remaining viewport width after that + a safety margin, rather than the
+     full viewport, so the two never together overflow a narrow phone. */
+  max-width: min(220px, calc(100vw - 172px));
   max-height: min(60vh, 320px);
   overflow-y: auto;
   background: rgba(7, 5, 11, 0.78);
@@ -108,8 +110,8 @@
 }
 
 @keyframes pet-widget-actions-in {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: translateX(8px); }
+  to { opacity: 1; transform: translateX(0); }
 }
 
 .pet-widget__action {
