@@ -299,10 +299,10 @@ button.pet-widget__name--prompt:focus-visible {
 }
 
 .pet-widget__bubble-text {
-  font-family: 'Nunito', sans-serif;
-  font-weight: 800;
-  font-size: 0.85rem;
-  line-height: 1.4;
+  font-family: 'Permanent Marker', 'Nunito', sans-serif;
+  font-weight: 400;
+  font-size: 1rem;
+  line-height: 1.35;
   color: #fff;
   text-align: left;
 }
