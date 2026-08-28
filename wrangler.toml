@@ -1,3 +1,11 @@
 name = "heatchecks"
 pages_build_output_dir = "dist"
 compatibility_date = "2026-08-12"
+
+# Required for satori (lib/pages-functions/leaderboard-image.ts) - it bundles
+# harfbuzzjs for text shaping, which has a `require("fs")` call gated behind a
+# Node-environment check that never actually runs in Workers, but Cloudflare's
+# bundler still needs to resolve the require() statically at build time. This flag
+# provides that resolution (via unenv polyfills) without changing any runtime
+# behavior - the fs branch is still never reached.
+compatibility_flags = ["nodejs_compat"]
