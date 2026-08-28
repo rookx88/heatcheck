@@ -46,7 +46,7 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&family=Montserrat:wght@800;900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&family=Montserrat:wght@800;900&family=Permanent+Marker&display=swap" rel="stylesheet">
 
     <style>
         :root {
@@ -576,7 +576,7 @@
         }
     
         .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #a36114; border-top: 2px solid #000000; border-bottom: 2px solid #000000; }
-        .hc-tape-track { display: flex; width: max-content; animation: hc-tape 28s linear infinite; }
+        .hc-tape-track { display: flex; width: max-content; animation: hc-tape 60s linear infinite; }
         .hc-tape-group {
             list-style: none; display: flex; gap: 2.25rem; margin: 0; padding: 0.5rem 1.5rem 0.55rem;
             white-space: nowrap;
@@ -584,14 +584,21 @@
             font-size: 1.45rem; letter-spacing: 0.03em; text-transform: uppercase;
         }
         .hc-tape-item, .hc-tape-item .hc-mm-value { font-weight: 800; }
+        .hc-tape-item .hc-mm-value { font-size: 1.3rem; }
         .hc-tape-item.is-pos, .hc-tape-item.is-pos .hc-mm-value { color: #2f9e1e; }
         .hc-tape-item.is-neg, .hc-tape-item.is-neg .hc-mm-value { color: #e33a24; }
         .hc-tape-item.is-zero, .hc-tape-item.is-zero .hc-mm-value { color: #5b6572; }
         .hc-tape-item {
             text-shadow:
-                2px 0 0 #fff, -2px 0 0 #fff, 0 2px 0 #fff, 0 -2px 0 #fff,
-                1.5px 1.5px 0 #fff, -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff,
+                1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff,
+                1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff,
                 3px 3px 4px rgba(0,0,0,0.35);
+        }
+        .hc-tape-item .hc-tape-headline {
+            font-size: 0.95rem; font-weight: 600; letter-spacing: 0.01em;
+            color: #fdf3e0;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.45);
+            margin-left: 0.35rem;
         }
         @keyframes hc-tape { to { transform: translateX(-50%); } }
 
@@ -801,15 +808,15 @@
         <div class="hc-ticker-tape" aria-label="Ticker values — how tagged storylines have gone, not a forecast">
             <div class="hc-tape-track">
                 <ul class="hc-tape-group">
-                <li class="hc-tape-item is-neg">$DOGS <span class="hc-mm-value is-neg">−52.0%</span></li>
-                <li class="hc-tape-item is-pos">$CHALK <span class="hc-mm-value is-pos">+43.5%</span></li>
-                <li class="hc-tape-item is-neg">$LOCKS <span class="hc-mm-value is-neg">−0.8%</span></li>
-                <li class="hc-tape-item is-pos">$MOONSHOT <span class="hc-mm-value is-pos">+6.8%</span></li></ul>
+                <li class="hc-tape-item is-neg">$DOGS <span class="hc-mm-value is-neg">−52.0%</span> <span class="hc-tape-headline">$DOGS sinks 4.1 points with Steelers&#039; recent loss.</span></li>
+                <li class="hc-tape-item is-pos">$CHALK <span class="hc-mm-value is-pos">+43.5%</span> <span class="hc-tape-headline">$CHALK climbs 4.1 points with Bills&#039; recent win.</span></li>
+                <li class="hc-tape-item is-neg">$LOCKS <span class="hc-mm-value is-neg">−0.8%</span> <span class="hc-tape-headline">$LOCKS climbs 0.8 points with Vladimir Guerrero Jr.&#039;s recent win.</span></li>
+                <li class="hc-tape-item is-pos">$MOONSHOT <span class="hc-mm-value is-pos">+6.8%</span> <span class="hc-tape-headline">$MOONSHOT sinks 0.8 points with Vladimir Guerrero Jr.&#039;s recent loss.</span></li></ul>
                 <ul class="hc-tape-group" aria-hidden="true">
-                <li class="hc-tape-item is-neg">$DOGS <span class="hc-mm-value is-neg">−52.0%</span></li>
-                <li class="hc-tape-item is-pos">$CHALK <span class="hc-mm-value is-pos">+43.5%</span></li>
-                <li class="hc-tape-item is-neg">$LOCKS <span class="hc-mm-value is-neg">−0.8%</span></li>
-                <li class="hc-tape-item is-pos">$MOONSHOT <span class="hc-mm-value is-pos">+6.8%</span></li></ul>
+                <li class="hc-tape-item is-neg">$DOGS <span class="hc-mm-value is-neg">−52.0%</span> <span class="hc-tape-headline">$DOGS sinks 4.1 points with Steelers&#039; recent loss.</span></li>
+                <li class="hc-tape-item is-pos">$CHALK <span class="hc-mm-value is-pos">+43.5%</span> <span class="hc-tape-headline">$CHALK climbs 4.1 points with Bills&#039; recent win.</span></li>
+                <li class="hc-tape-item is-neg">$LOCKS <span class="hc-mm-value is-neg">−0.8%</span> <span class="hc-tape-headline">$LOCKS climbs 0.8 points with Vladimir Guerrero Jr.&#039;s recent win.</span></li>
+                <li class="hc-tape-item is-pos">$MOONSHOT <span class="hc-mm-value is-pos">+6.8%</span> <span class="hc-tape-headline">$MOONSHOT sinks 0.8 points with Vladimir Guerrero Jr.&#039;s recent loss.</span></li></ul>
             </div>
         </div>
         <div class="hc-mobile-register-row">
@@ -834,8 +841,8 @@
                 <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
                     
             <button type="button" class="hc-sport-btn is-selected" data-sport="Baseball" data-live aria-pressed="true" title="Baseball" aria-label="Show the baseball Tank: Jim Crane fired his GM mid-playoff-race and put himself in charge. First game under the new regime is against the Mets."><span aria-hidden="true">⚾</span></button>
-            <button type="button" class="hc-sport-btn" data-sport="Football" data-live aria-pressed="false" title="Football" aria-label="Show the football Tank: Jayden Daniels just lost his blindside protector for the year, and Baltimore is circling."><span aria-hidden="true">🏈</span></button>
-            <button type="button" class="hc-sport-btn" data-sport="Soccer" data-live aria-pressed="false" title="Soccer" aria-label="Show the soccer Tank: Pep Guardiola is gone, and Manchester City have to prove they&#039;re still Manchester City."><span aria-hidden="true">⚽</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Football" data-live aria-pressed="false" title="Football" aria-label="Show the football Tank: The Giants have been the whole offseason&#039;s headline. The Jets haven&#039;t said a word. Now they have to play the game."><span aria-hidden="true">🏈</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Soccer" data-live aria-pressed="false" title="Soccer" aria-label="Show the soccer Tank: The most expensive attacker in British history makes his road trip to the City Ground."><span aria-hidden="true">⚽</span></button>
             <button type="button" class="hc-sport-btn" data-sport="Basketball" disabled title="Basketball" aria-label="Basketball: nothing live today"><span aria-hidden="true">🏀</span></button>
                 </div>
             </div>
@@ -968,7 +975,7 @@
             &copy; 2026 Heatchecks &middot; <a href="/">Home</a>
         </div>
     </main>
-    <script type="application/json" id="homepage-data">{"initialSport":"Baseball","loggedIn":false,"sports":[{"sport":"Baseball","live":true,"slug":"astros-mets-jim-crane-front-office-shakeup","href":"/the-tank/articles/astros-mets-jim-crane-front-office-shakeup/","deck":{"hook":"Jim Crane fired his GM mid-playoff-race and put himself in charge. First game under the new regime is against the Mets.","cards":["No transition period, no interim search. Crane fired Dana Brown and stepped into baseball ops himself, right as Houston fights for a division.","The Astros clubhouse has seen turnover before, but never the owner himself calling the shots during a pennant race."],"call":{"sides":["Houston Astros","New York Mets"],"question":"Front-office chaos and all, who wins this one: Astros or Mets?","sidesImpliedProb":[0.495,0.505]},"tagline":"Owner Takes Over","contextLabel":"Moneyline","oddsOrMarketLabel":"MLB · Houston Astros vs. New York Mets","settleDateLabel":"Resolves Aug 28, 2026","gameTimeLabel":"Fri, Aug 28 · 7:10 PM ET","kickoff":"2026-08-28T23:10:00Z"}},{"sport":"Basketball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Football","live":true,"slug":"commanders-ravens-spread-tunsil-injury","href":"/the-tank/articles/commanders-ravens-spread-tunsil-injury/","deck":{"hook":"Jayden Daniels just lost his blindside protector for the year, and Baltimore is circling.","cards":["Laremy Tunsil tears his triceps and Washington's line goes from settled to scrambling overnight.","Daniels has bailed out bad protection with his legs before, but Baltimore's front is built to punish exactly this kind of hole."],"call":{"sides":["WAS -2.5","BAL +2.5"],"question":"Do the Commanders cover -2.5, or does Baltimore's pass rush expose the patched-up line?","sidesImpliedProb":[0.5,0.5]},"tagline":"Life After Tunsil","contextLabel":"O -2.5 Spreads","oddsOrMarketLabel":"NFL · Washington Commanders vs. Baltimore Ravens","settleDateLabel":"Resolves Aug 28, 2026","gameTimeLabel":"Fri, Aug 28 · 6:00 PM ET","kickoff":"2026-08-28T22:00:00Z"}},{"sport":"Soccer","live":true,"slug":"man-city-crystal-palace-maresca-first-season","href":"/the-tank/articles/man-city-crystal-palace-maresca-first-season/","deck":{"hook":"Pep Guardiola is gone, and Manchester City have to prove they're still Manchester City.","cards":["Enzo Maresca inherits a decade of dominance and a fanbase watching his every move for cracks.","A shaky Community Shield result already has people asking questions before the league season is a week old."],"call":{"sides":["Yes","No"],"question":"Will Manchester City beat Crystal Palace?","sidesImpliedProb":[0.595,0.405]},"tagline":"Life After Pep","contextLabel":"Moneyline","oddsOrMarketLabel":"EPL · Manchester City FC vs. Crystal Palace FC","settleDateLabel":"Resolves Aug 28, 2026","gameTimeLabel":"Fri, Aug 28 · 3:00 PM ET","kickoff":"2026-08-28T19:00:00Z"}}]}</script>
+    <script type="application/json" id="homepage-data">{"initialSport":"Baseball","loggedIn":false,"sports":[{"sport":"Baseball","live":true,"slug":"astros-mets-jim-crane-front-office-shakeup","href":"/the-tank/articles/astros-mets-jim-crane-front-office-shakeup/","deck":{"hook":"Jim Crane fired his GM mid-playoff-race and put himself in charge. First game under the new regime is against the Mets.","cards":["No transition period, no interim search. Crane fired Dana Brown and stepped into baseball ops himself, right as Houston fights for a division.","The Astros clubhouse has seen turnover before, but never the owner himself calling the shots during a pennant race."],"call":{"sides":["Houston Astros","New York Mets"],"question":"Front-office chaos and all, who wins this one: Astros or Mets?","sidesImpliedProb":[0.495,0.505]},"tagline":"Owner Takes Over","contextLabel":"Moneyline","oddsOrMarketLabel":"MLB · Houston Astros vs. New York Mets","settleDateLabel":"Resolves Aug 28, 2026","gameTimeLabel":"Fri, Aug 28 · 7:10 PM ET","kickoff":"2026-08-28T23:10:00Z"}},{"sport":"Basketball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Football","live":true,"slug":"giants-jets-battle-of-new-york-moneyline","href":"/the-tank/articles/giants-jets-battle-of-new-york-moneyline/","deck":{"hook":"The Giants have been the whole offseason's headline. The Jets haven't said a word. Now they have to play the game.","cards":["Every Giants misstep this offseason has landed on the back page. The Jets have stayed completely out of the story.","Being talked about all summer means nothing once the ball is kicked. Attention isn't a stat line."],"call":{"sides":["Giants","Jets"],"question":"Giants or Jets to win?","sidesImpliedProb":[0.48,0.52]},"tagline":"The Giants have been the whole offseason's headline. The Jets haven't said a…","contextLabel":"Moneyline","oddsOrMarketLabel":"NFL · New York Giants vs. New York Jets","settleDateLabel":"Resolves Aug 28, 2026","gameTimeLabel":"Fri, Aug 28 · 7:30 PM ET","kickoff":"2026-08-28T23:30:00.000Z"}},{"sport":"Soccer","live":true,"slug":"nottingham-forest-liverpool-isak-moneyline","href":"/the-tank/articles/nottingham-forest-liverpool-isak-moneyline/","deck":{"hook":"The most expensive attacker in British history makes his road trip to the City Ground.","cards":["Alexander Isak forced his way out of Newcastle for a British record fee, and Newcastle fans have made their feelings known every time he's stepped back on a pitch against them.","Now he's the focal point of Liverpool's attack, and every match is a referendum on whether the move was worth it."],"call":{"sides":["Yes","No"],"question":"Does Liverpool beat Nottingham Forest?","sidesImpliedProb":[0.205,0.795]},"tagline":"Isak's Attack, Live","contextLabel":"Moneyline","oddsOrMarketLabel":"EPL · Nottingham Forest FC vs. Liverpool FC","settleDateLabel":"Resolves Aug 29, 2026","gameTimeLabel":"Sat, Aug 29 · 7:30 AM ET","kickoff":"2026-08-29T11:30:00Z"}}]}</script>
     <script type="module" src="/assets/homepage.js" defer></script>
 </body>
 </html>
