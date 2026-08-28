@@ -26,7 +26,6 @@ public/ligue-1/
 public/dfs/
 public/heat-picks/
 public/*/index.html
-!public/about/index.html
 !public/preview.html
 # public/robots.txt - Generated during build, but we commit it for Cloudflare Pages
 # public/sitemap.xml - Generated during build, but we commit it for Cloudflare Pages
