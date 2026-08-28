@@ -305,9 +305,16 @@ export function renderMarketMoverCard(vm: MarketMoverVM, role?: 'gainer' | 'lose
 export function renderTickerTape(movers: MarketMoverVM[]): string {
     if (movers.length === 0) return '';
     // Marquee reads in tab_order (marketing order), not the section's value-desc order -
-    // both label strings come from the same VM, so the numbers can't disagree.
-    const items = [...movers].sort((a, b) => a.tabOrder - b.tabOrder).map((m) => `
-                <li class="hc-tape-item is-${m.sign}">${escapeHtml(m.displayName)} <span class="hc-mm-value is-${m.sign}">${m.valueLabel}</span></li>`).join('');
+    // both label strings come from the same VM, so the numbers can't disagree. Each item
+    // trails its ticker's newest Recent Results sentence (same VM the cards render), in
+    // a deliberately quieter style than the symbol/value.
+    const items = [...movers].sort((a, b) => a.tabOrder - b.tabOrder).map((m) => {
+        const headline = m.results[0]
+            ? ` <span class="hc-tape-headline">${escapeHtml(m.results[0].text)}</span>`
+            : '';
+        return `
+                <li class="hc-tape-item is-${m.sign}">${escapeHtml(m.displayName)} <span class="hc-mm-value is-${m.sign}">${m.valueLabel}</span>${headline}</li>`;
+    }).join('');
     const group = (hidden: boolean) => `<ul class="hc-tape-group"${hidden ? ' aria-hidden="true"' : ''}>${items}</ul>`;
     return `
         <div class="hc-ticker-tape" aria-label="Ticker values — how tagged storylines have gone, not a forecast">
@@ -365,7 +372,7 @@ export function renderMarketMoversSection(data: MarketMoversData): string {
 export function marketMoversStyles(): string {
     return `
         .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #a36114; border-top: 2px solid #000000; border-bottom: 2px solid #000000; }
-        .hc-tape-track { display: flex; width: max-content; animation: hc-tape 28s linear infinite; }
+        .hc-tape-track { display: flex; width: max-content; animation: hc-tape 60s linear infinite; }
         .hc-tape-group {
             list-style: none; display: flex; gap: 2.25rem; margin: 0; padding: 0.5rem 1.5rem 0.55rem;
             white-space: nowrap;
@@ -373,14 +380,21 @@ export function marketMoversStyles(): string {
             font-size: 1.45rem; letter-spacing: 0.03em; text-transform: uppercase;
         }
         .hc-tape-item, .hc-tape-item .hc-mm-value { font-weight: 800; }
+        .hc-tape-item .hc-mm-value { font-size: 1.3rem; }
         .hc-tape-item.is-pos, .hc-tape-item.is-pos .hc-mm-value { color: #2f9e1e; }
         .hc-tape-item.is-neg, .hc-tape-item.is-neg .hc-mm-value { color: #e33a24; }
         .hc-tape-item.is-zero, .hc-tape-item.is-zero .hc-mm-value { color: #5b6572; }
         .hc-tape-item {
             text-shadow:
-                2px 0 0 #fff, -2px 0 0 #fff, 0 2px 0 #fff, 0 -2px 0 #fff,
-                1.5px 1.5px 0 #fff, -1.5px -1.5px 0 #fff, 1.5px -1.5px 0 #fff, -1.5px 1.5px 0 #fff,
+                1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff,
+                1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff,
                 3px 3px 4px rgba(0,0,0,0.35);
+        }
+        .hc-tape-item .hc-tape-headline {
+            font-size: 0.95rem; font-weight: 600; letter-spacing: 0.01em;
+            text-transform: none; color: #fdf3e0;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.45);
+            margin-left: 0.35rem;
         }
         @keyframes hc-tape { to { transform: translateX(-50%); } }
 
