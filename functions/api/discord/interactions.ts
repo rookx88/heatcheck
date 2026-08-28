@@ -32,7 +32,8 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from '../../../lib/pages-functions/db';
 import { verifyDiscordRequest } from '../../../lib/pages-functions/discord-verify';
 import { submitPick, type SubmitPickResult } from '../../../lib/pages-functions/picks';
-import { fetchGuildMembers, getGuildLabels } from '../../../lib/pages-functions/discord-api';
+import { fetchGuildMembers, getGuildLabels, buildDiscordAvatarUrl } from '../../../lib/pages-functions/discord-api';
+import { buildLeaderboardRowEmbeds, type LeaderboardMessage } from '../../../lib/pages-functions/discord-leaderboard-card';
 import {
     handleSetupCommand,
     handleConfigCommand,
@@ -230,13 +231,13 @@ function handleLeaderboardCommand(context: RequestContext, interaction: any): Re
         buildMessage
             .catch((err) => {
                 console.error('[POST /api/discord/interactions] Leaderboard build failed:', err);
-                return 'Could not build the leaderboard right now — try again shortly.';
+                return { content: 'Could not build the leaderboard right now — try again shortly.', embeds: [] };
             })
-            .then((content) =>
+            .then(({ content, embeds }) =>
                 fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content }),
+                    body: JSON.stringify({ content, embeds }),
                 })
             )
     );
@@ -256,14 +257,14 @@ interface LeaderboardRow {
 
 // Guild-scoped, computed fresh every call - see the file header comment for why
 // there's deliberately no stored membership table backing this.
-async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promise<string> {
+async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promise<LeaderboardMessage> {
     const sql = getSql(env);
     const [members, { leaderboardLabel }] = await Promise.all([
         fetchGuildMembers(env, guildId),
         getGuildLabels(sql, guildId),
     ]);
     const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
-    if (memberIds.length === 0) return 'No members to rank in this server yet.';
+    if (memberIds.length === 0) return { content: 'No members to rank in this server yet.', embeds: [] };
 
     const rows = (await sql`
         SELECT dl.discord_user_id, dl.discord_username,
@@ -276,26 +277,37 @@ async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promi
     `) as unknown as LeaderboardRow[];
 
     const minPicks = numEnv(env.LEADERBOARD_MIN_PICKS, DEFAULT_LEADERBOARD_MIN_PICKS);
-    // Prefer each member's live Discord display name over our possibly-stale cached
-    // discord_links.discord_username - freshest name available, same member list we
-    // already paid the round-trip for.
-    const nameById = new Map(members.map((m) => [m.user.id, m.user.global_name || m.user.username]));
+    // Prefer each member's live Discord display name/avatar over our possibly-stale
+    // cached discord_links.discord_username - freshest data available, same member
+    // list we already paid the round-trip for.
+    const memberById = new Map(members.map((m) => [m.user.id, m.user]));
 
     const ranked = rows
         .filter((r) => r.settled >= minPicks)
-        .map((r) => ({
-            name: nameById.get(r.discord_user_id) ?? r.discord_username,
-            correct: r.correct,
-            settled: r.settled,
-            accuracy: r.correct / r.settled,
-        }))
+        .map((r) => {
+            const member = memberById.get(r.discord_user_id);
+            return {
+                name: member?.global_name || member?.username || r.discord_username,
+                avatarUrl: buildDiscordAvatarUrl(r.discord_user_id, member?.avatar),
+                correct: r.correct,
+                settled: r.settled,
+                accuracy: r.correct / r.settled,
+            };
+        })
         .sort((a, b) => b.accuracy - a.accuracy || b.settled - a.settled)
         .slice(0, LEADERBOARD_SIZE);
 
     if (ranked.length === 0) {
-        return `Nobody in this server has ${minPicks}+ settled picks yet — check back soon!`;
+        return { content: `Nobody in this server has ${minPicks}+ settled picks yet — check back soon!`, embeds: [] };
     }
 
-    const lines = ranked.map((r, i) => `**${i + 1}.** ${r.name} — ${(r.accuracy * 100).toFixed(0)}% (${r.correct}/${r.settled})`);
-    return `**Heatchecks ${leaderboardLabel}**\n${lines.join('\n')}`;
+    const embeds = buildLeaderboardRowEmbeds(
+        ranked.map((r, i) => ({
+            rank: i + 1,
+            displayName: r.name,
+            avatarUrl: r.avatarUrl,
+            scoreLine: `${(r.accuracy * 100).toFixed(0)}% (${r.correct}/${r.settled})`,
+        }))
+    );
+    return { content: `**Heatchecks ${leaderboardLabel}**`, embeds };
 }

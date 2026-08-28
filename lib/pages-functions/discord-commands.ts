@@ -24,7 +24,8 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, getGuildLabels } from './discord-api';
+import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, getGuildLabels, buildDiscordAvatarUrl } from './discord-api';
+import { buildLeaderboardRowEmbeds, type LeaderboardMessage } from './discord-leaderboard-card';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
 import { buildGiveawayResultMessage, buildNoEligiblePoolMessage } from './discord-community-card';
 import { drawGiveawayWinner, type GiveawaySourceType } from './discord-draw';
@@ -561,14 +562,14 @@ interface CommunityLeaderboardRow {
     points: number;
 }
 
-export async function buildCommunityPointsLeaderboardMessage(env: Env, guildId: string): Promise<string> {
+export async function buildCommunityPointsLeaderboardMessage(env: Env, guildId: string): Promise<LeaderboardMessage> {
     const sql = getSql(env);
     const [members, { communityPointsLabel, leaderboardLabel }] = await Promise.all([
         fetchGuildMembers(env, guildId),
         getGuildLabels(sql, guildId),
     ]);
     const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
-    if (memberIds.length === 0) return 'No members to rank in this server yet.';
+    if (memberIds.length === 0) return { content: 'No members to rank in this server yet.', embeds: [] };
 
     const rows = (await sql`
         SELECT discord_user_id, points FROM community_points
@@ -577,11 +578,21 @@ export async function buildCommunityPointsLeaderboardMessage(env: Env, guildId: 
         LIMIT 10
     `) as unknown as CommunityLeaderboardRow[];
 
-    if (rows.length === 0) return `Nobody in this server has any ${communityPointsLabel} yet.`;
+    if (rows.length === 0) return { content: `Nobody in this server has any ${communityPointsLabel} yet.`, embeds: [] };
 
-    const nameById = new Map(members.map((m) => [m.user.id, m.user.global_name || m.user.username]));
-    const lines = rows.map((r, i) => `**${i + 1}.** ${nameById.get(r.discord_user_id) ?? 'Unknown'} — ${r.points} ${communityPointsLabel}`);
-    return `**${communityPointsLabel} ${leaderboardLabel}**\n${lines.join('\n')}`;
+    const memberById = new Map(members.map((m) => [m.user.id, m.user]));
+    const embeds = buildLeaderboardRowEmbeds(
+        rows.map((r, i) => {
+            const member = memberById.get(r.discord_user_id);
+            return {
+                rank: i + 1,
+                displayName: member?.global_name || member?.username || 'Unknown',
+                avatarUrl: buildDiscordAvatarUrl(r.discord_user_id, member?.avatar),
+                scoreLine: `${r.points} ${communityPointsLabel}`,
+            };
+        })
+    );
+    return { content: `**${communityPointsLabel} ${leaderboardLabel}**`, embeds };
 }
 
 // ===================================================================================
@@ -666,14 +677,14 @@ interface LeagueLeaderboardRow {
 // "view a past season" option in v1. created_at >= joined_at is the whole point of a
 // membership table existing at all: a mid-season joiner's total only ever reflects
 // points earned after they joined, never retroactive.
-export async function buildLeagueLeaderboardMessage(env: Env, guildId: string, sport: string): Promise<string> {
+export async function buildLeagueLeaderboardMessage(env: Env, guildId: string, sport: string): Promise<LeaderboardMessage> {
     const sql = getSql(env);
     const seasonRows = await sql`
         SELECT id FROM league_seasons
         WHERE guild_id = ${guildId} AND sport = ${sport} AND end_date > NOW()
         ORDER BY start_date DESC LIMIT 1
     `;
-    if (seasonRows.length === 0) return `No active ${sport} league in this server yet — run /heatchecks-league join sport:${sport} to start one.`;
+    if (seasonRows.length === 0) return { content: `No active ${sport} league in this server yet — run /heatchecks-league join sport:${sport} to start one.`, embeds: [] };
     const seasonId = (seasonRows[0] as unknown as { id: string }).id;
 
     const [rows, members] = await Promise.all([
@@ -694,11 +705,21 @@ export async function buildLeagueLeaderboardMessage(env: Env, guildId: string, s
         fetchGuildMembers(env, guildId),
     ]);
 
-    if (rows.length === 0) return `Nobody in this server's ${sport} league has scored any points yet.`;
+    if (rows.length === 0) return { content: `Nobody in this server's ${sport} league has scored any points yet.`, embeds: [] };
 
-    const nameById = new Map(members.map((m) => [m.user.id, m.user.global_name || m.user.username]));
-    const lines = rows.map((r, i) => `**${i + 1}.** ${nameById.get(r.discord_user_id) ?? 'Unknown'} — ${r.points} pts`);
-    return `**${sport} League Leaderboard**\n${lines.join('\n')}`;
+    const memberById = new Map(members.map((m) => [m.user.id, m.user]));
+    const embeds = buildLeaderboardRowEmbeds(
+        rows.map((r, i) => {
+            const member = memberById.get(r.discord_user_id);
+            return {
+                rank: i + 1,
+                displayName: member?.global_name || member?.username || 'Unknown',
+                avatarUrl: buildDiscordAvatarUrl(r.discord_user_id, member?.avatar),
+                scoreLine: `${r.points} pts`,
+            };
+        })
+    );
+    return { content: `**${sport} League Leaderboard**`, embeds };
 }
 
 // ===================================================================================

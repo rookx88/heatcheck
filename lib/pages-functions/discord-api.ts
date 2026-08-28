@@ -190,7 +190,21 @@ export async function postDiscordChannelMessage(
 }
 
 export interface DiscordGuildMember {
-    user: { id: string; username: string; global_name?: string | null; bot?: boolean };
+    user: { id: string; username: string; global_name?: string | null; bot?: boolean; avatar?: string | null };
+}
+
+// Discord's avatar CDN pattern - derivable entirely from data fetchGuildMembers
+// already returns, no extra API call. Animated avatar hashes are prefixed "a_" and
+// only resolve under .gif; everything else is .png. Falls back to Discord's own
+// default-avatar CDN (index 0-5, derived from the user id) when the member has never
+// set a custom avatar.
+export function buildDiscordAvatarUrl(userId: string, avatar: string | null | undefined): string {
+    if (avatar) {
+        const ext = avatar.startsWith('a_') ? 'gif' : 'png';
+        return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.${ext}`;
+    }
+    const defaultIndex = Number((BigInt(userId) >> 22n) % 6n);
+    return `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
 }
 
 // Live guild-membership read for /leaderboard and the settlement-announcement sweep
