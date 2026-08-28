@@ -9,10 +9,13 @@
 // Shared return shape for all three /leaderboard builders (accuracy in
 // functions/api/discord/interactions.ts; Community Points and league in
 // discord-commands.ts) - defined here rather than in either builder's own file so
-// neither has to import from the other.
+// neither has to import from the other. Builders return raw row data, not yet
+// rendered - lib/pages-functions/leaderboard-image.ts's sendLeaderboardResult is the
+// one place that decides how to actually render/deliver it (generated image, falling
+// back to this file's embeds on any failure).
 export interface LeaderboardMessage {
     content: string;
-    embeds: unknown[];
+    rows: LeaderboardRowInput[];
 }
 
 export interface LeaderboardRowInput {
@@ -29,7 +32,10 @@ const COLOR_SILVER = 0xc0c0c0;
 const COLOR_BRONZE = 0xcd7f32;
 const COLOR_NEUTRAL = 0x5c6470; // flat slate for 4th place and below - keeps the podium visually distinct without a 10-color gradient
 
-function colorForRank(rank: number): number {
+// Exported so lib/pages-functions/leaderboard-image.ts's generated-PNG rows use the
+// exact same tier mapping as this file's embed fallback - one source of truth, not a
+// second copy that could drift.
+export function colorForRank(rank: number): number {
     if (rank === 1) return COLOR_GOLD;
     if (rank === 2) return COLOR_SILVER;
     if (rank === 3) return COLOR_BRONZE;

@@ -33,7 +33,8 @@ import { getSql, type Env } from '../../../lib/pages-functions/db';
 import { verifyDiscordRequest } from '../../../lib/pages-functions/discord-verify';
 import { submitPick, type SubmitPickResult } from '../../../lib/pages-functions/picks';
 import { fetchGuildMembers, getGuildLabels, buildDiscordAvatarUrl } from '../../../lib/pages-functions/discord-api';
-import { buildLeaderboardRowEmbeds, type LeaderboardMessage } from '../../../lib/pages-functions/discord-leaderboard-card';
+import type { LeaderboardMessage } from '../../../lib/pages-functions/discord-leaderboard-card';
+import { sendLeaderboardResult } from '../../../lib/pages-functions/leaderboard-image';
 import {
     handleSetupCommand,
     handleConfigCommand,
@@ -217,29 +218,26 @@ function handleLeaderboardCommand(context: RequestContext, interaction: any): Re
     const sport = interaction.data?.options?.find((o: any) => o.name === 'sport')?.value as string | undefined;
     if (view === 'league' && !sport) return ephemeral('Pick a sport to view the league leaderboard (e.g. sport:NFL).');
 
-    // Deferred: fetchGuildMembers (paginated REST calls) plus the DB query can exceed
-    // Discord's 3-second initial-response window, especially for a larger server.
-    // waitUntil keeps the background work alive after this function returns its
-    // immediate ack; the real content arrives via a webhook PATCH to @original.
+    // Deferred: fetchGuildMembers (paginated REST calls) plus the DB query - and now,
+    // image rendering - can exceed Discord's 3-second initial-response window,
+    // especially for a larger server. waitUntil keeps the background work alive after
+    // this function returns its immediate ack; the real content arrives via a webhook
+    // PATCH to @original, built by sendLeaderboardResult (tries a generated image
+    // first, falls back to colored embed rows on any failure).
     const buildMessage = view === 'league'
         ? buildLeagueLeaderboardMessage(context.env, guildId, sport as string)
         : view === 'community'
         ? buildCommunityPointsLeaderboardMessage(context.env, guildId)
         : buildAccuracyLeaderboardMessage(context.env, guildId);
 
+    const baseUrl = new URL(context.request.url).origin;
     context.waitUntil(
         buildMessage
             .catch((err) => {
                 console.error('[POST /api/discord/interactions] Leaderboard build failed:', err);
-                return { content: 'Could not build the leaderboard right now — try again shortly.', embeds: [] };
+                return { content: 'Could not build the leaderboard right now — try again shortly.', rows: [] };
             })
-            .then(({ content, embeds }) =>
-                fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content, embeds }),
-                })
-            )
+            .then(({ content, rows }) => sendLeaderboardResult(baseUrl, applicationId, interactionToken, content, rows))
     );
 
     return new Response(
@@ -264,7 +262,7 @@ async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promi
         getGuildLabels(sql, guildId),
     ]);
     const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
-    if (memberIds.length === 0) return { content: 'No members to rank in this server yet.', embeds: [] };
+    if (memberIds.length === 0) return { content: 'No members to rank in this server yet.', rows: [] };
 
     const rows = (await sql`
         SELECT dl.discord_user_id, dl.discord_username,
@@ -298,16 +296,14 @@ async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promi
         .slice(0, LEADERBOARD_SIZE);
 
     if (ranked.length === 0) {
-        return { content: `Nobody in this server has ${minPicks}+ settled picks yet — check back soon!`, embeds: [] };
+        return { content: `Nobody in this server has ${minPicks}+ settled picks yet — check back soon!`, rows: [] };
     }
 
-    const embeds = buildLeaderboardRowEmbeds(
-        ranked.map((r, i) => ({
-            rank: i + 1,
-            displayName: r.name,
-            avatarUrl: r.avatarUrl,
-            scoreLine: `${(r.accuracy * 100).toFixed(0)}% (${r.correct}/${r.settled})`,
-        }))
-    );
-    return { content: `**Heatchecks ${leaderboardLabel}**`, embeds };
+    const rankedRows = ranked.map((r, i) => ({
+        rank: i + 1,
+        displayName: r.name,
+        avatarUrl: r.avatarUrl,
+        scoreLine: `${(r.accuracy * 100).toFixed(0)}% (${r.correct}/${r.settled})`,
+    }));
+    return { content: `**Heatchecks ${leaderboardLabel}**`, rows: rankedRows };
 }
