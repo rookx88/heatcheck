@@ -228,7 +228,9 @@ export async function sendLeaderboardResult(
             form.append('files[0]', new Blob([png], { type: 'image/png' }), 'leaderboard.png');
             const res = await fetch(patchUrl, { method: 'PATCH', body: form });
             if (res.ok) return;
-            console.error(`[leaderboard-image] Multipart PATCH failed (${res.status}), falling back to embeds`);
+            const bodyText = await res.text().catch(() => '');
+            lastRenderError = `Multipart PATCH ${res.status}: ${bodyText.slice(0, 300)}`;
+            console.error(`[leaderboard-image] Multipart PATCH failed (${res.status}): ${bodyText}`);
         }
 
         const embeds = buildLeaderboardRowEmbeds(rows);
