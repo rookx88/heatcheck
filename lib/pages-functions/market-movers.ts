@@ -392,7 +392,7 @@ export function marketMoversStyles(): string {
         }
         .hc-tape-item .hc-tape-headline {
             font-size: 0.95rem; font-weight: 600; letter-spacing: 0.01em;
-            text-transform: none; color: #fdf3e0;
+            color: #fdf3e0;
             text-shadow: 1px 1px 2px rgba(0,0,0,0.45);
             margin-left: 0.35rem;
         }
