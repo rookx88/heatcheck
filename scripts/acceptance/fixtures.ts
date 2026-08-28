@@ -180,7 +180,7 @@ export interface TankFixture {
     visibility?: string;
     marketId: string;
     outcomes: string[];
-    outcomePrices: number[];
+    outcomePrices?: number[]; // omit to build a snapshot with NO odds.outcomePrices (settle fallback path)
     league?: string;
 }
 export async function insertTank(f: TankFixture): Promise<string> {

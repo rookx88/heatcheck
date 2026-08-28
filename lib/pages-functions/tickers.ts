@@ -5,8 +5,13 @@
 // Two write paths only, both mechanical, neither anyone's opinion:
 //   tag    - insertTagWithEvent(): the tagged side's real 3-day implied-probability
 //            movement (CLOB price history), clamped to +/- the configured cap.
-//   settle - settleTag(): +settle_win_pct / -settle_loss_pct from the tickers row,
-//            uncapped, guarded by ticker_tags.calculated_at.
+//   settle - settleTag(): odds-aware fair payout via computeSettleDelta() - a win pays
+//            +(1-p) * settle_scale_pct, a loss costs -p * settle_scale_pct, where p is
+//            the tagged side's frozen snapshot probability. Zero expected value per
+//            settle on a calibrated market, so no ticker drifts unboundedly (the old
+//            flat +settle_win_pct/-settle_loss_pct scheme sent chalk/dogs past +/-100).
+//            The flat pcts remain as the fallback when the snapshot prob is missing.
+//            Uncapped, guarded by ticker_tags.calculated_at.
 // No Ember writes live here (that's ledger.ts) - tickers are a display layer; nothing
 // in this module credits, debits, or unlocks anything.
 
@@ -32,13 +37,14 @@ export interface TickerConfig {
     tag_delta_cap_pct: number;
     locks_min_prob: number;
     moonshot_max_prob: number;
+    settle_scale_pct: number;
 }
 
 // Fail-loud read of game_config['tickers'] (seed_ticker_config.sql is a deploy
 // prerequisite) - same contract as getGameConfig itself.
 export async function getTickerConfig(sql: NeonQueryFunction<false, false>): Promise<TickerConfig> {
     const config = await getGameConfig(sql, 'tickers');
-    for (const key of ['tag_delta_cap_pct', 'locks_min_prob', 'moonshot_max_prob'] as const) {
+    for (const key of ['tag_delta_cap_pct', 'locks_min_prob', 'moonshot_max_prob', 'settle_scale_pct'] as const) {
         if (typeof config[key] !== 'number') {
             throw new Error(`game_config['tickers'] is missing numeric "${key}"`);
         }
@@ -300,13 +306,33 @@ export async function insertTagWithEvent(sql: NeonQueryFunction<false, false>, i
     ]);
 }
 
+// The settle-event delta rule, shared by /api/settle and the one-off recompute script
+// (scripts/recompute-settle-deltas.ts). Odds-aware fair payout: on a calibrated market
+// EV = p*(1-p)*scale - (1-p)*p*scale = 0 per settle, so tickers hover around 0 instead
+// of drifting linearly (chalk wins ~74% of its settles - flat +/-5 payouts made it
+// gain ~+2.4pts per settle forever). sideProb is the tagged side's FROZEN snapshot
+// probability (game_snapshot.prop.odds.outcomePrices[relevant_side] - same source
+// eligibility checks use); when it's missing/degenerate the flat per-ticker pcts are
+// the fallback, flagged oddsAware:false in the event metadata.
+export function computeSettleDelta(
+    won: boolean,
+    sideProb: number | null,
+    scalePct: number,
+    winPct: number,
+    lossPct: number,
+): { delta: number; oddsAware: boolean } {
+    if (sideProb !== null && Number.isFinite(sideProb) && sideProb > 0 && sideProb < 1) {
+        const raw = won ? (1 - sideProb) * scalePct : -sideProb * scalePct;
+        return { delta: Number(raw.toFixed(3)), oddsAware: true };
+    }
+    return { delta: won ? winPct : -lossPct, oddsAware: false };
+}
+
 export interface SettleTagInput {
     tagId: string;
     tickerKey: string;
     tankId: string;
-    won: boolean;
-    winPct: number;  // positive magnitude from the tickers row (::float8-cast)
-    lossPct: number; // positive magnitude from the tickers row (::float8-cast)
+    delta: number; // signed, from computeSettleDelta() - settleTag only performs the write
     metadata: Record<string, unknown>;
 }
 
@@ -637,7 +663,7 @@ export async function sweepUntaggedTanks(
 // statement is the one that flips calculated_at from NULL. Returns false on a replay.
 // The delta is deliberately NOT capped - see create_ticker_tables.sql.
 export async function settleTag(sql: NeonQueryFunction<false, false>, input: SettleTagInput): Promise<boolean> {
-    const delta = input.won ? input.winPct : -input.lossPct;
+    const delta = input.delta;
     const rows = await sql`
         WITH upd AS (
             UPDATE ticker_tags SET calculated_at = NOW()

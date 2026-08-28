@@ -49,7 +49,7 @@ async function run() {
     const keys = (list.json?.tickers ?? []).map((t: any) => t.key);
     check('all four tickers present, ordered by tab_order', JSON.stringify(keys.filter((k: string) => ['dogs', 'chalk', 'locks', 'moonshot'].includes(k))) === JSON.stringify(['dogs', 'chalk', 'locks', 'moonshot']));
     check('values are numeric (not NUMERIC strings)', (list.json?.tickers ?? []).every((t: any) => typeof t.value === 'number'));
-    check('dogs/chalk seeded symmetric 5/5, locks 5/15, moonshot 20/5',
+    check('fallback pcts seeded: dogs/chalk symmetric 5/5, locks 5/15, moonshot 20/5',
         ['dogs:5:5', 'chalk:5:5', 'locks:5:15', 'moonshot:20:5'].every((spec) => {
             const [k, w, l] = spec.split(':');
             const t = list.json?.tickers?.find((x: any) => x.key === k);
@@ -118,14 +118,15 @@ async function run() {
     // --- Kalshi settlement: hand-inserted tag on a real resolved Kalshi market ---
     section('Kalshi provider - settlement (proves the settle.ts provider dispatch)');
     const kW = kalshiMarkets.resolved.winningIndex;
+    // The tagged (winning) side frozen at 0.40 - odds-aware settle pays +(1-0.4)*10 = +6.
     const tankKRes = await insertTank({
         slug: `${SLUG_PREFIX}kalshi-res`, provider: 'kalshi', marketId: kalshiMarkets.resolved.id,
-        outcomes: kalshiMarkets.resolved.outcomes, outcomePrices: kW === 0 ? [0.6, 0.4] : [0.4, 0.6],
+        outcomes: kalshiMarkets.resolved.outcomes, outcomePrices: kW === 0 ? [0.4, 0.6] : [0.6, 0.4],
     });
     const kDogsWin = await insertTagDirect(tankKRes, 'dogs', kW, 1.5);
     const kalshiSettle = await settlePost();
     const kTrFor = (tagId: string) => kalshiSettle.json?.tickerResults?.find((r: any) => r.tagId === tagId);
-    check('kalshi zero-pick dogs(win) tag settled +5', kTrFor(kDogsWin)?.status === 'settled_win' && near(await settleEventDelta(kDogsWin) ?? NaN, 5), JSON.stringify(kTrFor(kDogsWin)));
+    check('kalshi zero-pick dogs(win at p=0.40) settled odds-aware +6', kTrFor(kDogsWin)?.status === 'settled_win' && near(await settleEventDelta(kDogsWin) ?? NaN, 6), JSON.stringify(kTrFor(kDogsWin)));
 
     // --- Config-driven behavior (no code change) ---
     section('Config tunables - version-flip changes behavior with no code change');
@@ -152,7 +153,7 @@ async function run() {
     }
 
     // --- Settlement fixtures: hand-inserted tags on a real resolved market ---
-    section('Settlement - zero-pick tags, per-ticker asymmetry, hardening');
+    section('Settlement - zero-pick tags, odds-aware payouts, fallback, hardening');
     const ro = markets.resolved.outcomes;
     const roRev = [...ro].reverse();
     const rid = markets.resolved.id;
@@ -171,6 +172,9 @@ async function run() {
     const eChalk = await insertTagDirect(tankE, 'chalk', W, 1.5);
     const tankF = await insertTank({ slug: `${SLUG_PREFIX}res-f`, visibility: 'newsletter_only', marketId: rid, outcomes: ro, outcomePrices: pricesDogWin });
     const fDogs = await insertTagDirect(tankF, 'dogs', W, 3.3);
+    // No outcomePrices in the snapshot at all -> settle falls back to the flat per-ticker pcts.
+    const tankFB = await insertTank({ slug: `${SLUG_PREFIX}res-fb`, marketId: rid, outcomes: ro });
+    const fbDogs = await insertTagDirect(tankFB, 'dogs', W, 1.5);
     const tankG = await insertTank({ slug: `${SLUG_PREFIX}res-g`, marketId: rid, outcomes: roRev, outcomePrices: pricesDogWin });
     const gDogs = await insertTagDirect(tankG, 'dogs', W, 1.5);
     const gPick = await insertUserWithPick(`${SLUG_PREFIX}g@example.com`, tankG, `${SLUG_PREFIX}res-g`, W, 0.5);
@@ -182,19 +186,26 @@ async function run() {
     const trFor = (tagId: string) => settle1.json?.tickerResults?.find((r: any) => r.tagId === tagId);
     const prFor = (pickId: string) => settle1.json?.results?.find((r: any) => r.pickId === pickId);
 
-    check('zero-pick locks(win) tag settled +5', trFor(cLocksWin)?.status === 'settled_win' && near(await settleEventDelta(cLocksWin) ?? NaN, 5));
-    check('zero-pick moonshot(loss) tag settled -5', trFor(cMoonLoss)?.status === 'settled_loss' && near(await settleEventDelta(cMoonLoss) ?? NaN, -5));
-    check('locks(loss) asymmetry: -15, not -5', trFor(dLocksLoss)?.status === 'settled_loss' && near(await settleEventDelta(dLocksLoss) ?? NaN, -15));
-    check('moonshot(win) asymmetry: +20, not +5', trFor(dMoonWin)?.status === 'settled_win' && near(await settleEventDelta(dMoonWin) ?? NaN, 20));
+    // Odds-aware payouts: +(1-p)*10 on a win, -p*10 on a loss, p = frozen snapshot prob
+    // of the tagged side. The expected-vs-surprising character the old per-ticker
+    // asymmetry hand-tuned now comes from p itself.
+    check('locks(win at p=0.85) barely moves: +1.5', trFor(cLocksWin)?.status === 'settled_win' && near(await settleEventDelta(cLocksWin) ?? NaN, 1.5));
+    check('moonshot(loss at p=0.15) barely moves: -1.5', trFor(cMoonLoss)?.status === 'settled_loss' && near(await settleEventDelta(cMoonLoss) ?? NaN, -1.5));
+    check('locks(loss at p=0.85) is the surprise: -8.5', trFor(dLocksLoss)?.status === 'settled_loss' && near(await settleEventDelta(dLocksLoss) ?? NaN, -8.5));
+    check('moonshot(win at p=0.15) is the surprise: +8.5', trFor(dMoonWin)?.status === 'settled_win' && near(await settleEventDelta(dMoonWin) ?? NaN, 8.5));
     const eDogsDelta = await settleEventDelta(eDogs);
     const eChalkDelta = await settleEventDelta(eChalk);
-    check('dogs/chalk inverse on the same real outcome (one +, one -)',
-        eDogsDelta !== null && eChalkDelta !== null && ((eDogsDelta > 0) !== (eChalkDelta > 0)) && near(Math.abs(eDogsDelta), 5) && near(Math.abs(eChalkDelta), 5));
+    check('dogs/chalk inverse on the same real outcome (dogs loss -4, chalk win +4)',
+        eDogsDelta !== null && eChalkDelta !== null && ((eDogsDelta > 0) !== (eChalkDelta > 0)) && near(Math.abs(eDogsDelta), 4) && near(Math.abs(eChalkDelta), 4));
     check('newsletter_only tag still settles', (await settleEventDelta(fDogs)) !== null);
+    check('no snapshot prob -> flat fallback: dogs(win) +5', trFor(fbDogs)?.status === 'settled_win' && near(await settleEventDelta(fbDogs) ?? NaN, 5), JSON.stringify(trFor(fbDogs)));
+    const { rows: fbMeta } = await pool.query(
+        `SELECT metadata FROM ticker_events WHERE ticker_tag_id = $1 AND event_type = 'settle'`, [fbDogs]);
+    check('fallback settle flagged oddsAware=false in metadata', fbMeta[0]?.metadata?.oddsAware === false);
     const { rows: calcRows } = await pool.query(
         `SELECT COUNT(*)::int AS n FROM ticker_tags WHERE id = ANY($1) AND calculated_at IS NOT NULL`,
-        [[cLocksWin, cMoonLoss, dLocksLoss, dMoonWin, eDogs, eChalk, fDogs]]);
-    check('calculated_at stamped on all settled tags', calcRows[0].n === 7);
+        [[cLocksWin, cMoonLoss, dLocksLoss, dMoonWin, eDogs, eChalk, fDogs, fbDogs]]);
+    check('calculated_at stamped on all settled tags', calcRows[0].n === 8);
 
     check('reversed-outcome tag skipped: outcome_order_mismatch', trFor(gDogs)?.status === 'outcome_order_mismatch' && (await settleEventDelta(gDogs)) === null);
     check('reversed-outcome pick skipped: outcome_order_mismatch', prFor(gPick.pickId)?.status === 'outcome_order_mismatch');
@@ -206,7 +217,7 @@ async function run() {
     section('Idempotency - re-running settlement is a no-op');
     const { rows: pre } = await pool.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(delta), 0)::float8 AS s FROM ticker_events`);
     const settle2 = await settlePost();
-    const ourTagIds = new Set([cLocksWin, cMoonLoss, dLocksLoss, dMoonWin, eDogs, eChalk, fDogs]);
+    const ourTagIds = new Set([cLocksWin, cMoonLoss, dLocksLoss, dMoonWin, eDogs, eChalk, fDogs, fbDogs]);
     const resettled = (settle2.json?.tickerResults ?? []).filter((r: any) => ourTagIds.has(r.tagId));
     check('settled tags absent from the second run\'s pending scan', resettled.length === 0, JSON.stringify(resettled));
     const { rows: post } = await pool.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(delta), 0)::float8 AS s FROM ticker_events`);

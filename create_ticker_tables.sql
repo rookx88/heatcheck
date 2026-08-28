@@ -11,11 +11,18 @@
 --              implied-probability movement from Polymarket's CLOB price history,
 --              clamped to +/- game_config['tickers'].tag_delta_cap_pct.
 --   'settle' - fired once by /api/settle after the real market outcome is known:
---              +settle_win_pct if the tagged side won, -settle_loss_pct if it lost.
---              Deliberately NOT bound by the tag cap - a genuinely shocking real
---              result may outweigh three days of pre-game narrative movement.
--- Win/loss magnitudes are independent per ticker on purpose: a surprising outcome (a
--- lock failing, a moonshot hitting) should move its ticker more than an expected one.
+--              odds-aware fair payout, +(1-p)*settle_scale_pct on a win and
+--              -p*settle_scale_pct on a loss, p = the tagged side's frozen snapshot
+--              probability (computeSettleDelta in lib/pages-functions/tickers.ts).
+--              Zero expected value per settle on a calibrated market keeps every
+--              ticker hovering near 0 instead of drifting (flat payouts sent
+--              chalk/dogs past +/-100). Deliberately NOT bound by the tag cap - a
+--              genuinely shocking real result (a longshot hitting pays close to the
+--              full scale) may outweigh three days of pre-game narrative movement.
+-- The per-ticker settle_win_pct/settle_loss_pct magnitudes below are the FALLBACK for
+-- tags whose snapshot carries no usable probability; the odds-aware rule supersedes
+-- them whenever p exists and already produces the same character (a surprising outcome
+-- moves a ticker more than an expected one) without per-ticker tuning.
 -- Values are retrospective, never predictive - they reflect how tagged storylines
 -- have gone, not a signal about anything upcoming.
 --
@@ -29,8 +36,8 @@ CREATE TABLE IF NOT EXISTS tickers (
     display_name    TEXT NOT NULL,               -- '$DOGS' etc, the UI label
     description     TEXT NOT NULL,
     rule_type       TEXT NOT NULL,               -- eligibility strategy: 'underdog'|'favorite'|'heavy_favorite'|'longshot'
-    settle_win_pct  NUMERIC(6,3) NOT NULL,       -- magnitude (positive) applied when the tagged side wins
-    settle_loss_pct NUMERIC(6,3) NOT NULL,       -- magnitude (positive) applied when the tagged side loses
+    settle_win_pct  NUMERIC(6,3) NOT NULL,       -- FALLBACK win magnitude (positive) when the snapshot prob is unusable
+    settle_loss_pct NUMERIC(6,3) NOT NULL,       -- FALLBACK loss magnitude (positive) when the snapshot prob is unusable
     active          BOOLEAN NOT NULL DEFAULT true,
     tab_order       SMALLINT NOT NULL DEFAULT 0,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
@@ -76,9 +83,10 @@ CREATE INDEX IF NOT EXISTS idx_ticker_events_tank ON ticker_events(tank_id);
 CREATE INDEX IF NOT EXISTS idx_ticker_tags_tank ON ticker_tags(tank_id);
 CREATE INDEX IF NOT EXISTS idx_ticker_tags_pending ON ticker_tags(id) WHERE calculated_at IS NULL;
 
--- LOCKS/MOONSHOT are asymmetric by design: a lock hitting is expected and barely moves
--- it, a lock failing is the surprise and carries the weight; MOONSHOT is the mirror.
--- DOGS/CHALK stay symmetric (and deliberately inverse of each other in what they tag).
+-- Fallback magnitudes only (see settle rule above). LOCKS/MOONSHOT asymmetric: a lock
+-- hitting is expected and barely moves it, a lock failing is the surprise and carries
+-- the weight; MOONSHOT is the mirror. DOGS/CHALK symmetric (and deliberately inverse
+-- of each other in what they tag).
 INSERT INTO tickers (key, display_name, description, rule_type, settle_win_pct, settle_loss_pct, active, tab_order) VALUES
     ('dogs',     '$DOGS',     'Underdog storylines - sides priced below 50%.',        'underdog',       5,  5,  true, 1),
     ('chalk',    '$CHALK',    'Favorite storylines - sides priced at 50% or better.', 'favorite',       5,  5,  true, 2),

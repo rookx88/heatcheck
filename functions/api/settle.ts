@@ -31,7 +31,7 @@ import {
     resolveMarket as resolveKalshiMarket,
     type KalshiMarketResolution,
 } from '../../lib/pages-functions/kalshi';
-import { settleTag } from '../../lib/pages-functions/tickers';
+import { computeSettleDelta, getTickerConfig, settleTag } from '../../lib/pages-functions/tickers';
 
 // Settlement resolution is providerless downstream of this dispatch: both resolvers'
 // 'resolved' status carries the same { winningIndex } shape, so settleCall/settleTag
@@ -64,7 +64,8 @@ interface PendingTickerTag {
     provider: string;
     market_id: string | null;
     snapshot_outcomes: unknown;
-    settle_win_pct: number;
+    side_prob: string | null; // frozen snapshot outcomePrices[relevant_side], as text
+    settle_win_pct: number;   // fallback magnitudes for tags with no usable side_prob
     settle_loss_pct: number;
 }
 
@@ -200,6 +201,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         SELECT tt.id, tt.ticker_key, tt.tank_id, tt.relevant_side, t.provider,
                t.game_snapshot->'prop'->>'id' AS market_id,
                t.game_snapshot->'prop'->'odds'->'outcomes' AS snapshot_outcomes,
+               t.game_snapshot->'prop'->'odds'->'outcomePrices'->>tt.relevant_side AS side_prob,
                tk.settle_win_pct::float8 AS settle_win_pct,
                tk.settle_loss_pct::float8 AS settle_loss_pct
         FROM ticker_tags tt
@@ -210,6 +212,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const pendingTags = tagRows as unknown as PendingTickerTag[];
 
     const tickerResults: Array<{ tagId: string; tickerKey: string; status: string; delta?: number }> = [];
+
+    // settle_scale_pct drives the odds-aware settle deltas below; fail-loud (a config
+    // error 500s the run and settles nothing) is preferable to silently settling every
+    // pending tag with wrong numbers into an append-only log. Skipped when there are no
+    // pending tags so the pick-only path can't be blocked by a ticker config problem.
+    const tickerCfg = pendingTags.length > 0 ? await getTickerConfig(sql) : null;
 
     for (const tag of pendingTags) {
         if (!tag.market_id) {
@@ -227,24 +235,28 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 continue;
             }
             const won = tag.relevant_side === resolution.winningIndex;
+            const sideProb = tag.side_prob !== null && tag.side_prob !== '' ? Number(tag.side_prob) : null;
+            const { delta, oddsAware } = computeSettleDelta(
+                won, sideProb, tickerCfg!.settle_scale_pct, tag.settle_win_pct, tag.settle_loss_pct);
             const inserted = await settleTag(sql, {
                 tagId: tag.id,
                 tickerKey: tag.ticker_key,
                 tankId: tag.tank_id,
-                won,
-                winPct: tag.settle_win_pct,
-                lossPct: tag.settle_loss_pct,
+                delta,
                 metadata: {
                     winningIndex: resolution.winningIndex,
                     relevantSide: tag.relevant_side,
                     marketId: tag.market_id,
+                    sideProb,
+                    scalePct: tickerCfg!.settle_scale_pct,
+                    oddsAware,
                 },
             });
             tickerResults.push({
                 tagId: tag.id,
                 tickerKey: tag.ticker_key,
                 status: inserted ? (won ? 'settled_win' : 'settled_loss') : 'already_settled',
-                delta: won ? tag.settle_win_pct : -tag.settle_loss_pct,
+                delta,
             });
         } catch (err) {
             console.error(`[POST /api/settle] Failed to settle ticker tag ${tag.id}:`, err);
