@@ -17,10 +17,6 @@
 
 import satori from 'satori';
 import { initWasm, Resvg } from '@resvg/resvg-wasm';
-// Static import, not dynamic - Cloudflare's Functions bundler compiles a .wasm import
-// into a WebAssembly.Module at build time, but only reliably recognizes STATIC import
-// declarations for that transform, not a runtime `import('...')` call.
-import RESVG_WASM from '@resvg/resvg-wasm/index_bg.wasm';
 import { buildLeaderboardRowEmbeds, colorForRank, type LeaderboardRowInput } from './discord-leaderboard-card';
 
 const IMAGE_WIDTH = 720;
@@ -41,12 +37,21 @@ function textColorForRank(rank: number): string {
     return rank <= 2 ? COLOR_DARK_TEXT : COLOR_WHITE;
 }
 
+// Cloudflare Pages Functions don't reliably resolve a `.wasm` ES-module import the
+// way plain Workers do (confirmed: the import resolved to undefined at runtime,
+// which cascaded into a confusing crash deep inside resvg-wasm's own fallback path)
+// - fetched as a static asset instead, same proven pattern as loadFonts below.
 let wasmInitPromise: Promise<void> | null = null;
-function ensureWasmInit(): Promise<void> {
+function ensureWasmInit(baseUrl: string): Promise<void> {
     // Guarded by this module-level promise so init only ever runs once per warm
     // isolate, not once per request.
     if (!wasmInitPromise) {
-        wasmInitPromise = initWasm(RESVG_WASM);
+        wasmInitPromise = fetch(`${baseUrl}/assets/wasm/resvg.wasm`)
+            .then((res) => {
+                if (!res.ok) throw new Error(`resvg.wasm fetch failed (${res.status})`);
+                return res.arrayBuffer();
+            })
+            .then((bytes) => initWasm(bytes));
     }
     return wasmInitPromise;
 }
@@ -152,7 +157,7 @@ export async function renderLeaderboardImage(baseUrl: string, headerLabel: strin
         const [fonts, avatarDataUris] = await Promise.all([
             loadFonts(baseUrl),
             Promise.all(rows.map((r) => loadAvatarDataUri(r.avatarUrl, `#${colorForRank(r.rank).toString(16).padStart(6, '0')}`))),
-            ensureWasmInit(),
+            ensureWasmInit(baseUrl),
         ]);
 
         const totalHeight = PADDING * 2 + HEADER_HEIGHT + rows.length * ROW_HEIGHT + (rows.length - 1) * ROW_GAP;
