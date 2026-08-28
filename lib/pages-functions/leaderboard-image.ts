@@ -138,6 +138,14 @@ function buildRowNode(row: LeaderboardRowInput, avatarDataUri: string) {
     };
 }
 
+// TEMPORARY diagnostic - log tailing isn't working reliably in this environment, so
+// this surfaces the actual failure reason directly in the Discord fallback message
+// instead. Remove once the render path is confirmed working.
+let lastRenderError: string | null = null;
+export function getLastRenderError(): string | null {
+    return lastRenderError;
+}
+
 export async function renderLeaderboardImage(baseUrl: string, headerLabel: string, rows: LeaderboardRowInput[]): Promise<Uint8Array | null> {
     if (rows.length === 0) return null;
     try {
@@ -185,6 +193,7 @@ export async function renderLeaderboardImage(baseUrl: string, headerLabel: strin
         const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: IMAGE_WIDTH } });
         return resvg.render().asPng();
     } catch (err) {
+        lastRenderError = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
         console.error('[leaderboard-image] Render failed, falling back to embeds:', err);
         return null;
     }
@@ -223,10 +232,11 @@ export async function sendLeaderboardResult(
         }
 
         const embeds = buildLeaderboardRowEmbeds(rows);
+        const debugSuffix = lastRenderError ? `\n-# debug: ${lastRenderError}` : '';
         await fetch(patchUrl, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content, embeds }),
+            body: JSON.stringify({ content: content + debugSuffix, embeds }),
         });
     } catch (err) {
         console.error('[leaderboard-image] sendLeaderboardResult failed entirely, sending plain content:', err);
