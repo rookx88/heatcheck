@@ -29,6 +29,11 @@ interface TodayPickRow {
     created_at: string;
 }
 
+interface PickHereRow extends TodayPickRow {
+    result: 'correct' | 'incorrect' | null;
+    settled_at: string | null;
+}
+
 export const onRequestGet: PagesFunction<Env> = async (context) => {
     const session = await getSession(context.request, context.env);
     if (!session) {
@@ -40,20 +45,39 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(context.env);
     const DAILY_PICK_CAP = numEnv(context.env.DAILY_PICK_CAP, 1);
+    const slug = new URL(context.request.url).searchParams.get('slug');
 
     // source = 'app' excludes newsletter-exclusive picks (functions/api/newsletter/pick.ts)
     // from this count/list - they're capped by "once per issue" (a DB unique index), not
     // by the daily app cap, and each issue only ever has one exclusive Tank to begin with.
-    const pickRows = await sql`
-        SELECT side, tank_slug, created_at FROM picks
-        WHERE waitlist_id = ${session.userId} AND created_at >= CURRENT_DATE AND source = 'app'
-        ORDER BY created_at ASC
-    `;
+    //
+    // The ?slug= lookup deliberately has NO date or source filter: it answers "did I
+    // EVER pick this tank" so the deck can lock its UI on load. The unique index behind
+    // the 409 (idx_picks_waitlist_tank) is date- and source-agnostic, so a pick from
+    // last week or from a newsletter issue still blocks a new one on the same tank.
+    const [pickRows, hereRows] = await Promise.all([
+        sql`
+            SELECT side, tank_slug, created_at FROM picks
+            WHERE waitlist_id = ${session.userId} AND created_at >= CURRENT_DATE AND source = 'app'
+            ORDER BY created_at ASC
+        `,
+        slug
+            ? sql`
+                SELECT side, tank_slug, created_at, result, settled_at FROM picks
+                WHERE waitlist_id = ${session.userId} AND tank_slug = ${slug}
+                LIMIT 1
+            `
+            : Promise.resolve([]),
+    ]);
     const picks = (pickRows as unknown as TodayPickRow[]).map((r) => ({
         slug: r.tank_slug,
         side: r.side,
         createdAt: r.created_at,
     }));
+    const here = (hereRows as unknown as PickHereRow[])[0];
+    const pickHere = here
+        ? { slug: here.tank_slug, side: here.side, createdAt: here.created_at, result: here.result, settledAt: here.settled_at }
+        : null;
 
     return jsonResponse(
         {
@@ -61,6 +85,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             picksToday: picks.length,
             remaining: Math.max(0, DAILY_PICK_CAP - picks.length),
             verified: session.verified,
+            ...(slug ? { pickHere } : {}),
         },
         { headers: authHeaders }
     );

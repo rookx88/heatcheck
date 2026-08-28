@@ -27,6 +27,7 @@ import {
     PickConflictError,
     DailyCapError,
     type TodayStatus,
+    type PickResult,
 } from '../tank-pick-client';
 import { trackEvent } from '../tank-analytics-client';
 import { AllSetModal } from './AllSetModal';
@@ -595,6 +596,12 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
     const [todayStatus, setTodayStatus] = useState<TodayStatus | null>(null);
     const [statusLoaded, setStatusLoaded] = useState(false);
 
+    // Set only when a submit came back 409 (already picked this tank) - drives the
+    // explicit "You already made this call" notice in the locked-in branch, and stands
+    // in for the lock itself on the no-session email path where /api/picks/today can't
+    // be read back. Distinct from todayStatus.pickHere, which is the load-time signal.
+    const [conflictPick, setConflictPick] = useState<PickResult | null>(null);
+
     // Ticks once a minute so the "next pick in Xh Ym" countdown (cap-used-up branch,
     // below) stays live without re-rendering every second - the daily cap resets at
     // UTC midnight (functions/api/picks.ts's `created_at >= CURRENT_DATE`, evaluated
@@ -645,7 +652,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
                     setAccountKnown(true);
                     setVerifyState(session.verified ? 'verified' : 'unverified');
                     setCachedAccount({ email: session.email, verified: session.verified });
-                    return getTodayStatus().then((status) => {
+                    return getTodayStatus(slug).then((status) => {
                         if (status) {
                             setTodayStatus(status);
                             if (status.verified) setVerifyState('verified');
@@ -666,7 +673,7 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
                 // actually enforces the cap server-side regardless.
             })
             .finally(() => setStatusLoaded(true));
-    }, []);
+    }, [slug]);
 
     useEffect(() => {
         hydrateAccount();
@@ -691,7 +698,11 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
         return () => window.removeEventListener('pageshow', onPageShow);
     }, [hydrateAccount]);
 
-    const myPickHere = todayStatus?.picks.find((p) => p.slug === slug) ?? null;
+    // Any prior pick on THIS tank locks the UI: pickHere covers every date and source
+    // (server ?slug= lookup), the today-list covers a pick made moments ago in this
+    // session, and conflictPick covers a 409 on the no-session email path.
+    const myPickHere: (PickResult & { result?: 'correct' | 'incorrect' | null }) | null =
+        todayStatus?.pickHere ?? todayStatus?.picks.find((p) => p.slug === slug) ?? conflictPick;
     const remaining = todayStatus?.remaining ?? 3;
     // UI-only convenience so a reader isn't offered a pick that would just 400 -
     // functions/api/picks.ts's own hasKickoffPassed() check is what actually enforces
@@ -724,15 +735,27 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
                     setCachedAccount({ email: submitterEmail, verified });
                     setAccountKnown(true);
                     if (verified) setVerifyState('verified');
-                    setTodayStatus((prev) => ({
-                        picks: [...(prev?.picks ?? []).filter((p) => p.slug !== slug), err.existingPick!],
-                        picksToday: prev?.picksToday ?? 1,
-                        remaining: prev?.remaining ?? 2,
-                        verified,
-                    }));
+                    // conflictPick both locks the UI and flags the "you already made
+                    // this call" notice. Counters come from a real refetch, never
+                    // fabricated: a conflict proves nothing about TODAY's cap (the
+                    // existing pick may be days old), and the no-session email path
+                    // simply gets no counters line (getTodayStatus resolves null).
+                    setConflictPick(err.existingPick);
+                    void getTodayStatus(slug)
+                        .then((status) => {
+                            if (status) setTodayStatus(status);
+                        })
+                        .catch(() => {});
                     dispatchPicksUpdated();
+                    setSubmitState('idle');
+                    setSelectedSide(null);
+                    setSelectedSideIndex(null);
+                    return;
                 }
-                setSubmitState('idle');
+                // 409 whose existing-pick lookup came back empty (deleted account race):
+                // no side/date to lock onto, so at minimum say why nothing happened.
+                setErrorMessage('You already made this call on this Tank.');
+                setSubmitState('error');
                 return;
             }
             if (err instanceof DailyCapError) {
@@ -882,9 +905,26 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
                         </div>
                     ))}
                 </div>
-                <p style={{ color: '#2fe6d9', fontSize: '0.8rem', marginTop: '0.6rem' }}>
-                    You're locked in on &ldquo;{myPickHere.side}&rdquo;.
-                </p>
+                {conflictPick && conflictPick.slug === myPickHere.slug ? (
+                    // Reached here via a 409: the reader tried to pick a tank they'd
+                    // already picked (stale tab, other device, pre-load race) - say so
+                    // explicitly instead of rendering like a fresh successful pick.
+                    <p style={{ color: '#fbbf24', fontSize: '0.8rem', marginTop: '0.6rem' }}>
+                        You already made this call on this Tank — you took &ldquo;{myPickHere.side}&rdquo;
+                        {(() => {
+                            const d = new Date(myPickHere.createdAt);
+                            return isNaN(d.getTime()) ? '' : ` on ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                        })()}.
+                    </p>
+                ) : myPickHere.result ? (
+                    <p style={{ color: myPickHere.result === 'correct' ? '#2fe6d9' : '#f87171', fontSize: '0.8rem', marginTop: '0.6rem' }}>
+                        You took &ldquo;{myPickHere.side}&rdquo; — this one settled {myPickHere.result}.
+                    </p>
+                ) : (
+                    <p style={{ color: '#2fe6d9', fontSize: '0.8rem', marginTop: '0.6rem' }}>
+                        You're locked in on &ldquo;{myPickHere.side}&rdquo;.
+                    </p>
+                )}
                 {todayStatus && (
                     <p style={picksTodayLineStyle}>
                         {todayStatus.picksToday} of {todayStatus.picksToday + todayStatus.remaining} picks used today{remaining > 0 ? ` · ${remaining} left` : ''}

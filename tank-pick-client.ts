@@ -61,11 +61,20 @@ export interface SubmitPickResponse {
     remaining: number;
 }
 
+// The user's pick on one specific tank regardless of date/source (GET
+// /api/picks/today?slug=...) - unlike the day-scoped `picks` list, this is what lets
+// the deck lock its UI for a tank picked yesterday or via a newsletter issue.
+export interface PickHere extends PickResult {
+    result: 'correct' | 'incorrect' | null;
+    settledAt: string | null;
+}
+
 export interface TodayStatus {
     picks: PickResult[];
     picksToday: number;
     remaining: number;
     verified: boolean;
+    pickHere?: PickHere | null; // only present when getTodayStatus was given a slug
 }
 
 // Already picked THIS specific tank (idx_picks_waitlist_tank conflict) - a different
@@ -125,8 +134,8 @@ export async function submitPick(email: string, slug: string, side: string, side
 // rollout (the hc_session cookie rides along automatically on same-origin fetches);
 // 401 just means "not logged in" - a normal state, returned as null rather than
 // thrown, so callers render the logged-out UI instead of an error.
-export async function getTodayStatus(): Promise<TodayStatus | null> {
-    const res = await fetch('/api/picks/today');
+export async function getTodayStatus(slug?: string): Promise<TodayStatus | null> {
+    const res = await fetch(slug ? `/api/picks/today?slug=${encodeURIComponent(slug)}` : '/api/picks/today');
     // 401 = logged out; 403 = logged in but not onboarded (the server-side gate). Both
     // are "not in a state to show today's picks" rather than errors - the Fishtank
     // onboarding gate normally redirects to /welcome/ before this is ever called, so a

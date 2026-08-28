@@ -142,6 +142,7 @@ function mountHeaderMenu() {
     menu.hidden = true;
     menu.innerHTML = `
         <a class="map-hud__item" role="menuitem" href="/">Home</a>
+        <a class="map-hud__item" role="menuitem" href="/my-tanks/">My Tanks</a>
         <button type="button" class="map-hud__item" role="menuitem" data-hc-inbox>Inbox</button>
         <button type="button" class="map-hud__item" role="menuitem" data-hc-logout>Log out</button>`;
     auth.appendChild(menu);

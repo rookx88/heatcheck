@@ -145,8 +145,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                     console.error('[POST /api/picks] Failed to log pick_conflict event:', eventErr);
                 }
             }
+            // `code` is the machine-readable marker (clients historically matched on the
+            // 409 status alone, which still works - this is additive).
             return jsonResponse(
-                { message: 'You already made this call.', pick: result.pick },
+                { code: 'already_picked', message: 'You already made this call.', pick: result.pick },
                 { status: 409, headers: authHeaders }
             );
     }

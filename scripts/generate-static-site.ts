@@ -18,6 +18,7 @@ import { buildNewsletterPick } from './build-newsletter-pick';
 import { buildLogin } from './build-login';
 import { buildWelcome } from './build-welcome';
 import { buildAccount } from './build-account';
+import { buildMyTanks } from './build-my-tanks';
 import { buildAnalyticsBeacon } from './build-analytics-beacon';
 import { generateBaseHtml } from './templates/base-template';
 import { generateBetaInfoPageHtml } from './templates/waitlist-landing-template';
@@ -35,6 +36,7 @@ import { generateNewsletterPickPageHtml } from './templates/newsletter-pick-temp
 import { generateLoginPageHtml } from './templates/login-template';
 import { generateWelcomePageHtml } from './templates/welcome-template';
 import { generateAccountPageHtml } from './templates/account-template';
+import { generateMyTanksPageHtml } from './templates/my-tanks-template';
 import { generateTankPageHtml, TankPageEntry } from './templates/tank-template';
 import { generateTankLandPageHtml } from './templates/tank-land-template';
 import { generateHatcheryPageHtml } from './templates/hatchery-template';
@@ -870,6 +872,13 @@ async function generateAllPages(): Promise<void> {
         await buildAccount();
         writeHtmlFile('account/index.html', generateAccountPageHtml(baseUrl));
         console.log('✓ Built account bundle and page\n');
+
+        // My Tanks page: a logged-in user's open + settled picks. Same
+        // standalone-bundle pattern as account (all data client-side, /api/picks/mine).
+        console.log('Building my-tanks bundle...');
+        await buildMyTanks();
+        writeHtmlFile('my-tanks/index.html', generateMyTanksPageHtml(baseUrl));
+        console.log('✓ Built my-tanks bundle and page\n');
 
         // Generate about page (comprehensive SEO-optimized version)
         console.log('Generating about page...');

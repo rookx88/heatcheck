@@ -112,6 +112,7 @@ export const MapHud: React.FC = () => {
             {menuOpen && (
                 <div className="map-hud__menu" role="menu">
                     <a className="map-hud__item" role="menuitem" href="/">Home</a>
+                    <a className="map-hud__item" role="menuitem" href="/my-tanks/">My Tanks</a>
                     <a className="map-hud__item" role="menuitem" href="/account/">Account</a>
                     {/* Dispatches to the page's NotificationsHost - the modal can't
                         render here, inside the transformed map frame (fixed-overlay
