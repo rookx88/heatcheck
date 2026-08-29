@@ -169,10 +169,15 @@ const soccerDataPool: Pool | null = process.env.SOCCER_DATA_DATABASE_URL
 
 const SECRET_API_KEY = process.env.API_KEY || 'your-secret-api-key';
 const ODDS_API_KEY = process.env.THE_ODDS_API_KEY;
-// Cloudflare Pages Deploy Hook URL - triggers a real redeploy of the live site when a
-// Tank page is published, without needing a git push. See the PUT /api/tank/pages/:id
-// route below. Optional: unset just means publishing doesn't trigger a redeploy yet.
-const DEPLOY_HOOK_URL = process.env.DEPLOY_HOOK_URL || '';
+// Cloudflare Pages Deploy Hook URLs - trigger a real redeploy of the deployed site when
+// a Tank page is published, without needing a git push. Comma-separated so one publish
+// can rebuild multiple branches (production main + the auth-sessions preview). See the
+// PUT /api/tank/pages/:id route below. Optional: unset just means publishing doesn't
+// trigger a redeploy yet.
+const DEPLOY_HOOK_URLS = (process.env.DEPLOY_HOOK_URL || '')
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
 // Exchange ticker tagging at publish time (see the PUT /api/tank/pages/:id route):
 // fires both-sides tags through the DEPLOYED /api/ticker-tags endpoint - the deployed
 // site owns the CLOB integration and authoritative eligibility validation; this server
@@ -2633,23 +2638,34 @@ app.put('/api/tank/pages/:id', apiKeyAuth, async (req: express.Request, res: exp
 
             // The build:static run above only rewrites this machine's local dist/ -
             // Cloudflare Pages only rebuilds the deployed site on its own git-push-
-            // triggered build. Firing the project's Deploy Hook (a webhook URL from the
+            // triggered build. Firing the project's Deploy Hooks (webhook URLs from the
             // Cloudflare Pages dashboard: Workers & Pages -> project -> Settings ->
             // Builds & deployments -> Deploy hooks) triggers a real redeploy from the
-            // latest commit on the connected branch, without needing a git push. Not
-            // configured locally is a no-op, not an error - publishing still works.
-            if (DEPLOY_HOOK_URL) {
-                fetch(DEPLOY_HOOK_URL, { method: 'POST' })
-                    .then(async (res) => {
-                        if (!res.ok) {
-                            console.error(`[Deploy Hook] Trigger failed: ${res.status} ${await res.text()}`);
-                        } else {
-                            console.log('[Deploy Hook] ✓ Cloudflare Pages redeploy triggered');
-                        }
-                    })
-                    .catch((error: any) => {
-                        console.error('[Deploy Hook] ✗ Error triggering redeploy:', error.message);
-                    });
+            // latest commit on each hook's connected branch, without needing a git push.
+            // Not configured locally is a no-op, not an error - publishing still works.
+            if (DEPLOY_HOOK_URLS.length > 0) {
+                for (const hookUrl of DEPLOY_HOOK_URLS) {
+                    // Label hooks by the tail of their id so multi-hook logs are tellable
+                    // apart without printing the full secret URL.
+                    const hookLabel = `hook ...${hookUrl.slice(-6)}`;
+                    fetch(hookUrl, { method: 'POST' })
+                        .then(async (res) => {
+                            if (res.status === 304) {
+                                // Cloudflare deduplicates: a hook fired while this branch
+                                // already has a build queued or running returns 304 and
+                                // skips the redundant build. The queued build picks up the
+                                // latest published content anyway.
+                                console.log(`[Deploy Hook] = ${hookLabel} skipped - a build for this branch is already queued/running`);
+                            } else if (!res.ok) {
+                                console.error(`[Deploy Hook] ✗ ${hookLabel} trigger failed: ${res.status} ${await res.text()}`);
+                            } else {
+                                console.log(`[Deploy Hook] ✓ ${hookLabel} redeploy triggered`);
+                            }
+                        })
+                        .catch((error: any) => {
+                            console.error(`[Deploy Hook] ✗ ${hookLabel} error triggering redeploy:`, error.message);
+                        });
+                }
             } else {
                 console.warn('[Deploy Hook] DEPLOY_HOOK_URL is not configured - published page will not go live until the next git-push-triggered Cloudflare build.');
             }
