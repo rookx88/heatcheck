@@ -44,7 +44,17 @@ import BALOO2_EXTRABOLD from './fonts/baloo2-extrabold.bin';
 import NUNITO_REGULAR from './fonts/nunito-regular.bin';
 import NUNITO_BOLD from './fonts/nunito-bold.bin';
 import NUNITO_EXTRABOLD from './fonts/nunito-extrabold.bin';
+// The real site logo, pre-converted to PNG (resvg can't rasterize webp - the OG
+// generator does the same webp->png conversion, via sharp at build time; this one was
+// converted once with sharp locally and committed: 149x72, from
+// public/assets/images/heatchecks-logo.webp).
+import HEATCHECKS_LOGO from './heatchecks-logo.bin';
 import { buildLeaderboardRowEmbeds, colorForRank, type LeaderboardRowInput } from './discord-leaderboard-card';
+
+// Heatchecks' own community server - baked into the image watermark (pixels can't be
+// clicked, but a screenshot/re-share keeps the text) AND set as the clickable url on
+// the Discord embed that carries the image (see sendLeaderboardResult).
+export const HEATCHECKS_DISCORD_INVITE = 'https://discord.gg/cv8yPDAEy';
 
 const IMAGE_WIDTH = 720;
 const HEADER_HEIGHT = 84;
@@ -52,6 +62,9 @@ const ROW_HEIGHT = 92;
 const ROW_GAP = 12;
 const PADDING = 28;
 const AVATAR_SIZE = 60;
+const WATERMARK_HEIGHT = 48;
+const WATERMARK_LOGO_HEIGHT = 36;
+const WATERMARK_LOGO_WIDTH = Math.round(WATERMARK_LOGO_HEIGHT * (149 / 72)); // source PNG's native aspect ratio
 
 const COLOR_BG = '#0b0713'; // this codebase's existing dark brand base (scripts/generate-og-image.ts)
 const COLOR_WHITE = '#ffffff';
@@ -86,6 +99,25 @@ const FONTS: { name: string; data: ArrayBuffer; weight: 400 | 700 | 800; style: 
     { name: 'Nunito', data: NUNITO_EXTRABOLD, weight: 800, style: 'normal' },
 ];
 
+// Chunked base64 - spreading a whole Uint8Array into String.fromCharCode can blow the
+// argument-count limit on larger buffers (the 28KB logo is already pushing it).
+function toBase64(buf: ArrayBuffer): string {
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    const CHUNK = 8192;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
+}
+
+// Built lazily once per isolate, not per request - the logo bytes never change.
+let logoDataUri: string | null = null;
+function getLogoDataUri(): string {
+    if (!logoDataUri) logoDataUri = `data:image/png;base64,${toBase64(HEATCHECKS_LOGO)}`;
+    return logoDataUri;
+}
+
 // One failed avatar can't take down the whole render - falls back to a plain tier-
 // colored circle for that row.
 async function loadAvatarDataUri(url: string, fallbackColor: string): Promise<string> {
@@ -94,7 +126,7 @@ async function loadAvatarDataUri(url: string, fallbackColor: string): Promise<st
         if (!res.ok) throw new Error(`status ${res.status}`);
         const buf = await res.arrayBuffer();
         const contentType = res.headers.get('content-type') || 'image/png';
-        const base64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        const base64 = toBase64(buf);
         return `data:${contentType};base64,${base64}`;
     } catch {
         // 1x1 solid-color PNG data URI as a last resort - satori still needs a valid
@@ -168,7 +200,7 @@ export async function renderLeaderboardImage(headerLabel: string, rows: Leaderbo
             ensureWasmInit(),
         ]);
 
-        const totalHeight = PADDING * 2 + HEADER_HEIGHT + rows.length * ROW_HEIGHT + (rows.length - 1) * ROW_GAP;
+        const totalHeight = PADDING * 2 + HEADER_HEIGHT + rows.length * ROW_HEIGHT + (rows.length - 1) * ROW_GAP + ROW_GAP + WATERMARK_HEIGHT;
         const tree = {
             type: 'div',
             props: {
@@ -198,6 +230,46 @@ export async function renderLeaderboardImage(headerLabel: string, rows: Leaderbo
                         },
                     },
                     ...rows.map((row, i) => buildRowNode(row, avatarDataUris[i])),
+                    // Watermark footer: real site logo + the community invite as
+                    // visible text - pixels can't be clicked, but a screenshot or
+                    // re-share keeps the attribution and the way in.
+                    {
+                        type: 'div',
+                        props: {
+                            style: {
+                                display: 'flex',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                height: WATERMARK_HEIGHT,
+                                width: IMAGE_WIDTH - PADDING * 2,
+                            },
+                            children: [
+                                {
+                                    type: 'img',
+                                    props: {
+                                        src: getLogoDataUri(),
+                                        width: WATERMARK_LOGO_WIDTH,
+                                        height: WATERMARK_LOGO_HEIGHT,
+                                        style: { display: 'flex' },
+                                    },
+                                },
+                                {
+                                    type: 'div',
+                                    props: {
+                                        style: {
+                                            display: 'flex',
+                                            fontFamily: 'Nunito',
+                                            fontWeight: 700,
+                                            fontSize: 15,
+                                            color: 'rgba(255,255,255,0.55)',
+                                        },
+                                        children: HEATCHECKS_DISCORD_INVITE.replace('https://', ''),
+                                    },
+                                },
+                            ],
+                        },
+                    },
                 ],
             },
         };
@@ -236,7 +308,13 @@ export async function sendLeaderboardResult(
 
         if (png) {
             const form = new FormData();
-            form.append('payload_json', JSON.stringify({ content: '', embeds: [{ image: { url: 'attachment://leaderboard.png' } }] }));
+            // title+url makes "Heatchecks" clickable above the image - the invite's
+            // clickable half (the in-image watermark text is the non-clickable,
+            // survives-a-screenshot half).
+            form.append('payload_json', JSON.stringify({
+                content: '',
+                embeds: [{ title: 'Heatchecks', url: HEATCHECKS_DISCORD_INVITE, image: { url: 'attachment://leaderboard.png' } }],
+            }));
             form.append('files[0]', new Blob([png], { type: 'image/png' }), 'leaderboard.png');
             const res = await fetch(patchUrl, { method: 'PATCH', body: form });
             if (res.ok) return;
