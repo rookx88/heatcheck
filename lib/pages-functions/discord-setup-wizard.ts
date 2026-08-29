@@ -445,6 +445,7 @@ async function runBackfill(context: RequestContext, sql: ReturnType<typeof getSq
 
     const baseUrl = new URL(context.request.url).origin;
     let posted = 0;
+    let postFailed = false;
     for (const row of rows) {
         if (posted >= 3 || disabled.includes(row.league)) continue;
         const modelOutput: TankCardModelOutput | null = typeof row.model_output === 'string' ? JSON.parse(row.model_output) : row.model_output;
@@ -461,12 +462,21 @@ async function runBackfill(context: RequestContext, sql: ReturnType<typeof getSq
             posted++;
         } catch (err) {
             console.error('[setup-wizard] Backfill post failed:', err);
+            postFailed = true;
             break;
         }
     }
+    // Three genuinely different endings - say the true one, not a conflated guess
+    // (a fully-served server hitting this button gets "up to date", not a shrug).
+    if (posted > 0) {
+        return screen(`Posted ${posted} Tank card${posted === 1 ? '' : 's'} — you're live. Everything else arrives on the daily schedule.`);
+    }
+    if (postFailed) {
+        return screen(`Couldn't post in <#${channelId}> — check Heatchecks has View Channel, Send Messages, Embed Links, and Attach Files there, then try again.`);
+    }
     return screen(
-        posted > 0
-            ? `Posted ${posted} Tank card${posted === 1 ? '' : 's'} — you're live. Everything else arrives on the daily schedule.`
-            : 'Nothing available to post right now (or the channel rejected the post) — your first cards arrive on the daily schedule.'
+        rows.length === 0
+            ? "You're already up to date — every published Tank is in this channel. New ones arrive on the daily schedule."
+            : 'Nothing matched your sport settings to post right now — your first cards arrive on the daily schedule.'
     );
 }
