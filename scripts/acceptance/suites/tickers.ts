@@ -10,7 +10,7 @@
 // retrotagging uses) so /api/settle resolves a genuine closed market.
 //
 // Manual post-deploy smoke checklist (prod, after migrations + secret provisioning):
-//   curl https://heatchecks.io/api/tickers                         -> 4 tickers, note, numeric values
+//   curl https://heatchecks.io/api/tickers                         -> 8 tickers, note, numeric values
 //   curl "https://heatchecks.io/api/tickers/chart?key=dogs"        -> ordered events, cumulative sums
 //   curl -X POST https://heatchecks.io/api/ticker-tags             -> 401 (no secret)
 //   curl -X POST -H "X-Settle-Secret: ..." https://heatchecks.io/api/settle  (twice)
@@ -47,10 +47,12 @@ async function run() {
     const list = await api('GET', '/api/tickers');
     check('GET /api/tickers returns 200 with note', list.status === 200 && typeof list.json?.note === 'string');
     const keys = (list.json?.tickers ?? []).map((t: any) => t.key);
-    check('all four tickers present, ordered by tab_order', JSON.stringify(keys.filter((k: string) => ['dogs', 'chalk', 'locks', 'moonshot'].includes(k))) === JSON.stringify(['dogs', 'chalk', 'locks', 'moonshot']));
+    const EXPECTED_KEYS = ['dogs', 'chalk', 'locks', 'moonshot', 'overs', 'unders', 'gridiron', 'footy'];
+    check('all eight tickers present, ordered by tab_order (add_tickers_batch2.sql is a deploy prerequisite)',
+        JSON.stringify(keys.filter((k: string) => EXPECTED_KEYS.includes(k))) === JSON.stringify(EXPECTED_KEYS));
     check('values are numeric (not NUMERIC strings)', (list.json?.tickers ?? []).every((t: any) => typeof t.value === 'number'));
-    check('fallback pcts seeded: dogs/chalk symmetric 5/5, locks 5/15, moonshot 20/5',
-        ['dogs:5:5', 'chalk:5:5', 'locks:5:15', 'moonshot:20:5'].every((spec) => {
+    check('fallback pcts seeded: dogs/chalk symmetric 5/5, locks 5/15, moonshot 20/5, batch-2 all 5/5',
+        ['dogs:5:5', 'chalk:5:5', 'locks:5:15', 'moonshot:20:5', 'overs:5:5', 'unders:5:5', 'gridiron:5:5', 'footy:5:5'].every((spec) => {
             const [k, w, l] = spec.split(':');
             const t = list.json?.tickers?.find((x: any) => x.key === k);
             return t && near(t.settleWinPct, Number(w)) && near(t.settleLossPct, Number(l));
@@ -82,6 +84,43 @@ async function run() {
         const res = await tagPost({ slug: tankA, tickerKey: ticker, relevantSide: side });
         check(`${ticker} rejects side at ${prob} -> 422 ineligible`, res.status === 422 && res.json?.code === 'ineligible', JSON.stringify(res.json));
     }
+
+    // --- Batch-2 eligibility: totals labels + league-scoped market favorites ---
+    section('Batch-2 tickers - overs/unders (totals labels), gridiron/footy (league + argmax side)');
+    // tankA is market 'acceptance_market', league NBA - wrong shape for every batch-2 rule.
+    const notTotals = await tagPost({ slug: tankA, tickerKey: 'overs', relevantSide: 0 });
+    check('overs rejects a non-totals market -> 422 ineligible', notTotals.status === 422 && notTotals.json?.code === 'ineligible', JSON.stringify(notTotals.json));
+    const notNfl = await tagPost({ slug: tankA, tickerKey: 'gridiron', relevantSide: 0 });
+    check('gridiron rejects a non-NFL tank -> 422 ineligible', notNfl.status === 422 && notNfl.json?.code === 'ineligible', JSON.stringify(notNfl.json));
+    const notSoccer = await tagPost({ slug: tankA, tickerKey: 'footy', relevantSide: 0 });
+    check('footy rejects a non-soccer tank -> 422 ineligible', notSoccer.status === 422 && notSoccer.json?.code === 'ineligible', JSON.stringify(notSoccer.json));
+
+    const tankT = `${SLUG_PREFIX}totals`;
+    await insertTank({ slug: tankT, marketId: markets.live.id, market: 'totals', outcomes: ['Over', 'Under'], outcomePrices: [0.55, 0.45] });
+    const wrongOverSide = await tagPost({ slug: tankT, tickerKey: 'overs', relevantSide: 1 });
+    check('overs rejects the Under side -> 422 ineligible', wrongOverSide.status === 422 && wrongOverSide.json?.code === 'ineligible');
+    const wrongUnderSide = await tagPost({ slug: tankT, tickerKey: 'unders', relevantSide: 0 });
+    check('unders rejects the Over side -> 422 ineligible', wrongUnderSide.status === 422 && wrongUnderSide.json?.code === 'ineligible');
+    const oversOk = await tagPost({ slug: tankT, tickerKey: 'overs', relevantSide: 0 });
+    check('overs tags the Over side -> 201 with real tag delta', oversOk.status === 201 && typeof oversOk.json?.delta === 'number', JSON.stringify(oversOk.json));
+    const undersOk = await tagPost({ slug: tankT, tickerKey: 'unders', relevantSide: 1 });
+    check('unders tags the Under side -> 201 (both totals sides land, dogs/chalk pattern)', undersOk.status === 201, JSON.stringify(undersOk.json));
+
+    const tankN = `${SLUG_PREFIX}nfl`;
+    await insertTank({ slug: tankN, league: 'NFL', marketId: markets.live.id, outcomes: markets.live.outcomes, outcomePrices: [0.62, 0.38] });
+    const notFav = await tagPost({ slug: tankN, tickerKey: 'gridiron', relevantSide: 1 });
+    check('gridiron rejects the non-favored side -> 422 ineligible', notFav.status === 422 && notFav.json?.code === 'ineligible');
+    const gridironOk = await tagPost({ slug: tankN, tickerKey: 'gridiron', relevantSide: 0 });
+    check('gridiron tags the NFL market favorite -> 201', gridironOk.status === 201, JSON.stringify(gridironOk.json));
+
+    // 3-way snapshot (soccer moneyline shape): argmax side 1 at 0.45 is the market
+    // favorite even though no side reaches 0.5 - the rule dogs/chalk can't express.
+    const tankFooty = `${SLUG_PREFIX}footy`;
+    await insertTank({ slug: tankFooty, league: 'EPL', marketId: markets.live.id, outcomes: ['Home', 'Away', 'Draw'], outcomePrices: [0.30, 0.45, 0.25] });
+    const footyNotFav = await tagPost({ slug: tankFooty, tickerKey: 'footy', relevantSide: 0 });
+    check('footy rejects a non-argmax side of a 3-way market -> 422 ineligible', footyNotFav.status === 422 && footyNotFav.json?.code === 'ineligible');
+    const footyOk = await tagPost({ slug: tankFooty, tickerKey: 'footy', relevantSide: 1 });
+    check('footy tags the sub-0.5 argmax favorite of a 3-way market -> 201', footyOk.status === 201, JSON.stringify(footyOk.json));
 
     // --- Successful tag: real CLOB 3-day delta, immediate value movement ---
     section('Tag event - real CLOB delta, cap, immediate value movement');

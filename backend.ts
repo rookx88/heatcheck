@@ -209,17 +209,42 @@ async function tagPublishedTankOnTickers(slug: string, gameSnapshot: any): Promi
     }
     const moonshotMax = Number(cfgResult.rows[0].config.moonshot_max_prob);
     const locksMin = Number(cfgResult.rows[0].config.locks_min_prob);
-    const sideEligible = (ruleType: string, p: number): boolean => {
+    // Batch-2 context: league/market/outcome labels from the same frozen snapshot the
+    // deployed endpoint reads (tank_pages.league is set from game.league at insert).
+    const league: string | null = typeof gameSnapshot?.game?.league === 'string' ? gameSnapshot.game.league : null;
+    const market: string | null = typeof gameSnapshot?.prop?.market === 'string' ? gameSnapshot.prop.market : null;
+    const outcomes: string[] | null = Array.isArray(gameSnapshot?.prop?.odds?.outcomes)
+        ? gameSnapshot.prop.odds.outcomes.map(String)
+        : null;
+    const SOCCER_LEAGUES = ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
+    const overUnderSide = (side: number): 'over' | 'under' | null => {
+        const label = outcomes?.[side];
+        if (typeof label !== 'string') return null;
+        const lower = label.trim().toLowerCase();
+        if (lower.startsWith('over')) return 'over';
+        if (lower.startsWith('under')) return 'under';
+        if (lower === 'yes') return side === 0 ? 'over' : null;
+        if (lower === 'no') return side === 1 ? 'under' : null;
+        return null;
+    };
+    const isMarketFavorite = (side: number): boolean =>
+        probs.every((q, i) => i === side || q < probs[side] || (q === probs[side] && i > side));
+    const sideEligible = (ruleType: string, side: number): boolean => {
+        const p = probs[side];
         if (ruleType === 'underdog') return p < 0.5;
         if (ruleType === 'favorite') return p >= 0.5;
         if (ruleType === 'heavy_favorite') return p >= locksMin;
         if (ruleType === 'longshot') return p < moonshotMax;
+        if (ruleType === 'total_over') return market !== null && ['totals', 'team_totals'].includes(market) && overUnderSide(side) === 'over';
+        if (ruleType === 'total_under') return market !== null && ['totals', 'team_totals'].includes(market) && overUnderSide(side) === 'under';
+        if (ruleType === 'nfl_favorite') return league === 'NFL' && isMarketFavorite(side);
+        if (ruleType === 'soccer_favorite') return league !== null && SOCCER_LEAGUES.includes(league) && isMarketFavorite(side);
         return false;
     };
 
     for (let side = 0; side < probs.length; side++) {
         for (const ticker of tickersResult.rows) {
-            if (!sideEligible(ticker.rule_type, probs[side])) continue;
+            if (!sideEligible(ticker.rule_type, side)) continue;
             try {
                 const res = await fetch(`${TICKER_TAG_BASE_URL}/api/ticker-tags`, {
                     method: 'POST',

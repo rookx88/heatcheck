@@ -182,6 +182,7 @@ export interface TankFixture {
     outcomes: string[];
     outcomePrices?: number[]; // omit to build a snapshot with NO odds.outcomePrices (settle fallback path)
     league?: string;
+    market?: string; // snapshot prop.market - batch-2 totals eligibility ('totals' etc.)
 }
 export async function insertTank(f: TankFixture): Promise<string> {
     const snapshot = {
@@ -189,7 +190,7 @@ export async function insertTank(f: TankFixture): Promise<string> {
             id: f.marketId,
             player: 'Acceptance Fixture',
             team: 'FIX',
-            market: 'acceptance_market',
+            market: f.market ?? 'acceptance_market',
             line: 0,
             prominence: 1,
             odds: { outcomes: f.outcomes, outcomePrices: f.outcomePrices },

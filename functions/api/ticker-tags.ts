@@ -26,8 +26,11 @@ interface TankRow {
     id: string;
     slug: string | null;
     provider: string;
+    league: string | null;
     market_id: string | null;
+    market: string | null;   // game_snapshot.prop.market - totals/league eligibility
     outcome_prices: unknown; // game_snapshot.prop.odds.outcomePrices (JSONB array)
+    outcome_labels: unknown; // game_snapshot.prop.odds.outcomes (JSONB array) - Over/Under detection
 }
 
 function reject(status: number, code: string, message: string, extra?: Record<string, unknown>): Response {
@@ -63,13 +66,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (!ticker) return reject(404, 'unknown_ticker', `No active ticker "${tickerKey}".`);
 
     const tankRows = tankId
-        ? await sql`SELECT id, slug, provider,
+        ? await sql`SELECT id, slug, provider, league,
                            game_snapshot->'prop'->>'id' AS market_id,
-                           game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices
+                           game_snapshot->'prop'->>'market' AS market,
+                           game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices,
+                           game_snapshot->'prop'->'odds'->'outcomes' AS outcome_labels
                     FROM tank_pages WHERE id = ${tankId} LIMIT 1`
-        : await sql`SELECT id, slug, provider,
+        : await sql`SELECT id, slug, provider, league,
                            game_snapshot->'prop'->>'id' AS market_id,
-                           game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices
+                           game_snapshot->'prop'->>'market' AS market,
+                           game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices,
+                           game_snapshot->'prop'->'odds'->'outcomes' AS outcome_labels
                     FROM tank_pages WHERE slug = ${slug} LIMIT 1`;
     if (tankRows.length === 0) return reject(404, 'tank_not_found', 'No Tank matches that id/slug.');
     const tank = tankRows[0] as unknown as TankRow;
@@ -90,7 +97,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const sideProb = Number(outcomePrices[relevantSide]);
 
     const cfg = await getTickerConfig(sql);
-    const eligibility = checkEligibility(ticker.rule_type, sideProb, cfg);
+    const eligibility = checkEligibility(ticker.rule_type, {
+        side: relevantSide,
+        probs: outcomePrices.map(Number),
+        league: tank.league,
+        market: tank.market,
+        outcomes: Array.isArray(tank.outcome_labels) ? tank.outcome_labels.map(String) : null,
+    }, cfg);
     if (!eligibility.ok) {
         return reject(422, 'ineligible', `${ticker.display_name} ${eligibility.reason}`, { snapshotProb: sideProb });
     }

@@ -85,8 +85,12 @@ function signOf(v: number): 'pos' | 'neg' | 'zero' {
 }
 
 // "underdog" -> "Underdog Index" - the card's display title ("UNDERDOG INDEX ($DOGS)").
+// League acronyms stay fully uppercase ("nfl_favorite" -> "NFL Favorite Index").
+const ACRONYM_WORDS = new Set(['nfl', 'nba', 'mlb', 'epl']);
 function indexLabelOf(ruleType: string): string {
-    const words = ruleType.split('_').map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w)).join(' ');
+    const words = ruleType.split('_')
+        .map((w) => (ACRONYM_WORDS.has(w) ? w.toUpperCase() : w ? w[0].toUpperCase() + w.slice(1) : w))
+        .join(' ');
     return `${words} Index`;
 }
 

@@ -84,10 +84,55 @@ export async function getActiveTickers(sql: NeonQueryFunction<false, false>): Pr
 
 export type EligibilityResult = { ok: true } | { ok: false; reason: string };
 
-// Eligibility is checked at tag time against the FROZEN snapshot probability of the
-// tagged side (the prop's own stored market data - never any user's pick), and keyed on
-// the ticker's rule_type so a future ticker can reuse a strategy without code changes.
-export function checkEligibility(ruleType: string, sideProb: number, cfg: TickerConfig): EligibilityResult {
+// The batch-2 rules need more of the frozen snapshot than a single probability, so
+// eligibility takes the whole tagged-side context. All fields come from the Tank's own
+// stored market data - never any user's pick.
+export interface EligibilityContext {
+    side: number;             // the tagged outcome index
+    probs: number[];          // game_snapshot.prop.odds.outcomePrices, all sides
+    league: string | null;    // tank_pages.league ('NFL', 'EPL', ...)
+    market: string | null;    // game_snapshot.prop.market ('totals', 'moneyline', canonical prop keys, ...)
+    outcomes: string[] | null; // game_snapshot.prop.odds.outcomes labels, positional with probs
+}
+
+// League/market sets are definitional, like DOGS_CHALK_PIVOT - not tunables. The soccer
+// set mirrors the full soccer slate the sync ingests (lib/pages-functions/polymarket.ts).
+const SOCCER_LEAGUES = new Set(['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1']);
+const TOTALS_MARKETS = new Set(['totals', 'team_totals']);
+
+// Over/Under side detection: Polymarket totals label their outcomes Over/Under; Kalshi
+// snapshots carry ['Over','Under'] or ['Yes','No'] where index 0 is the Yes/Over side
+// by fixed convention (kalshi.ts's KalshiMarketResolution comment).
+function overUnderSide(ctx: EligibilityContext): 'over' | 'under' | null {
+    const label = ctx.outcomes?.[ctx.side];
+    if (typeof label === 'string') {
+        const lower = label.trim().toLowerCase();
+        if (lower.startsWith('over')) return 'over';
+        if (lower.startsWith('under')) return 'under';
+        if (lower === 'yes') return ctx.side === 0 ? 'over' : null;
+        if (lower === 'no') return ctx.side === 1 ? 'under' : null;
+    }
+    return null;
+}
+
+// The market-favored side: strictly the highest snapshot probability, ties broken by
+// lowest index so exactly ONE side per market ever qualifies (the sweep tags both
+// sides - a rule matching both would have its tag and settle deltas cancel). Also what
+// makes league tickers work on 3-way soccer moneylines, where no side may reach 0.5.
+function isMarketFavorite(ctx: EligibilityContext): boolean {
+    const p = ctx.probs[ctx.side];
+    for (let i = 0; i < ctx.probs.length; i++) {
+        if (i === ctx.side) continue;
+        if (ctx.probs[i] > p || (ctx.probs[i] === p && i < ctx.side)) return false;
+    }
+    return true;
+}
+
+// Eligibility is checked at tag time against the FROZEN snapshot (the prop's own stored
+// market data - never any user's pick), and keyed on the ticker's rule_type so a future
+// ticker can reuse a strategy without code changes.
+export function checkEligibility(ruleType: string, ctx: EligibilityContext, cfg: TickerConfig): EligibilityResult {
+    const sideProb = ctx.probs[ctx.side];
     if (!Number.isFinite(sideProb)) {
         return { ok: false, reason: 'tagged side has no usable implied probability in the snapshot' };
     }
@@ -109,6 +154,38 @@ export function checkEligibility(ruleType: string, sideProb: number, cfg: Ticker
             return sideProb < cfg.moonshot_max_prob
                 ? { ok: true }
                 : { ok: false, reason: `requires implied prob < ${cfg.moonshot_max_prob}; tagged side is ${pct}` };
+        case 'total_over': {
+            if (!ctx.market || !TOTALS_MARKETS.has(ctx.market)) {
+                return { ok: false, reason: `requires a totals market; this market is "${ctx.market ?? 'unknown'}"` };
+            }
+            return overUnderSide(ctx) === 'over'
+                ? { ok: true }
+                : { ok: false, reason: 'requires the Over side of the total' };
+        }
+        case 'total_under': {
+            if (!ctx.market || !TOTALS_MARKETS.has(ctx.market)) {
+                return { ok: false, reason: `requires a totals market; this market is "${ctx.market ?? 'unknown'}"` };
+            }
+            return overUnderSide(ctx) === 'under'
+                ? { ok: true }
+                : { ok: false, reason: 'requires the Under side of the total' };
+        }
+        case 'nfl_favorite': {
+            if (ctx.league !== 'NFL') {
+                return { ok: false, reason: `requires an NFL market; this Tank's league is "${ctx.league ?? 'unknown'}"` };
+            }
+            return isMarketFavorite(ctx)
+                ? { ok: true }
+                : { ok: false, reason: `requires the market-favored side; tagged side is ${pct}` };
+        }
+        case 'soccer_favorite': {
+            if (!ctx.league || !SOCCER_LEAGUES.has(ctx.league)) {
+                return { ok: false, reason: `requires a soccer-league market; this Tank's league is "${ctx.league ?? 'unknown'}"` };
+            }
+            return isMarketFavorite(ctx)
+                ? { ok: true }
+                : { ok: false, reason: `requires the market-favored side; tagged side is ${pct}` };
+        }
         default:
             return { ok: false, reason: `unknown rule_type "${ruleType}"` };
     }
@@ -573,9 +650,11 @@ export async function sweepUntaggedTanks(
         getTickerConfig(sql),
         getActiveTickers(sql),
         sql`
-            SELECT t.id, t.slug, t.provider,
+            SELECT t.id, t.slug, t.provider, t.league,
                    t.game_snapshot->'prop'->>'id' AS market_id,
-                   t.game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices
+                   t.game_snapshot->'prop'->>'market' AS market,
+                   t.game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices,
+                   t.game_snapshot->'prop'->'odds'->'outcomes' AS outcome_labels
             FROM tank_pages t
             WHERE t.status = 'published' AND t.visibility = 'app' AND t.provider IN ('polymarket', 'kalshi')
               AND t.slug IS NOT NULL AND t.model_output IS NOT NULL
@@ -596,13 +675,17 @@ export async function sweepUntaggedTanks(
         const slug = row.slug as string;
         const provider = row.provider as string;
         const marketId = row.market_id as string;
+        const league = (row.league as string | null) ?? null;
+        const market = (row.market as string | null) ?? null;
+        const outcomes = Array.isArray(row.outcome_labels) ? (row.outcome_labels as unknown[]).map(String) : null;
         const probs = Array.isArray(row.outcome_prices) ? (row.outcome_prices as unknown[]).map(Number) : [];
         if (probs.length === 0 || probs.some((p) => !Number.isFinite(p))) {
             report.failures.push({ slug, side: -1, code: 'missing_snapshot_odds', message: 'No usable outcomePrices in the frozen snapshot.' });
             continue;
         }
         for (let side = 0; side < probs.length; side++) {
-            const eligible = activeTickers.filter((t) => checkEligibility(t.rule_type, probs[side], cfg).ok);
+            const ctx: EligibilityContext = { side, probs, league, market, outcomes };
+            const eligible = activeTickers.filter((t) => checkEligibility(t.rule_type, ctx, cfg).ok);
             if (eligible.length === 0) continue;
             if (sidesProcessed >= maxSides) {
                 report.deferred++;

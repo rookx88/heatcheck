@@ -23,6 +23,9 @@
 // history drives both tag deltas with opposite signs, one outcome settles one side up
 // and the other down. Tagging only one side (the original rule) left the favorite-side
 // tickers with no events at all.
+// Batch 2 (2026-08-29): the same pass also plans overs/unders (totals markets, by
+// outcome label) and gridiron/footy (league-scoped, market-favored side) - used to
+// backfill those tickers from existing published Tanks after their launch.
 //
 // Outcome handling per POST: 201 tagged; 409 already_tagged = skip (safe rerun);
 // 502 retriable (CLOB/Gamma hiccup, or empty price history on long-closed markets) =
@@ -50,7 +53,10 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 interface CandidateRow {
     slug: string;
+    league: string | null;
+    market: string | null;
     outcome_prices: unknown;
+    outcome_labels: unknown;
 }
 
 interface TagPlan {
@@ -87,14 +93,33 @@ async function main() {
     const locksMin = Number(cfgRows[0].config.locks_min_prob);
 
     const { rows } = await pool.query(
-        `SELECT slug, game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices
+        `SELECT slug, league,
+                game_snapshot->'prop'->>'market' AS market,
+                game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices,
+                game_snapshot->'prop'->'odds'->'outcomes' AS outcome_labels
          FROM tank_pages
          WHERE status = 'published' AND visibility = 'app' AND provider IN ('polymarket', 'kalshi')
            AND slug IS NOT NULL AND model_output IS NOT NULL
            AND game_snapshot->'prop'->>'id' IS NOT NULL
          ORDER BY published_at NULLS LAST, created_at`);
     const candidates = rows as CandidateRow[];
-    console.log(`${candidates.length} candidate tank(s); rule: BOTH sides (underdog -> dogs/moonshot, favorite -> chalk/locks); thresholds moonshot<${moonshotMax} locks>=${locksMin}\n`);
+    console.log(`${candidates.length} candidate tank(s); rule: BOTH sides (underdog -> dogs/moonshot, favorite -> chalk/locks, + batch-2 overs/unders/gridiron/footy); thresholds moonshot<${moonshotMax} locks>=${locksMin}\n`);
+
+    // Batch-2 rule mirrors (checkEligibility in lib/pages-functions/tickers.ts) - like
+    // the dogs/chalk plan below, drift-safe because the API re-validates every POST.
+    const SOCCER_LEAGUES = ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
+    const overUnderSide = (labels: string[] | null, side: number): 'over' | 'under' | null => {
+        const label = labels?.[side];
+        if (typeof label !== 'string') return null;
+        const lower = label.trim().toLowerCase();
+        if (lower.startsWith('over')) return 'over';
+        if (lower.startsWith('under')) return 'under';
+        if (lower === 'yes') return side === 0 ? 'over' : null;
+        if (lower === 'no') return side === 1 ? 'under' : null;
+        return null;
+    };
+    const isMarketFavorite = (probs: number[], side: number): boolean =>
+        probs.every((q, i) => i === side || q < probs[side] || (q === probs[side] && i > side));
 
     // Build the mechanical plan: every side of every market, with that side's eligible
     // tickers. One plan entry per (tank, side).
@@ -106,11 +131,17 @@ async function main() {
             skipped.push({ slug: c.slug, reason: 'no usable snapshot outcomePrices' });
             continue;
         }
+        const labels = Array.isArray(c.outcome_labels) ? c.outcome_labels.map(String) : null;
+        const isTotals = c.market !== null && ['totals', 'team_totals'].includes(c.market);
         for (let side = 0; side < probs.length; side++) {
             const p = probs[side];
             const tickers = p < 0.5
                 ? ['dogs', ...(p < moonshotMax ? ['moonshot'] : [])]
                 : ['chalk', ...(p >= locksMin ? ['locks'] : [])];
+            if (isTotals && overUnderSide(labels, side) === 'over') tickers.push('overs');
+            if (isTotals && overUnderSide(labels, side) === 'under') tickers.push('unders');
+            if (c.league === 'NFL' && isMarketFavorite(probs, side)) tickers.push('gridiron');
+            if (c.league !== null && SOCCER_LEAGUES.includes(c.league) && isMarketFavorite(probs, side)) tickers.push('footy');
             plans.push({ slug: c.slug, side, prob: p, tickers });
         }
     }
