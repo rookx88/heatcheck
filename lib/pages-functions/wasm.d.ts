@@ -10,3 +10,14 @@ declare module '*.wasm' {
     const module: WebAssembly.Module;
     export default module;
 }
+
+// Same bundler, different rule: `.bin` imports become Data modules - raw ArrayBuffers
+// baked into the worker bundle. Used for the leaderboard renderer's font files
+// (lib/pages-functions/fonts/*.bin, straight copies of scripts/assets/fonts/*.ttf) -
+// bundled rather than fetched because the deployed dist turned out not to carry
+// public/assets/fonts/ (the CI build assembles dist selectively), and a worker that
+// depends on its own site's static file layout is fragile anyway.
+declare module '*.bin' {
+    const data: ArrayBuffer;
+    export default data;
+}

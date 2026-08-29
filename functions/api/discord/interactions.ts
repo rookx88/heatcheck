@@ -230,14 +230,13 @@ function handleLeaderboardCommand(context: RequestContext, interaction: any): Re
         ? buildCommunityPointsLeaderboardMessage(context.env, guildId)
         : buildAccuracyLeaderboardMessage(context.env, guildId);
 
-    const baseUrl = new URL(context.request.url).origin;
     context.waitUntil(
         buildMessage
             .catch((err) => {
                 console.error('[POST /api/discord/interactions] Leaderboard build failed:', err);
                 return { content: 'Could not build the leaderboard right now — try again shortly.', rows: [] };
             })
-            .then(({ content, rows }) => sendLeaderboardResult(baseUrl, applicationId, interactionToken, content, rows))
+            .then(({ content, rows }) => sendLeaderboardResult(applicationId, interactionToken, content, rows))
     );
 
     return new Response(

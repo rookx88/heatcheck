@@ -22,8 +22,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const baseUrl = new URL(context.request.url).origin;
-    const png = await renderLeaderboardImage(baseUrl, 'Heatchecks Leaderboard (render test)', SAMPLE_ROWS);
+    const png = await renderLeaderboardImage('Heatchecks Leaderboard (render test)', SAMPLE_ROWS);
     if (!png) {
         return jsonResponse({ ok: false, error: getLastRenderError() ?? 'unknown - render returned null with no captured error' }, { status: 500 });
     }

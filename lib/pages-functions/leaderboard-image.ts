@@ -35,6 +35,15 @@ import { initWasm, Resvg } from '@resvg/resvg-wasm';
 // node_modules/yoga-wasm-web/dist/yoga.wasm - re-copy if either package is upgraded.
 import RESVG_WASM from './resvg.wasm';
 import YOGA_WASM from './yoga.wasm';
+// Fonts are bundled as Data modules (raw ArrayBuffers) rather than fetched from the
+// site's own static assets - the CI build assembles dist selectively and didn't carry
+// public/assets/fonts/, and baking them in removes a whole failure mode (plus a
+// network round-trip) regardless. Straight copies of scripts/assets/fonts/*.ttf,
+// renamed .bin for the bundler's Data rule.
+import BALOO2_EXTRABOLD from './fonts/baloo2-extrabold.bin';
+import NUNITO_REGULAR from './fonts/nunito-regular.bin';
+import NUNITO_BOLD from './fonts/nunito-bold.bin';
+import NUNITO_EXTRABOLD from './fonts/nunito-extrabold.bin';
 import { buildLeaderboardRowEmbeds, colorForRank, type LeaderboardRowInput } from './discord-leaderboard-card';
 
 const IMAGE_WIDTH = 720;
@@ -70,26 +79,12 @@ function ensureWasmInit(): Promise<void> {
     return wasmInitPromise;
 }
 
-const FONT_FILES: { name: string; file: string; weight: 400 | 700 | 800 }[] = [
-    { name: 'Baloo 2', file: 'Baloo2-ExtraBold.ttf', weight: 800 },
-    { name: 'Nunito', file: 'Nunito-Regular.ttf', weight: 400 },
-    { name: 'Nunito', file: 'Nunito-Bold.ttf', weight: 700 },
-    { name: 'Nunito', file: 'Nunito-ExtraBold.ttf', weight: 800 },
+const FONTS: { name: string; data: ArrayBuffer; weight: 400 | 700 | 800; style: 'normal' }[] = [
+    { name: 'Baloo 2', data: BALOO2_EXTRABOLD, weight: 800, style: 'normal' },
+    { name: 'Nunito', data: NUNITO_REGULAR, weight: 400, style: 'normal' },
+    { name: 'Nunito', data: NUNITO_BOLD, weight: 700, style: 'normal' },
+    { name: 'Nunito', data: NUNITO_EXTRABOLD, weight: 800, style: 'normal' },
 ];
-
-let fontsPromise: Promise<{ name: string; data: ArrayBuffer; weight: 400 | 700 | 800; style: 'normal' }[]> | null = null;
-function loadFonts(baseUrl: string) {
-    if (!fontsPromise) {
-        fontsPromise = Promise.all(
-            FONT_FILES.map(async (f) => {
-                const res = await fetch(`${baseUrl}/assets/fonts/${f.file}`);
-                if (!res.ok) throw new Error(`Font fetch failed: ${f.file} (${res.status})`);
-                return { name: f.name, data: await res.arrayBuffer(), weight: f.weight, style: 'normal' as const };
-            })
-        );
-    }
-    return fontsPromise;
-}
 
 // One failed avatar can't take down the whole render - falls back to a plain tier-
 // colored circle for that row.
@@ -165,11 +160,10 @@ export function getLastRenderError(): string | null {
     return lastRenderError;
 }
 
-export async function renderLeaderboardImage(baseUrl: string, headerLabel: string, rows: LeaderboardRowInput[]): Promise<Uint8Array | null> {
+export async function renderLeaderboardImage(headerLabel: string, rows: LeaderboardRowInput[]): Promise<Uint8Array | null> {
     if (rows.length === 0) return null;
     try {
-        const [fonts, avatarDataUris] = await Promise.all([
-            loadFonts(baseUrl),
+        const [avatarDataUris] = await Promise.all([
             Promise.all(rows.map((r) => loadAvatarDataUri(r.avatarUrl, `#${colorForRank(r.rank).toString(16).padStart(6, '0')}`))),
             ensureWasmInit(),
         ]);
@@ -208,7 +202,7 @@ export async function renderLeaderboardImage(baseUrl: string, headerLabel: strin
             },
         };
 
-        const svg = await satori(tree as any, { width: IMAGE_WIDTH, height: totalHeight, fonts });
+        const svg = await satori(tree as any, { width: IMAGE_WIDTH, height: totalHeight, fonts: FONTS });
         const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: IMAGE_WIDTH } });
         return resvg.render().asPng();
     } catch (err) {
@@ -223,7 +217,6 @@ export async function renderLeaderboardImage(baseUrl: string, headerLabel: strin
 // (buildLeaderboardRowEmbeds) on any failure so this can never reply worse than the
 // already-shipped embed version.
 export async function sendLeaderboardResult(
-    baseUrl: string,
     applicationId: string,
     token: string,
     content: string,
@@ -239,7 +232,7 @@ export async function sendLeaderboardResult(
     // ever throw past this function.
     try {
         const headerLabel = content.replace(/\*\*/g, '');
-        const png = rows.length > 0 ? await renderLeaderboardImage(baseUrl, headerLabel, rows) : null;
+        const png = rows.length > 0 ? await renderLeaderboardImage(headerLabel, rows) : null;
 
         if (png) {
             const form = new FormData();
