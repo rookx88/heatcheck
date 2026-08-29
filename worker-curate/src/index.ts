@@ -24,9 +24,13 @@ const FULL_CHAIN_CRON = '0 10 * * *';
 // the full chain nor the regular sweeps; its own third case.
 const LEAGUE_SLATE_CRON = '0 12 * * 2';
 
-// Weekly leaderboard auto-post (Sunday evening, after US slates wrap) for guilds
-// that opted in via the setup wizard - its own fourth case below.
-const WEEKLY_LEADERBOARD_CRON = '0 23 * * 0';
+// Weekly leaderboard auto-post for guilds that opted in via the setup wizard. No
+// cron slot of its own - Workers Free caps the ACCOUNT at 5 triggers and they're all
+// spent (see wrangler.toml) - so it piggybacks on the existing 02:00 UTC sweep slot,
+// firing only when that slot lands on Monday UTC (= Sunday ~9-10pm US evening,
+// right after Sunday slates wrap).
+const NIGHTLY_SWEEP_CRON = '0 2 * * *';
+const WEEKLY_LEADERBOARD_UTC_DAY = 1; // Monday
 
 async function runCurate(env: Env): Promise<string> {
     const res = await fetch(env.CURATE_URL, {
@@ -105,10 +109,14 @@ export default {
             ctx.waitUntil(runCurate(env));
         } else if (event.cron === LEAGUE_SLATE_CRON) {
             ctx.waitUntil(runLeagueSlateSweep(env));
-        } else if (event.cron === WEEKLY_LEADERBOARD_CRON) {
-            ctx.waitUntil(postSibling(env, '/api/weekly-leaderboard-sweep'));
         } else {
             ctx.waitUntil(runSweeps(env));
+            // Weekly leaderboard piggyback (see WEEKLY_LEADERBOARD_UTC_DAY comment):
+            // the endpoint itself only touches guilds that opted in, so a quiet week
+            // costs one no-op request.
+            if (event.cron === NIGHTLY_SWEEP_CRON && new Date().getUTCDay() === WEEKLY_LEADERBOARD_UTC_DAY) {
+                ctx.waitUntil(postSibling(env, '/api/weekly-leaderboard-sweep'));
+            }
         }
     },
 
