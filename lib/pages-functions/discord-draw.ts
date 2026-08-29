@@ -65,6 +65,58 @@ async function buildEligiblePool(
 // just an optimization to skip pool-building work on an obvious repeat; a genuine
 // race between two concurrent draw attempts is resolved by the INSERT's conflict,
 // never by two winners existing for one source).
+// N-winner variant for per-pick giveaways (community_picks.giveaway_winner_count):
+// draws distinct winners into numbered slots, idempotent PER SLOT via the widened
+// unique index (guild, source_type, source_id, winner_slot) - a re-run of the
+// settlement sweep resumes missing slots and never re-draws a filled one. Draws
+// fewer than requested when the eligible pool is smaller.
+export async function drawMultipleGiveawayWinners(
+    sql: NeonQueryFunction<false, false>,
+    env: Env,
+    input: DrawGiveawayInput & { winnerCount: number }
+): Promise<{ winners: string[] }> {
+    const existingRows = (await sql`
+        SELECT winner_discord_user_id, winner_slot FROM community_giveaway_draws
+        WHERE guild_id = ${input.guildId} AND source_type = ${input.sourceType} AND source_id = ${input.sourceId}
+        ORDER BY winner_slot ASC
+    `) as unknown as { winner_discord_user_id: string; winner_slot: number }[];
+    const winners = existingRows.map((r) => r.winner_discord_user_id);
+    if (winners.length >= input.winnerCount) return { winners: winners.slice(0, input.winnerCount) };
+
+    const pool = (await buildEligiblePool(sql, env, input)).filter((id) => !winners.includes(id));
+    let nextSlot = existingRows.length > 0 ? Math.max(...existingRows.map((r) => r.winner_slot)) + 1 : 1;
+
+    while (winners.length < input.winnerCount && pool.length > 0) {
+        const idx = Math.floor(Math.random() * pool.length);
+        const winner = pool.splice(idx, 1)[0];
+        try {
+            await sql`
+                INSERT INTO community_giveaway_draws (guild_id, source_type, source_id, winner_discord_user_id, drawn_by, winner_slot)
+                VALUES (${input.guildId}, ${input.sourceType}, ${input.sourceId}, ${winner}, ${input.drawnBy}, ${nextSlot})
+            `;
+            winners.push(winner);
+            nextSlot++;
+        } catch (err: any) {
+            if (err.code === '23505') {
+                // Concurrent run filled this slot - absorb theirs and continue.
+                const row = (await sql`
+                    SELECT winner_discord_user_id FROM community_giveaway_draws
+                    WHERE guild_id = ${input.guildId} AND source_type = ${input.sourceType}
+                      AND source_id = ${input.sourceId} AND winner_slot = ${nextSlot}
+                `)[0] as unknown as { winner_discord_user_id: string } | undefined;
+                if (row) {
+                    if (!winners.includes(row.winner_discord_user_id)) winners.push(row.winner_discord_user_id);
+                    nextSlot++;
+                    continue;
+                }
+                throw err;
+            }
+            throw err;
+        }
+    }
+    return { winners };
+}
+
 export async function drawGiveawayWinner(
     sql: NeonQueryFunction<false, false>,
     env: Env,

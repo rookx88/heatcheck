@@ -36,8 +36,8 @@ import { fetchGuildMembers, getGuildLabels, buildDiscordAvatarUrl } from '../../
 import type { LeaderboardMessage } from '../../../lib/pages-functions/discord-leaderboard-card';
 import { sendLeaderboardResult } from '../../../lib/pages-functions/leaderboard-image';
 import { computeSkillRatings } from '../../../lib/pages-functions/skill-rating';
+import { handleSetupWizardCommand, handleWizardComponent, handleWizardModal } from '../../../lib/pages-functions/discord-setup-wizard';
 import {
-    handleSetupCommand,
     handleConfigCommand,
     handlePostCommand,
     handleDrawCommand,
@@ -45,6 +45,7 @@ import {
     handleTankRepostConfirm,
     handleCommunityPickSelect,
     handleCommunityPickConfirm,
+    handleCommunityGiveawaySelect,
     handleCommunityVote,
     handleDrawSelect,
     handleLeagueCommand,
@@ -52,11 +53,14 @@ import {
     updateMessageResponse,
     buildCommunityPointsLeaderboardMessage,
     buildLeagueLeaderboardMessage,
+    buildSrLeaderboardMessage,
+    buildMeMessage,
 } from '../../../lib/pages-functions/discord-commands';
 
 const DISCORD_PING = 1;
 const DISCORD_APPLICATION_COMMAND = 2;
 const DISCORD_MESSAGE_COMPONENT = 3;
+const DISCORD_MODAL_SUBMIT = 5;
 const RESPONSE_PONG = 1;
 const RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE = 4;
 const RESPONSE_DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE = 5;
@@ -180,23 +184,32 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     if (interaction.type === DISCORD_APPLICATION_COMMAND) {
         const commandName = interaction.data?.name;
-        if (commandName === 'heatchecks-setup') return handleSetupCommand(context, interaction);
+        if (commandName === 'heatchecks-setup') return handleSetupWizardCommand(context, interaction);
         if (commandName === 'heatchecks-config') return handleConfigCommand(context, interaction);
         if (commandName === 'heatchecks-post') return handlePostCommand(context, interaction);
         if (commandName === 'heatchecks-draw') return handleDrawCommand(context, interaction);
         if (commandName === 'heatchecks-league') return handleLeagueCommand(context, interaction);
         if (commandName === 'my-results') return handleMyResultsCommand(context, interaction);
+        if (commandName === 'me') return handleMeCommand(context, interaction);
         if (commandName === 'leaderboard') return handleLeaderboardCommand(context, interaction);
         return new Response('Unknown command.', { status: 400 });
     }
 
+    if (interaction.type === DISCORD_MODAL_SUBMIT) {
+        const customId = typeof interaction.data?.custom_id === 'string' ? interaction.data.custom_id : '';
+        if (customId.startsWith('wzm:')) return handleWizardModal(context, interaction, customId);
+        return ephemeral("Couldn't process that.");
+    }
+
     if (interaction.type === DISCORD_MESSAGE_COMPONENT) {
         const customId = typeof interaction.data?.custom_id === 'string' ? interaction.data.custom_id : '';
+        if (customId.startsWith('wz:')) return handleWizardComponent(context, interaction, customId);
         if (customId.startsWith('pick:')) return handlePickButton(context, interaction, customId);
         if (customId === 'tpselect') return handleTankPostSelect(context, interaction);
         if (customId.startsWith('tprepost:')) return handleTankRepostConfirm(context, interaction, customId);
         if (customId === 'tpcancel') return updateMessageResponse('Cancelled.');
         if (customId.startsWith('cpselect')) return handleCommunityPickSelect(context, interaction, customId);
+        if (customId.startsWith('cpgw:')) return handleCommunityGiveawaySelect(context, interaction, customId);
         if (customId.startsWith('cpcreate:')) return handleCommunityPickConfirm(context, interaction, customId);
         if (customId === 'cpcancel') return updateMessageResponse('Cancelled.');
         if (customId.startsWith('cpvote:')) return handleCommunityVote(context, interaction, customId);
@@ -207,43 +220,62 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     return new Response('Unhandled interaction type.', { status: 400 });
 };
 
-function handleLeaderboardCommand(context: RequestContext, interaction: any): Response {
-    const guildId: string | undefined = interaction.guild_id;
-    if (!guildId) return ephemeral('Run this in a server, not a DM.');
-
+// Shared deferred-image-command plumbing for /leaderboard and /me: immediate
+// deferred ack (ephemeral when the guild's ephemeral_user_commands wizard setting is
+// on), real content later via sendLeaderboardResult's webhook PATCH (image first,
+// embed fallback).
+async function deferImageCommand(
+    context: RequestContext,
+    interaction: any,
+    buildMessage: Promise<{ content: string; headerLabel: string; rows: any[] }>
+): Promise<Response> {
     const applicationId: string | undefined = interaction.application_id;
     const interactionToken: string | undefined = interaction.token;
     if (!applicationId || !interactionToken) return ephemeral("Couldn't process that command - try again.");
 
-    const view = interaction.data?.options?.find((o: any) => o.name === 'view')?.value ?? 'accuracy';
-    const sport = interaction.data?.options?.find((o: any) => o.name === 'sport')?.value as string | undefined;
-    if (view === 'league' && !sport) return ephemeral('Pick a sport to view the league leaderboard (e.g. sport:NFL).');
-
-    // Deferred: fetchGuildMembers (paginated REST calls) plus the DB query - and now,
-    // image rendering - can exceed Discord's 3-second initial-response window,
-    // especially for a larger server. waitUntil keeps the background work alive after
-    // this function returns its immediate ack; the real content arrives via a webhook
-    // PATCH to @original, built by sendLeaderboardResult (tries a generated image
-    // first, falls back to colored embed rows on any failure).
-    const buildMessage = view === 'league'
-        ? buildLeagueLeaderboardMessage(context.env, guildId, sport as string)
-        : view === 'community'
-        ? buildCommunityPointsLeaderboardMessage(context.env, guildId)
-        : buildAccuracyLeaderboardMessage(context.env, guildId);
+    const sql = getSql(context.env);
+    const cfgRows = await sql`SELECT ephemeral_user_commands FROM discord_guild_configs WHERE guild_id = ${interaction.guild_id}`;
+    const makeEphemeral = Boolean((cfgRows[0] as any)?.ephemeral_user_commands);
 
     context.waitUntil(
         buildMessage
             .catch((err) => {
-                console.error('[POST /api/discord/interactions] Leaderboard build failed:', err);
-                return { content: 'Could not build the leaderboard right now — try again shortly.', headerLabel: '', rows: [] };
+                console.error('[POST /api/discord/interactions] Deferred build failed:', err);
+                return { content: 'Could not build that right now — try again shortly.', headerLabel: '', rows: [] };
             })
             .then(({ content, headerLabel, rows }) => sendLeaderboardResult(applicationId, interactionToken, content, headerLabel, rows))
     );
 
     return new Response(
-        JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE }),
+        JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE, data: makeEphemeral ? { flags: EPHEMERAL_FLAG } : {} }),
         { headers: { 'Content-Type': 'application/json' } }
     );
+}
+
+function handleLeaderboardCommand(context: RequestContext, interaction: any): Promise<Response> | Response {
+    const guildId: string | undefined = interaction.guild_id;
+    if (!guildId) return ephemeral('Run this in a server, not a DM.');
+
+    const view = interaction.data?.options?.find((o: any) => o.name === 'view')?.value ?? 'accuracy';
+    const sport = interaction.data?.options?.find((o: any) => o.name === 'sport')?.value as string | undefined;
+    if (view === 'league' && !sport) return ephemeral('Pick a sport to view the league leaderboard (e.g. sport:NFL).');
+
+    const buildMessage = view === 'league'
+        ? buildLeagueLeaderboardMessage(context.env, guildId, sport as string)
+        : view === 'community'
+        ? buildCommunityPointsLeaderboardMessage(context.env, guildId)
+        : view === 'sr'
+        ? buildSrLeaderboardMessage(context.env, guildId)
+        : buildAccuracyLeaderboardMessage(context.env, guildId);
+
+    return deferImageCommand(context, interaction, buildMessage);
+}
+
+function handleMeCommand(context: RequestContext, interaction: any): Promise<Response> | Response {
+    const guildId: string | undefined = interaction.guild_id;
+    const discordUserId: string | undefined = interaction.member?.user?.id;
+    if (!guildId || !discordUserId) return ephemeral('Run this in a server, not a DM.');
+    return deferImageCommand(context, interaction, buildMeMessage(context.env, guildId, discordUserId));
 }
 
 interface LeaderboardRow {
@@ -254,8 +286,9 @@ interface LeaderboardRow {
 }
 
 // Guild-scoped, computed fresh every call - see the file header comment for why
-// there's deliberately no stored membership table backing this.
-async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promise<LeaderboardMessage> {
+// there's deliberately no stored membership table backing this. Exported for the
+// weekly auto-post sweep (functions/api/weekly-leaderboard-sweep.ts).
+export async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promise<LeaderboardMessage> {
     const sql = getSql(env);
     const [members, { leaderboardLabel }] = await Promise.all([
         fetchGuildMembers(env, guildId),

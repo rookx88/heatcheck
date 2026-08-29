@@ -24,7 +24,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, getGuildLabels, buildDiscordAvatarUrl } from './discord-api';
+import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, getGuildLabels, buildDiscordAvatarUrl, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL } from './discord-api';
 import type { LeaderboardMessage } from './discord-leaderboard-card';
 import { computeSkillRatings } from './skill-rating';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
@@ -87,30 +87,53 @@ function selectMenuResponse(customId: string, content: string, options: { label:
     );
 }
 
-// ===================================================================================
-// /heatchecks-setup - unchanged behavior, moved here from interactions.ts alongside
-// the rest of the admin commands for one home instead of splitting old/new.
-// ===================================================================================
+// /heatchecks-setup now lives in lib/pages-functions/discord-setup-wizard.ts (the
+// guided wizard; the old channel-option quick path survives there unchanged).
 
-export async function handleSetupCommand(context: RequestContext, interaction: any): Promise<Response> {
-    const guildId: string | undefined = interaction.guild_id;
-    if (!guildId) return ephemeral('Run this in a server, not a DM.');
-    if (!hasManageGuildPermission(interaction)) return ephemeral('You need the "Manage Server" permission to run this.');
+interface ConfigOverviewRow {
+    channel_id: string;
+    disabled_sports: string[] | string;
+    auto_draw_enabled: boolean;
+    community_points_label: string | null;
+    leaderboard_label: string | null;
+    settlement_visibility: string;
+    tank_posts_enabled: boolean;
+    daily_post_limit: number | null;
+    community_pick_channel_ids: string[] | string;
+    weekly_leaderboard: string[] | string;
+    ephemeral_user_commands: boolean;
+}
 
-    const channelId: string | undefined = interaction.data?.options?.find((o: any) => o.name === 'channel')?.value;
-    const configuredBy: string | undefined = interaction.member?.user?.id;
-    if (!channelId || !configuredBy) return ephemeral("Couldn't read that command's input - try again.");
-
+async function buildConfigOverview(context: RequestContext, guildId: string): Promise<Response> {
     const sql = getSql(context.env);
-    await sql`
-        INSERT INTO discord_guild_configs (guild_id, channel_id, configured_by_discord_user_id)
-        VALUES (${guildId}, ${channelId}, ${configuredBy})
-        ON CONFLICT (guild_id) DO UPDATE
-            SET channel_id = EXCLUDED.channel_id,
-                configured_by_discord_user_id = EXCLUDED.configured_by_discord_user_id,
-                configured_at = NOW()
+    const rows = await sql`
+        SELECT channel_id, disabled_sports, auto_draw_enabled, community_points_label, leaderboard_label,
+               settlement_visibility, tank_posts_enabled, daily_post_limit, community_pick_channel_ids,
+               weekly_leaderboard, ephemeral_user_commands
+        FROM discord_guild_configs WHERE guild_id = ${guildId}
     `;
-    return ephemeral(`Done — Tank posts will now go to <#${channelId}>.`);
+    if (rows.length === 0) return ephemeral('This server has no configuration yet — run /heatchecks-setup first.');
+    const c = rows[0] as unknown as ConfigOverviewRow;
+    const parse = (v: string[] | string): string[] => (Array.isArray(v) ? v : JSON.parse(v ?? '[]'));
+    const disabled = parse(c.disabled_sports);
+    const cpChannels = parse(c.community_pick_channel_ids);
+    const weekly = parse(c.weekly_leaderboard);
+    const enabledSports = SUPPORTED_SPORTS.filter((s) => !disabled.includes(s));
+
+    return ephemeral([
+        '**Current Heatchecks settings**',
+        `Main channel: <#${c.channel_id}>`,
+        `Community Pick channels: ${cpChannels.length ? cpChannels.map((id) => `<#${id}>`).join(' ') : 'main channel only'}`,
+        `Tank posts: ${c.tank_posts_enabled ? `on (${c.daily_post_limit == null ? 'all' : `max ${c.daily_post_limit}/day`})` : 'off'}`,
+        `Sports: ${enabledSports.length === SUPPORTED_SPORTS.length ? 'all' : enabledSports.join(', ') || 'none'}`,
+        `Settlement results: ${c.settlement_visibility === 'private' ? 'private (members use /my-results)' : 'announced in channel'}`,
+        `Auto-draw on settlement: ${c.auto_draw_enabled ? 'on' : 'off'}`,
+        `Names: points = "${c.community_points_label || DEFAULT_COMMUNITY_POINTS_LABEL}", leaderboard = "${c.leaderboard_label || DEFAULT_LEADERBOARD_LABEL}"`,
+        `Weekly leaderboard post: ${weekly.length ? weekly.join(', ') : 'off'}`,
+        `Member commands: ${c.ephemeral_user_commands ? 'visible only to the member' : 'visible to everyone'}`,
+        '',
+        'Change anything with the options on this command, or re-run /heatchecks-setup for the guided flow.',
+    ].join('\n'));
 }
 
 // ===================================================================================
@@ -130,8 +153,10 @@ export async function handleConfigCommand(context: RequestContext, interaction: 
     const leaderboardNameOpt = options.find((o: any) => o.name === 'leaderboard_name')?.value as string | undefined;
     const settlementVisibilityOpt = options.find((o: any) => o.name === 'settlement_visibility')?.value as string | undefined;
 
+    // Bare /heatchecks-config = show current settings (the config surface used to be
+    // write-only, which made every option invisible unless you already knew it).
     if (sport === undefined && autoDrawOpt === undefined && pointsNameOpt === undefined && leaderboardNameOpt === undefined && settlementVisibilityOpt === undefined) {
-        return ephemeral('Specify a sport (with enabled:true/false), auto_draw:true/false, points_name, leaderboard_name, or settlement_visibility.');
+        return buildConfigOverview(context, guildId);
     }
     if (sport !== undefined && enabledOpt === undefined) {
         return ephemeral('Specify enabled:true or enabled:false along with the sport.');
@@ -197,8 +222,9 @@ export async function handlePostCommand(context: RequestContext, interaction: an
     if (sub?.name === 'community-pick') {
         const sport = sub.options?.find((o: any) => o.name === 'sport')?.value as string | undefined;
         const keyword = sub.options?.find((o: any) => o.name === 'keyword')?.value as string | undefined;
+        const channel = sub.options?.find((o: any) => o.name === 'channel')?.value as string | undefined;
         if (!sport) return ephemeral('Missing sport.');
-        return handleCommunityPickSearch(context, guildId, sport, keyword);
+        return handleCommunityPickSearch(context, guildId, sport, keyword, channel);
     }
     return ephemeral('Unknown subcommand.');
 }
@@ -304,9 +330,19 @@ interface MarketSearchOption {
     value: string; // Polymarket market id
 }
 
-async function handleCommunityPickSearch(context: RequestContext, guildId: string, sport: string, keyword?: string): Promise<Response> {
-    const configRows = await getSql(context.env)`SELECT 1 FROM discord_guild_configs WHERE guild_id = ${guildId}`;
+async function handleCommunityPickSearch(context: RequestContext, guildId: string, sport: string, keyword?: string, channelId?: string): Promise<Response> {
+    const configRows = await getSql(context.env)`SELECT channel_id, community_pick_channel_ids FROM discord_guild_configs WHERE guild_id = ${guildId}`;
     if (configRows.length === 0) return ephemeral('Run /heatchecks-setup first to choose a channel for this server.');
+
+    // Optional target channel - must be the main channel or one of the wizard's
+    // approved Community Pick channels.
+    if (channelId) {
+        const cfg = configRows[0] as unknown as { channel_id: string; community_pick_channel_ids: string[] | string };
+        const extras: string[] = Array.isArray(cfg.community_pick_channel_ids) ? cfg.community_pick_channel_ids : JSON.parse((cfg.community_pick_channel_ids as string) ?? '[]');
+        if (channelId !== cfg.channel_id && !extras.includes(channelId)) {
+            return ephemeral(`<#${channelId}> isn't an approved Community Pick channel - add it in /heatchecks-setup (step 2) first.`);
+        }
+    }
 
     let games;
     try {
@@ -335,11 +371,10 @@ async function handleCommunityPickSearch(context: RequestContext, guildId: strin
     if (matches.length === 0) {
         return ephemeral(`No live two-sided markets found for ${sport}${term ? ` matching "${keyword}"` : ''}.`);
     }
-    // sport rides the select menu's own custom_id (":" -split, safe even for
-    // multi-word sports like "La Liga" since only literal colons split) so it
-    // survives into the confirm step - community_picks.sport needs it, and the
-    // select step itself only carries a market id as its value.
-    return selectMenuResponse(`cpselect:${sport}`, `Found ${matches.length} market(s) — pick one:`, matches);
+    // sport and target channel ride the select menu's own custom_id (":"-split,
+    // safe even for multi-word sports like "La Liga" since only literal colons
+    // split) so they survive through the select and confirm steps.
+    return selectMenuResponse(`cpselect:${sport}:${channelId ?? ''}`, `Found ${matches.length} market(s) — pick one:`, matches);
 }
 
 function parseMarketOutcomes(market: any): { question: string; outcomes: string[]; outcomePrices: number[] } | null {
@@ -354,8 +389,55 @@ function parseMarketOutcomes(market: any): { question: string; outcomes: string[
     return { question, outcomes, outcomePrices };
 }
 
+// The confirm screen, shared by the market-select step and the giveaway-select step
+// (which re-renders it with a new winner count baked into the Create button's
+// custom_id - components are stateless, so the choice lives in the id).
+function communityPickConfirmScreen(
+    marketId: string, sport: string, channelId: string, gwCount: number,
+    parsed: { question: string; outcomes: string[]; outcomePrices: number[] }
+): Response {
+    const split = computePointsSplit(parsed.outcomePrices);
+    const pointsPreview = split ? `\n${parsed.outcomes[0]} → ~${split.sideAPoints} pts  ·  ${parsed.outcomes[1]} → ~${split.sideBPoints} pts` : '';
+    const gwLine = gwCount > 0
+        ? `\n🎉 Giveaway: **${gwCount} winner${gwCount === 1 ? '' : 's'}** drawn from correct calls at settlement (you supply any prize - Heatchecks only names winners).`
+        : '';
+    const chanLine = channelId ? `\nPosting to <#${channelId}>.` : '';
+    const stateSuffix = `${marketId}:${sport}:${channelId}`;
+    return new Response(
+        JSON.stringify({
+            type: RESPONSE_UPDATE_MESSAGE,
+            data: {
+                content: `Create a Community Pick for:\n**${parsed.question}**\n${parsed.outcomes[0]} vs. ${parsed.outcomes[1]}?${pointsPreview}${chanLine}${gwLine}`,
+                embeds: [],
+                components: [
+                    {
+                        type: ACTION_ROW_TYPE,
+                        components: [{
+                            type: SELECT_MENU_TYPE, custom_id: `cpgw:${stateSuffix}`, placeholder: 'Giveaway for correct calls? (optional)',
+                            options: [
+                                { label: 'No giveaway', value: '0' },
+                                { label: '1 winner', value: '1' },
+                                { label: '3 winners', value: '3' },
+                                { label: '5 winners', value: '5' },
+                            ],
+                        }],
+                    },
+                    {
+                        type: ACTION_ROW_TYPE,
+                        components: [
+                            { type: BUTTON_TYPE, style: 1, label: 'Create', custom_id: `cpcreate:${stateSuffix}:${gwCount}` },
+                            { type: BUTTON_TYPE, style: BUTTON_STYLE_SECONDARY, label: 'Cancel', custom_id: 'cpcancel' },
+                        ],
+                    },
+                ],
+            },
+        }),
+        { headers: { 'Content-Type': 'application/json' } }
+    );
+}
+
 export async function handleCommunityPickSelect(context: RequestContext, interaction: any, customId: string): Promise<Response> {
-    const sport = customId.split(':')[1];
+    const [, sport, channelId = ''] = customId.split(':');
     const marketId: string | undefined = interaction.data?.values?.[0];
     if (!marketId || !sport) return updateMessageResponse("Couldn't read your selection.");
 
@@ -364,22 +446,30 @@ export async function handleCommunityPickSelect(context: RequestContext, interac
     const parsed = parseMarketOutcomes(market);
     if (!parsed) return updateMessageResponse("That market can't be used for a Community Pick (needs exactly two sides).");
 
-    // Estimated split for the preview only - the authoritative, stored value is
-    // always recomputed at confirm time from a fresh fetch (see
-    // handleCommunityPickConfirm), so this can legitimately differ slightly if odds
-    // moved in the seconds between clicks.
-    const split = computePointsSplit(parsed.outcomePrices);
-    const pointsPreview = split ? `\n${parsed.outcomes[0]} → ~${split.sideAPoints} pts  ·  ${parsed.outcomes[1]} → ~${split.sideBPoints} pts` : '';
+    // Preview odds only - the authoritative, stored split is always recomputed at
+    // confirm time from a fresh fetch (see handleCommunityPickConfirm).
+    return communityPickConfirmScreen(marketId, sport, channelId, 0, parsed);
+}
 
-    return updateMessageResponse(`Create a Community Pick for:\n**${parsed.question}**\n${parsed.outcomes[0]} vs. ${parsed.outcomes[1]}?${pointsPreview}`, [
-        { label: 'Create', customId: `cpcreate:${marketId}:${sport}` },
-        { label: 'Cancel', customId: 'cpcancel' },
-    ]);
+// Giveaway winner-count select on the confirm screen - re-renders the same screen
+// with the chosen count baked into the Create button.
+export async function handleCommunityGiveawaySelect(context: RequestContext, interaction: any, customId: string): Promise<Response> {
+    const [, marketId, sport, channelId = ''] = customId.split(':');
+    const gwCount = Number(interaction.data?.values?.[0] ?? '0') || 0;
+    if (!marketId || !sport) return updateMessageResponse("Couldn't read your selection.");
+
+    const market = await fetchMarket(marketId);
+    if (!market) return updateMessageResponse("Couldn't load that market anymore - it may no longer be available.");
+    const parsed = parseMarketOutcomes(market);
+    if (!parsed) return updateMessageResponse("That market can't be used for a Community Pick anymore.");
+
+    return communityPickConfirmScreen(marketId, sport, channelId, gwCount, parsed);
 }
 
 export async function handleCommunityPickConfirm(context: RequestContext, interaction: any, customId: string): Promise<Response> {
     const guildId: string | undefined = interaction.guild_id;
-    const [, marketId, sport] = customId.split(':');
+    const [, marketId, sport, targetChannelId = '', gwRaw = '0'] = customId.split(':');
+    const giveawayWinnerCount = Math.max(0, Math.min(25, Number(gwRaw) || 0));
     const createdBy: string | undefined = interaction.member?.user?.id;
     if (!guildId || !marketId || !createdBy) return updateMessageResponse("Couldn't read your selection.");
 
@@ -399,9 +489,14 @@ export async function handleCommunityPickConfirm(context: RequestContext, intera
     if (!split) return updateMessageResponse("This market's odds aren't usable for scoring right now - try a different one.");
 
     const sql = getSql(context.env);
-    const configRows = await sql`SELECT channel_id FROM discord_guild_configs WHERE guild_id = ${guildId}`;
+    const configRows = await sql`SELECT channel_id, community_pick_channel_ids FROM discord_guild_configs WHERE guild_id = ${guildId}`;
     if (configRows.length === 0) return updateMessageResponse('This server has no channel configured - run /heatchecks-setup first.');
-    const channelId = (configRows[0] as unknown as { channel_id: string }).channel_id;
+    const cfg = configRows[0] as unknown as { channel_id: string; community_pick_channel_ids: string[] | string };
+    const extras: string[] = Array.isArray(cfg.community_pick_channel_ids) ? cfg.community_pick_channel_ids : JSON.parse((cfg.community_pick_channel_ids as string) ?? '[]');
+    // Re-validate the target channel server-side (custom_ids are client-round-tripped).
+    const channelId = targetChannelId && (targetChannelId === cfg.channel_id || extras.includes(targetChannelId))
+        ? targetChannelId
+        : cfg.channel_id;
 
     // 30 days out is a simple, generous default resolve window - Community Picks
     // don't carry their own admin-set date input in this pass; the settlement sweep
@@ -413,6 +508,7 @@ export async function handleCommunityPickConfirm(context: RequestContext, intera
         guildId, channelId, createdBy, sport: sport || null, marketId,
         question: parsed.question, sideALabel: parsed.outcomes[0], sideBLabel: parsed.outcomes[1],
         sourceOutcomes: parsed.outcomes, sideAPoints: split.sideAPoints, sideBPoints: split.sideBPoints, resolveDate,
+        giveawayWinnerCount,
     });
 
     if (result.status === 'duplicate') return updateMessageResponse('This market already has a Community Pick posted in this server.');
@@ -727,6 +823,103 @@ export async function buildLeagueLeaderboardMessage(env: Env, guildId: string, s
         };
     });
     return { content: `**${sport} League Leaderboard**`, headerLabel: `${sport} LEAGUE POINTS`, rows: rankedRows };
+}
+
+// ===================================================================================
+// /leaderboard view:sr - ranked BY Skill Rating (everywhere else SR is display-only).
+// Candidates: guild members with any settled picks or any Community Points.
+// ===================================================================================
+
+export async function buildSrLeaderboardMessage(env: Env, guildId: string): Promise<LeaderboardMessage> {
+    const sql = getSql(env);
+    const [members, { leaderboardLabel }] = await Promise.all([
+        fetchGuildMembers(env, guildId),
+        getGuildLabels(sql, guildId),
+    ]);
+    const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
+    if (memberIds.length === 0) return { content: 'No members to rank in this server yet.', headerLabel: '', rows: [] };
+
+    const candidateRows = (await sql`
+        SELECT DISTINCT dl.discord_user_id FROM discord_links dl
+        JOIN picks p ON p.waitlist_id = dl.waitlist_id
+        WHERE dl.discord_user_id = ANY(${memberIds}::text[]) AND p.result IS NOT NULL
+        UNION
+        SELECT discord_user_id FROM community_points
+        WHERE guild_id = ${guildId} AND discord_user_id = ANY(${memberIds}::text[]) AND points > 0
+    `) as unknown as { discord_user_id: string }[];
+    const candidates = candidateRows.map((r) => r.discord_user_id);
+    if (candidates.length === 0) return { content: 'Nobody in this server has any settled activity yet.', headerLabel: '', rows: [] };
+
+    const srById = await computeSkillRatings(sql, guildId, candidates);
+    const memberById = new Map(members.map((m) => [m.user.id, m.user]));
+    const ranked = candidates
+        .map((id) => ({ id, sr: srById.get(id) ?? 0 }))
+        .sort((a, b) => b.sr - a.sr)
+        .slice(0, 10);
+
+    const rankedRows = ranked.map((r, i) => {
+        const member = memberById.get(r.id);
+        return {
+            rank: i + 1,
+            displayName: member?.global_name || member?.username || 'Unknown',
+            avatarUrl: buildDiscordAvatarUrl(r.id, member?.avatar),
+            scoreLine: `SR ${r.sr}`,
+            scoreValue: String(r.sr),
+            sr: r.sr,
+        };
+    });
+    return { content: `**Skill Rating ${leaderboardLabel}**`, headerLabel: 'SKILL RATING', rows: rankedRows };
+}
+
+// ===================================================================================
+// /me - a personal rank card: your Community Points rank in this guild, points,
+// accuracy, and SR, rendered through the same image pipeline as /leaderboard.
+// ===================================================================================
+
+export async function buildMeMessage(env: Env, guildId: string, discordUserId: string): Promise<LeaderboardMessage> {
+    const sql = getSql(env);
+    const [members, { communityPointsLabel }] = await Promise.all([
+        fetchGuildMembers(env, guildId),
+        getGuildLabels(sql, guildId),
+    ]);
+    const member = members.find((m) => m.user.id === discordUserId)?.user;
+
+    const [pointsRows, rankRows, pickRows, srById] = await Promise.all([
+        sql`SELECT points FROM community_points WHERE guild_id = ${guildId} AND discord_user_id = ${discordUserId}`,
+        sql`
+            SELECT COUNT(*)::int AS ahead FROM community_points
+            WHERE guild_id = ${guildId} AND points > COALESCE(
+                (SELECT points FROM community_points WHERE guild_id = ${guildId} AND discord_user_id = ${discordUserId}), 0)
+        `,
+        sql`
+            SELECT COUNT(*) FILTER (WHERE p.result = 'correct')::int AS correct,
+                   COUNT(*) FILTER (WHERE p.result IS NOT NULL)::int AS settled
+            FROM discord_links dl JOIN picks p ON p.waitlist_id = dl.waitlist_id
+            WHERE dl.discord_user_id = ${discordUserId}
+        `,
+        computeSkillRatings(sql, guildId, [discordUserId]),
+    ]);
+
+    const points = Number((pointsRows[0] as any)?.points ?? 0);
+    const rank = Number((rankRows[0] as any)?.ahead ?? 0) + 1;
+    const correct = Number((pickRows[0] as any)?.correct ?? 0);
+    const settled = Number((pickRows[0] as any)?.settled ?? 0);
+    const sr = srById.get(discordUserId) ?? 0;
+
+    const displayName = member?.global_name || member?.username || 'You';
+    const accLine = settled > 0 ? ` · ${Math.round((correct / settled) * 100)}% (${correct}/${settled})` : '';
+    return {
+        content: `**${displayName} — your Heatchecks stats**`,
+        headerLabel: 'YOUR STATS',
+        rows: [{
+            rank,
+            displayName,
+            avatarUrl: buildDiscordAvatarUrl(discordUserId, member?.avatar),
+            scoreLine: `${points} ${communityPointsLabel}${accLine}`,
+            scoreValue: points.toLocaleString('en-US'),
+            sr,
+        }],
+    };
 }
 
 // ===================================================================================

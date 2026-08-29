@@ -37,15 +37,17 @@ const leagueSportChoices = LEAGUE_SPORTS.map((s) => ({ name: s, value: s }));
 const commands = [
     {
         name: 'heatchecks-setup',
-        description: "Choose which channel gets this server's Tank posts and picks",
+        description: 'Guided setup — get Heatchecks running in this server in a couple of minutes',
         type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
         default_member_permissions: MANAGE_GUILD_PERMISSION,
         options: [
             {
                 name: 'channel',
-                description: 'The channel to post Tanks in',
+                // Optional quick path: with a channel it just sets the channel like
+                // before; bare, it runs the full guided wizard.
+                description: 'Quick-set the post channel (leave empty for the full guided setup)',
                 type: OPTION_TYPE_CHANNEL,
-                required: true,
+                required: false,
                 channel_types: [CHANNEL_TYPE_GUILD_TEXT],
             },
         ],
@@ -94,6 +96,7 @@ const commands = [
                 options: [
                     { name: 'sport', description: 'Sport to search', type: OPTION_TYPE_STRING, required: true, choices: sportChoices },
                     { name: 'keyword', description: 'Optional keyword filter', type: OPTION_TYPE_STRING, required: false },
+                    { name: 'channel', description: 'Post to an approved Community Pick channel (default: main channel)', type: OPTION_TYPE_CHANNEL, required: false, channel_types: [CHANNEL_TYPE_GUILD_TEXT] },
                 ],
             },
         ],
@@ -130,6 +133,12 @@ const commands = [
         ],
     },
     {
+        name: 'me',
+        description: 'Your personal rank card — rank, points, accuracy, and Skill Rating in this server',
+        type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
+        // No default_member_permissions - a member command, like /my-results.
+    },
+    {
         name: 'my-results',
         description: 'Privately check your own recent settled results and points in this server',
         type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
@@ -151,6 +160,7 @@ const commands = [
                     { name: 'Accuracy', value: 'accuracy' },
                     { name: 'Community Points', value: 'community' },
                     { name: 'League', value: 'league' },
+                    { name: 'Skill Rating', value: 'sr' },
                 ],
             },
             {

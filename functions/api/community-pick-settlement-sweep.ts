@@ -21,7 +21,7 @@ import { fetchMarket, resolveMarket, outcomeOrderMismatch } from '../../lib/page
 import { postDiscordChannelMessage } from '../../lib/pages-functions/discord-api';
 import { buildCommunitySettlementRecapMessage, buildGiveawayResultMessage, buildNoEligiblePoolMessage } from '../../lib/pages-functions/discord-community-card';
 import { awardCommunityPoints } from '../../lib/pages-functions/community-points';
-import { drawGiveawayWinner } from '../../lib/pages-functions/discord-draw';
+import { drawGiveawayWinner, drawMultipleGiveawayWinners } from '../../lib/pages-functions/discord-draw';
 
 const MAX_PER_RUN = 20;
 
@@ -40,6 +40,7 @@ interface OpenPickRow {
     side_a_points: number;
     side_b_points: number;
     settlement_visibility: string;
+    giveaway_winner_count: number;
 }
 
 interface VoteRow {
@@ -58,7 +59,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const openPicks = (await sql`
         SELECT cp.id, cp.guild_id, dgc.channel_id, dgc.auto_draw_enabled,
                cp.source_market_id, cp.question_text, cp.side_a_label, cp.side_b_label, cp.source_outcomes,
-               cp.side_a_points, cp.side_b_points, dgc.settlement_visibility
+               cp.side_a_points, cp.side_b_points, dgc.settlement_visibility, cp.giveaway_winner_count
         FROM community_picks cp
         JOIN discord_guild_configs dgc ON dgc.guild_id = cp.guild_id
         WHERE cp.status = 'open'
@@ -132,7 +133,30 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 await postDiscordChannelMessage(context.env, row.channel_id, recap);
             }
 
-            if (row.auto_draw_enabled) {
+            // Per-pick giveaway (chosen at creation): N distinct winners from correct
+            // voters, idempotent per slot. Announced publicly even in private
+            // settlement mode - a giveaway result is inherently public, same posture
+            // as the guild-wide auto-draw. When set, it REPLACES the guild-wide
+            // auto-draw for this pick (both write the same draws table; running both
+            // would just re-announce slot 1).
+            if (row.giveaway_winner_count > 0) {
+                const { winners } = await drawMultipleGiveawayWinners(sql, context.env, {
+                    guildId: row.guild_id, sourceType: 'community_pick', sourceId: row.id, drawnBy: null,
+                    winnerCount: row.giveaway_winner_count,
+                });
+                const drawMessage = winners.length === 0
+                    ? buildNoEligiblePoolMessage(row.question_text)
+                    : {
+                        embeds: [{
+                            author: { name: '🎉 Giveaway draw' },
+                            title: row.question_text,
+                            description: `Randomly selected winner${winners.length === 1 ? '' : 's'} (from correct calls): ${winners.map((w) => `<@${w}>`).join(' ')}`,
+                            color: 0xffc72c,
+                        }],
+                        components: [],
+                    };
+                await postDiscordChannelMessage(context.env, row.channel_id, drawMessage);
+            } else if (row.auto_draw_enabled) {
                 const draw = await drawGiveawayWinner(sql, context.env, {
                     guildId: row.guild_id, sourceType: 'community_pick', sourceId: row.id, drawnBy: null,
                 });

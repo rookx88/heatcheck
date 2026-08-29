@@ -27,6 +27,9 @@ export interface CreateCommunityPickInput {
     sideAPoints: number;
     sideBPoints: number;
     resolveDate: string; // ISO 8601
+    // Per-pick giveaway: how many winners to draw from CORRECT voters at settlement.
+    // 0/omitted = none. Winners are only ever named - no prize handling anywhere.
+    giveawayWinnerCount?: number;
 }
 
 export type CreateCommunityPickResult =
@@ -52,12 +55,14 @@ export async function createAndPostCommunityPick(
         const rows = await sql`
             INSERT INTO community_picks (
                 guild_id, created_by, sport, source_market_id, question_text,
-                side_a_label, side_b_label, source_outcomes, side_a_points, side_b_points, resolve_date
+                side_a_label, side_b_label, source_outcomes, side_a_points, side_b_points, resolve_date,
+                giveaway_winner_count
             )
             VALUES (
                 ${input.guildId}, ${input.createdBy}, ${input.sport}, ${input.marketId}, ${input.question},
                 ${input.sideALabel}, ${input.sideBLabel}, ${JSON.stringify(input.sourceOutcomes)}::jsonb,
-                ${input.sideAPoints}, ${input.sideBPoints}, ${input.resolveDate}
+                ${input.sideAPoints}, ${input.sideBPoints}, ${input.resolveDate},
+                ${input.giveawayWinnerCount ?? 0}
             )
             RETURNING id
         `;

@@ -24,6 +24,10 @@ const FULL_CHAIN_CRON = '0 10 * * *';
 // the full chain nor the regular sweeps; its own third case.
 const LEAGUE_SLATE_CRON = '0 12 * * 2';
 
+// Weekly leaderboard auto-post (Sunday evening, after US slates wrap) for guilds
+// that opted in via the setup wizard - its own fourth case below.
+const WEEKLY_LEADERBOARD_CRON = '0 23 * * 0';
+
 async function runCurate(env: Env): Promise<string> {
     const res = await fetch(env.CURATE_URL, {
         method: 'POST',
@@ -101,6 +105,8 @@ export default {
             ctx.waitUntil(runCurate(env));
         } else if (event.cron === LEAGUE_SLATE_CRON) {
             ctx.waitUntil(runLeagueSlateSweep(env));
+        } else if (event.cron === WEEKLY_LEADERBOARD_CRON) {
+            ctx.waitUntil(postSibling(env, '/api/weekly-leaderboard-sweep'));
         } else {
             ctx.waitUntil(runSweeps(env));
         }

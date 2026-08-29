@@ -54,6 +54,8 @@ interface GuildConfigRow {
     guild_id: string;
     channel_id: string;
     disabled_sports: string[] | string;
+    tank_posts_enabled: boolean;
+    daily_post_limit: number | null;
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -90,7 +92,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(context.env);
     const guildRows = (await sql`
-        SELECT guild_id, channel_id, disabled_sports FROM discord_guild_configs
+        SELECT guild_id, channel_id, disabled_sports, tank_posts_enabled, daily_post_limit FROM discord_guild_configs
     `) as unknown as GuildConfigRow[];
 
     let candidates = 0;
@@ -100,24 +102,55 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const errors: string[] = [];
 
     for (const guild of guildRows) {
+        // Wizard setting: this guild opted out of Tank posts entirely.
+        if (guild.tank_posts_enabled === false) continue;
+
         const disabledSports: string[] = Array.isArray(guild.disabled_sports)
             ? guild.disabled_sports
             : (typeof guild.disabled_sports === 'string' ? JSON.parse(guild.disabled_sports) : []);
 
-        const rows = (await sql`
-            SELECT t.id, t.slug, t.league, t.model_output, t.game_snapshot
-            FROM tank_pages t
-            WHERE t.status = 'published' AND t.visibility = 'app' AND t.published_at IS NOT NULL
-              AND NOT EXISTS (
-                  SELECT 1 FROM discord_guild_posts dgp
-                  WHERE dgp.guild_id = ${guild.guild_id} AND dgp.tank_page_id = t.id
-              )
-            ORDER BY t.published_at ASC
-            LIMIT ${MAX_TANKS_PER_GUILD_PER_RUN}
-        `) as unknown as TankRow[];
+        // Wizard cadence setting: a per-UTC-day cap across all three daily sweep
+        // slots. NULL = unlimited (original behavior). Capped guilds get the NEWEST
+        // unposted Tanks first - if only 1 posts today, it should be today's, not the
+        // oldest backlog item.
+        let dailyBudget = Number.POSITIVE_INFINITY;
+        if (guild.daily_post_limit != null) {
+            const countRows = await sql`
+                SELECT COUNT(*)::int AS n FROM discord_guild_posts
+                WHERE guild_id = ${guild.guild_id} AND posted_at >= CURRENT_DATE
+            `;
+            dailyBudget = Math.max(0, guild.daily_post_limit - Number((countRows[0] as any).n));
+            if (dailyBudget === 0) continue;
+        }
+
+        const rows = (await (guild.daily_post_limit != null
+            ? sql`
+                SELECT t.id, t.slug, t.league, t.model_output, t.game_snapshot
+                FROM tank_pages t
+                WHERE t.status = 'published' AND t.visibility = 'app' AND t.published_at IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM discord_guild_posts dgp
+                      WHERE dgp.guild_id = ${guild.guild_id} AND dgp.tank_page_id = t.id
+                  )
+                ORDER BY t.published_at DESC
+                LIMIT ${MAX_TANKS_PER_GUILD_PER_RUN}
+            `
+            : sql`
+                SELECT t.id, t.slug, t.league, t.model_output, t.game_snapshot
+                FROM tank_pages t
+                WHERE t.status = 'published' AND t.visibility = 'app' AND t.published_at IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM discord_guild_posts dgp
+                      WHERE dgp.guild_id = ${guild.guild_id} AND dgp.tank_page_id = t.id
+                  )
+                ORDER BY t.published_at ASC
+                LIMIT ${MAX_TANKS_PER_GUILD_PER_RUN}
+            `)) as unknown as TankRow[];
         candidates += rows.length;
 
+        let postedThisGuild = 0;
         for (const rawRow of rows) {
+            if (postedThisGuild >= dailyBudget) break;
             if (disabledSports.includes(rawRow.league)) {
                 skippedByFilter++;
                 continue;
@@ -150,6 +183,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                     ON CONFLICT (guild_id, tank_page_id) DO NOTHING
                 `;
                 posted++;
+                postedThisGuild++;
             } catch (err: any) {
                 // Most commonly: the bot was removed from this guild since it was
                 // configured (posting now 403s). Left for a human to notice/reconfig

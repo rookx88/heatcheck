@@ -20,8 +20,12 @@ compatibility_date = "2026-08-12"
 # league auto-slate (/api/league-slate-sweep via runLeagueSlateSweep in src/index.ts),
 # timed after Monday Night Football concludes and the week's lines settle. Not a sweep,
 # not the full chain - its own third branch in event.cron below.
+#
+# "0 23 * * 0" (Sunday evening, 2026-08-29) is a fifth slot: the weekly leaderboard
+# auto-post (/api/weekly-leaderboard-sweep) for guilds that opted in via the setup
+# wizard - timed after Sunday's slates wrap in the US. Its own fourth branch below.
 [triggers]
-crons = ["0 10 * * *", "0 18 * * *", "0 2 * * *", "0 12 * * 2"]
+crons = ["0 10 * * *", "0 18 * * *", "0 2 * * *", "0 12 * * 2", "0 23 * * 0"]
 
 [vars]
 # Staging posture (2026-08-21): curation runs against the auth-sessions branch alias,

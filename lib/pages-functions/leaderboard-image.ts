@@ -27,6 +27,7 @@
 import satori, { init as initSatori } from 'satori-legacy/wasm';
 import initYoga from 'yoga-wasm-web';
 import { initWasm, Resvg } from '@resvg/resvg-wasm';
+import type { Env } from './db';
 // Relative imports are load-bearing: the Pages bundler's CompiledWasm rule turns
 // these into pre-compiled WebAssembly.Modules (the ONLY form the Workers runtime
 // accepts - compiling from raw bytes at runtime is blocked, and importing via a
@@ -439,6 +440,41 @@ export async function renderLeaderboardImage(headerLabel: string, rows: Leaderbo
         console.error('[leaderboard-image] Render failed, falling back to embeds:', err);
         return null;
     }
+}
+
+// Channel-post variant for the weekly auto-post (functions/api/
+// weekly-leaderboard-sweep.ts): same image-first/embeds-fallback posture as
+// sendLeaderboardResult, but delivered as a bot channel message (multipart with Bot
+// auth) instead of an interaction-webhook PATCH.
+export async function postLeaderboardToChannel(
+    env: Env,
+    channelId: string,
+    content: string,
+    headerLabel: string,
+    rows: LeaderboardRowInput[]
+): Promise<void> {
+    const url = `https://discord.com/api/v10/channels/${channelId}/messages`;
+    const png = rows.length > 0 ? await renderLeaderboardImage(headerLabel, rows) : null;
+
+    if (png) {
+        const form = new FormData();
+        form.append('payload_json', JSON.stringify({
+            content: '',
+            embeds: [{ title: 'Heatchecks', url: HEATCHECKS_DISCORD_INVITE, image: { url: 'attachment://leaderboard.png' } }],
+        }));
+        form.append('files[0]', new Blob([png], { type: 'image/png' }), 'leaderboard.png');
+        const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` }, body: form });
+        if (res.ok) return;
+        console.error(`[leaderboard-image] Weekly multipart post failed (${res.status}): ${await res.text().catch(() => '')}`);
+    }
+
+    const embeds = buildLeaderboardRowEmbeds(rows);
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content, embeds }),
+    });
+    if (!res.ok) throw new Error(`Weekly leaderboard post failed: ${res.status} ${await res.text().catch(() => '')}`);
 }
 
 // The one place all three /leaderboard views funnel through for final delivery -
