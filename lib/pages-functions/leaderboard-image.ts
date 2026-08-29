@@ -67,7 +67,7 @@ export const HEATCHECKS_DISCORD_INVITE = 'https://discord.gg/cv8yPDAEy';
 const IMAGE_WIDTH = 720;
 const CARD_PAD = 26;
 const CARD_RADIUS = 44;
-const HEADER_PLATE_H = 116;
+const HEADER_PLATE_H = 126;
 const ROW_W = IMAGE_WIDTH - CARD_PAD * 2;
 const ROW_BOX_H = 120; // the visible rank unit (plate + white box)
 const ROW_SHADOW_OFFSET = 10; // manual shadow layer offset below/right of each box
@@ -80,7 +80,7 @@ const WATERMARK_LOGO_HEIGHT = 48;
 const WATERMARK_LOGO_WIDTH = Math.round(WATERMARK_LOGO_HEIGHT * (149 / 72)); // source PNG's native aspect ratio
 const DISCORD_ICON_SIZE = 36;
 
-const COLOR_CARD_BLUE = '#2712d8'; // the mockup's royal blue
+const COLOR_CARD_BLUE = '#0e0a38'; // very dark navy (was the mockup's royal #2712d8 - Sammy asked for really dark)
 const COLOR_PLATE_BLACK = '#0c0c0e';
 const COLOR_GREEN = '#31e874'; // the mockup's bright green
 const COLOR_WHITE = '#ffffff';
@@ -159,7 +159,7 @@ function pillNode(text: string, fontSize: number) {
                 display: 'flex',
                 background: COLOR_PLATE_BLACK,
                 borderRadius: 999,
-                padding: '4px 16px',
+                padding: '5px 18px',
                 fontFamily: 'Nunito',
                 fontWeight: 800,
                 fontSize,
@@ -227,16 +227,16 @@ function buildRowNode(row: LeaderboardRowInput, avatarDataUri: string) {
                             {
                                 type: 'div',
                                 props: {
-                                    style: { display: 'flex', position: 'absolute', right: 12, top: 10 },
-                                    children: [pillNode(row.displayName, 19)],
+                                    style: { display: 'flex', position: 'absolute', right: 12, top: 8 },
+                                    children: [pillNode(row.displayName, 24)],
                                 },
                             },
                             // SR pill, under the name.
                             {
                                 type: 'div',
                                 props: {
-                                    style: { display: 'flex', position: 'absolute', right: 12, top: 52 },
-                                    children: [pillNode(`SR: ${row.sr}`, 15)],
+                                    style: { display: 'flex', position: 'absolute', right: 12, top: 58 },
+                                    children: [pillNode(`SR: ${row.sr}`, 20)],
                                 },
                             },
                             // Green-outlined score pill, bottom-left.
@@ -350,7 +350,7 @@ export async function renderLeaderboardImage(headerLabel: string, rows: Leaderbo
                                             display: 'flex',
                                             fontFamily: 'Orbitron',
                                             fontWeight: 700,
-                                            fontSize: 20,
+                                            fontSize: 27,
                                             letterSpacing: 2,
                                             color: COLOR_WHITE,
                                             textTransform: 'uppercase',
@@ -456,12 +456,17 @@ export async function sendLeaderboardResult(
 
         if (png) {
             const form = new FormData();
-            // title+url makes "Heatchecks" clickable above the image - the invite's
-            // clickable half (the in-image watermark text is the non-clickable,
-            // survives-a-screenshot half).
+            // The image's Discord-icon watermark can't be clickable (pixels never
+            // are), so the invite gets a REAL link button under the message (style 5
+            // = link button, allowed on interaction responses), plus the clickable
+            // embed title as before.
             form.append('payload_json', JSON.stringify({
                 content: '',
                 embeds: [{ title: 'Heatchecks', url: HEATCHECKS_DISCORD_INVITE, image: { url: 'attachment://leaderboard.png' } }],
+                components: [{
+                    type: 1,
+                    components: [{ type: 2, style: 5, label: 'Join the Heatchecks Discord', url: HEATCHECKS_DISCORD_INVITE }],
+                }],
             }));
             form.append('files[0]', new Blob([png], { type: 'image/png' }), 'leaderboard.png');
             const res = await fetch(patchUrl, { method: 'PATCH', body: form });
