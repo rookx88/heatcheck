@@ -32,6 +32,15 @@
 /assets/*.css
   Cache-Control: public, no-cache
 
+# The interactive world-map raster sits at /assets/ (it travels through the esbuild
+# bundle, not /assets/images/) under a FIXED name that gets swapped in place on art
+# updates - without this rule it matches no pattern at all and falls through to the
+# platform default, so users could hold stale art while the no-cache world-map.js
+# (with its recalibrated hotspots) updates under them. Literal path, matched by no
+# wildcard above, so the precedence caveat in the comment up top doesn't apply.
+/assets/world-map-interactive.webp
+  Cache-Control: public, no-cache
+
 # Unlike the JS chunks above, nothing under either of these two paths has a
 # content-hashed filename - it's all fixed names (logo, Mud Puppy art, world map,
 # the OG share image, banners) that CAN be updated in place, exactly like world-map.png

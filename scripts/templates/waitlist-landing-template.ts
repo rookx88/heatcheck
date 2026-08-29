@@ -339,7 +339,7 @@ export function generateLandingPageHtml(baseUrl: string): string {
             <div class="hc-hero-inner">
                 <picture>
                     <source srcset="/assets/images/world-map.webp" type="image/webp">
-                    <img class="hc-world-map" src="/assets/images/world-map.png" alt="Illustrated map of the Heatchecks sports world, with themed islands for soccer, football, basketball, baseball, hockey, and golf surrounding a central aquarium" width="1120" height="1113" loading="eager">
+                    <img class="hc-world-map" src="/assets/images/world-map.png" alt="Illustrated planet of the Heatchecks sports world, with themed islands for soccer, football, baseball, basketball, hockey, and golf surrounding the central Tank dome" width="1120" height="1116" loading="eager">
                 </picture>
                 <div class="hc-puppy-stage" aria-hidden="false" aria-label="Your Mud Puppy pet, shown cycling through its forms">
                     <picture class="hc-puppy-frame is-active" data-frame="0">

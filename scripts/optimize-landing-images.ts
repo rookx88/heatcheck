@@ -32,11 +32,6 @@ interface ImageJob {
 const jobs: ImageJob[] = [
     { source: 'heatcheckslogo-new.svg', outName: 'heatchecks-logo', width: 500, blackBackground: true },
     { source: 'CheckNavBar.svg', outName: 'checknav', width: 140, blackBackground: true },
-    // 1120 = ~2x retina for its actual display context (waitlist-landing-template.ts's
-    // .hc-world-map sits inside .hc-page, capped at max-width: 560px) - was 1600, which
-    // is ~3x oversized for that container and made this the heaviest asset on the LCP
-    // path for no visual benefit, since it's never displayed anywhere near that wide.
-    { source: 'HeatChecksWorldMap.svg', outName: 'world-map', width: 1120, blackBackground: true },
     { source: 'MudPuppyDefault.svg', outName: 'mudpuppy-default', width: 800, blackBackground: true },
     { source: 'MudPuppyJersey.svg', outName: 'mudpuppy-jersey', width: 800, blackBackground: true },
     { source: 'MudPuppyFootball.svg', outName: 'mudpuppy-football', width: 800, blackBackground: true },
@@ -179,11 +174,10 @@ function computeVisibleRasterCrop(
 }
 
 /**
- * The game screens' full-bleed backgrounds (the interactive world map island
- * and individual Tank pages) were never wired into this optimization
- * pipeline - each ships its raw Canva SVG export directly
- * (components/WorldMap.tsx and components/TankScreen.tsx import straight from
- * assets/new-website/*.svg), at 3.2MB and 3.1MB respectively, because the
+ * The game screens' full-bleed backgrounds (individual Tank pages) were
+ * never wired into this optimization pipeline - each ships its raw Canva
+ * SVG export directly (components/TankScreen.tsx imports straight from
+ * assets/new-website/*.svg), at 3.1MB, because the
  * lossless-PNG-or-barely-compressed-JPEG payload embedded in the SVG never
  * got re-encoded. Unlike the `jobs` loop above, this must NOT trim or resize
  * beyond the exact visible-region crop computed above: these components
@@ -195,11 +189,6 @@ function computeVisibleRasterCrop(
  */
 const gameBackgroundJobs: GameBackgroundJob[] = [
     { source: 'Tanks- Background.svg', outName: 'tanks-bg' },
-    // Distinct from the trimmed/resized 'world-map' job above (that one feeds
-    // the static waitlist page's <img>) - the interactive island
-    // (components/WorldMap.tsx) needs the canvas its hand-traced region
-    // hotspots are calibrated to.
-    { source: 'HeatChecksWorldMap.svg', outName: 'world-map-interactive', blackBackground: true },
 ];
 
 async function buildGameBackgrounds(): Promise<void> {
@@ -220,7 +209,7 @@ async function buildGameBackgrounds(): Promise<void> {
         const originalSize = fs.statSync(svgPath).size;
         const cropped = crop.width !== nativeMeta.width || crop.height !== nativeMeta.height;
         console.log(
-            `✓ ${job.source} (${(originalSize / 1024 / 1024).toFixed(1)}MB) -> ` +
+            `âœ“ ${job.source} (${(originalSize / 1024 / 1024).toFixed(1)}MB) -> ` +
             `${job.outName}.webp (${(webpSize / 1024).toFixed(0)}KB) [${info.width}x${info.height}` +
             `${cropped ? `, cropped from native ${nativeMeta.width}x${nativeMeta.height}` : ', native size'}]`
         );
@@ -228,30 +217,56 @@ async function buildGameBackgrounds(): Promise<void> {
 }
 
 /**
- * The OG/Twitter share-card image (og-share-world-map.jpg) - separate from the `jobs`
- * loop above since it needs a fixed-dimension cover-crop (1200x630, the standard OG
- * card size) rather than a width-preserving resize. JPG (not WebP) deliberately -
- * several link-unfurlers (historically including Twitter/X) handle WebP OG images
- * inconsistently, so JPG is the safe universal choice here specifically.
+ * All three world-map outputs, derived from the redesigned planet artwork at
+ * assets/new-website/world_map_nav.png (1500x1500, real alpha channel - unlike
+ * the retired HeatChecksWorldMap.svg Canva export, no embedded-PNG extraction,
+ * visible-region crop, or brightness-derived alpha applies):
+ *
+ * - world-map-interactive.webp: the interactive island (components/WorldMap.tsx).
+ *   MUST stay untrimmed/unresized at the native 1500x1500 - worldMapRegions.ts's
+ *   hand-placed hotspots and WORLD_MAP_VIEWBOX are calibrated to exactly this
+ *   framing; any trim or resize shifts every hotspot off the artwork.
+ * - world-map.webp/.png: trimmed + resized static <picture> fallback for the
+ *   homepage SSR (lib/pages-functions/homepage/render.ts). 1120 = ~2x retina
+ *   for its display context (capped well below that width everywhere).
+ * - og-share-world-map.jpg: the OG/Twitter share card, fixed 1200x630 cover
+ *   crop. JPG (not WebP) deliberately - several link-unfurlers (historically
+ *   including Twitter/X) handle WebP OG images inconsistently.
  */
-async function buildOgImage(): Promise<void> {
-    const svgPath = path.join(sourceDir, 'HeatChecksWorldMap.svg');
-    let pngBuffer = extractEmbeddedPng(svgPath);
-    pngBuffer = await deriveAlphaFromBrightness(pngBuffer);
-    pngBuffer = await sharp(pngBuffer).trim().toBuffer();
+async function buildWorldMapImages(): Promise<void> {
+    const srcPath = path.join(sourceDir, 'world_map_nav.png');
 
-    const outPath = path.join(outDir, 'og-share-world-map.jpg');
-    await sharp(pngBuffer)
-        // Flatten onto the same navy the page background uses, since the source has
-        // transparent padding and a JPG can't carry alpha - a transparent-turned-white
-        // background would look like a bug in every link preview.
-        .flatten({ background: '#0b1a45' })
+    // Interactive canvas: codec change only, framing untouched (see above).
+    const interactivePath = path.join(outDir, 'world-map-interactive.webp');
+    const interactiveInfo = await sharp(srcPath).webp({ quality: 82 }).toFile(interactivePath);
+    console.log(
+        `âœ“ world_map_nav.png -> world-map-interactive.webp ` +
+        `(${(fs.statSync(interactivePath).size / 1024).toFixed(0)}KB) ` +
+        `[${interactiveInfo.width}x${interactiveInfo.height}, native framing]`
+    );
+
+    // Static fallback pair: trim the transparent padding, then cap the width.
+    const trimmedBuffer = await sharp(srcPath).trim().toBuffer();
+    const webpPath = path.join(outDir, 'world-map.webp');
+    const pngPath = path.join(outDir, 'world-map.png');
+    await sharp(trimmedBuffer).resize({ width: 1120, withoutEnlargement: true }).webp({ quality: 82 }).toFile(webpPath);
+    const pngInfo = await sharp(trimmedBuffer).resize({ width: 1120, withoutEnlargement: true }).png({ compressionLevel: 9 }).toFile(pngPath);
+    console.log(
+        `âœ“ world_map_nav.png -> world-map.webp (${(fs.statSync(webpPath).size / 1024).toFixed(0)}KB) + ` +
+        `world-map.png (${(pngInfo.size / 1024).toFixed(0)}KB) [trimmed to ${pngInfo.width}x${pngInfo.height}]`
+    );
+
+    // OG card: flatten onto the same midnight-purple the page background uses,
+    // since the source has transparent padding and a JPG can't carry alpha - a
+    // transparent-turned-white background would look like a bug in every link
+    // preview.
+    const ogPath = path.join(outDir, 'og-share-world-map.jpg');
+    await sharp(trimmedBuffer)
+        .flatten({ background: '#160c27' })
         .resize(1200, 630, { fit: 'cover', position: 'attention' })
         .jpeg({ quality: 85 })
-        .toFile(outPath);
-
-    const size = fs.statSync(outPath).size;
-    console.log(`✓ og-share-world-map.jpg (${(size / 1024).toFixed(0)}KB) [1200x630]`);
+        .toFile(ogPath);
+    console.log(`âœ“ og-share-world-map.jpg (${(fs.statSync(ogPath).size / 1024).toFixed(0)}KB) [1200x630]`);
 }
 
 /**
@@ -259,7 +274,7 @@ async function buildOgImage(): Promise<void> {
  * every other job here, these sources aren't SVG-wrapped exports from assets/new-
  * website/, they're plain flat 1080x1080 PNGs (no alpha channel) sitting at the repo
  * root, so no extractEmbeddedPng/deriveAlphaFromBrightness step applies. JPG (not
- * WebP or PNG) for the same reason buildOgImage() uses JPG - email clients
+ * WebP or PNG) for the same reason buildWorldMapImages() uses JPG for the OG card - email clients
  * (Outlook desktop especially) have much worse WebP support than browsers do, and a
  * photographic/gradient scene like this gets little benefit from PNG's lossless
  * compression. 600px is 2x-retina-safe against the ~424px display width the email
@@ -280,7 +295,7 @@ async function buildSettlementEmailImages(): Promise<void> {
             .toFile(outPath);
 
         const size = fs.statSync(outPath).size;
-        console.log(`✓ ${job.outName}.jpg (${(size / 1024).toFixed(0)}KB) [600px wide]`);
+        console.log(`âœ“ ${job.outName}.jpg (${(size / 1024).toFixed(0)}KB) [600px wide]`);
     }
 }
 
@@ -289,7 +304,7 @@ async function run(): Promise<void> {
         fs.mkdirSync(outDir, { recursive: true });
     }
 
-    await buildOgImage();
+    await buildWorldMapImages();
     await buildGameBackgrounds();
     await buildSettlementEmailImages();
 
@@ -323,7 +338,7 @@ async function run(): Promise<void> {
         const webpSize = fs.statSync(webpPath).size;
         const originalSize = fs.statSync(svgPath).size;
         console.log(
-            `✓ ${job.source} (${(originalSize / 1024).toFixed(0)}KB) -> ` +
+            `âœ“ ${job.source} (${(originalSize / 1024).toFixed(0)}KB) -> ` +
             `${job.outName}.webp (${(webpSize / 1024).toFixed(0)}KB) + ` +
             `${job.outName}.png (${(pngInfo.size / 1024).toFixed(0)}KB) ` +
             `[trimmed to ${pngInfo.width}x${pngInfo.height}]`
