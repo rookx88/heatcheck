@@ -15,15 +15,26 @@
 // so a rendering hiccup can never make /leaderboard reply worse than it did before
 // this file existed.
 
-import satori from 'satori';
+// satori-legacy is an npm alias for satori@0.10.9, NOT the repo's main satori
+// (0.33.x, used by the Node build-time OG generator). 0.33 hard-depends on
+// harfbuzzjs, whose Emscripten loader both reads self.location.href (undefined in
+// workerd - the "reading 'href'" crash seen live) and compiles its own wasm from
+// bytes at runtime, which Workers bans outright ("Wasm code generation disallowed by
+// embedder"). 0.10.x predates harfbuzz and is the satori generation the
+// workers-og ecosystem runs on Cloudflare Workers: its /wasm entry ships no wasm of
+// its own - we hand it a yoga layout engine we initialize ourselves from a
+// pre-compiled module (initYoga uses the allowed instantiate(module, imports) form).
+import satori, { init as initSatori } from 'satori-legacy/wasm';
+import initYoga from 'yoga-wasm-web';
 import { initWasm, Resvg } from '@resvg/resvg-wasm';
-// Relative import is load-bearing: the Pages bundler's CompiledWasm rule turns this
-// into a pre-compiled WebAssembly.Module (the ONLY form the Workers runtime accepts -
-// compiling from raw bytes at runtime is blocked: "Wasm code generation disallowed by
-// embedder", and importing via the package path resolved to undefined). The file is a
-// straight copy of node_modules/@resvg/resvg-wasm/index_bg.wasm - re-copy it if that
-// package is ever upgraded.
+// Relative imports are load-bearing: the Pages bundler's CompiledWasm rule turns
+// these into pre-compiled WebAssembly.Modules (the ONLY form the Workers runtime
+// accepts - compiling from raw bytes at runtime is blocked, and importing via a
+// package path resolves to undefined instead of a Module). The files are straight
+// copies of node_modules/@resvg/resvg-wasm/index_bg.wasm and
+// node_modules/yoga-wasm-web/dist/yoga.wasm - re-copy if either package is upgraded.
 import RESVG_WASM from './resvg.wasm';
+import YOGA_WASM from './yoga.wasm';
 import { buildLeaderboardRowEmbeds, colorForRank, type LeaderboardRowInput } from './discord-leaderboard-card';
 
 const IMAGE_WIDTH = 720;
@@ -47,11 +58,14 @@ function textColorForRank(rank: number): string {
 let wasmInitPromise: Promise<void> | null = null;
 function ensureWasmInit(): Promise<void> {
     // Guarded by this module-level promise so init only ever runs once per warm
-    // isolate, not once per request. RESVG_WASM is already a compiled
-    // WebAssembly.Module (see the import comment above) - initWasm only instantiates
-    // it, which the Workers runtime allows (unlike compiling from bytes).
+    // isolate, not once per request. Both inputs are already compiled
+    // WebAssembly.Modules (see the import comments above) - initYoga/initWasm only
+    // instantiate them, which the Workers runtime allows (unlike compiling bytes).
     if (!wasmInitPromise) {
-        wasmInitPromise = initWasm(RESVG_WASM);
+        wasmInitPromise = Promise.all([
+            initYoga(YOGA_WASM).then((yoga) => initSatori(yoga)),
+            initWasm(RESVG_WASM),
+        ]).then(() => undefined);
     }
     return wasmInitPromise;
 }
