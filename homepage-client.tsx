@@ -38,15 +38,13 @@ interface HomepagePayload {
     sports: HomepageSportEntry[];
 }
 
-// Map island id → sport slot. baseballBat and baseball are two islands for the same
-// sport - both select Baseball. hockey/golf are absent: no league feeds them yet, so
+// Map island id → sport slot. hockey/golf are absent: no league feeds them yet, so
 // they stay disabled "Coming Soon" islands (same treatment as /claim-your-spot/).
 const REGION_SPORT: Record<string, Sport> = {
     football: 'Football',
     soccer: 'Soccer',
     basketball: 'Basketball',
     baseball: 'Baseball',
-    baseballBat: 'Baseball',
 };
 
 function readPayload(): HomepagePayload | null {

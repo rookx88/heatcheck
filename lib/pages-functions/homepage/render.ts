@@ -137,7 +137,7 @@ function renderExplore(): string {
                     <div id="hc-map-root">
                         <picture>
                             <source srcset="/assets/images/world-map.webp" type="image/webp">
-                            <img class="hc-world-map-static" src="/assets/images/world-map.png" alt="Illustrated map of the Heatchecks sports world, with themed islands for soccer, football, basketball, baseball, hockey, and golf surrounding a central aquarium" width="1120" height="1113" loading="lazy">
+                            <img class="hc-world-map-static" src="/assets/images/world-map.png" alt="Illustrated planet of the Heatchecks sports world, with themed islands for soccer, football, baseball, basketball, hockey, and golf surrounding the central Tank dome" width="1120" height="1116" loading="lazy">
                         </picture>
                     </div>
                 </div>
