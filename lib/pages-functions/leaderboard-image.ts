@@ -85,6 +85,15 @@ const COLOR_PLATE_BLACK = '#0c0c0e';
 const COLOR_GREEN = '#31e874'; // the mockup's bright green
 const COLOR_WHITE = '#ffffff';
 
+// Podium treatment for the big rank numeral: gold/silver/bronze for 1-3 (same hexes
+// as discord-leaderboard-card.ts's embed tier colors), green for everyone else.
+function rankNumeralColor(rank: number): string {
+    if (rank === 1) return '#ffc72c';
+    if (rank === 2) return '#c0c0c0';
+    if (rank === 3) return '#cd7f32';
+    return COLOR_GREEN;
+}
+
 let wasmInitPromise: Promise<void> | null = null;
 function ensureWasmInit(): Promise<void> {
     // Guarded by this module-level promise so init only ever runs once per warm
@@ -281,7 +290,7 @@ function buildRowNode(row: LeaderboardRowInput, avatarDataUri: string) {
                             fontFamily: 'Orbitron',
                             fontWeight: 900,
                             fontSize: 56,
-                            color: COLOR_GREEN,
+                            color: rankNumeralColor(row.rank),
                         },
                         children: String(row.rank),
                     },
@@ -457,11 +466,13 @@ export async function sendLeaderboardResult(
         if (png) {
             const form = new FormData();
             // The image's Discord-icon watermark can't be clickable (pixels never
-            // are), so the invite gets a REAL link button under the message (style 5
-            // = link button, allowed on interaction responses), plus the clickable
-            // embed title as before.
+            // are). Belt and suspenders for the invite: a style-5 link button
+            // (payload shape verified accepted by Discord's API directly), the
+            // clickable embed title, AND the raw link in the message content -
+            // Discord linkifies content URLs in every client with no components-API
+            // subtleties, wrapped in <> so it doesn't unfurl a second invite embed.
             form.append('payload_json', JSON.stringify({
-                content: '',
+                content: `-# Join the Heatchecks Discord → <${HEATCHECKS_DISCORD_INVITE}>`,
                 embeds: [{ title: 'Heatchecks', url: HEATCHECKS_DISCORD_INVITE, image: { url: 'attachment://leaderboard.png' } }],
                 components: [{
                     type: 1,
