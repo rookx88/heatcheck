@@ -442,6 +442,165 @@ export async function renderLeaderboardImage(headerLabel: string, rows: Leaderbo
     }
 }
 
+// ===================================================================================
+// The setup wizard's welcome card, rendered in the same visual language as the
+// leaderboard (navy card, black plates, Orbitron + green, watermark footer). Three
+// "feature rows" mirror the rank-row anatomy - black tag plate overlapping a white
+// box - but carry explainer copy instead of a ranked user. Returns null on any
+// failure; the wizard falls back to the plain embed version so the permission
+// smoke test still happens either way.
+// ===================================================================================
+
+const WELCOME_ROW_H = 118;
+const WELCOME_ROWS: { tag: string; title: string; body: string }[] = [
+    { tag: 'PICK', title: 'Daily Tank cards', body: 'Real sports storylines with pick buttons. Picking links your Discord to a free heatchecks.io account and earns Ember when you call it right.' },
+    { tag: 'VOTE', title: 'Community Picks', body: 'Quick market votes anyone can join — no account needed. Correct calls earn points toward this server’s leaderboard.' },
+    { tag: 'RANK', title: 'Track your run', body: '/leaderboard — server standings  ·  /me — your rank card  ·  /my-results — your recent calls, visible only to you.' },
+];
+
+function buildWelcomeRowNode(row: { tag: string; title: string; body: string }) {
+    const whiteBoxW = ROW_W - WHITE_BOX_LEFT;
+    return {
+        type: 'div',
+        props: {
+            style: { display: 'flex', position: 'relative', width: ROW_W, height: WELCOME_ROW_H + ROW_SHADOW_OFFSET },
+            children: [
+                {
+                    type: 'div',
+                    props: {
+                        style: {
+                            display: 'flex', position: 'absolute', left: ROW_SHADOW_OFFSET, top: ROW_SHADOW_OFFSET,
+                            width: ROW_W - ROW_SHADOW_OFFSET, height: WELCOME_ROW_H, borderRadius: 24, background: 'rgba(0,0,0,0.45)',
+                        },
+                    },
+                },
+                {
+                    type: 'div',
+                    props: {
+                        style: {
+                            display: 'flex', position: 'absolute', left: WHITE_BOX_LEFT, top: 6,
+                            width: whiteBoxW, height: WELCOME_ROW_H - 12, borderRadius: 14, background: COLOR_WHITE,
+                            flexDirection: 'column', justifyContent: 'center', padding: '0 22px 0 34px', gap: 4,
+                        },
+                        children: [
+                            { type: 'div', props: { style: { display: 'flex', fontFamily: 'Nunito', fontWeight: 800, fontSize: 21, color: COLOR_CARD_BLUE }, children: row.title } },
+                            { type: 'div', props: { style: { display: 'flex', fontFamily: 'Nunito', fontWeight: 700, fontSize: 14.5, lineHeight: 1.35, color: '#3a3654' }, children: row.body } },
+                        ],
+                    },
+                },
+                {
+                    type: 'div',
+                    props: {
+                        style: {
+                            display: 'flex', position: 'absolute', left: 0, top: 0,
+                            width: RANK_PLATE_W, height: WELCOME_ROW_H, borderRadius: 22, background: COLOR_PLATE_BLACK,
+                            alignItems: 'center', justifyContent: 'center',
+                            fontFamily: 'Orbitron', fontWeight: 900, fontSize: 21, color: COLOR_GREEN, letterSpacing: 1,
+                        },
+                        children: row.tag,
+                    },
+                },
+            ],
+        },
+    };
+}
+
+export async function renderWelcomeImage(): Promise<Uint8Array | null> {
+    try {
+        await ensureWasmInit();
+        const trustLineH = 34;
+        const totalHeight = CARD_PAD * 2 + HEADER_PLATE_H + 26
+            + WELCOME_ROWS.length * (WELCOME_ROW_H + ROW_SHADOW_OFFSET) + (WELCOME_ROWS.length - 1) * ROW_GAP
+            + 14 + trustLineH + 12 + WATERMARK_HEIGHT;
+
+        const tree = {
+            type: 'div',
+            props: {
+                style: {
+                    width: IMAGE_WIDTH, height: totalHeight, display: 'flex', flexDirection: 'column',
+                    background: COLOR_CARD_BLUE, borderRadius: CARD_RADIUS, border: `6px solid ${COLOR_PLATE_BLACK}`, padding: CARD_PAD,
+                },
+                children: [
+                    {
+                        type: 'div',
+                        props: {
+                            style: {
+                                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                                alignSelf: 'center', height: HEADER_PLATE_H, padding: '10px 40px', borderRadius: 26,
+                                background: COLOR_PLATE_BLACK, marginBottom: 26,
+                            },
+                            children: [
+                                { type: 'div', props: { style: { display: 'flex', fontFamily: 'Orbitron', fontWeight: 700, fontSize: 20, letterSpacing: 2, color: COLOR_WHITE }, children: 'THIS SERVER NOW RUNS' } },
+                                { type: 'div', props: { style: { display: 'flex', fontFamily: 'Orbitron', fontWeight: 900, fontSize: 52, letterSpacing: 4, color: COLOR_GREEN }, children: 'HEATCHECKS' } },
+                            ],
+                        },
+                    },
+                    {
+                        type: 'div',
+                        props: {
+                            style: { display: 'flex', flexDirection: 'column', gap: ROW_GAP },
+                            children: WELCOME_ROWS.map(buildWelcomeRowNode),
+                        },
+                    },
+                    {
+                        type: 'div',
+                        props: {
+                            style: {
+                                display: 'flex', alignItems: 'center', justifyContent: 'center', height: trustLineH, marginTop: 14,
+                                fontFamily: 'Nunito', fontWeight: 700, fontSize: 13.5, color: 'rgba(255,255,255,0.6)',
+                            },
+                            children: 'Entertainment only — no real-money wagering. Heatchecks never supplies or distributes prizes.',
+                        },
+                    },
+                    {
+                        type: 'div',
+                        props: {
+                            style: {
+                                display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                                height: WATERMARK_HEIGHT, width: ROW_W, marginTop: 12,
+                            },
+                            children: [
+                                { type: 'img', props: { src: getLogoDataUri(), width: WATERMARK_LOGO_WIDTH, height: WATERMARK_LOGO_HEIGHT, style: { display: 'flex' } } },
+                                { type: 'img', props: { src: getDiscordIconDataUri(), width: DISCORD_ICON_SIZE, height: DISCORD_ICON_SIZE, style: { display: 'flex', opacity: 0.85 } } },
+                            ],
+                        },
+                    },
+                ],
+            },
+        };
+
+        const svg = await satori(tree as any, { width: IMAGE_WIDTH, height: totalHeight, fonts: FONTS });
+        const resvg = new Resvg(svg, { fitTo: { mode: 'width', value: IMAGE_WIDTH } });
+        return resvg.render().asPng();
+    } catch (err) {
+        console.error('[leaderboard-image] Welcome render failed, falling back to embed:', err);
+        return null;
+    }
+}
+
+// Posts the rendered welcome card to a channel. IMPORTANT contract for the wizard's
+// permission smoke test: a render failure quietly returns 'embed_needed' (caller
+// posts the plain-embed version instead), but a channel POST failure THROWS - that's
+// the signal the wizard's catch turns into permission guidance.
+export async function postWelcomeImageToChannel(env: Env, channelId: string): Promise<'posted' | 'embed_needed'> {
+    const png = await renderWelcomeImage();
+    if (!png) return 'embed_needed';
+
+    const form = new FormData();
+    form.append('payload_json', JSON.stringify({
+        content: '',
+        embeds: [{ title: 'Heatchecks', url: HEATCHECKS_DISCORD_INVITE, image: { url: 'attachment://welcome.png' } }],
+    }));
+    form.append('files[0]', new Blob([png], { type: 'image/png' }), 'welcome.png');
+    const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
+        method: 'POST',
+        headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
+        body: form,
+    });
+    if (!res.ok) throw new Error(`Welcome image post failed: ${res.status} ${await res.text().catch(() => '')}`);
+    return 'posted';
+}
+
 // Channel-post variant for the weekly auto-post (functions/api/
 // weekly-leaderboard-sweep.ts): same image-first/embeds-fallback posture as
 // sendLeaderboardResult, but delivered as a bot channel message (multipart with Bot

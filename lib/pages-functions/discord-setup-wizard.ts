@@ -17,6 +17,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
 import { hasManageGuildPermission, postDiscordChannelMessage } from './discord-api';
+import { postWelcomeImageToChannel } from './leaderboard-image';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
 import type { PropOdds } from '../../tank-types';
 
@@ -195,7 +196,13 @@ export async function handleWizardComponent(context: RequestContext, interaction
             const chanId = (rows[0] as any)?.channel_id;
             if (!chanId) return screen('No channel configured — restart with /heatchecks-setup.');
             try {
-                await postDiscordChannelMessage(context.env, chanId, buildWelcomeCardMessage());
+                // Rendered welcome card in the leaderboard's aesthetic; the plain
+                // embed only if rendering itself fails. Channel-post failures throw
+                // either way - that's the permission smoke test.
+                const result = await postWelcomeImageToChannel(context.env, chanId);
+                if (result === 'embed_needed') {
+                    await postDiscordChannelMessage(context.env, chanId, buildWelcomeCardMessage());
+                }
             } catch (err) {
                 console.error('[setup-wizard] Welcome post failed:', err);
                 return screen(

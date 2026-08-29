@@ -7,7 +7,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { jsonResponse, type Env } from '../../lib/pages-functions/db';
-import { renderLeaderboardImage, getLastRenderError } from '../../lib/pages-functions/leaderboard-image';
+import { renderLeaderboardImage, renderWelcomeImage, getLastRenderError } from '../../lib/pages-functions/leaderboard-image';
 
 const SAMPLE_ROWS = [
     { rank: 1, displayName: 'Sample One', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/0.png', scoreLine: '3694 Community Points', scoreValue: '3,694', sr: 712 },
@@ -22,7 +22,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const png = await renderLeaderboardImage('OVERALL COMMUNITY POINTS', SAMPLE_ROWS);
+    // ?welcome=1 renders the wizard's welcome card instead of the leaderboard.
+    const wantWelcome = new URL(context.request.url).searchParams.get('welcome') === '1';
+    const png = wantWelcome
+        ? await renderWelcomeImage()
+        : await renderLeaderboardImage('OVERALL COMMUNITY POINTS', SAMPLE_ROWS);
     if (!png) {
         return jsonResponse({ ok: false, error: getLastRenderError() ?? 'unknown - render returned null with no captured error' }, { status: 500 });
     }
