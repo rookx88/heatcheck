@@ -12,10 +12,10 @@ import './WorldMap.css';
 // hand-traced coastline paths against the artwork.
 export const DEBUG_HOTSPOTS = false;
 
-const AQUARIUM_CENTER = { x: 630, y: 600 };
+const AQUARIUM_CENTER = { x: 750, y: 720 };
 const WATERFALLS: Array<{ x: number; y: number }> = [
-  { x: 428, y: 555 },
-  { x: 792, y: 560 },
+  { x: 578, y: 715 },
+  { x: 905, y: 700 },
 ];
 
 interface WorldMapProps {
@@ -274,22 +274,22 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                     className="world-map__aquarium-illumination"
                     cx={AQUARIUM_CENTER.x}
                     cy={AQUARIUM_CENTER.y}
-                    rx={220}
-                    ry={200}
+                    rx={263}
+                    ry={239}
                   />
                   <ellipse
                     className="world-map__aquarium-brighten"
                     cx={AQUARIUM_CENTER.x}
-                    cy={AQUARIUM_CENTER.y - 10}
-                    rx={145}
-                    ry={115}
+                    cy={AQUARIUM_CENTER.y - 12}
+                    rx={173}
+                    ry={138}
                   />
                   <ellipse
                     className="world-map__aquarium-shimmer"
                     cx={AQUARIUM_CENTER.x}
-                    cy={AQUARIUM_CENTER.y + 40}
-                    rx={120}
-                    ry={90}
+                    cy={AQUARIUM_CENTER.y + 48}
+                    rx={143}
+                    ry={108}
                   />
                   {WATERFALLS.map((w, i) => (
                     <circle
@@ -297,7 +297,7 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                       className="world-map__waterfall-glow"
                       cx={w.x}
                       cy={w.y}
-                      r={46}
+                      r={55}
                     />
                   ))}
                   {Array.from({ length: 7 }).map((_, i) => (
@@ -305,8 +305,8 @@ export const WorldMap: React.FC<WorldMapProps> = ({
                       key={i}
                       className="world-map__bubble"
                       style={{ ['--bubble-i' as any]: i }}
-                      cx={AQUARIUM_CENTER.x - 60 + ((i * 37) % 140)}
-                      cy={AQUARIUM_CENTER.y + 90}
+                      cx={AQUARIUM_CENTER.x - 72 + ((i * 44) % 167)}
+                      cy={AQUARIUM_CENTER.y + 108}
                       r={2 + (i % 3)}
                     />
                   ))}

@@ -1,6 +1,6 @@
 // Configuration + geometry for the HeatCheck flash-navigation world map.
 // Coordinates are in the SAME pixel space as the source artwork
-// (assets/new-website/HeatChecksWorldMap.svg), which is a 1254x1254 square.
+// (assets/new-website/world_map_nav.png), which is a 1500x1500 square.
 // The <WorldMap> component uses this as its SVG viewBox, so these numbers
 // can be used directly with no rescaling.
 
@@ -29,38 +29,29 @@ export interface WorldMapRegion {
   shape: RegionShape;
 }
 
-export const WORLD_MAP_VIEWBOX = { width: 1254, height: 1254 };
+export const WORLD_MAP_VIEWBOX = { width: 1500, height: 1500 };
 
-// Hand-traced coastline of the central landmass (the aquarium continent).
-// Traced from the artwork at assets/new-website/HeatChecksWorldMap.svg and
+// Hand-traced coastline of the central landmass (the Tank-dome continent).
+// Traced from the artwork at assets/new-website/world_map_nav.png and
 // smoothed through the sampled shoreline points with a Catmull-Rom curve.
 const AQUARIUM_CONTINENT_PATH =
-  'M600.0,285.0 C613.3,282.5 624.2,305.8 635.0,320.0 C645.8,334.2 652.5,357.5 665.0,370.0 ' +
-  'C677.5,382.5 697.5,385.0 710.0,395.0 C722.5,405.0 730.8,418.3 740.0,430.0 C749.2,441.7 763.3,454.2 765.0,465.0 ' +
-  'C766.7,475.8 747.5,485.0 750.0,495.0 C752.5,505.0 771.7,514.2 780.0,525.0 C788.3,535.8 792.5,549.2 800.0,560.0 ' +
-  'C807.5,570.8 816.7,580.0 825.0,590.0 C833.3,600.0 843.3,613.3 850.0,620.0 C856.7,626.7 865.0,621.7 865.0,630.0 ' +
-  'C865.0,638.3 850.0,657.5 850.0,670.0 C850.0,682.5 858.3,695.8 865.0,705.0 C871.7,714.2 882.5,715.8 890.0,725.0 ' +
-  'C897.5,734.2 903.3,750.8 910.0,760.0 C916.7,769.2 931.7,771.7 930.0,780.0 C928.3,788.3 901.7,800.0 900.0,810.0 ' +
-  'C898.3,820.0 922.5,830.0 920.0,840.0 C917.5,850.0 895.0,860.0 885.0,870.0 C875.0,880.0 867.5,890.0 860.0,900.0 ' +
-  'C852.5,910.0 846.7,920.0 840.0,930.0 C833.3,940.0 835.0,953.3 820.0,960.0 C805.0,966.7 778.3,967.5 750.0,970.0 ' +
-  'C721.7,972.5 681.7,975.0 650.0,975.0 C618.3,975.0 584.2,972.5 560.0,970.0 C535.8,967.5 518.3,965.8 505.0,960.0 ' +
-  'C491.7,954.2 490.0,943.3 480.0,935.0 C470.0,926.7 450.0,921.7 445.0,910.0 C440.0,898.3 457.5,876.7 450.0,865.0 ' +
-  'C442.5,853.3 405.8,850.8 400.0,840.0 C394.2,829.2 417.5,813.3 415.0,800.0 C412.5,786.7 385.8,773.3 385.0,760.0 ' +
-  'C384.2,746.7 412.5,734.2 410.0,720.0 C407.5,705.8 371.7,686.7 370.0,675.0 C368.3,663.3 389.2,657.5 400.0,650.0 ' +
-  'C410.8,642.5 427.5,637.5 435.0,630.0 C442.5,622.5 441.7,614.2 445.0,605.0 C448.3,595.8 450.8,584.2 455.0,575.0 ' +
-  'C459.2,565.8 464.2,559.2 470.0,550.0 C475.8,540.8 488.3,529.2 490.0,520.0 C491.7,510.8 478.3,502.5 480.0,495.0 ' +
-  'C481.7,487.5 493.3,484.2 500.0,475.0 C506.7,465.8 519.2,450.8 520.0,440.0 C520.8,429.2 504.2,421.7 505.0,410.0 ' +
-  'C505.8,398.3 516.7,382.5 525.0,370.0 C533.3,357.5 542.5,349.2 555.0,335.0 C567.5,320.8 586.7,287.5 600.0,285.0 Z';
+  'M745,420 C775.8,426.7 803.3,466.7 830,490 C856.7,513.3 884.2,534.2 905,560 ' +
+  'C925.8,585.8 942.8,617.5 955,645 C967.2,672.5 974.2,699.2 978,725 C981.8,750.8 981.8,775.8 978,800 ' +
+  'C974.2,824.2 965.5,848.7 955,870 C944.5,891.3 931.7,910.5 915,928 C898.3,945.5 878.3,962.7 855,975 ' +
+  'C831.7,987.3 801.7,996.5 775,1002 C748.3,1007.5 721.7,1009.7 695,1008 C668.3,1006.3 640.8,1001.3 615,992 ' +
+  'C589.2,982.7 560.8,967.7 540,952 C519.2,936.3 504.2,918.0 490,898 C475.8,878.0 462.5,854.7 455,832 ' +
+  'C447.5,809.3 446.7,784.8 445,762 C443.3,739.2 442.2,717.8 445,695 C447.8,672.2 453.7,647.8 462,625 ' +
+  'C470.3,602.2 480.3,579.2 495,558 C509.7,536.8 525.0,516.0 550,498 C575.0,480.0 612.5,463.0 645,450 ' +
+  'C677.5,437.0 714.2,413.3 745,420 Z';
 
 // Hand-traced coastline of the golf island (bottom-right).
 const GOLF_ISLAND_PATH =
-  'M915.0,825.0 C927.0,822.8 961.2,812.0 980.0,815.0 C998.8,818.0 1023.5,833.8 1040.0,845.0 ' +
-  'C1056.5,856.2 1078.8,874.2 1090.0,890.0 C1101.2,905.8 1112.0,932.0 1115.0,950.0 C1118.0,968.0 1115.2,993.5 1110.0,1010.0 ' +
-  'C1104.8,1026.5 1092.8,1046.5 1080.0,1060.0 C1067.2,1073.5 1043.0,1091.8 1025.0,1100.0 C1007.0,1108.2 978.8,1115.0 960.0,1115.0 ' +
-  'C941.2,1115.0 916.5,1106.0 900.0,1100.0 C883.5,1094.0 863.5,1084.0 850.0,1075.0 C836.5,1066.0 819.0,1052.8 810.0,1040.0 ' +
-  'C801.0,1027.2 790.0,1003.5 790.0,990.0 C790.0,976.5 804.0,962.0 810.0,950.0 C816.0,938.0 823.2,920.5 830.0,910.0 ' +
-  'C836.8,899.5 848.2,889.0 855.0,880.0 C861.8,871.0 868.2,857.5 875.0,850.0 C881.8,842.5 894.0,833.8 900.0,830.0 ' +
-  'C906.0,826.2 903.0,827.2 915.0,825.0 Z';
+  'M1145,875 C1166.7,876.7 1191.2,891.7 1210,905 C1228.8,918.3 1245.0,935.0 1258,955 ' +
+  'C1271.0,975.0 1284.0,1000.8 1288,1025 C1292.0,1049.2 1289.2,1075.8 1282,1100 C1274.8,1124.2 1262.0,1150.0 1245,1170 ' +
+  'C1228.0,1190.0 1203.3,1207.5 1180,1220 C1156.7,1232.5 1130.0,1242.5 1105,1245 C1080.0,1247.5 1052.2,1243.3 1030,1235 ' +
+  'C1007.8,1226.7 986.2,1211.7 972,1195 C957.8,1178.3 948.7,1156.7 945,1135 C941.3,1113.3 944.2,1087.5 950,1065 ' +
+  'C955.8,1042.5 967.0,1021.2 980,1000 C993.0,978.8 1011.3,955.5 1028,938 C1044.7,920.5 1060.5,905.5 1080,895 ' +
+  'C1099.5,884.5 1123.3,873.3 1145,875 Z';
 
 export const WORLD_MAP_REGIONS: WorldMapRegion[] = [
   {
@@ -72,7 +63,7 @@ export const WORLD_MAP_REGIONS: WorldMapRegion[] = [
     type: 'central',
     // Zoom/glow target is the aquarium building itself; the hotspot below covers
     // the whole landmass so the label point can differ from the shape's centroid.
-    center: { x: 620, y: 630 },
+    center: { x: 745, y: 730 },
     shape: { kind: 'path', d: AQUARIUM_CONTINENT_PATH },
   },
   {
@@ -81,8 +72,8 @@ export const WORLD_MAP_REGIONS: WorldMapRegion[] = [
     color: '#a855f7',
     route: '/nfl',
     type: 'island',
-    center: { x: 615, y: 206 },
-    shape: { kind: 'ellipse', cx: 615, cy: 206, rx: 205, ry: 120, rotate: 4 },
+    center: { x: 760, y: 300 },
+    shape: { kind: 'ellipse', cx: 760, cy: 300, rx: 205, ry: 140, rotate: 0 },
   },
   {
     id: 'soccer',
@@ -90,17 +81,20 @@ export const WORLD_MAP_REGIONS: WorldMapRegion[] = [
     color: '#84cc16',
     route: '/soccer',
     type: 'island',
-    center: { x: 280, y: 420 },
-    shape: { kind: 'circle', cx: 280, cy: 420, r: 175 },
+    center: { x: 405, y: 500 },
+    shape: { kind: 'circle', cx: 405, cy: 500, r: 185 },
   },
   {
-    id: 'baseballBat',
-    name: 'Baseball Bat Island',
+    // The flaming bat is the map's single MLB region: the old art's separate
+    // baseball-diamond island doesn't exist in the redesign, so the bat island
+    // inherited the plain Baseball identity (name + /mlb route).
+    id: 'baseball',
+    name: 'Baseball Island',
     color: '#f97316',
-    route: '/mlb-bat',
+    route: '/mlb',
     type: 'island',
-    center: { x: 870, y: 342 },
-    shape: { kind: 'ellipse', cx: 870, cy: 342, rx: 160, ry: 65, rotate: -57.9 },
+    center: { x: 1050, y: 418 },
+    shape: { kind: 'ellipse', cx: 1050, cy: 418, rx: 192, ry: 80, rotate: -54 },
   },
   {
     id: 'basketball',
@@ -108,17 +102,8 @@ export const WORLD_MAP_REGIONS: WorldMapRegion[] = [
     color: '#f59e0b',
     route: '/nba',
     type: 'island',
-    center: { x: 1015, y: 615 },
-    shape: { kind: 'circle', cx: 1015, cy: 615, r: 155 },
-  },
-  {
-    id: 'baseball',
-    name: 'Baseball Island',
-    color: '#ef4444',
-    route: '/mlb',
-    type: 'island',
-    center: { x: 260, y: 875 },
-    shape: { kind: 'circle', cx: 260, cy: 875, r: 165 },
+    center: { x: 1190, y: 700 },
+    shape: { kind: 'circle', cx: 1190, cy: 700, r: 165 },
   },
   {
     id: 'hockey',
@@ -126,8 +111,8 @@ export const WORLD_MAP_REGIONS: WorldMapRegion[] = [
     color: '#38bdf8',
     route: '/nhl',
     type: 'island',
-    center: { x: 540, y: 1080 },
-    shape: { kind: 'ellipse', cx: 540, cy: 1080, rx: 165, ry: 100, rotate: -3 },
+    center: { x: 675, y: 1175 },
+    shape: { kind: 'ellipse', cx: 675, cy: 1175, rx: 190, ry: 135, rotate: -3 },
   },
   {
     id: 'golf',
@@ -135,7 +120,7 @@ export const WORLD_MAP_REGIONS: WorldMapRegion[] = [
     color: '#2dd4bf',
     route: '/golf',
     type: 'island',
-    center: { x: 940, y: 957 },
+    center: { x: 1120, y: 1070 },
     shape: { kind: 'path', d: GOLF_ISLAND_PATH },
   },
 ];
