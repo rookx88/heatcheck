@@ -451,14 +451,15 @@ export async function renderLeaderboardImage(headerLabel: string, rows: Leaderbo
 // smoke test still happens either way.
 // ===================================================================================
 
-const WELCOME_ROW_H = 118;
-const WELCOME_ROWS: { tag: string; title: string; body: string }[] = [
-    { tag: 'PICK', title: 'Daily Tank cards', body: 'Real sports storylines with pick buttons. Picking links your Discord to a free heatchecks.io account and earns Ember when you call it right.' },
-    { tag: 'VOTE', title: 'Community Picks', body: 'Quick market votes anyone can join — no account needed. Correct calls earn points toward this server’s leaderboard.' },
-    { tag: 'RANK', title: 'Track your run', body: '/leaderboard — server standings  ·  /me — your rank card  ·  /my-results — your recent calls, visible only to you.' },
+const WELCOME_ROW_H = 128;
+const WELCOME_ROWS: { tag: string; tagSize: number; title: string; body: string }[] = [
+    { tag: 'PICK', tagSize: 22, title: 'Daily Tank cards', body: 'Real sports storylines with pick buttons. Picking links your Discord to a free heatchecks.io account and earns Ember when you call it right.' },
+    { tag: 'VOTE', tagSize: 22, title: 'Community Picks', body: 'Quick market votes anyone can join — no account needed. Correct calls earn points toward this server’s leaderboard.' },
+    { tag: 'COMPETE', tagSize: 14, title: 'Leagues & tournaments', body: 'Join the season league with /heatchecks-league join — weekly slates post automatically and standings run all season. Giveaway draws reward correct calls.' },
+    { tag: 'RANK', tagSize: 22, title: 'Track your run', body: '/leaderboard — server standings  ·  /me — your rank card  ·  /my-results — your recent calls, visible only to you.' },
 ];
 
-function buildWelcomeRowNode(row: { tag: string; title: string; body: string }) {
+function buildWelcomeRowNode(row: { tag: string; tagSize: number; title: string; body: string }) {
     const whiteBoxW = ROW_W - WHITE_BOX_LEFT;
     return {
         type: 'div',
@@ -483,8 +484,8 @@ function buildWelcomeRowNode(row: { tag: string; title: string; body: string }) 
                             flexDirection: 'column', justifyContent: 'center', padding: '0 22px 0 34px', gap: 4,
                         },
                         children: [
-                            { type: 'div', props: { style: { display: 'flex', fontFamily: 'Nunito', fontWeight: 800, fontSize: 21, color: COLOR_CARD_BLUE }, children: row.title } },
-                            { type: 'div', props: { style: { display: 'flex', fontFamily: 'Nunito', fontWeight: 700, fontSize: 14.5, lineHeight: 1.35, color: '#3a3654' }, children: row.body } },
+                            { type: 'div', props: { style: { display: 'flex', fontFamily: 'Nunito', fontWeight: 800, fontSize: 24, color: COLOR_CARD_BLUE }, children: row.title } },
+                            { type: 'div', props: { style: { display: 'flex', fontFamily: 'Nunito', fontWeight: 700, fontSize: 16.5, lineHeight: 1.35, color: '#3a3654' }, children: row.body } },
                         ],
                     },
                 },
@@ -495,7 +496,7 @@ function buildWelcomeRowNode(row: { tag: string; title: string; body: string }) 
                             display: 'flex', position: 'absolute', left: 0, top: 0,
                             width: RANK_PLATE_W, height: WELCOME_ROW_H, borderRadius: 22, background: COLOR_PLATE_BLACK,
                             alignItems: 'center', justifyContent: 'center',
-                            fontFamily: 'Orbitron', fontWeight: 900, fontSize: 21, color: COLOR_GREEN, letterSpacing: 1,
+                            fontFamily: 'Orbitron', fontWeight: 900, fontSize: row.tagSize, color: COLOR_GREEN, letterSpacing: 1,
                         },
                         children: row.tag,
                     },
@@ -547,9 +548,9 @@ export async function renderWelcomeImage(): Promise<Uint8Array | null> {
                         props: {
                             style: {
                                 display: 'flex', alignItems: 'center', justifyContent: 'center', height: trustLineH, marginTop: 14,
-                                fontFamily: 'Nunito', fontWeight: 700, fontSize: 13.5, color: 'rgba(255,255,255,0.6)',
+                                fontFamily: 'Nunito', fontWeight: 700, fontSize: 15, color: 'rgba(255,255,255,0.6)',
                             },
-                            children: 'Entertainment only — no real-money wagering. Heatchecks never supplies or distributes prizes.',
+                            children: 'Entertainment only — no real-money wagering. Heatchecks never distributes prizes.',
                         },
                     },
                     {
@@ -586,11 +587,12 @@ export async function postWelcomeImageToChannel(env: Env, channelId: string): Pr
     const png = await renderWelcomeImage();
     if (!png) return 'embed_needed';
 
+    // Bare attachment, deliberately NOT wrapped in an embed: Discord caps embed
+    // images around ~430px display width, while plain attachments get ~550px - the
+    // welcome card reads noticeably bigger without the wrapper (Sammy flagged the
+    // embedded version as too small).
     const form = new FormData();
-    form.append('payload_json', JSON.stringify({
-        content: '',
-        embeds: [{ title: 'Heatchecks', url: HEATCHECKS_DISCORD_INVITE, image: { url: 'attachment://welcome.png' } }],
-    }));
+    form.append('payload_json', JSON.stringify({ content: '' }));
     form.append('files[0]', new Blob([png], { type: 'image/png' }), 'welcome.png');
     const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
         method: 'POST',
