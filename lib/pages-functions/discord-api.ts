@@ -201,7 +201,11 @@ export interface DiscordGuildMember {
 export function buildDiscordAvatarUrl(userId: string, avatar: string | null | undefined): string {
     if (avatar) {
         const ext = avatar.startsWith('a_') ? 'gif' : 'png';
-        return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.${ext}`;
+        // ?size=512 (vs the 128px default) - the leaderboard card cover-crops the
+        // avatar across a wide banner, which looks blurry from a 128px source.
+        // Custom avatars only; the default embed/avatars set doesn't reliably
+        // support the size param.
+        return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.${ext}?size=512`;
     }
     const defaultIndex = Number((BigInt(userId) >> 22n) % 6n);
     return `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;

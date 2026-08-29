@@ -10,10 +10,10 @@ import { jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { renderLeaderboardImage, getLastRenderError } from '../../lib/pages-functions/leaderboard-image';
 
 const SAMPLE_ROWS = [
-    { rank: 1, displayName: 'Sample One', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/0.png', scoreLine: '180 Community Points' },
-    { rank: 2, displayName: 'Sample Two', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/1.png', scoreLine: '95 Community Points' },
-    { rank: 3, displayName: 'Sample Three', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/2.png', scoreLine: '40 Community Points' },
-    { rank: 4, displayName: 'Sample Four', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/3.png', scoreLine: '12 Community Points' },
+    { rank: 1, displayName: 'Sample One', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/0.png', scoreLine: '3694 Community Points', scoreValue: '3,694', sr: 712 },
+    { rank: 2, displayName: 'Sample Two', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/1.png', scoreLine: '95 Community Points', scoreValue: '95', sr: 488 },
+    { rank: 3, displayName: 'Sample Three', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/2.png', scoreLine: '40 Community Points', scoreValue: '40', sr: 315 },
+    { rank: 4, displayName: 'Sample Four', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/3.png', scoreLine: '12 Community Points', scoreValue: '12', sr: 204 },
 ];
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
@@ -22,7 +22,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const png = await renderLeaderboardImage('Heatchecks Leaderboard (render test)', SAMPLE_ROWS);
+    const png = await renderLeaderboardImage('OVERALL COMMUNITY POINTS', SAMPLE_ROWS);
     if (!png) {
         return jsonResponse({ ok: false, error: getLastRenderError() ?? 'unknown - render returned null with no captured error' }, { status: 500 });
     }

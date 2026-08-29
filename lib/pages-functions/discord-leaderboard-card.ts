@@ -15,6 +15,9 @@
 // back to this file's embeds on any failure).
 export interface LeaderboardMessage {
     content: string;
+    // Short view-specific caps line for the image card's header plate, e.g.
+    // "OVERALL COMMUNITY POINTS" / "OVERALL ACCURACY" / "NFL LEAGUE POINTS".
+    headerLabel: string;
     rows: LeaderboardRowInput[];
 }
 
@@ -25,6 +28,10 @@ export interface LeaderboardRowInput {
     // Owned entirely by the caller - "92% (11/12)" for accuracy, "142 pts" for
     // Community Points/league. This file only lays it out, never computes it.
     scoreLine: string;
+    // Compact value for the image card's green score pill - "3,694" or "27%".
+    scoreValue: string;
+    // Skill Rating (lib/pages-functions/skill-rating.ts) - displayed, never sorted by.
+    sr: number;
 }
 
 const COLOR_GOLD = 0xffc72c; // this bot's existing brand/premium color (Tank cards, giveaway results)
@@ -46,7 +53,7 @@ export function buildLeaderboardRowEmbeds(rows: LeaderboardRowInput[]): unknown[
     return rows.map((row) => ({
         color: colorForRank(row.rank),
         author: { name: `#${row.rank} · ${row.displayName}` },
-        description: row.scoreLine,
+        description: `${row.scoreLine} · SR ${row.sr}`,
         thumbnail: { url: row.avatarUrl },
     }));
 }

@@ -44,38 +44,46 @@ import BALOO2_EXTRABOLD from './fonts/baloo2-extrabold.bin';
 import NUNITO_REGULAR from './fonts/nunito-regular.bin';
 import NUNITO_BOLD from './fonts/nunito-bold.bin';
 import NUNITO_EXTRABOLD from './fonts/nunito-extrabold.bin';
+// Orbitron (Google Fonts, latin subset) - the techno face for the header plate, rank
+// numerals, and score pill, per the mockup's LCD-style look.
+import ORBITRON_BOLD from './fonts/orbitron-bold.bin';
+import ORBITRON_BLACK from './fonts/orbitron-black.bin';
 // The real site logo, pre-converted to PNG (resvg can't rasterize webp - the OG
 // generator does the same webp->png conversion, via sharp at build time; this one was
 // converted once with sharp locally and committed: 149x72, from
 // public/assets/images/heatchecks-logo.webp).
 import HEATCHECKS_LOGO from './heatchecks-logo.bin';
+// Discord's mark (simple-icons SVG, rasterized once locally to a white 80x80 PNG) -
+// the footer's visual pointer to the invite, replacing the old URL text.
+import DISCORD_ICON from './discord-icon.bin';
 import { buildLeaderboardRowEmbeds, colorForRank, type LeaderboardRowInput } from './discord-leaderboard-card';
 
-// Heatchecks' own community server - baked into the image watermark (pixels can't be
-// clicked, but a screenshot/re-share keeps the text) AND set as the clickable url on
-// the Discord embed that carries the image (see sendLeaderboardResult).
+// Heatchecks' own community server - the footer's Discord icon points at it visually
+// (pixels can't be clicked, but a screenshot/re-share keeps the association) AND it's
+// the clickable url on the Discord embed that carries the image (see
+// sendLeaderboardResult).
 export const HEATCHECKS_DISCORD_INVITE = 'https://discord.gg/cv8yPDAEy';
 
 const IMAGE_WIDTH = 720;
-const HEADER_HEIGHT = 84;
-const ROW_HEIGHT = 92;
-const ROW_GAP = 12;
-const PADDING = 28;
-const AVATAR_SIZE = 60;
-const WATERMARK_HEIGHT = 48;
-const WATERMARK_LOGO_HEIGHT = 36;
+const CARD_PAD = 26;
+const CARD_RADIUS = 44;
+const HEADER_PLATE_H = 116;
+const ROW_W = IMAGE_WIDTH - CARD_PAD * 2;
+const ROW_BOX_H = 120; // the visible rank unit (plate + white box)
+const ROW_SHADOW_OFFSET = 10; // manual shadow layer offset below/right of each box
+const ROW_UNIT_H = ROW_BOX_H + ROW_SHADOW_OFFSET; // layout slot incl. shadow room
+const ROW_GAP = 22;
+const RANK_PLATE_W = 96;
+const WHITE_BOX_LEFT = 84; // white box starts under the plate's right edge (overlap)
+const WATERMARK_HEIGHT = 56;
+const WATERMARK_LOGO_HEIGHT = 48;
 const WATERMARK_LOGO_WIDTH = Math.round(WATERMARK_LOGO_HEIGHT * (149 / 72)); // source PNG's native aspect ratio
+const DISCORD_ICON_SIZE = 36;
 
-const COLOR_BG = '#0b0713'; // this codebase's existing dark brand base (scripts/generate-og-image.ts)
+const COLOR_CARD_BLUE = '#2712d8'; // the mockup's royal blue
+const COLOR_PLATE_BLACK = '#0c0c0e';
+const COLOR_GREEN = '#31e874'; // the mockup's bright green
 const COLOR_WHITE = '#ffffff';
-const COLOR_DARK_TEXT = '#0b0713';
-
-// Rank 1-2 (gold/silver) are light backgrounds - dark text reads better, same
-// gold-bg/dark-text pairing generate-og-image.ts's own league badge already uses.
-// Rank 3+ (bronze/slate) are darker - white text.
-function textColorForRank(rank: number): string {
-    return rank <= 2 ? COLOR_DARK_TEXT : COLOR_WHITE;
-}
 
 let wasmInitPromise: Promise<void> | null = null;
 function ensureWasmInit(): Promise<void> {
@@ -92,11 +100,13 @@ function ensureWasmInit(): Promise<void> {
     return wasmInitPromise;
 }
 
-const FONTS: { name: string; data: ArrayBuffer; weight: 400 | 700 | 800; style: 'normal' }[] = [
+const FONTS: { name: string; data: ArrayBuffer; weight: 400 | 700 | 800 | 900; style: 'normal' }[] = [
     { name: 'Baloo 2', data: BALOO2_EXTRABOLD, weight: 800, style: 'normal' },
     { name: 'Nunito', data: NUNITO_REGULAR, weight: 400, style: 'normal' },
     { name: 'Nunito', data: NUNITO_BOLD, weight: 700, style: 'normal' },
     { name: 'Nunito', data: NUNITO_EXTRABOLD, weight: 800, style: 'normal' },
+    { name: 'Orbitron', data: ORBITRON_BOLD, weight: 700, style: 'normal' },
+    { name: 'Orbitron', data: ORBITRON_BLACK, weight: 900, style: 'normal' },
 ];
 
 // Chunked base64 - spreading a whole Uint8Array into String.fromCharCode can blow the
@@ -111,15 +121,20 @@ function toBase64(buf: ArrayBuffer): string {
     return btoa(binary);
 }
 
-// Built lazily once per isolate, not per request - the logo bytes never change.
+// Built lazily once per isolate, not per request - the bytes never change.
 let logoDataUri: string | null = null;
 function getLogoDataUri(): string {
     if (!logoDataUri) logoDataUri = `data:image/png;base64,${toBase64(HEATCHECKS_LOGO)}`;
     return logoDataUri;
 }
+let discordIconDataUri: string | null = null;
+function getDiscordIconDataUri(): string {
+    if (!discordIconDataUri) discordIconDataUri = `data:image/png;base64,${toBase64(DISCORD_ICON)}`;
+    return discordIconDataUri;
+}
 
 // One failed avatar can't take down the whole render - falls back to a plain tier-
-// colored circle for that row.
+// colored fill for that row.
 async function loadAvatarDataUri(url: string, fallbackColor: string): Promise<string> {
     try {
         const res = await fetch(url);
@@ -129,54 +144,146 @@ async function loadAvatarDataUri(url: string, fallbackColor: string): Promise<st
         const base64 = toBase64(buf);
         return `data:${contentType};base64,${base64}`;
     } catch {
-        // 1x1 solid-color PNG data URI as a last resort - satori still needs a valid
+        // Solid-color SVG data URI as a last resort - satori still needs a valid
         // image src, an empty/broken one would fail the whole render.
-        return `data:image/svg+xml;base64,${btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="${AVATAR_SIZE}" height="${AVATAR_SIZE}"><rect width="100%" height="100%" fill="${fallbackColor}"/></svg>`)}`;
+        return `data:image/svg+xml;base64,${btoa(`<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128"><rect width="100%" height="100%" fill="${fallbackColor}"/></svg>`)}`;
     }
 }
 
-function buildRowNode(row: LeaderboardRowInput, avatarDataUri: string) {
-    const hexColor = `#${colorForRank(row.rank).toString(16).padStart(6, '0')}`;
-    const textColor = textColorForRank(row.rank);
+// A small black pill (used for the name and SR labels floating over the avatar).
+function pillNode(text: string, fontSize: number) {
     return {
         type: 'div',
         props: {
             style: {
                 display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'center',
-                width: IMAGE_WIDTH - PADDING * 2,
-                height: ROW_HEIGHT,
-                borderRadius: 16,
-                background: hexColor,
-                padding: '0 24px',
-                gap: 20,
+                background: COLOR_PLATE_BLACK,
+                borderRadius: 999,
+                padding: '4px 16px',
+                fontFamily: 'Nunito',
+                fontWeight: 800,
+                fontSize,
+                color: COLOR_WHITE,
             },
+            children: text,
+        },
+    };
+}
+
+// One rank unit, mockup-style: a manual shadow layer (an offset dark rounded rect -
+// guaranteed to rasterize, unlike relying on satori 0.10's boxShadow through resvg),
+// a white rounded box filled edge-to-edge by the user's avatar (cover-cropped) with
+// the name/SR pills and the green score pill floating on top, and the big black rank
+// plate painted last so it overlaps the white box's left edge like the mock.
+function buildRowNode(row: LeaderboardRowInput, avatarDataUri: string) {
+    const whiteBoxW = ROW_W - WHITE_BOX_LEFT;
+    return {
+        type: 'div',
+        props: {
+            style: { display: 'flex', position: 'relative', width: ROW_W, height: ROW_UNIT_H },
             children: [
+                // Shadow layer - offset down/right, under everything.
                 {
                     type: 'div',
                     props: {
-                        style: { display: 'flex', width: 36, fontFamily: 'Baloo 2', fontWeight: 800, fontSize: 30, color: textColor },
-                        children: `#${row.rank}`,
+                        style: {
+                            display: 'flex',
+                            position: 'absolute',
+                            left: ROW_SHADOW_OFFSET,
+                            top: ROW_SHADOW_OFFSET,
+                            width: ROW_W - ROW_SHADOW_OFFSET,
+                            height: ROW_BOX_H,
+                            borderRadius: 24,
+                            background: 'rgba(0,0,0,0.45)',
+                        },
                     },
                 },
-                {
-                    type: 'img',
-                    props: {
-                        src: avatarDataUri,
-                        width: AVATAR_SIZE,
-                        height: AVATAR_SIZE,
-                        style: { borderRadius: '50%', display: 'flex' },
-                    },
-                },
+                // White box with avatar fill + floating pills.
                 {
                     type: 'div',
                     props: {
-                        style: { display: 'flex', flexDirection: 'column', justifyContent: 'center', flexGrow: 1 },
+                        style: {
+                            display: 'flex',
+                            position: 'absolute',
+                            left: WHITE_BOX_LEFT,
+                            top: 6,
+                            width: whiteBoxW,
+                            height: ROW_BOX_H - 12,
+                            borderRadius: 14,
+                            background: COLOR_WHITE,
+                            overflow: 'hidden',
+                        },
                         children: [
-                            { type: 'div', props: { style: { display: 'flex', fontFamily: 'Nunito', fontWeight: 800, fontSize: 22, color: textColor }, children: row.displayName } },
-                            { type: 'div', props: { style: { display: 'flex', fontFamily: 'Nunito', fontWeight: 700, fontSize: 17, color: textColor, opacity: 0.85 }, children: row.scoreLine } },
+                            {
+                                type: 'img',
+                                props: {
+                                    src: avatarDataUri,
+                                    width: whiteBoxW,
+                                    height: ROW_BOX_H - 12,
+                                    style: { position: 'absolute', left: 0, top: 0, objectFit: 'cover' },
+                                },
+                            },
+                            // Name pill, top-right.
+                            {
+                                type: 'div',
+                                props: {
+                                    style: { display: 'flex', position: 'absolute', right: 12, top: 10 },
+                                    children: [pillNode(row.displayName, 19)],
+                                },
+                            },
+                            // SR pill, under the name.
+                            {
+                                type: 'div',
+                                props: {
+                                    style: { display: 'flex', position: 'absolute', right: 12, top: 52 },
+                                    children: [pillNode(`SR: ${row.sr}`, 15)],
+                                },
+                            },
+                            // Green-outlined score pill, bottom-left.
+                            {
+                                type: 'div',
+                                props: {
+                                    style: {
+                                        display: 'flex',
+                                        position: 'absolute',
+                                        left: 14,
+                                        bottom: 10,
+                                        background: COLOR_PLATE_BLACK,
+                                        border: `3px solid ${COLOR_GREEN}`,
+                                        borderRadius: 12,
+                                        padding: '4px 14px',
+                                        fontFamily: 'Orbitron',
+                                        fontWeight: 900,
+                                        fontSize: 24,
+                                        color: COLOR_GREEN,
+                                    },
+                                    children: row.scoreValue,
+                                },
+                            },
                         ],
+                    },
+                },
+                // Rank plate - painted last so it sits on top of the white box edge.
+                {
+                    type: 'div',
+                    props: {
+                        style: {
+                            display: 'flex',
+                            position: 'absolute',
+                            left: 0,
+                            top: 0,
+                            width: RANK_PLATE_W,
+                            height: ROW_BOX_H,
+                            borderRadius: 22,
+                            background: COLOR_PLATE_BLACK,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontFamily: 'Orbitron',
+                            fontWeight: 900,
+                            fontSize: 56,
+                            color: COLOR_GREEN,
+                        },
+                        children: String(row.rank),
                     },
                 },
             ],
@@ -200,7 +307,10 @@ export async function renderLeaderboardImage(headerLabel: string, rows: Leaderbo
             ensureWasmInit(),
         ]);
 
-        const totalHeight = PADDING * 2 + HEADER_HEIGHT + rows.length * ROW_HEIGHT + (rows.length - 1) * ROW_GAP + ROW_GAP + WATERMARK_HEIGHT;
+        const totalHeight =
+            CARD_PAD * 2 + HEADER_PLATE_H + 26 + rows.length * ROW_UNIT_H + (rows.length - 1) * ROW_GAP + 18 + WATERMARK_HEIGHT;
+        // The whole image IS the blue card - rounded corners render transparent in
+        // the PNG, so Discord's own message background shows through them.
         const tree = {
             type: 'div',
             props: {
@@ -209,30 +319,71 @@ export async function renderLeaderboardImage(headerLabel: string, rows: Leaderbo
                     height: totalHeight,
                     display: 'flex',
                     flexDirection: 'column',
-                    background: COLOR_BG,
-                    padding: PADDING,
-                    gap: ROW_GAP,
+                    background: COLOR_CARD_BLUE,
+                    borderRadius: CARD_RADIUS,
+                    border: `6px solid ${COLOR_PLATE_BLACK}`,
+                    padding: CARD_PAD,
                 },
                 children: [
+                    // Header plate: black rounded block, view label small on top,
+                    // big green LEADERBOARD under it.
                     {
                         type: 'div',
                         props: {
                             style: {
                                 display: 'flex',
-                                height: HEADER_HEIGHT,
+                                flexDirection: 'column',
                                 alignItems: 'center',
-                                fontFamily: 'Baloo 2',
-                                fontWeight: 800,
-                                fontSize: 30,
-                                color: COLOR_WHITE,
+                                justifyContent: 'center',
+                                alignSelf: 'center',
+                                height: HEADER_PLATE_H,
+                                padding: '10px 40px',
+                                borderRadius: 26,
+                                background: COLOR_PLATE_BLACK,
+                                marginBottom: 26,
                             },
-                            children: headerLabel,
+                            children: [
+                                {
+                                    type: 'div',
+                                    props: {
+                                        style: {
+                                            display: 'flex',
+                                            fontFamily: 'Orbitron',
+                                            fontWeight: 700,
+                                            fontSize: 20,
+                                            letterSpacing: 2,
+                                            color: COLOR_WHITE,
+                                            textTransform: 'uppercase',
+                                        },
+                                        children: headerLabel,
+                                    },
+                                },
+                                {
+                                    type: 'div',
+                                    props: {
+                                        style: {
+                                            display: 'flex',
+                                            fontFamily: 'Orbitron',
+                                            fontWeight: 900,
+                                            fontSize: 52,
+                                            letterSpacing: 4,
+                                            color: COLOR_GREEN,
+                                        },
+                                        children: 'LEADERBOARD',
+                                    },
+                                },
+                            ],
                         },
                     },
-                    ...rows.map((row, i) => buildRowNode(row, avatarDataUris[i])),
-                    // Watermark footer: real site logo + the community invite as
-                    // visible text - pixels can't be clicked, but a screenshot or
-                    // re-share keeps the attribution and the way in.
+                    {
+                        type: 'div',
+                        props: {
+                            style: { display: 'flex', flexDirection: 'column', gap: ROW_GAP },
+                            children: rows.map((row, i) => buildRowNode(row, avatarDataUris[i])),
+                        },
+                    },
+                    // Watermark footer: real site logo + the Discord mark (the
+                    // embed's clickable title carries the actual invite link).
                     {
                         type: 'div',
                         props: {
@@ -242,7 +393,8 @@ export async function renderLeaderboardImage(headerLabel: string, rows: Leaderbo
                                 alignItems: 'center',
                                 justifyContent: 'space-between',
                                 height: WATERMARK_HEIGHT,
-                                width: IMAGE_WIDTH - PADDING * 2,
+                                width: ROW_W,
+                                marginTop: 18,
                             },
                             children: [
                                 {
@@ -255,16 +407,12 @@ export async function renderLeaderboardImage(headerLabel: string, rows: Leaderbo
                                     },
                                 },
                                 {
-                                    type: 'div',
+                                    type: 'img',
                                     props: {
-                                        style: {
-                                            display: 'flex',
-                                            fontFamily: 'Nunito',
-                                            fontWeight: 700,
-                                            fontSize: 15,
-                                            color: 'rgba(255,255,255,0.55)',
-                                        },
-                                        children: HEATCHECKS_DISCORD_INVITE.replace('https://', ''),
+                                        src: getDiscordIconDataUri(),
+                                        width: DISCORD_ICON_SIZE,
+                                        height: DISCORD_ICON_SIZE,
+                                        style: { display: 'flex', opacity: 0.85 },
                                     },
                                 },
                             ],
@@ -292,6 +440,7 @@ export async function sendLeaderboardResult(
     applicationId: string,
     token: string,
     content: string,
+    headerLabel: string,
     rows: LeaderboardRowInput[]
 ): Promise<void> {
     const patchUrl = `https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`;
@@ -303,7 +452,6 @@ export async function sendLeaderboardResult(
     // than any fallback content this function could send instead. Nothing here should
     // ever throw past this function.
     try {
-        const headerLabel = content.replace(/\*\*/g, '');
         const png = rows.length > 0 ? await renderLeaderboardImage(headerLabel, rows) : null;
 
         if (png) {

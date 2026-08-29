@@ -35,6 +35,7 @@ import { submitPick, type SubmitPickResult } from '../../../lib/pages-functions/
 import { fetchGuildMembers, getGuildLabels, buildDiscordAvatarUrl } from '../../../lib/pages-functions/discord-api';
 import type { LeaderboardMessage } from '../../../lib/pages-functions/discord-leaderboard-card';
 import { sendLeaderboardResult } from '../../../lib/pages-functions/leaderboard-image';
+import { computeSkillRatings } from '../../../lib/pages-functions/skill-rating';
 import {
     handleSetupCommand,
     handleConfigCommand,
@@ -234,9 +235,9 @@ function handleLeaderboardCommand(context: RequestContext, interaction: any): Re
         buildMessage
             .catch((err) => {
                 console.error('[POST /api/discord/interactions] Leaderboard build failed:', err);
-                return { content: 'Could not build the leaderboard right now — try again shortly.', rows: [] };
+                return { content: 'Could not build the leaderboard right now — try again shortly.', headerLabel: '', rows: [] };
             })
-            .then(({ content, rows }) => sendLeaderboardResult(applicationId, interactionToken, content, rows))
+            .then(({ content, headerLabel, rows }) => sendLeaderboardResult(applicationId, interactionToken, content, headerLabel, rows))
     );
 
     return new Response(
@@ -261,7 +262,7 @@ async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promi
         getGuildLabels(sql, guildId),
     ]);
     const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
-    if (memberIds.length === 0) return { content: 'No members to rank in this server yet.', rows: [] };
+    if (memberIds.length === 0) return { content: 'No members to rank in this server yet.', headerLabel: '', rows: [] };
 
     const rows = (await sql`
         SELECT dl.discord_user_id, dl.discord_username,
@@ -284,6 +285,7 @@ async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promi
         .map((r) => {
             const member = memberById.get(r.discord_user_id);
             return {
+                discordUserId: r.discord_user_id,
                 name: member?.global_name || member?.username || r.discord_username,
                 avatarUrl: buildDiscordAvatarUrl(r.discord_user_id, member?.avatar),
                 correct: r.correct,
@@ -295,14 +297,17 @@ async function buildAccuracyLeaderboardMessage(env: Env, guildId: string): Promi
         .slice(0, LEADERBOARD_SIZE);
 
     if (ranked.length === 0) {
-        return { content: `Nobody in this server has ${minPicks}+ settled picks yet — check back soon!`, rows: [] };
+        return { content: `Nobody in this server has ${minPicks}+ settled picks yet — check back soon!`, headerLabel: '', rows: [] };
     }
 
+    const srById = await computeSkillRatings(sql, guildId, ranked.map((r) => r.discordUserId));
     const rankedRows = ranked.map((r, i) => ({
         rank: i + 1,
         displayName: r.name,
         avatarUrl: r.avatarUrl,
         scoreLine: `${(r.accuracy * 100).toFixed(0)}% (${r.correct}/${r.settled})`,
+        scoreValue: `${(r.accuracy * 100).toFixed(0)}%`,
+        sr: srById.get(r.discordUserId) ?? 0,
     }));
-    return { content: `**Heatchecks ${leaderboardLabel}**`, rows: rankedRows };
+    return { content: `**Heatchecks ${leaderboardLabel}**`, headerLabel: 'OVERALL ACCURACY', rows: rankedRows };
 }
