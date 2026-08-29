@@ -63,6 +63,7 @@ export function generateSitemap(
         { loc: `${baseUrl}/the-hatchery/`, lastmod: today, changefreq: 'monthly', priority: '0.5' },
         { loc: `${baseUrl}/champions-terrace/`, lastmod: today, changefreq: 'monthly', priority: '0.4' },
         { loc: `${baseUrl}/quickboost-delicacies/`, lastmod: today, changefreq: 'monthly', priority: '0.4' },
+        { loc: `${baseUrl}/tankdaq/`, lastmod: today, changefreq: 'monthly', priority: '0.4' },
         { loc: `${baseUrl}/beta/`, lastmod: today, changefreq: 'monthly', priority: '0.6' },
     ];
 

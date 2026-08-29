@@ -1303,6 +1303,7 @@ async function generateAllPages(): Promise<void> {
         //                    generateFallbackSection() inside tank-template.ts.
         //   /the-hatchery/ - egg shop + incubator
         //   /champions-terrace/, /quickboost-delicacies/ - the two food shops
+        //   /tankdaq/      - the exchange floor (hover-preview scene for now)
         console.log('Generating tank-world pages...');
         writeHtmlFile('the-tank/index.html', generateTankLandPageHtml(baseUrl));
         writeHtmlFile('the-tank-hq/index.html', generateTankPageHtml(baseUrl, tankEntries));
@@ -1323,7 +1324,18 @@ async function generateAllPages(): Promise<void> {
             rootId: 'quickboost-root',
             scriptName: 'quickboost-delicacies',
         }));
-        // Note: all three URLs are hardcoded sitemap entries in sitemap.ts - not
+        // TANKDAQ reuses the food-shop shell (it's a generic LandScreen page
+        // template): its two hotspots are hover-only previews until the Index
+        // Prices / Beaks the Broker pages ship.
+        writeHtmlFile('tankdaq/index.html', generateFoodShopPageHtml(baseUrl, {
+            path: '/tankdaq/',
+            title: 'TANKDAQ | Heatchecks',
+            heading: 'TANKDAQ',
+            description: 'The TANKDAQ exchange floor - index prices and the broker, coming soon.',
+            rootId: 'tankdaq-root',
+            scriptName: 'tankdaq',
+        }));
+        // Note: all of these URLs are hardcoded sitemap entries in sitemap.ts - not
         // pushed here too, to avoid duplicate <url> entries.
         console.log(`✓ Generated Tank Land, Tank HQ (${tankEntries.length} tank(s)), and Hatchery pages\n`);
 

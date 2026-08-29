@@ -53,6 +53,7 @@ export function generateTankLandPageHtml(baseUrl: string): string {
         <ul>
             <li><a href="/the-tank-hq/">The Tank HQ &mdash; today's tanks</a></li>
             <li><a href="/the-hatchery/">The Hatchery &mdash; eggs and incubator</a></li>
+            <li><a href="/tankdaq/">TANKDAQ &mdash; the exchange floor</a></li>
         </ul>
     </section>
     <div id="tank-land-root"></div>

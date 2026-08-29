@@ -58,6 +58,8 @@ export async function buildTankBundles(): Promise<void> {
             // The two Tank Land food shops.
             { in: path.join(process.cwd(), 'champions-terrace-client.tsx'), out: 'champions-terrace' },
             { in: path.join(process.cwd(), 'quickboost-client.tsx'), out: 'quickboost-delicacies' },
+            // TANKDAQ - the exchange floor.
+            { in: path.join(process.cwd(), 'tankdaq-client.tsx'), out: 'tankdaq' },
         ],
         bundle: true,
         splitting: true, // requires format: 'esm'; this is what extracts the shared chunk

@@ -22,7 +22,9 @@ export interface LandHotspot {
     path: string;       // viewBox-space outline of the structure
     ariaLabel: string;
     href?: string;      // navigation hotspot...
-    onActivate?: () => void; // ...or action hotspot (modal open). Exactly one should be set.
+    onActivate?: () => void; // ...or action hotspot (modal open). At most one should be
+    // set; with neither the hotspot is a hover-only preview (glow + label, no action)
+    // for a location whose page doesn't exist yet.
     // Hover/focus-revealed name (worldmap-style) - hidden at rest, see LandScreen.css.
     label?: { text: string; x: number; y: number };
 }
@@ -73,6 +75,12 @@ export const LandScreen: React.FC<LandScreenProps> = ({ backgroundSrc, pageAriaL
                         <a key={h.id} href={h.href} className="land-screen__hotspot" aria-label={h.ariaLabel}>
                             <HotspotLayers hotspot={h} />
                         </a>
+                    ) : !h.onActivate ? (
+                        // Hover-only preview: no button semantics for a spot that doesn't
+                        // do anything yet - the CSS keys everything on the class.
+                        <g key={h.id} className="land-screen__hotspot" aria-label={h.ariaLabel}>
+                            <HotspotLayers hotspot={h} />
+                        </g>
                     ) : (
                         <g
                             key={h.id}

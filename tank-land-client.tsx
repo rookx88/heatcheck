@@ -18,6 +18,8 @@ const HATCHERY_PATH = 'M16,924 L48,828 L88,804 L225,804 L265,852 L265,1004 L241,
 const QUICKBOOST_PATH = 'M607,571 L623,542 L671,540 L682,571 L679,596 L611,599 Z';
 // The two-story lodge by the lake, bottom right - Champion's Lakeside Terrace.
 const CHAMPIONS_PATH = 'M659,1109 L679,1069 L727,1065 L755,1101 L751,1157 L667,1165 Z';
+// The grey columned building with the dome and flags, top right - TANKDAQ.
+const TANKDAQ_PATH = 'M545,430 L575,345 L640,300 L662,250 L700,240 L724,250 L744,296 L792,330 L792,468 L724,500 L600,500 L545,470 Z';
 
 function mount() {
     const root = document.getElementById('tank-land-root');
@@ -57,6 +59,15 @@ function mount() {
                     // text sat in the bottom-right corner under the PetWidget. x stays
                     // left of the polygon's center so the long label fits the viewBox.
                     label: { text: 'Champion’s Lakeside Terrace', x: 540, y: 1040 },
+                },
+                {
+                    id: 'tankdaq',
+                    path: TANKDAQ_PATH,
+                    ariaLabel: 'TANKDAQ - the exchange floor',
+                    href: '/tankdaq/',
+                    // Anchored above the building; x pulled left of the polygon's
+                    // center so the label clears the right viewBox edge.
+                    label: { text: 'TANKDAQ', x: 640, y: 215 },
                 },
             ]}
         />

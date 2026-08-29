@@ -66,6 +66,7 @@ assets/images/*
 # WorldMap.tsx consumers) - imported directly by those TSX files via Vite, so
 # the built file must exist in the repo for Cloudflare's from-source build.
 !assets/images/tank-land-bg.webp
+!assets/images/tankdaq-bg.webp
 !assets/images/egg-shop-bg.webp
 !assets/images/champions-food-shop-bg.webp
 !assets/images/quickboost-food-shop-bg.webp

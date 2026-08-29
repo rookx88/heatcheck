@@ -5,6 +5,8 @@ import { renderHead } from './waitlist-landing-template';
  * Lakeside Terrace, Quickboost Delicacies) - each is a LandScreen scene whose one
  * hotspot opens the vendor's FoodShopModal. Fallback nav is covered by the fixed
  * .land-screen once the island mounts (same trick as the other tank-world pages).
+ * Despite the name it's a generic LandScreen-page shell - TANKDAQ (/tankdaq/)
+ * uses it too.
  */
 export interface FoodShopPage {
     path: string;        // '/champions-terrace/'
