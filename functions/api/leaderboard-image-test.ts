@@ -31,6 +31,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         png = await renderMeCard({
             displayName: 'Sample Player',
             avatarUrl: 'https://cdn.discordapp.com/embed/avatars/0.png',
+            // The test guild's real server icon, so the preview matches what /me
+            // shows (the glow circle holds the GUILD icon, not the user avatar).
+            guildIconUrl: 'https://cdn.discordapp.com/icons/1537014644621967402/4fda9d85115e21aa76119d5082b7ece3.png?size=512',
             points: 1286,
             rank: 13,
             sr: 517,

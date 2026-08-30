@@ -198,6 +198,25 @@ export interface DiscordGuildMember {
 // only resolve under .gif; everything else is .png. Falls back to Discord's own
 // default-avatar CDN (index 0-5, derived from the user id) when the member has never
 // set a custom avatar.
+// The guild's own icon ("server pfp") - used by the /me card's glow circle. One
+// REST call; returns null when the server has no icon set (or the fetch fails),
+// callers pick their own fallback.
+export async function fetchGuildIconUrl(env: Env, guildId: string): Promise<string | null> {
+    try {
+        const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
+            headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
+        });
+        if (!res.ok) return null;
+        const guild = (await res.json()) as { icon?: string | null };
+        if (!guild.icon) return null;
+        const ext = guild.icon.startsWith('a_') ? 'gif' : 'png';
+        return `https://cdn.discordapp.com/icons/${guildId}/${guild.icon}.${ext}?size=512`;
+    } catch (err) {
+        console.error('[discord-api] Guild icon fetch failed:', err);
+        return null;
+    }
+}
+
 export function buildDiscordAvatarUrl(userId: string, avatar: string | null | undefined): string {
     if (avatar) {
         const ext = avatar.startsWith('a_') ? 'gif' : 'png';

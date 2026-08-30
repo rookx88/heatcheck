@@ -47,7 +47,11 @@ const ORANGE = '#f97316';
 
 export interface MeCardInput {
     displayName: string;
+    // The user's avatar - used only for the plain-embed fallback thumbnail.
     avatarUrl: string;
+    // The GUILD's icon ("server pfp") - what actually sits inside the glow circle,
+    // per the design. Null (server never set one) falls back to the user's avatar.
+    guildIconUrl: string | null;
     points: number;
     rank: number;
     sr: number;
@@ -124,7 +128,7 @@ export async function renderMeCard(input: MeCardInput): Promise<Uint8Array | nul
         await ensureWasmInit();
         const tier = tierForLevel(input.level);
         const { bg, char } = getArt();
-        const avatarRaw = await fetchAvatarDataUri(input.avatarUrl);
+        const avatarRaw = await fetchAvatarDataUri(input.guildIconUrl ?? input.avatarUrl);
 
         // Circle geometry (reference * 0.5): center (270, 320), ring radius 225.
         const ringR = 225;

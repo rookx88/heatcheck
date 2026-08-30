@@ -24,7 +24,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, getGuildLabels, buildDiscordAvatarUrl, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL } from './discord-api';
+import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, getGuildLabels, buildDiscordAvatarUrl, fetchGuildIconUrl, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL } from './discord-api';
 import type { LeaderboardMessage } from './discord-leaderboard-card';
 import { computeSkillRatings } from './skill-rating';
 import { computeLevels } from './leveling';
@@ -880,7 +880,10 @@ export async function buildSrLeaderboardMessage(env: Env, guildId: string): Prom
 
 export async function buildMeCardInput(env: Env, guildId: string, discordUserId: string): Promise<MeCardInput> {
     const sql = getSql(env);
-    const members = await fetchGuildMembers(env, guildId);
+    const [members, guildIconUrl] = await Promise.all([
+        fetchGuildMembers(env, guildId),
+        fetchGuildIconUrl(env, guildId),
+    ]);
     const member = members.find((m) => m.user.id === discordUserId)?.user;
 
     const [pointsRows, rankRows, srById, levelById] = await Promise.all([
@@ -897,6 +900,7 @@ export async function buildMeCardInput(env: Env, guildId: string, discordUserId:
     return {
         displayName: member?.global_name || member?.username || 'You',
         avatarUrl: buildDiscordAvatarUrl(discordUserId, member?.avatar),
+        guildIconUrl,
         points: Number((pointsRows[0] as any)?.points ?? 0),
         rank: Number((rankRows[0] as any)?.ahead ?? 0) + 1,
         sr: srById.get(discordUserId) ?? 0,
