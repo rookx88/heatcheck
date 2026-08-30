@@ -315,14 +315,15 @@ async function buildSettlementEmailImages(): Promise<void> {
 /**
  * The Explore badge that drapes off the world map's top-left on the homepage.
  * Like the settlement-email images, the source is a plain PNG at the repo root
- * (2000x2000, real alpha channel - no extractEmbeddedPng/deriveAlpha step), so it
- * keeps WebP + PNG output with transparency intact. 720px = ~2x retina for its
- * clamp(130px, 26%, 250px) display width in the homepage template.
+ * (real alpha channel - no extractEmbeddedPng/deriveAlpha step), so it keeps
+ * WebP + PNG output with transparency intact. The 720px cap is ~2x retina for
+ * its clamp(130px, 26%, 250px) display width in the homepage template; the
+ * current 500px source simply stays at native size under it.
  */
 async function buildExploreLogo(): Promise<void> {
-    const srcPath = path.join(process.cwd(), 'ExploreLogo.png');
+    const srcPath = path.join(process.cwd(), 'explore_logo.png');
     if (!fs.existsSync(srcPath)) {
-        console.log('⚠ ExploreLogo.png not found at repo root, skipping explore-logo');
+        console.log('⚠ explore_logo.png not found at repo root, skipping explore-logo');
         return;
     }
     const pngBuffer = await sharp(srcPath).trim().toBuffer();
@@ -334,8 +335,75 @@ async function buildExploreLogo(): Promise<void> {
 
     const webpSize = fs.statSync(webpPath).size;
     console.log(
-        `✓ ExploreLogo.png -> explore-logo.webp (${(webpSize / 1024).toFixed(0)}KB) + ` +
+        `✓ explore_logo.png -> explore-logo.webp (${(webpSize / 1024).toFixed(0)}KB) + ` +
         `explore-logo.png (${(pngInfo.size / 1024).toFixed(0)}KB) [trimmed to ${pngInfo.width}x${pngInfo.height}]`
+    );
+}
+
+/**
+ * Clear the edge-connected near-white background of an RGBA image without
+ * touching white that is part of the artwork itself: flood-fill inward from
+ * every border pixel, walking only pixels that are already transparent or
+ * near-white, and zero the alpha of the near-white ones reached. Interior
+ * white (paint splashes, dots) stays because the walk can't cross the
+ * non-white artwork to get to it.
+ */
+async function clearEdgeConnectedWhite(pngBuffer: Buffer): Promise<Buffer> {
+    const { data, info } = await sharp(pngBuffer).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+    const { width, height } = info;
+    const isBackground = (i: number) =>
+        data[i + 3] < 10 || (data[i] >= 235 && data[i + 1] >= 235 && data[i + 2] >= 235);
+    const visited = new Uint8Array(width * height);
+    const queue: number[] = [];
+    const push = (x: number, y: number) => {
+        const p = y * width + x;
+        if (!visited[p] && isBackground(p * 4)) {
+            visited[p] = 1;
+            queue.push(p);
+        }
+    };
+    for (let x = 0; x < width; x++) { push(x, 0); push(x, height - 1); }
+    for (let y = 0; y < height; y++) { push(0, y); push(width - 1, y); }
+    while (queue.length > 0) {
+        const p = queue.pop()!;
+        const x = p % width;
+        const y = (p - x) / width;
+        data[p * 4 + 3] = 0;
+        if (x > 0) push(x - 1, y);
+        if (x < width - 1) push(x + 1, y);
+        if (y > 0) push(x, y - 1);
+        if (y < height - 1) push(x, y + 1);
+    }
+    return sharp(data, { raw: { width, height, channels: 4 } }).png().toBuffer();
+}
+
+/**
+ * The Market Movers wordmark on the homepage section band. Plain PNG at the
+ * repo root like explore_logo.png, but exported on a near-white canvas (only
+ * the corners carry alpha), so the background must be knocked out first -
+ * the band behind it is purple, and a baked white rectangle would read as a
+ * bug. 600px matches the previous asset's width (~2x retina for its
+ * clamp(180px, 42vw, 300px) display width).
+ */
+async function buildMarketMoversLogo(): Promise<void> {
+    const srcPath = path.join(process.cwd(), 'market_movers.png');
+    if (!fs.existsSync(srcPath)) {
+        console.log('⚠ market_movers.png not found at repo root, skipping market-movers-logo');
+        return;
+    }
+    let pngBuffer = await sharp(srcPath).png().toBuffer();
+    pngBuffer = await clearEdgeConnectedWhite(pngBuffer);
+    pngBuffer = await sharp(pngBuffer).trim().toBuffer();
+
+    const webpPath = path.join(outDir, 'market-movers-logo.webp');
+    const pngPath = path.join(outDir, 'market-movers-logo.png');
+    await sharp(pngBuffer).resize({ width: 600, withoutEnlargement: true }).webp({ quality: 82 }).toFile(webpPath);
+    const pngInfo = await sharp(pngBuffer).resize({ width: 600, withoutEnlargement: true }).png({ compressionLevel: 9 }).toFile(pngPath);
+
+    const webpSize = fs.statSync(webpPath).size;
+    console.log(
+        `✓ market_movers.png -> market-movers-logo.webp (${(webpSize / 1024).toFixed(0)}KB) + ` +
+        `market-movers-logo.png (${(pngInfo.size / 1024).toFixed(0)}KB) [trimmed to ${pngInfo.width}x${pngInfo.height}]`
     );
 }
 
@@ -364,11 +432,18 @@ async function run(): Promise<void> {
         fs.mkdirSync(outDir, { recursive: true });
     }
 
-    await buildWorldMapImages();
-    await buildSettlementEmailImages();
-    await buildExploreLogo();
-    await buildRegisterBanner();
-    await buildGameBackgrounds();
+    // Optional job filter: `npx tsx scripts/optimize-landing-images.ts explore-logo
+    // market-movers-logo` reruns just those builders; no args runs everything.
+    const only = process.argv.slice(2);
+    const want = (name: string) => only.length === 0 || only.includes(name);
+
+    if (want('world-map')) await buildWorldMapImages();
+    if (want('email')) await buildSettlementEmailImages();
+    if (want('explore-logo')) await buildExploreLogo();
+    if (want('market-movers-logo')) await buildMarketMoversLogo();
+    if (want('register-banner')) await buildRegisterBanner();
+    if (want('game-backgrounds')) await buildGameBackgrounds();
+    if (only.length > 0) return;
 
     for (const job of jobs) {
         const svgPath = path.join(sourceDir, job.source);

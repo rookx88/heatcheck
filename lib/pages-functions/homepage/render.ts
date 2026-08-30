@@ -132,7 +132,7 @@ function renderExplore(): string {
         <section id="explore" class="hc-section" aria-labelledby="hc-explore-heading">
             <h2 id="hc-explore-heading" class="hc-visually-hidden">Explore the world by sport</h2>
             <div class="hc-explore-wrap">
-                <img class="hc-explore-logo" src="/assets/images/explore-logo.webp" alt="" aria-hidden="true" loading="lazy" width="720" height="463">
+                <img class="hc-explore-logo" src="/assets/images/explore-logo.webp" alt="" aria-hidden="true" loading="lazy" width="453" height="248">
                 <div class="hc-explore-row">
                     <div id="hc-map-root">
                         <picture>

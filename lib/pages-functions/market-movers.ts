@@ -361,7 +361,7 @@ export function renderMarketMoversSection(data: MarketMoversData): string {
         <section id="market-movers" class="hc-section" aria-labelledby="hc-mm-heading">
             <h2 id="hc-mm-heading" class="hc-visually-hidden">Market Movers</h2>
             <div class="hc-mm-band">
-                <img class="hc-mm-logo" src="/assets/images/market-movers-logo.webp" alt="Market Movers" width="600" height="416" loading="lazy">
+                <img class="hc-mm-logo" src="/assets/images/market-movers-logo.webp" alt="Market Movers" width="338" height="249" loading="lazy">
                 <p class="hc-section-sub hc-mm-note">Real sport moments are the fuel that forges the world of Heatchecks. Each moment is tied to an index. Storylines and results affect each index differently! And soon, a new way to put your Embers to work while you enjoy sports content.</p>
             </div>
             ${body}
