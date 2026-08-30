@@ -93,6 +93,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                     sideAPoints: split.sideAPoints,
                     sideBPoints: split.sideBPoints,
                     resolveDate,
+                    kickoffAt: game.kickoff ?? null,
                 });
                 if (result.status === 'duplicate') duplicate++;
                 else created++;

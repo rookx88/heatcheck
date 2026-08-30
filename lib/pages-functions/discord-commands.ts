@@ -358,7 +358,25 @@ async function tankSearchData(context: RequestContext, search: string): Promise<
 
     if (rows.length === 0) return { content: `No Tanks found matching "${search}".` };
 
-    const options = rows.map((row) => {
+    // Upcoming games first, soonest at the top; already-kicked-off/undated Tanks
+    // follow in their original most-recently-published order.
+    const now = Date.now();
+    const kickoffOf = (r: TankSearchRow) => {
+        const t = new Date(r.game_snapshot?.game?.kickoff ?? '').getTime();
+        return Number.isNaN(t) ? null : t;
+    };
+    const sorted = [...rows].sort((a, b) => {
+        const ka = kickoffOf(a);
+        const kb = kickoffOf(b);
+        const aUpcoming = ka !== null && ka > now;
+        const bUpcoming = kb !== null && kb > now;
+        if (aUpcoming && bUpcoming) return ka! - kb!;
+        if (aUpcoming) return -1;
+        if (bUpcoming) return 1;
+        return 0; // both past/undated - keep the query's published-recency order
+    });
+
+    const options = sorted.map((row) => {
         const modelOutput: TankCardModelOutput | null = typeof row.model_output === 'string' ? JSON.parse(row.model_output) : row.model_output;
         const tagline = (modelOutput?.tagline?.trim() || modelOutput?.hook || row.slug).slice(0, 100);
         const game = row.game_snapshot?.game;
@@ -477,7 +495,16 @@ async function communityPickSearchData(context: RequestContext, guildId: string,
 
     const term = keyword?.trim().toLowerCase();
     const matches: MarketSearchOption[] = [];
-    outer: for (const game of games) {
+    // Soonest game first, and no games that already kicked off - voting closes at
+    // game start, so offering an in-progress game would only create dead picks.
+    const now = Date.now();
+    const searchable = games
+        .filter((g) => {
+            const t = new Date(g.kickoff).getTime();
+            return Number.isNaN(t) || t > now;
+        })
+        .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
+    outer: for (const game of searchable) {
         for (const prop of game.props) {
             // Community Picks are strictly two-sided (one button per side, per the
             // brief's own schema: side_a_label/side_b_label) - a market with any
@@ -511,6 +538,15 @@ async function communityPickSearchData(context: RequestContext, guildId: string,
     // safe even for multi-word sports like "La Liga" since only literal colons
     // split) so they survive through the select and confirm steps.
     return selectMenuData(`cpselect:${sport}:${channelId ?? ''}`, `Found ${matches.length} market(s) — pick one:`, matches);
+}
+
+// Gamma serves gameStartTime as "2026-08-29 17:05:00+00" (space-separated, bare
+// offset) - normalize to ISO before Date parsing so it's engine-independent.
+export function parseGameStartTime(raw: string | null | undefined): Date | null {
+    if (!raw) return null;
+    const iso = raw.includes('T') ? raw : raw.replace(' ', 'T').replace(/\+00$/, '+00:00');
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? null : d;
 }
 
 function parseMarketOutcomes(market: any): { question: string; outcomes: string[]; outcomePrices: number[] } | null {
@@ -621,6 +657,14 @@ export async function handleCommunityPickConfirm(context: RequestContext, intera
     const resolution = resolveMarket(market);
     if (resolution.status === 'resolved') return updateMessageResponse('That market has already resolved - pick a live one.');
 
+    // Hard stop at game time - same posture as real Tank picks: once the game has
+    // started, no new pick (and votes close at this same moment, see
+    // handleCommunityVote).
+    const kickoff = parseGameStartTime((market as any).gameStartTime);
+    if (kickoff && kickoff.getTime() <= Date.now()) {
+        return updateMessageResponse('That game has already started - pick an upcoming one.');
+    }
+
     const split = computePointsSplit(parsed.outcomePrices);
     if (!split) return updateMessageResponse("This market's odds aren't usable for scoring right now - try a different one.");
 
@@ -644,6 +688,7 @@ export async function handleCommunityPickConfirm(context: RequestContext, intera
         guildId, channelId, createdBy, sport: sport || null, marketId,
         question: parsed.question, sideALabel: parsed.outcomes[0], sideBLabel: parsed.outcomes[1],
         sourceOutcomes: parsed.outcomes, sideAPoints: split.sideAPoints, sideBPoints: split.sideBPoints, resolveDate,
+        kickoffAt: kickoff ? kickoff.toISOString() : null,
         giveawayWinnerCount,
     });
 
@@ -668,11 +713,16 @@ export async function handleCommunityVote(context: RequestContext, interaction: 
     if (!discordUserId) return ephemeral("Couldn't identify your Discord account.");
 
     const sql = getSql(context.env);
-    const pickRows = await sql`SELECT status, resolve_date, side_a_label, side_b_label FROM community_picks WHERE id = ${pickId}`;
+    const pickRows = await sql`SELECT status, resolve_date, kickoff_at, side_a_label, side_b_label FROM community_picks WHERE id = ${pickId}`;
     if (pickRows.length === 0) return ephemeral("Couldn't find that Community Pick anymore.");
-    const pick = pickRows[0] as unknown as { status: string; resolve_date: string; side_a_label: string; side_b_label: string };
+    const pick = pickRows[0] as unknown as { status: string; resolve_date: string; kickoff_at: string | null; side_a_label: string; side_b_label: string };
     if (pick.status !== 'open' || new Date(pick.resolve_date).getTime() <= Date.now()) {
         return ephemeral('Voting is closed on this one.');
+    }
+    // Hard stop at game time, same as real Tank picks - the pick stays visible but
+    // can't be voted once the game is underway.
+    if (pick.kickoff_at && new Date(pick.kickoff_at).getTime() <= Date.now()) {
+        return ephemeral('This game has already started - voting is closed.');
     }
     const sideLabel = sideIndex === 0 ? pick.side_a_label : pick.side_b_label;
     if (!sideLabel) return ephemeral("Couldn't process that button.");
