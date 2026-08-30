@@ -117,14 +117,22 @@ function possessive(name: string): string {
     return /s$/i.test(name) ? `${name}'` : `${name}'s`;
 }
 
+// A side label that names a side rather than a team/player ("Over", "Under 37.5",
+// "Yes"/"No" on Kalshi markets) - never a sentence subject: "with Under's recent win"
+// reads broken. Word-boundary match so "Over 37.5" counts but "Overton" wouldn't.
+const GENERIC_SIDE_LABEL = /^(over|under|yes|no)\b/i;
+
 // The "Team Name" / "Player" subject for a settled result: a player prop's real subject is
 // prop.player itself; a game-line market's prop.player is a matchup fallback ("Away vs.
 // Home" - tank-providers.ts), so the tagged side's own outcome label (a real team name for
-// moneylines/spreads) is the correct subject there instead. Same "_player_" substring test
-// formatMarketLabel() (tank-deck-format.ts) already uses to classify a market.
+// moneylines/spreads) is the correct subject there instead - EXCEPT totals-style markets,
+// whose labels are generic side words: those pull the matchup name from prop.player. Same
+// "_player_" substring test formatMarketLabel() (tank-deck-format.ts) already uses.
 function subjectFor(item: TickerResultItem): string {
     const isPlayerProp = /_player_/.test(item.market);
-    return isPlayerProp ? item.player : (item.outcomeLabel || item.player);
+    if (isPlayerProp) return item.player;
+    if (!item.outcomeLabel || GENERIC_SIDE_LABEL.test(item.outcomeLabel)) return item.player;
+    return item.outcomeLabel;
 }
 
 // One newsline-style sentence per settled result, rotating through 3 phrasings so a card's
@@ -135,7 +143,10 @@ function buildResultSentence(item: TickerResultItem, displayName: string, templa
     const tickerWord = displayName.replace(/^\$/, '');
     const points = Math.abs(item.delta).toFixed(1);
     const subject = subjectFor(item);
-    const pick = item.pickLabel || subject;
+    // A pickLabel with substance ("Over 37.5") beats the subject; a bare side word
+    // ("Under", "Yes") doesn't - "as Under deliver" reads as broken as the possessive.
+    const pickLabelIsBareSide = /^(over|under|yes|no)$/i.test(item.pickLabel.trim());
+    const pick = (item.pickLabel && !pickLabelIsBareSide) ? item.pickLabel : subject;
     switch (templateIndex % 3) {
         case 0:
             return `${displayName} ${item.won ? 'climbs' : 'sinks'} ${points} points with ${possessive(subject)} recent ${item.won ? 'win' : 'loss'}.`;
