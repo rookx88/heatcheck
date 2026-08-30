@@ -1,0 +1,172 @@
+/* Shared auth form (AuthForm.tsx) - the one place the magic-link/Discord form is
+   styled. Consolidates what used to be duplicated rule-for-rule between
+   RegisterModal.css (.register-modal-input etc.) and the /login/ page's inline
+   styles (.hc-login-input etc.). The hosting surfaces keep only their own chrome:
+   tank-modal panel (register modal) and the .hc-login glass card (/login/). */
+
+.hc-auth,
+.hc-auth-sent {
+  text-align: center;
+}
+
+.hc-auth-lede {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: #ffffff;
+  margin: 0.25rem 0 0.4rem;
+}
+
+.hc-auth-copy {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.75);
+  margin: 0.75rem 0 1.1rem;
+}
+
+.hc-auth-input {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.8rem 1rem;
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 1rem;
+  color: #ffffff;
+  background: rgba(7, 5, 11, 0.6);
+  border: 2px solid rgba(47, 230, 217, 0.4);
+  border-radius: 12px;
+  margin-bottom: 0.85rem;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.hc-auth-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+}
+
+.hc-auth-input:focus-visible {
+  border-color: var(--hc-teal, #2fe6d9);
+  box-shadow: 0 0 12px rgba(47, 230, 217, 0.35);
+}
+
+.hc-auth-button {
+  display: block;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  font-family: 'Montserrat', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.05rem;
+  background: var(--hc-gold, #ffc72c);
+  color: #1a1200;
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 5px 0 var(--hc-gold-dark, #b8860b), 0 10px 22px rgba(0, 0, 0, 0.4);
+  transition: transform 0.15s ease;
+}
+
+.hc-auth-button:active {
+  transform: translateY(3px);
+  box-shadow: 0 2px 0 var(--hc-gold-dark, #b8860b);
+}
+
+.hc-auth-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hc-auth-button--discord {
+  text-decoration: none;
+  box-sizing: border-box;
+  background: #5865F2;
+  color: #ffffff;
+  box-shadow: 0 5px 0 #3a45c2, 0 10px 22px rgba(0, 0, 0, 0.4);
+}
+
+/* Secondary dismissal ("Got it" in the modal's sent state) - visually quieter
+   than the gold action so Resend stays the primary affordance. */
+.hc-auth-button--quiet {
+  margin-top: 0.6rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  box-shadow: none;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.hc-auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.1rem 0;
+  color: rgba(255, 255, 255, 0.4);
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.hc-auth-divider::before,
+.hc-auth-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.hc-auth-notice {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.88rem;
+  line-height: 1.5;
+  color: var(--hc-teal, #2fe6d9);
+  background: rgba(47, 230, 217, 0.1);
+  border: 1px solid rgba(47, 230, 217, 0.3);
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  margin: 0 0 1.1rem;
+}
+
+.hc-auth-error {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.88rem;
+  color: #ff8f8f;
+  margin: 0.9rem 0 0;
+}
+
+.hc-auth-sent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 1rem 0 0.5rem;
+}
+
+.hc-auth-sent .hc-auth-button {
+  margin-top: 0.4rem;
+}
+
+.hc-auth-check {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.6rem;
+  color: #07050b;
+  background: var(--hc-teal, #2fe6d9);
+  box-shadow: 0 0 24px rgba(47, 230, 217, 0.45);
+  margin-bottom: 0.35rem;
+}
+
+.hc-auth-sent-title {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: #ffffff;
+  margin: 0;
+}

@@ -20,9 +20,13 @@ export function generateLoginPageHtml(baseUrl: string): string {
     <!-- The URL can carry ?token=; never leak it via Referer to any cross-origin
          subresource (defense-in-depth on top of the browser default). -->
     <meta name="referrer" content="no-referrer">
+    <!-- The form internals (input, gold CTA, Discord button, divider, notice,
+         error) are the shared AuthForm - its styles ship as /assets/login.css,
+         emitted by build-login.ts from components/AuthForm.css. -->
+    <link rel="stylesheet" href="/assets/login.css">
     <style>
-        /* House-styled login card: navy glass panel with the teal border glow, Baloo
-           headings, gold CTA - the same language as the tank modals and homepage. */
+        /* Page-only chrome: navy glass panel with the teal border glow, Baloo
+           heading - the same language as the tank modals and homepage. */
         .hc-login {
             max-width: 460px; margin: 2.5rem auto; padding: 2rem 1.75rem 2.25rem;
             background: rgba(255, 255, 255, 0.04);
@@ -42,54 +46,10 @@ export function generateLoginPageHtml(baseUrl: string): string {
             letter-spacing: 0.14em; text-transform: uppercase; color: var(--hc-teal);
             text-shadow: 0 0 10px rgba(47, 230, 217, 0.45); margin: 0;
         }
+        /* Still used by the token-consuming states ("Logging you in…"). */
         .hc-login-copy {
             font-family: 'Nunito', sans-serif; font-size: 0.95rem; line-height: 1.55;
             color: rgba(255, 255, 255, 0.75); margin: 0.75rem 0 1.25rem;
-        }
-        .hc-login-input {
-            display: block; width: 100%; box-sizing: border-box; padding: 0.8rem 1rem;
-            font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 1rem;
-            color: #ffffff; background: rgba(7, 5, 11, 0.6);
-            border: 2px solid rgba(47, 230, 217, 0.4); border-radius: 12px;
-            margin-bottom: 0.85rem; outline: none;
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-        }
-        .hc-login-input::placeholder { color: rgba(255, 255, 255, 0.4); font-weight: 600; }
-        .hc-login-input:focus-visible {
-            border-color: var(--hc-teal); box-shadow: 0 0 12px rgba(47, 230, 217, 0.35);
-        }
-        .hc-login-button {
-            display: block; width: 100%; padding: 0.85rem 1rem; cursor: pointer;
-            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 1.05rem;
-            background: var(--hc-gold); color: #1a1200; border: none; border-radius: 14px;
-            box-shadow: 0 5px 0 var(--hc-gold-dark), 0 10px 22px rgba(0, 0, 0, 0.4);
-            transition: transform 0.15s ease;
-        }
-        .hc-login-button:active { transform: translateY(3px); box-shadow: 0 2px 0 var(--hc-gold-dark); }
-        .hc-login-button:disabled { opacity: 0.6; cursor: default; }
-        .hc-login-button--discord {
-            text-decoration: none; box-sizing: border-box;
-            background: #5865F2; color: #ffffff;
-            box-shadow: 0 5px 0 #3a45c2, 0 10px 22px rgba(0, 0, 0, 0.4);
-        }
-        .hc-login-divider {
-            display: flex; align-items: center; gap: 0.75rem;
-            margin: 1.1rem 0; color: rgba(255, 255, 255, 0.4);
-            font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.78rem;
-            text-transform: uppercase; letter-spacing: 0.08em;
-        }
-        .hc-login-divider::before, .hc-login-divider::after {
-            content: ''; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.15);
-        }
-        .hc-login-notice {
-            font-family: 'Nunito', sans-serif; font-size: 0.88rem; line-height: 1.5;
-            color: var(--hc-teal); background: rgba(47, 230, 217, 0.1);
-            border: 1px solid rgba(47, 230, 217, 0.3); border-radius: 12px;
-            padding: 0.75rem 0.9rem; margin: 0 0 1.1rem;
-        }
-        .hc-login-error {
-            font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.88rem;
-            color: #ff8f8f; margin: 0.9rem 0 0;
         }
     </style>
 </head>

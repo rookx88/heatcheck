@@ -11,8 +11,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { getOrCreateVisitorId } from './tank-analytics-client';
 import { setCachedAccount } from './tank-pick-client';
-
-const RESEND_COOLDOWN_SECONDS = 60;
+import { AuthForm } from './components/AuthForm';
 
 // Set by GET /api/discord/callback's no-session branch when Discord didn't grant a
 // verified email to create/match an account from - a one-time notice, not state to
@@ -21,89 +20,17 @@ function readDiscordNoEmailFlag(): boolean {
     return new URLSearchParams(window.location.search).get('discord') === 'no_email';
 }
 
+// The page keeps only its own chrome (glass card, eyebrow, heading); the actual
+// magic-link + Discord form is the shared AuthForm - the same component the
+// homepage register modal renders.
 function RequestLinkForm({ initialError }: { initialError: string | null }) {
-    const [email, setEmail] = useState('');
-    const [sending, setSending] = useState(false);
-    const [sent, setSent] = useState(false);
-    const [error, setError] = useState<string | null>(initialError);
-    const [cooldown, setCooldown] = useState(0);
     const [discordNoEmail] = useState(readDiscordNoEmailFlag);
-
-    useEffect(() => {
-        if (cooldown <= 0) return;
-        const t = window.setTimeout(() => setCooldown((s) => s - 1), 1000);
-        return () => window.clearTimeout(t);
-    }, [cooldown]);
-
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (sending || cooldown > 0) return;
-        setSending(true);
-        setError(null);
-        try {
-            const res = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email: email.trim() }),
-            });
-            const data = await res.json().catch(() => ({}));
-            if (!res.ok) throw new Error(data.message || 'Could not send a login link right now.');
-            setSent(true);
-            // Server enforces the real cooldown; this just keeps the button honest.
-            setCooldown(RESEND_COOLDOWN_SECONDS);
-        } catch (err: any) {
-            setError(err.message || 'Could not send a login link right now.');
-        } finally {
-            setSending(false);
-        }
-    };
 
     return (
         <div className="hc-login">
             <p className="hc-login-eyebrow">Heatchecks Login</p>
             <h1>Get back in your tank</h1>
-            {discordNoEmail && (
-                <p className="hc-login-notice">
-                    Discord didn't share a verified email with us, so we couldn't create your account that way —
-                    enter your email below instead. You can still connect Discord afterward from your account page.
-                </p>
-            )}
-            {sent ? (
-                <>
-                    <p className="hc-login-copy">
-                        Check your inbox — your login link is on the way. It works once and expires in 15 minutes.
-                    </p>
-                    <button className="hc-login-button" disabled={cooldown > 0 || sending} onClick={handleSubmit as any}>
-                        {cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend link'}
-                    </button>
-                </>
-            ) : (
-                <>
-                    <form onSubmit={handleSubmit}>
-                        <p className="hc-login-copy">
-                            Enter your email and we'll send a one-tap login link. No password — there isn't one.
-                        </p>
-                        <input
-                            className="hc-login-input"
-                            type="email"
-                            required
-                            autoFocus
-                            placeholder="you@example.com"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            disabled={sending}
-                        />
-                        <button className="hc-login-button" type="submit" disabled={sending}>
-                            {sending ? 'Sending…' : 'Email me a login link'}
-                        </button>
-                    </form>
-                    <div className="hc-login-divider"><span>or</span></div>
-                    <a className="hc-login-button hc-login-button--discord" href="/api/discord/link">
-                        Continue with Discord
-                    </a>
-                </>
-            )}
-            {error && <p className="hc-login-error">{error}</p>}
+            <AuthForm discordNoEmail={discordNoEmail} initialError={initialError} />
         </div>
     );
 }

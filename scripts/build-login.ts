@@ -6,7 +6,9 @@ import * as esbuild from 'esbuild';
 import path from 'path';
 import fs from 'fs';
 
-const ARTIFACTS = ['login.js'];
+// login.css exists because login-client.tsx imports components/AuthForm.css
+// through the shared AuthForm; esbuild emits it alongside the JS entry.
+const ARTIFACTS = ['login.js', 'login.css'];
 
 export async function buildLogin(): Promise<void> {
     const outdir = path.join(process.cwd(), 'public', 'assets');
