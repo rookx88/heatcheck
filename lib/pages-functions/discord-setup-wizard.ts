@@ -19,6 +19,12 @@ import { getSql, type Env } from './db';
 import { hasManageGuildPermission, postDiscordChannelMessage } from './discord-api';
 import { postWelcomeImageToChannel } from './leaderboard-image';
 import { brandEmbed } from './discord-brand';
+// Pre-rendered branded header (navy card, black plate, Orbitron green - the
+// leaderboard's exact header language, generated once at build time by
+// scratchpad/gen-banners.mjs, zero runtime CPU). Attached on the wizard's FIRST
+// response; type-7 updates that omit the attachments field retain it, so the banner
+// stays pinned above the embed through every step.
+import BANNER_SETUP from './art/banner-setup.bin';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
 import type { PropOdds } from '../../tank-types';
 
@@ -69,17 +75,23 @@ function json(body: unknown): Response {
 
 // Every wizard step renders as one branded embed (green strip, HEATCHECKS SETUP
 // plate) - the embed-world translation of the card aesthetic, applied here once for
-// all screens instead of per-call-site.
+// all screens instead of per-call-site. The first response additionally attaches the
+// pre-rendered navy/Orbitron banner via multipart (interaction endpoints may respond
+// with multipart/form-data to include files); every later type-7 update omits the
+// attachments field, so Discord retains the banner above the updating embed.
 function screen(content: string, rows: unknown[] = [], firstResponse = false): Response {
-    return json({
-        type: firstResponse ? RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE : RESPONSE_UPDATE_MESSAGE,
-        data: {
-            content: '',
-            embeds: [brandEmbed({ kind: 'system', plate: 'HEATCHECKS SETUP', body: content })],
-            components: rows,
-            flags: firstResponse ? EPHEMERAL_FLAG : undefined,
-        },
-    });
+    const data = {
+        content: '',
+        embeds: [brandEmbed({ kind: 'system', plate: 'HEATCHECKS SETUP', body: content })],
+        components: rows,
+        flags: firstResponse ? EPHEMERAL_FLAG : undefined,
+    };
+    if (!firstResponse) return json({ type: RESPONSE_UPDATE_MESSAGE, data });
+
+    const form = new FormData();
+    form.append('payload_json', JSON.stringify({ type: RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE, data }));
+    form.append('files[0]', new Blob([new Uint8Array(BANNER_SETUP)], { type: 'image/png' }), 'heatchecks-setup.png');
+    return new Response(form);
 }
 
 function buttonRow(buttons: { label: string; customId: string; style?: number }[]): unknown {

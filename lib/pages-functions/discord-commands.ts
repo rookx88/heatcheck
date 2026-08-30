@@ -28,6 +28,10 @@ import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage,
 import type { LeaderboardMessage } from './discord-leaderboard-card';
 import { computeSkillRatings } from './skill-rating';
 import { brandEmbed } from './discord-brand';
+// Pre-rendered branded headers (leaderboard-style navy/Orbitron plates, generated at
+// build time - zero runtime CPU), attached above the matching embeds.
+import BANNER_RESULTS from './art/banner-results.bin';
+import BANNER_SETTINGS from './art/banner-settings.bin';
 import { computeLevels } from './leveling';
 import type { MeCardInput } from './me-card';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
@@ -63,11 +67,16 @@ function ephemeral(content: string): Response {
     );
 }
 
-function ephemeralEmbed(embed: Record<string, unknown>): Response {
-    return new Response(
-        JSON.stringify({ type: RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE, data: { embeds: [embed], flags: EPHEMERAL_FLAG } }),
-        { headers: { 'Content-Type': 'application/json' } }
-    );
+// Ephemeral embed with a pre-rendered branded banner attached above it (interaction
+// endpoints may respond with multipart/form-data to include files).
+function ephemeralEmbedWithBanner(embed: Record<string, unknown>, banner: ArrayBuffer, filename: string): Response {
+    const form = new FormData();
+    form.append('payload_json', JSON.stringify({
+        type: RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE,
+        data: { embeds: [embed], flags: EPHEMERAL_FLAG },
+    }));
+    form.append('files[0]', new Blob([new Uint8Array(banner)], { type: 'image/png' }), filename);
+    return new Response(form);
 }
 
 // Light branding for trivial text acks (league join/leave, config changes, Posted!)
@@ -94,6 +103,9 @@ interface DeferredMessageData {
     content?: string;
     embeds?: unknown[];
     components?: unknown[];
+    // Optional attached image (e.g. a pre-rendered branded banner) - switches the
+    // followup PATCH to multipart.
+    file?: { data: ArrayBuffer; name: string };
 }
 
 function selectMenuData(customId: string, content: string, options: { label: string; value: string; description?: string }[]): DeferredMessageData {
@@ -122,13 +134,17 @@ function deferredEphemeral(context: RequestContext, interaction: any, work: Prom
                 console.error('[discord-commands] Deferred command failed:', err);
                 return { content: 'Something went wrong — try again shortly.' } as DeferredMessageData;
             })
-            .then((data) =>
-                fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: data.content ?? '', embeds: data.embeds ?? [], components: data.components ?? [] }),
-                })
-            )
+            .then((data) => {
+                const url = `https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`;
+                const payload = { content: data.content ?? '', embeds: data.embeds ?? [], components: data.components ?? [] };
+                if (data.file) {
+                    const form = new FormData();
+                    form.append('payload_json', JSON.stringify(payload));
+                    form.append('files[0]', new Blob([new Uint8Array(data.file.data)], { type: 'image/png' }), data.file.name);
+                    return fetch(url, { method: 'PATCH', body: form });
+                }
+                return fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            })
     );
 
     return new Response(
@@ -170,7 +186,7 @@ async function buildConfigOverview(context: RequestContext, guildId: string): Pr
     const weekly = parse(c.weekly_leaderboard);
     const enabledSports = SUPPORTED_SPORTS.filter((s) => !disabled.includes(s));
 
-    return ephemeralEmbed(brandEmbed({
+    return ephemeralEmbedWithBanner(brandEmbed({
         kind: 'system',
         plate: 'SERVER SETTINGS',
         body: [
@@ -186,7 +202,7 @@ async function buildConfigOverview(context: RequestContext, guildId: string): Pr
             '',
             'Change anything with the options on this command, or re-run /heatchecks-setup for the guided flow.',
         ].join('\n'),
-    }));
+    }), BANNER_SETTINGS, 'server-settings.png');
 }
 
 // ===================================================================================
@@ -1126,5 +1142,8 @@ async function myResultsData(context: RequestContext, guildId: string, discordUs
         fields.push({ name: 'Community Picks', value: lines.join('\n').slice(0, 1024) });
     }
 
-    return { embeds: [brandEmbed({ kind: 'system', plate: 'YOUR RESULTS', body: 'Your recent settled calls in this server.', fields })] };
+    return {
+        embeds: [brandEmbed({ kind: 'system', plate: 'YOUR RESULTS', body: 'Your recent settled calls in this server.', fields })],
+        file: { data: BANNER_RESULTS, name: 'your-results.png' },
+    };
 }
