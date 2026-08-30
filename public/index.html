@@ -260,6 +260,10 @@
         }
     </style>
     <script type="module" src="/assets/analytics-beacon.js" defer></script>
+    <!-- Homepage-only face for the Tanks panel title (see #tanks h2). Kept out of
+         renderHead's shared font request so the waitlist/article pages don't pay
+         for a face only this page uses. -->
+    <link href="https://fonts.googleapis.com/css2?family=Bitcount+Grid+Single:wght@100..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/homepage.css">
     <style>
         /* The page must never scroll horizontally - wide content (the sport row)
@@ -489,10 +493,31 @@
         }
         /* position:relative on all four here (z-index left at 'auto') is what makes
            them paint above .hc-tanks-backdrop - see that rule's comment. */
+        /* Marquee-sign title bar: black fill, red outline, dotted-LED lettering
+           (Bitcount Grid Single - loaded homepage-only, see the extra font <link>
+           in renderHomepage). text-transform off: the LED face reads as designed
+           in mixed case, not the Montserrat all-caps the other section titles use. */
         #tanks h2 {
             position: relative;
-            background: #8b1c18; color: #ffffff;
+            background: #000000; color: #fff6c8;
+            border: 2px solid #8b1c18; border-radius: 4px;
             margin: 0 -1.1rem 0.75rem; padding: 0.65rem 1.1rem;
+            font-family: 'Bitcount Grid Single', 'Courier New', monospace;
+            font-weight: 700; text-transform: none; letter-spacing: 0.02em;
+            text-shadow: 0 0 12px rgba(255, 240, 170, 0.4);
+            animation: hc-tanks-title-blink 9s linear infinite;
+        }
+        /* A marquee bulb-flicker, not a cursor blink: steady for ~8s, then two
+           quick dips (~100ms each) and back to full. Dim, never off. */
+        @keyframes hc-tanks-title-blink {
+            0%, 88.8% { color: #fff6c8; text-shadow: 0 0 12px rgba(255, 240, 170, 0.4); }
+            89.3%, 90% { color: rgba(255, 246, 200, 0.5); text-shadow: 0 0 4px rgba(255, 240, 170, 0.15); }
+            90.5%, 91.6% { color: #fff6c8; text-shadow: 0 0 12px rgba(255, 240, 170, 0.4); }
+            92.1%, 92.7% { color: rgba(255, 246, 200, 0.62); text-shadow: 0 0 6px rgba(255, 240, 170, 0.2); }
+            93.2%, 100% { color: #fff6c8; text-shadow: 0 0 12px rgba(255, 240, 170, 0.4); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #tanks h2 { animation: none; }
         }
         .hc-section-sub--tanks { position: relative; margin-top: 0; }
 
@@ -511,7 +536,41 @@
 
         /* Tighter seam under Market Movers (mobile especially). */
         #explore.hc-section { margin-top: 1rem; }
-        .hc-explore-wrap { position: relative; margin-top: 0.75rem; }
+        /* The explore panel: logo + world map framed together in a dark-orange
+           bordered card over a midnight-purple night sky. The stars live on the
+           two pseudo-element layers below (different tile sizes + twinkle phases
+           so the field reads organic, not repeated); overflow:hidden clips both
+           layers to the rounded corners. */
+        .hc-explore-wrap {
+            position: relative; margin-top: 0.75rem;
+            border: 3px solid #a34a14; border-radius: 20px;
+            padding: 1.1rem 1.1rem 1.5rem;
+            background: linear-gradient(180deg, #1e1136 0%, #160c27 55%, #120a20 100%);
+            overflow: hidden;
+        }
+        .hc-explore-wrap::before, .hc-explore-wrap::after {
+            content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+        }
+        .hc-explore-wrap::before {
+            background-image:
+                radial-gradient(1.6px 1.6px at 22px 34px, rgba(255,255,255,0.95), transparent 55%),
+                radial-gradient(1.1px 1.1px at 118px 76px, rgba(255,255,255,0.7), transparent 55%),
+                radial-gradient(1.4px 1.4px at 205px 140px, rgba(214,196,255,0.85), transparent 55%),
+                radial-gradient(1px 1px at 68px 182px, rgba(255,255,255,0.6), transparent 55%),
+                radial-gradient(1.8px 1.8px at 168px 22px, rgba(255,241,214,0.9), transparent 55%);
+            background-size: 260px 230px;
+            animation: hc-star-twinkle 5s ease-in-out infinite;
+        }
+        .hc-explore-wrap::after {
+            background-image:
+                radial-gradient(1.2px 1.2px at 44px 120px, rgba(255,255,255,0.8), transparent 55%),
+                radial-gradient(1.7px 1.7px at 250px 60px, rgba(214,226,255,0.9), transparent 55%),
+                radial-gradient(1px 1px at 150px 210px, rgba(255,255,255,0.55), transparent 55%),
+                radial-gradient(1.3px 1.3px at 300px 170px, rgba(255,244,214,0.75), transparent 55%);
+            background-size: 340px 280px;
+            animation: hc-star-twinkle 7s ease-in-out 2.5s infinite;
+        }
+        @keyframes hc-star-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
         /* The world is pulled up so the EXPLORE logo slightly overlaps its top-left
            corner - but the map (and its hover region labels) LAYER OVER the logo:
            the map stacks above (z 2 vs 1), while the layout overlap comes from the
@@ -522,11 +581,21 @@
             position: relative; z-index: 1;
             pointer-events: none; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.45));
         }
-        #hc-map-root { position: relative; z-index: 2; }
+        /* The world floats over the night sky: a slow vertical bob plus a deep
+           drop shadow onto the panel behind it. The EXPLORE logo deliberately
+           does NOT share the animation - it stays put while the world drifts. */
+        #hc-map-root {
+            position: relative; z-index: 2;
+            filter: drop-shadow(0 24px 28px rgba(0,0,0,0.55));
+            animation: hc-world-float 7s ease-in-out infinite;
+        }
+        @keyframes hc-world-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
         .hc-world-map-static, #hc-map-root svg { display: block; width: 100%; height: auto; }
 
         @media (prefers-reduced-motion: reduce) {
             .hc-sport-row { scroll-behavior: auto; }
+            #hc-map-root { animation: none; }
+            .hc-explore-wrap::before, .hc-explore-wrap::after { animation: none; }
         }
         @media (max-width: 420px) {
             .hc-home { padding: 0.6rem 1rem 0.85rem; }
@@ -569,8 +638,10 @@
                where the fixed pet widget visually lives when logged in. */
             #explore { margin-top: 2rem; }
             /* The logo stays IN FLOW above (so the world sits right under it, same
-               slight overlap as mobile via the logo's negative bottom margin). */
-            #explore .hc-explore-wrap { margin-top: 0.5rem; }
+               slight overlap as mobile via the logo's negative bottom margin). The
+               panel is cut to exactly the tanks column's width (half the two-column
+               span minus half the 1.5rem gap) so the two cards read as one rail. */
+            #explore .hc-explore-wrap { margin-top: 0.5rem; width: calc(50% - 0.75rem); }
             #hc-map-root { max-width: 620px; }
             .hc-footer { padding-top: 1.25rem; }
         }
@@ -603,6 +674,9 @@
         @keyframes hc-tape { to { transform: translateX(-50%); } }
 
         .hc-mm-logo { display: block; width: clamp(180px, 42vw, 300px); height: auto; margin: 0 0 0.25rem -0.4rem; }
+        /* The TANKDAQ link inside the note - gold reads on the dark page background
+           (mobile) and the black band (desktop) alike. */
+        .hc-mm-note a { color: var(--hc-gold); font-weight: 700; }
 
         .hc-mm-tabs { display: flex; gap: 0.6rem; margin: 0.75rem 0 0; position: relative; z-index: 1; }
         .hc-mm-tab {
@@ -618,6 +692,13 @@
         .hc-mm-tab.is-losers { background: #f0705f; }
         .hc-mm-tab[aria-pressed="true"] { opacity: 1; box-shadow: 0 -4px 12px rgba(255,255,255,0.18); }
         .hc-mm-tab:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 2px; }
+
+        /* Card title + tape symbols link to the ticker's TANKDAQ detail page - keep
+           the existing type treatment, reveal linkness on hover only. */
+        .hc-mm-title-link { color: inherit; text-decoration: none; }
+        .hc-mm-title-link:hover .hc-mm-index { text-decoration: underline; }
+        .hc-tape-link { color: inherit; text-decoration: none; }
+        .hc-tape-link:hover { text-decoration: underline; }
 
         .hc-mm-grid { display: flex; flex-direction: column; gap: 1.1rem; }
         .hc-mm-grid[data-mm-view="gainers"] .hc-mm-card[data-mm-role="loser"] { display: none; }
@@ -722,13 +803,13 @@
         .hc-mm-result-chip.is-neg { background: #e33a24; }
         .hc-mm-results-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: 'Nunito', sans-serif; }
 
-        /* Same orange frame as #tanks (homepage/render.ts), at every viewport - not
-           just inside the desktop-only white-panel treatment below - so the two
-           sections read as matching game panels side by side. box-sizing:border-box
-           (global reset) keeps the added border from disturbing the desktop grid's
-           stretch-alignment between the two panels. */
+        /* Framed at every viewport - not just inside the desktop-only white-panel
+           treatment below - so this and #tanks read as matching game panels side by
+           side. Light-blue frame (the card blue) against the black header band.
+           box-sizing:border-box (global reset) keeps the added border from disturbing
+           the desktop grid's stretch-alignment between the two panels. */
         #market-movers {
-            border: 3px solid #000000;
+            border: 3px solid #5ec1ee;
             border-radius: 6px;
             padding: 0 1rem 1.1rem;
             overflow: hidden;
@@ -757,7 +838,7 @@
             }
             .hc-mm-band {
                 display: flex; align-items: center; gap: 1rem;
-                background: #5e35b1;
+                background: #000000;
                 margin: 0 -1rem 0.25rem; padding: 0.6rem 1rem;
             }
             .hc-mm-logo { width: clamp(140px, 14vw, 190px); margin: 0; flex-shrink: 0; }
@@ -808,15 +889,23 @@
         <div class="hc-ticker-tape" aria-label="Ticker values — how tagged storylines have gone, not a forecast">
             <div class="hc-tape-track">
                 <ul class="hc-tape-group">
-                <li class="hc-tape-item is-neg">$DOGS <span class="hc-mm-value is-neg">−48.0%</span> <span class="hc-tape-headline">$DOGS sinks 4.1 points with Steelers&#039; recent loss.</span></li>
-                <li class="hc-tape-item is-pos">$CHALK <span class="hc-mm-value is-pos">+44.0%</span> <span class="hc-tape-headline">$CHALK climbs 4.5 points with New York Yankees&#039; recent win.</span></li>
-                <li class="hc-tape-item is-neg">$LOCKS <span class="hc-mm-value is-neg">−0.8%</span> <span class="hc-tape-headline">$LOCKS climbs 0.8 points with Vladimir Guerrero Jr.&#039;s recent win.</span></li>
-                <li class="hc-tape-item is-pos">$MOONSHOT <span class="hc-mm-value is-pos">+6.8%</span> <span class="hc-tape-headline">$MOONSHOT sinks 0.8 points with Vladimir Guerrero Jr.&#039;s recent loss.</span></li></ul>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/dogs/">$DOGS</a> <span class="hc-mm-value is-neg">−41.8%</span> <span class="hc-tape-headline">$DOGS climbs 5.5 points as the Over hits in Chicago Bears vs. Tennessee Titans.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/chalk/">$CHALK</a> <span class="hc-mm-value is-pos">+33.3%</span> <span class="hc-tape-headline">$CHALK sinks 5.5 points as the Under misses in Chicago Bears vs. Tennessee Titans.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/locks/">$LOCKS</a> <span class="hc-mm-value is-pos">+1.1%</span> <span class="hc-tape-headline">$LOCKS climbs 2.0 points with Wilyer Abreu&#039;s recent win.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/moonshot/">$MOONSHOT</a> <span class="hc-mm-value is-pos">+6.8%</span> <span class="hc-tape-headline">$MOONSHOT sinks 0.8 points with Vladimir Guerrero Jr.&#039;s recent loss.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/overs/">$OVERS</a> <span class="hc-mm-value is-pos">+36.0%</span> <span class="hc-tape-headline">$OVERS climbs 5.5 points as the Over hits in Chicago Bears vs. Tennessee Titans.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/unders/">$UNDERS</a> <span class="hc-mm-value is-neg">−36.0%</span> <span class="hc-tape-headline">$UNDERS sinks 5.5 points as the Under misses in Chicago Bears vs. Tennessee Titans.</span></li>
+                <li class="hc-tape-item is-zero"><a class="hc-tape-link" href="/tankdaq/gridiron/">$GRIDIRON</a> <span class="hc-mm-value is-zero">+0.0%</span> <span class="hc-tape-headline">$GRIDIRON sinks 5.5 points as the Under misses in Chicago Bears vs. Tennessee Titans.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/footy/">$FOOTY</a> <span class="hc-mm-value is-pos">+5.1%</span> <span class="hc-tape-headline">$FOOTY climbs 4.0 points with Manchester City FC vs. Crystal Palace FC&#039;s recent win.</span></li></ul>
                 <ul class="hc-tape-group" aria-hidden="true">
-                <li class="hc-tape-item is-neg">$DOGS <span class="hc-mm-value is-neg">−48.0%</span> <span class="hc-tape-headline">$DOGS sinks 4.1 points with Steelers&#039; recent loss.</span></li>
-                <li class="hc-tape-item is-pos">$CHALK <span class="hc-mm-value is-pos">+44.0%</span> <span class="hc-tape-headline">$CHALK climbs 4.5 points with New York Yankees&#039; recent win.</span></li>
-                <li class="hc-tape-item is-neg">$LOCKS <span class="hc-mm-value is-neg">−0.8%</span> <span class="hc-tape-headline">$LOCKS climbs 0.8 points with Vladimir Guerrero Jr.&#039;s recent win.</span></li>
-                <li class="hc-tape-item is-pos">$MOONSHOT <span class="hc-mm-value is-pos">+6.8%</span> <span class="hc-tape-headline">$MOONSHOT sinks 0.8 points with Vladimir Guerrero Jr.&#039;s recent loss.</span></li></ul>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/dogs/">$DOGS</a> <span class="hc-mm-value is-neg">−41.8%</span> <span class="hc-tape-headline">$DOGS climbs 5.5 points as the Over hits in Chicago Bears vs. Tennessee Titans.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/chalk/">$CHALK</a> <span class="hc-mm-value is-pos">+33.3%</span> <span class="hc-tape-headline">$CHALK sinks 5.5 points as the Under misses in Chicago Bears vs. Tennessee Titans.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/locks/">$LOCKS</a> <span class="hc-mm-value is-pos">+1.1%</span> <span class="hc-tape-headline">$LOCKS climbs 2.0 points with Wilyer Abreu&#039;s recent win.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/moonshot/">$MOONSHOT</a> <span class="hc-mm-value is-pos">+6.8%</span> <span class="hc-tape-headline">$MOONSHOT sinks 0.8 points with Vladimir Guerrero Jr.&#039;s recent loss.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/overs/">$OVERS</a> <span class="hc-mm-value is-pos">+36.0%</span> <span class="hc-tape-headline">$OVERS climbs 5.5 points as the Over hits in Chicago Bears vs. Tennessee Titans.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/unders/">$UNDERS</a> <span class="hc-mm-value is-neg">−36.0%</span> <span class="hc-tape-headline">$UNDERS sinks 5.5 points as the Under misses in Chicago Bears vs. Tennessee Titans.</span></li>
+                <li class="hc-tape-item is-zero"><a class="hc-tape-link" href="/tankdaq/gridiron/">$GRIDIRON</a> <span class="hc-mm-value is-zero">+0.0%</span> <span class="hc-tape-headline">$GRIDIRON sinks 5.5 points as the Under misses in Chicago Bears vs. Tennessee Titans.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/footy/">$FOOTY</a> <span class="hc-mm-value is-pos">+5.1%</span> <span class="hc-tape-headline">$FOOTY climbs 4.0 points with Manchester City FC vs. Crystal Palace FC&#039;s recent win.</span></li></ul>
             </div>
         </div>
         <div class="hc-mobile-register-row">
@@ -834,15 +923,15 @@
                 <span class="hc-tanks-wind"></span>
                 <span class="hc-tanks-wind hc-tanks-wind--b"></span>
             </div>
-            <h2 id="hc-tanks-heading">Newest Tanks Available</h2>
+            <h2 id="hc-tanks-heading">Sports Tanks Available</h2>
             <p class="hc-section-sub hc-section-sub--tanks">Tanks are Heatcheck&rsquo;s most important invention. With the wisdom of the user, it unlocks embers, the currency of the world that allows you to grow your mud puppy. Make your pick on a tank. Get it right. Earn Ember.</p>
             <div class="hc-tanks-layout">
                 <div id="hc-showcase-root" aria-hidden="true"></div>
                 <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
                     
-            <button type="button" class="hc-sport-btn is-selected" data-sport="Baseball" data-live aria-pressed="true" title="Baseball" aria-label="Show the baseball Tank: The Yankees are missing Judge, Stanton, and Weathers, just got Bellinger back, and Red Sox-Yankees still has Wild Card weight on it."><span aria-hidden="true">⚾</span></button>
-            <button type="button" class="hc-sport-btn" data-sport="Football" data-live aria-pressed="false" title="Football" aria-label="Show the football Tank: The last tune-up before Week 1, and the total is the only stat that tells you how much either team actually wanted to show."><span aria-hidden="true">🏈</span></button>
-            <button type="button" class="hc-sport-btn" data-sport="Soccer" data-live aria-pressed="false" title="Soccer" aria-label="Show the soccer Tank: Spurs got humiliated on opening day and panic bought their way out of it. Newcastle is round one of finding out if it worked."><span aria-hidden="true">⚽</span></button>
+            <button type="button" class="hc-sport-btn is-selected" data-sport="Baseball" data-live aria-pressed="true" title="Baseball" aria-label="Show the baseball Tank: A White Sox rookie just tied an MLB record nobody&#039;s touched since 1900. Now his team needs a win to match him."><span aria-hidden="true">⚾</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Football" data-live aria-pressed="false" title="Football" aria-label="Show the football Tank: Breece Hall got hurt in practice and now the Jets&#039; entire gameplan in Nashville is in question."><span aria-hidden="true">🏈</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Soccer" data-live aria-pressed="false" title="Soccer" aria-label="Show the soccer Tank: Arsenal and Villa are mid-teardown, and now they have to play each other."><span aria-hidden="true">⚽</span></button>
             <button type="button" class="hc-sport-btn" data-sport="Basketball" disabled title="Basketball" aria-label="Basketball: nothing live today"><span aria-hidden="true">🏀</span></button>
                 </div>
             </div>
@@ -855,8 +944,8 @@
         <section id="market-movers" class="hc-section" aria-labelledby="hc-mm-heading">
             <h2 id="hc-mm-heading" class="hc-visually-hidden">Market Movers</h2>
             <div class="hc-mm-band">
-                <img class="hc-mm-logo" src="/assets/images/market-movers-logo.webp" alt="Market Movers" width="600" height="416" loading="lazy">
-                <p class="hc-section-sub hc-mm-note">Real sport moments are the fuel that forges the world of Heatchecks. Each moment is tied to an index. Storylines and results affect each index differently! And soon, a new way to put your Embers to work while you enjoy sports content.</p>
+                <img class="hc-mm-logo" src="/assets/images/market-movers-logo.webp" alt="Market Movers" width="338" height="249" loading="lazy">
+                <p class="hc-section-sub hc-mm-note">Real sport moments are the fuel that forges the world of Heatchecks. Each moment is tied to an index. Storylines and results affect each index differently! If you got a read on a market, head over to <a href="/tankdaq/">TANKDAQ</a> to invest your Ember.</p>
             </div>
             
         <div class="hc-mm-tabs" data-hc-mm-tabs hidden>
@@ -864,24 +953,26 @@
             <button type="button" class="hc-mm-tab is-losers" data-mm-view="losers" aria-pressed="false">Top Losers</button>
         </div>
         <div class="hc-mm-grid" data-hc-mm-grid data-mm-view="all">
-        <article class="hc-mm-card" data-ticker="chalk" data-sign="pos" data-mm-role="gainer">
+        <article class="hc-mm-card" data-ticker="overs" data-sign="pos" data-mm-role="gainer">
             <div class="hc-mm-top">
                 <header class="hc-mm-head">
                     <h3 class="hc-mm-title">
-                        <span class="hc-mm-index">Favorite Index</span>
-                        <span class="hc-mm-name">($CHALK)</span>
+                        <a class="hc-mm-title-link" href="/tankdaq/overs/">
+                            <span class="hc-mm-index">Total Over Index</span>
+                            <span class="hc-mm-name">($OVERS)</span>
+                        </a>
                     </h3>
-                    <p class="hc-mm-desc">Favorite storylines - sides priced at 50% or better.</p>
+                    <p class="hc-mm-desc">Totals storylines - the Over side of every total.</p>
                 </header>
                 <div class="hc-mm-chartrow">
-                    <span class="hc-mm-value is-pos">+44.0%</span>
-                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$CHALK cumulative chart: currently +44.0% over 92 events">
-                <title>$CHALK cumulative chart: currently +44.0% over 92 events</title>
+                    <span class="hc-mm-value is-pos">+36.0%</span>
+                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$OVERS cumulative chart: currently +36.0% over 16 events">
+                <title>$OVERS cumulative chart: currently +36.0% over 16 events</title>
                 <rect x="0.75" y="0.75" width="258.5" height="70.5" rx="8" fill="#160c27" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
-                <line x1="6" x2="254" y1="65.3" y2="65.3" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 4" stroke-width="1"/>
-                <polyline fill="none" points="6.0,66.0 10.2,60.7 14.4,55.6 18.6,61.4 22.8,61.4 27.0,62.5 31.2,62.5 35.4,62.5 39.6,63.6 43.8,62.2 48.0,59.8 52.2,59.3 56.4,58.1 60.6,58.1 64.8,52.6 69.1,63.0 73.3,57.5 77.5,57.5 81.7,57.5 85.9,63.5 90.1,62.8 94.3,58.0 98.5,64.0 102.7,63.5 106.9,63.5 111.1,63.5 115.3,62.4 119.5,57.4 123.7,55.2 127.9,63.6 132.1,58.0 136.3,57.2 140.5,45.9 144.7,49.3 148.9,46.5 153.1,41.6 157.3,35.9 161.5,36.5 165.7,35.4 169.9,34.2 174.1,34.2 178.3,25.8 182.5,24.1 186.7,26.9 190.9,20.7 195.2,17.8 199.4,12.3 203.6,18.5 207.8,13.9 212.0,6.0 216.2,15.6 220.4,19.0 224.6,18.4 228.8,15.6 233.0,16.2 237.2,11.1 241.4,11.1 245.6,8.8 249.8,15.6 254.0,15.6" stroke="#3ddc64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-                <circle cx="6.0" cy="66.0" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +4.8% (running: −0.6%)</title></circle><circle cx="10.2" cy="60.7" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +4.7% (running: +4.0%)</title></circle><circle cx="14.4" cy="55.6" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +4.5% (running: +8.6%)</title></circle><circle cx="18.6" cy="61.4" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · −5.1% (running: +3.5%)</title></circle><circle cx="22.8" cy="61.4" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · +0.0% (running: +3.5%)</title></circle><circle cx="27.0" cy="62.5" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · −1.0% (running: +2.5%)</title></circle><circle cx="31.2" cy="62.5" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · +0.0% (running: +2.5%)</title></circle><circle cx="35.4" cy="62.5" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · +0.0% (running: +2.5%)</title></circle><circle cx="39.6" cy="63.6" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · tag · −1.0% (running: +1.5%)</title></circle><circle cx="43.8" cy="62.2" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +1.3% (running: +2.8%)</title></circle><circle cx="48.0" cy="59.8" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +2.1% (running: +4.9%)</title></circle><circle cx="52.2" cy="59.3" r="2.5" fill="#3ddc64"><title>Aug 21, 2026 · settle · +0.5% (running: +5.3%)</title></circle><circle cx="56.4" cy="58.1" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · tag · +1.0% (running: +6.3%)</title></circle><circle cx="60.6" cy="58.1" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · tag · +0.0% (running: +6.3%)</title></circle><circle cx="64.8" cy="52.6" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · settle · +5.0% (running: +11.3%)</title></circle><circle cx="69.1" cy="63.0" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · settle · −9.3% (running: +2.0%)</title></circle><circle cx="73.3" cy="57.5" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · settle · +4.8% (running: +6.9%)</title></circle><circle cx="77.5" cy="57.5" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · tag · +0.0% (running: +6.9%)</title></circle><circle cx="81.7" cy="57.5" r="2.5" fill="#3ddc64"><title>Aug 22, 2026 · tag · +0.0% (running: +6.9%)</title></circle><circle cx="85.9" cy="63.5" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · settle · −5.3% (running: +1.6%)</title></circle><circle cx="90.1" cy="62.8" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · settle · +0.7% (running: +2.3%)</title></circle><circle cx="94.3" cy="58.0" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · settle · +4.3% (running: +6.5%)</title></circle><circle cx="98.5" cy="64.0" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · settle · −5.3% (running: +1.1%)</title></circle><circle cx="102.7" cy="63.5" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · tag · +0.5% (running: +1.6%)</title></circle><circle cx="106.9" cy="63.5" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · tag · +0.0% (running: +1.6%)</title></circle><circle cx="111.1" cy="63.5" r="2.5" fill="#3ddc64"><title>Aug 23, 2026 · tag · +0.0% (running: +1.6%)</title></circle><circle cx="115.3" cy="62.4" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · +0.9% (running: +2.6%)</title></circle><circle cx="119.5" cy="57.4" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · +4.4% (running: +7.0%)</title></circle><circle cx="123.7" cy="55.2" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · +1.9% (running: +8.9%)</title></circle><circle cx="127.9" cy="63.6" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · −7.5% (running: +1.5%)</title></circle><circle cx="132.1" cy="58.0" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · +5.0% (running: +6.5%)</title></circle><circle cx="136.3" cy="57.2" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · settle · +0.8% (running: +7.2%)</title></circle><circle cx="140.5" cy="45.9" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · tag · +10.0% (running: +17.2%)</title></circle><circle cx="144.7" cy="49.3" r="2.5" fill="#3ddc64"><title>Aug 24, 2026 · tag · −3.0% (running: +14.2%)</title></circle><circle cx="148.9" cy="46.5" r="2.5" fill="#3ddc64"><title>Aug 25, 2026 · settle · +2.5% (running: +16.6%)</title></circle><circle cx="153.1" cy="41.6" r="2.5" fill="#3ddc64"><title>Aug 25, 2026 · settle · +4.3% (running: +21.0%)</title></circle><circle cx="157.3" cy="35.9" r="2.5" fill="#3ddc64"><title>Aug 26, 2026 · tag · +5.0% (running: +26.0%)</title></circle><circle cx="161.5" cy="36.5" r="2.5" fill="#3ddc64"><title>Aug 26, 2026 · tag · −0.5% (running: +25.5%)</title></circle><circle cx="165.7" cy="35.4" r="2.5" fill="#3ddc64"><title>Aug 26, 2026 · tag · +1.0% (running: +26.5%)</title></circle><circle cx="169.9" cy="34.2" r="2.5" fill="#3ddc64"><title>Aug 26, 2026 · tag · +1.0% (running: +27.5%)</title></circle><circle cx="174.1" cy="34.2" r="2.5" fill="#3ddc64"><title>Aug 26, 2026 · tag · +0.0% (running: +27.5%)</title></circle><circle cx="178.3" cy="25.8" r="2.5" fill="#3ddc64"><title>Aug 27, 2026 · tag · +7.5% (running: +35.0%)</title></circle><circle cx="182.5" cy="24.1" r="2.5" fill="#3ddc64"><title>Aug 27, 2026 · tag · +1.5% (running: +36.5%)</title></circle><circle cx="186.7" cy="26.9" r="2.5" fill="#3ddc64"><title>Aug 27, 2026 · tag · −2.5% (running: +34.0%)</title></circle><circle cx="190.9" cy="20.7" r="2.5" fill="#3ddc64"><title>Aug 27, 2026 · tag · +5.5% (running: +39.5%)</title></circle><circle cx="195.2" cy="17.8" r="2.5" fill="#3ddc64"><title>Aug 28, 2026 · settle · +2.5% (running: +42.0%)</title></circle><circle cx="199.4" cy="12.3" r="2.5" fill="#3ddc64"><title>Aug 28, 2026 · settle · +4.9% (running: +47.0%)</title></circle><circle cx="203.6" cy="18.5" r="2.5" fill="#3ddc64"><title>Aug 28, 2026 · settle · −5.5% (running: +41.4%)</title></circle><circle cx="207.8" cy="13.9" r="2.5" fill="#3ddc64"><title>Aug 28, 2026 · settle · +4.1% (running: +45.5%)</title></circle><circle cx="212.0" cy="6.0" r="2.5" fill="#3ddc64"><title>Aug 28, 2026 · tag · +7.0% (running: +52.5%)</title></circle><circle cx="216.2" cy="15.6" r="2.5" fill="#3ddc64"><title>Aug 28, 2026 · tag · −8.5% (running: +44.0%)</title></circle><circle cx="220.4" cy="19.0" r="2.5" fill="#3ddc64"><title>Aug 28, 2026 · tag · −3.0% (running: +41.0%)</title></circle><circle cx="224.6" cy="18.4" r="2.5" fill="#3ddc64"><title>Aug 28, 2026 · tag · +0.5% (running: +41.5%)</title></circle><circle cx="228.8" cy="15.6" r="2.5" fill="#3ddc64"><title>Aug 28, 2026 · tag · +2.5% (running: +44.0%)</title></circle><circle cx="233.0" cy="16.2" r="2.5" fill="#3ddc64"><title>Aug 28, 2026 · tag · −0.6% (running: +43.5%)</title></circle><circle cx="237.2" cy="11.1" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +4.5% (running: +48.0%)</title></circle><circle cx="241.4" cy="11.1" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +0.0% (running: +48.0%)</title></circle><circle cx="245.6" cy="8.8" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +2.0% (running: +50.0%)</title></circle><circle cx="249.8" cy="15.6" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · −6.0% (running: +44.0%)</title></circle><circle cx="254.0" cy="15.6" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +0.0% (running: +44.0%)</title></circle>
-                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 21</text><text class="hc-mm-tick" x="127.9" y="84" text-anchor="middle">Aug 24</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Aug 29</text>
+                
+                <polyline fill="none" points="6.0,66.0 21.5,66.0 37.0,66.0 52.5,62.7 68.0,61.8 83.5,61.9 99.0,45.3 114.5,37.0 130.0,20.3 145.5,26.1 161.0,17.9 176.5,24.2 192.0,16.1 207.5,6.6 223.0,15.1 238.5,15.1 254.0,6.0" stroke="#3ddc64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="21.5" cy="66.0" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +0.0% (running: +0.0%)</title></circle><circle cx="37.0" cy="66.0" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +0.0% (running: +0.0%)</title></circle><circle cx="52.5" cy="62.7" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +2.0% (running: +2.0%)</title></circle><circle cx="68.0" cy="61.8" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +0.5% (running: +2.5%)</title></circle><circle cx="83.5" cy="61.9" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · −0.1% (running: +2.5%)</title></circle><circle cx="99.0" cy="45.3" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +10.0% (running: +12.4%)</title></circle><circle cx="114.5" cy="37.0" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +5.0% (running: +17.4%)</title></circle><circle cx="130.0" cy="20.3" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +10.0% (running: +27.4%)</title></circle><circle cx="145.5" cy="26.1" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · −3.5% (running: +24.0%)</title></circle><circle cx="161.0" cy="17.9" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +4.9% (running: +28.9%)</title></circle><circle cx="176.5" cy="24.2" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · −3.8% (running: +25.1%)</title></circle><circle cx="192.0" cy="16.1" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +4.9% (running: +30.0%)</title></circle><circle cx="207.5" cy="6.6" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +5.7% (running: +35.7%)</title></circle><circle cx="223.0" cy="15.1" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · −5.1% (running: +30.6%)</title></circle><circle cx="238.5" cy="15.1" r="2.5" fill="#3ddc64"><title>Aug 30, 2026 · tag · +0.0% (running: +30.6%)</title></circle><circle cx="254.0" cy="6.0" r="2.5" fill="#3ddc64"><title>Aug 30, 2026 · settle · +5.5% (running: +36.0%)</title></circle>
+                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 29</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Aug 30</text>
             </svg></div>
                 </div>
             </div>
@@ -889,9 +980,9 @@
                 <h4 class="hc-mm-news-heading">Recent News</h4>
                 <ul class="hc-mm-news-list">
                 <li>
-                    <a href="/the-tank/articles/brighton-chelsea-deadline-week-moneyline/">Chelsea&#039;s spent the week chasing a Monaco midfielder and pushing Fernández toward the door. Now they actually have to play a match.</a>
-                    <p class="hc-mm-excerpt">The Camara chase and the Fernández fallout have owned Chelsea&#039;s week, not their preparation for Brighton.</p>
-                    <span class="hc-mm-news-meta">EPL · Aug 29, 2026</span>
+                    <a href="/the-tank/articles/arsenal-vs-aston-villa-over-3-5-goals-deadline-day/">Arsenal and Villa are mid-teardown, and now they have to play each other.</a>
+                    <p class="hc-mm-excerpt">Arteta is answering exit questions on Martinelli, Jesus and Vieira all week, not exactly ideal derby prep.</p>
+                    <span class="hc-mm-news-meta">EPL · Aug 30, 2026</span>
                 </li>
                 <li>
                     <a href="/the-tank/articles/red-sox-yankees-total-8-5-wild-card-injuries/">The Yankees are missing Judge, Stanton, and Weathers, just got Bellinger back, and Red Sox-Yankees still has Wild Card weight on it.</a>
@@ -903,9 +994,9 @@
             <div class="hc-mm-results">
                 <h4 class="hc-mm-results-heading">Recent Results</h4>
                 <ul class="hc-mm-results-list">
-                <li><span class="hc-mm-result-chip is-pos">$CHALK</span> $CHALK climbs 4.5 points with New York Yankees&#039; recent win.</li>
-                <li><span class="hc-mm-result-chip is-pos">$CHALK</span> The CHALK index experiences a local high as Bills deliver.</li>
-                <li><span class="hc-mm-result-chip is-neg">$CHALK</span> Buyers up in arms as Patriots fails to impress. The market falls 5.5 points.</li>
+                <li><span class="hc-mm-result-chip is-pos">$OVERS</span> $OVERS climbs 5.5 points as the Over hits in Chicago Bears vs. Tennessee Titans.</li>
+                <li><span class="hc-mm-result-chip is-neg">$OVERS</span> The OVERS index experiences a local low as Over 7.5 misses in Boston Red Sox vs. New York Yankees.</li>
+                <li><span class="hc-mm-result-chip is-pos">$OVERS</span> Buyers applaud as Cincinnati Bengals vs. Philadelphia Eagles clears the total. The market climbs 5.7 points.</li>
             </ul>
             </div>
         </article>
@@ -913,20 +1004,22 @@
             <div class="hc-mm-top">
                 <header class="hc-mm-head">
                     <h3 class="hc-mm-title">
-                        <span class="hc-mm-index">Underdog Index</span>
-                        <span class="hc-mm-name">($DOGS)</span>
+                        <a class="hc-mm-title-link" href="/tankdaq/dogs/">
+                            <span class="hc-mm-index">Underdog Index</span>
+                            <span class="hc-mm-name">($DOGS)</span>
+                        </a>
                     </h3>
                     <p class="hc-mm-desc">Underdog storylines - sides priced below 50%.</p>
                 </header>
                 <div class="hc-mm-chartrow">
-                    <span class="hc-mm-value is-neg">−48.0%</span>
-                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$DOGS cumulative chart: currently −48.0% over 89 events">
-                <title>$DOGS cumulative chart: currently −48.0% over 89 events</title>
+                    <span class="hc-mm-value is-neg">−41.8%</span>
+                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$DOGS cumulative chart: currently −41.8% over 105 events">
+                <title>$DOGS cumulative chart: currently −41.8% over 105 events</title>
                 <rect x="0.75" y="0.75" width="258.5" height="70.5" rx="8" fill="#160c27" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
                 
-                <polyline fill="none" points="6.0,7.7 10.2,8.5 14.4,11.8 18.6,16.3 22.8,20.7 27.0,25.0 31.2,20.2 35.4,20.2 39.6,19.2 43.8,19.2 48.0,19.2 52.2,18.3 56.4,19.5 60.6,21.5 64.8,21.9 69.1,22.9 73.3,22.9 77.5,27.5 81.7,18.8 85.9,23.4 90.1,23.4 94.3,23.4 98.5,18.4 102.7,19.0 106.9,23.0 111.1,18.0 115.3,18.4 119.5,18.4 123.7,18.4 127.9,22.6 132.1,23.5 136.3,25.3 140.5,18.3 144.7,23.0 148.9,23.7 153.1,33.1 157.3,30.8 161.5,33.1 165.7,37.2 169.9,41.9 174.1,41.4 178.3,42.4 182.5,42.4 186.7,49.5 190.9,50.9 195.2,48.5 199.4,53.7 203.6,56.1 207.8,60.8 212.0,55.5 216.2,59.4 220.4,66.0 224.6,58.0 228.8,55.1 233.0,55.6 237.2,55.1 241.4,55.1 245.6,57.0 249.8,51.3 254.0,51.3" stroke="#ff6b57" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-                <circle cx="6.0" cy="7.7" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · tag · +0.0% (running: −1.9%)</title></circle><circle cx="10.2" cy="8.5" r="2.5" fill="#ff6b57"><title>Aug 20, 2026 · settle · −0.8% (running: −2.6%)</title></circle><circle cx="14.4" cy="11.8" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · −3.5% (running: −6.1%)</title></circle><circle cx="18.6" cy="16.3" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −4.8% (running: −10.9%)</title></circle><circle cx="22.8" cy="20.7" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −4.7% (running: −15.6%)</title></circle><circle cx="27.0" cy="25.0" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −4.5% (running: −20.1%)</title></circle><circle cx="31.2" cy="20.2" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · +5.1% (running: −15.0%)</title></circle><circle cx="35.4" cy="20.2" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +0.0% (running: −15.0%)</title></circle><circle cx="39.6" cy="19.2" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +1.0% (running: −14.0%)</title></circle><circle cx="43.8" cy="19.2" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +0.0% (running: −14.0%)</title></circle><circle cx="48.0" cy="19.2" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +0.0% (running: −14.0%)</title></circle><circle cx="52.2" cy="18.3" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · tag · +1.0% (running: −13.0%)</title></circle><circle cx="56.4" cy="19.5" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −1.3% (running: −14.3%)</title></circle><circle cx="60.6" cy="21.5" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −2.1% (running: −16.4%)</title></circle><circle cx="64.8" cy="21.9" r="2.5" fill="#ff6b57"><title>Aug 21, 2026 · settle · −0.5% (running: −16.9%)</title></circle><circle cx="69.1" cy="22.9" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · tag · −1.0% (running: −17.9%)</title></circle><circle cx="73.3" cy="22.9" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · tag · +0.0% (running: −17.9%)</title></circle><circle cx="77.5" cy="27.5" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · settle · −5.0% (running: −22.8%)</title></circle><circle cx="81.7" cy="18.8" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · settle · +9.3% (running: −13.6%)</title></circle><circle cx="85.9" cy="23.4" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · settle · −4.8% (running: −18.4%)</title></circle><circle cx="90.1" cy="23.4" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · tag · +0.0% (running: −18.4%)</title></circle><circle cx="94.3" cy="23.4" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · tag · +0.0% (running: −18.4%)</title></circle><circle cx="98.5" cy="18.4" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · +5.3% (running: −13.1%)</title></circle><circle cx="102.7" cy="19.0" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · −0.7% (running: −13.8%)</title></circle><circle cx="106.9" cy="23.0" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · −4.3% (running: −18.0%)</title></circle><circle cx="111.1" cy="18.0" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · +5.3% (running: −12.7%)</title></circle><circle cx="115.3" cy="18.4" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · tag · −0.5% (running: −13.2%)</title></circle><circle cx="119.5" cy="18.4" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · tag · +0.0% (running: −13.2%)</title></circle><circle cx="123.7" cy="18.4" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · tag · +0.0% (running: −13.2%)</title></circle><circle cx="127.9" cy="22.6" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −4.4% (running: −17.6%)</title></circle><circle cx="132.1" cy="23.5" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −0.9% (running: −18.5%)</title></circle><circle cx="136.3" cy="25.3" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −1.9% (running: −20.4%)</title></circle><circle cx="140.5" cy="18.3" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · +7.5% (running: −13.0%)</title></circle><circle cx="144.7" cy="23.0" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −5.0% (running: −17.9%)</title></circle><circle cx="148.9" cy="23.7" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −0.8% (running: −18.7%)</title></circle><circle cx="153.1" cy="33.1" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · tag · −10.0% (running: −28.7%)</title></circle><circle cx="157.3" cy="30.8" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · tag · +2.5% (running: −26.2%)</title></circle><circle cx="161.5" cy="33.1" r="2.5" fill="#ff6b57"><title>Aug 25, 2026 · settle · −2.5% (running: −28.6%)</title></circle><circle cx="165.7" cy="37.2" r="2.5" fill="#ff6b57"><title>Aug 25, 2026 · settle · −4.3% (running: −33.0%)</title></circle><circle cx="169.9" cy="41.9" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · −5.0% (running: −38.0%)</title></circle><circle cx="174.1" cy="41.4" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · +0.5% (running: −37.5%)</title></circle><circle cx="178.3" cy="42.4" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · −1.0% (running: −38.5%)</title></circle><circle cx="182.5" cy="42.4" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · +0.0% (running: −38.5%)</title></circle><circle cx="186.7" cy="49.5" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · −7.5% (running: −46.0%)</title></circle><circle cx="190.9" cy="50.9" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · −1.5% (running: −47.5%)</title></circle><circle cx="195.2" cy="48.5" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · +2.5% (running: −45.0%)</title></circle><circle cx="199.4" cy="53.7" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · −5.5% (running: −50.5%)</title></circle><circle cx="203.6" cy="56.1" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · settle · −2.5% (running: −53.0%)</title></circle><circle cx="207.8" cy="60.8" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · settle · −4.9% (running: −58.0%)</title></circle><circle cx="212.0" cy="55.5" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · settle · +5.5% (running: −52.4%)</title></circle><circle cx="216.2" cy="59.4" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · settle · −4.1% (running: −56.5%)</title></circle><circle cx="220.4" cy="66.0" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · −7.0% (running: −63.5%)</title></circle><circle cx="224.6" cy="58.0" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · +8.5% (running: −55.0%)</title></circle><circle cx="228.8" cy="55.1" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · +3.0% (running: −52.0%)</title></circle><circle cx="233.0" cy="55.6" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · −0.5% (running: −52.5%)</title></circle><circle cx="237.2" cy="55.1" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · +0.6% (running: −52.0%)</title></circle><circle cx="241.4" cy="55.1" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · +0.0% (running: −52.0%)</title></circle><circle cx="245.6" cy="57.0" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · −2.0% (running: −54.0%)</title></circle><circle cx="249.8" cy="51.3" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · +6.0% (running: −48.0%)</title></circle><circle cx="254.0" cy="51.3" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · +0.0% (running: −48.0%)</title></circle>
-                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 20</text><text class="hc-mm-tick" x="127.9" y="84" text-anchor="middle">Aug 24</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Aug 29</text>
+                <polyline fill="none" points="6.0,22.9 10.2,27.5 14.4,18.8 18.6,23.4 22.8,23.4 27.0,23.4 31.2,18.4 35.4,19.0 39.6,23.0 43.8,18.0 48.0,18.4 52.2,18.4 56.4,18.4 60.6,22.6 64.8,23.5 69.1,25.3 73.3,18.3 77.5,23.0 81.7,23.7 85.9,33.1 90.1,30.8 94.3,33.1 98.5,37.2 102.7,41.9 106.9,41.4 111.1,42.4 115.3,42.4 119.5,49.5 123.7,50.9 127.9,48.5 132.1,53.7 136.3,56.1 140.5,60.8 144.7,55.5 148.9,59.4 153.1,66.0 157.3,58.0 161.5,55.1 165.7,55.6 169.9,55.1 174.1,55.1 178.3,57.0 182.5,51.3 186.7,51.3 190.9,54.6 195.2,58.9 199.4,51.4 203.6,55.2 207.8,58.8 212.0,53.9 216.2,58.1 220.4,53.3 224.6,55.2 228.8,59.9 233.0,54.5 237.2,49.7 241.4,49.7 245.6,49.7 249.8,44.5 254.0,45.4" stroke="#ff6b57" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="6.0" cy="22.9" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · tag · +0.0% (running: −17.9%)</title></circle><circle cx="10.2" cy="27.5" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · settle · −5.0% (running: −22.8%)</title></circle><circle cx="14.4" cy="18.8" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · settle · +9.3% (running: −13.6%)</title></circle><circle cx="18.6" cy="23.4" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · settle · −4.8% (running: −18.4%)</title></circle><circle cx="22.8" cy="23.4" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · tag · +0.0% (running: −18.4%)</title></circle><circle cx="27.0" cy="23.4" r="2.5" fill="#ff6b57"><title>Aug 22, 2026 · tag · +0.0% (running: −18.4%)</title></circle><circle cx="31.2" cy="18.4" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · +5.3% (running: −13.1%)</title></circle><circle cx="35.4" cy="19.0" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · −0.7% (running: −13.8%)</title></circle><circle cx="39.6" cy="23.0" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · −4.3% (running: −18.0%)</title></circle><circle cx="43.8" cy="18.0" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · settle · +5.3% (running: −12.7%)</title></circle><circle cx="48.0" cy="18.4" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · tag · −0.5% (running: −13.2%)</title></circle><circle cx="52.2" cy="18.4" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · tag · +0.0% (running: −13.2%)</title></circle><circle cx="56.4" cy="18.4" r="2.5" fill="#ff6b57"><title>Aug 23, 2026 · tag · +0.0% (running: −13.2%)</title></circle><circle cx="60.6" cy="22.6" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −4.4% (running: −17.6%)</title></circle><circle cx="64.8" cy="23.5" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −0.9% (running: −18.5%)</title></circle><circle cx="69.1" cy="25.3" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −1.9% (running: −20.4%)</title></circle><circle cx="73.3" cy="18.3" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · +7.5% (running: −13.0%)</title></circle><circle cx="77.5" cy="23.0" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −5.0% (running: −17.9%)</title></circle><circle cx="81.7" cy="23.7" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · settle · −0.8% (running: −18.7%)</title></circle><circle cx="85.9" cy="33.1" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · tag · −10.0% (running: −28.7%)</title></circle><circle cx="90.1" cy="30.8" r="2.5" fill="#ff6b57"><title>Aug 24, 2026 · tag · +2.5% (running: −26.2%)</title></circle><circle cx="94.3" cy="33.1" r="2.5" fill="#ff6b57"><title>Aug 25, 2026 · settle · −2.5% (running: −28.6%)</title></circle><circle cx="98.5" cy="37.2" r="2.5" fill="#ff6b57"><title>Aug 25, 2026 · settle · −4.3% (running: −33.0%)</title></circle><circle cx="102.7" cy="41.9" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · −5.0% (running: −38.0%)</title></circle><circle cx="106.9" cy="41.4" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · +0.5% (running: −37.5%)</title></circle><circle cx="111.1" cy="42.4" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · −1.0% (running: −38.5%)</title></circle><circle cx="115.3" cy="42.4" r="2.5" fill="#ff6b57"><title>Aug 26, 2026 · tag · +0.0% (running: −38.5%)</title></circle><circle cx="119.5" cy="49.5" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · −7.5% (running: −46.0%)</title></circle><circle cx="123.7" cy="50.9" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · −1.5% (running: −47.5%)</title></circle><circle cx="127.9" cy="48.5" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · +2.5% (running: −45.0%)</title></circle><circle cx="132.1" cy="53.7" r="2.5" fill="#ff6b57"><title>Aug 27, 2026 · tag · −5.5% (running: −50.5%)</title></circle><circle cx="136.3" cy="56.1" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · settle · −2.5% (running: −53.0%)</title></circle><circle cx="140.5" cy="60.8" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · settle · −4.9% (running: −58.0%)</title></circle><circle cx="144.7" cy="55.5" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · settle · +5.5% (running: −52.4%)</title></circle><circle cx="148.9" cy="59.4" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · settle · −4.1% (running: −56.5%)</title></circle><circle cx="153.1" cy="66.0" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · −7.0% (running: −63.5%)</title></circle><circle cx="157.3" cy="58.0" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · +8.5% (running: −55.0%)</title></circle><circle cx="161.5" cy="55.1" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · +3.0% (running: −52.0%)</title></circle><circle cx="165.7" cy="55.6" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · −0.5% (running: −52.5%)</title></circle><circle cx="169.9" cy="55.1" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · +0.6% (running: −52.0%)</title></circle><circle cx="174.1" cy="55.1" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · +0.0% (running: −52.0%)</title></circle><circle cx="178.3" cy="57.0" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · −2.0% (running: −54.0%)</title></circle><circle cx="182.5" cy="51.3" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · +6.0% (running: −48.0%)</title></circle><circle cx="186.7" cy="51.3" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · +0.0% (running: −48.0%)</title></circle><circle cx="190.9" cy="54.6" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −3.5% (running: −51.4%)</title></circle><circle cx="195.2" cy="58.9" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −4.5% (running: −56.0%)</title></circle><circle cx="199.4" cy="51.4" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · +8.0% (running: −48.0%)</title></circle><circle cx="203.6" cy="55.2" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −4.0% (running: −52.0%)</title></circle><circle cx="207.8" cy="58.8" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −3.8% (running: −55.9%)</title></circle><circle cx="212.0" cy="53.9" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · +5.2% (running: −50.6%)</title></circle><circle cx="216.2" cy="58.1" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −4.5% (running: −55.1%)</title></circle><circle cx="220.4" cy="53.3" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · +5.0% (running: −50.1%)</title></circle><circle cx="224.6" cy="55.2" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −2.0% (running: −52.1%)</title></circle><circle cx="228.8" cy="59.9" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −4.9% (running: −57.0%)</title></circle><circle cx="233.0" cy="54.5" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · +5.7% (running: −51.3%)</title></circle><circle cx="237.2" cy="49.7" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · +5.1% (running: −46.2%)</title></circle><circle cx="241.4" cy="49.7" r="2.5" fill="#ff6b57"><title>Aug 30, 2026 · tag · +0.0% (running: −46.2%)</title></circle><circle cx="245.6" cy="49.7" r="2.5" fill="#ff6b57"><title>Aug 30, 2026 · tag · +0.0% (running: −46.2%)</title></circle><circle cx="249.8" cy="44.5" r="2.5" fill="#ff6b57"><title>Aug 30, 2026 · settle · +5.5% (running: −40.8%)</title></circle><circle cx="254.0" cy="45.4" r="2.5" fill="#ff6b57"><title>Aug 30, 2026 · tag · −1.0% (running: −41.8%)</title></circle>
+                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 22</text><text class="hc-mm-tick" x="127.9" y="84" text-anchor="middle">Aug 27</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Aug 30</text>
             </svg></div>
                 </div>
             </div>
@@ -934,23 +1027,23 @@
                 <h4 class="hc-mm-news-heading">Recent News</h4>
                 <ul class="hc-mm-news-list">
                 <li>
-                    <a href="/the-tank/articles/brighton-chelsea-deadline-week-moneyline/">Chelsea&#039;s spent the week chasing a Monaco midfielder and pushing Fernández toward the door. Now they actually have to play a match.</a>
-                    <p class="hc-mm-excerpt">The Camara chase and the Fernández fallout have owned Chelsea&#039;s week, not their preparation for Brighton.</p>
-                    <span class="hc-mm-news-meta">EPL · Aug 29, 2026</span>
+                    <a href="/the-tank/articles/white-sox-twins-tristan-peters-homer-streak-moneyline/">A White Sox rookie just tied an MLB record nobody&#039;s touched since 1900. Now his team needs a win to match him.</a>
+                    <p class="hc-mm-excerpt">Tristan Peters has gone deep in five consecutive games, tying the White Sox franchise record and the MLB rookie record in the same swing.</p>
+                    <span class="hc-mm-news-meta">MLB · Aug 30, 2026</span>
                 </li>
                 <li>
-                    <a href="/the-tank/articles/red-sox-yankees-total-8-5-wild-card-injuries/">The Yankees are missing Judge, Stanton, and Weathers, just got Bellinger back, and Red Sox-Yankees still has Wild Card weight on it.</a>
-                    <p class="hc-mm-excerpt">Judge, Stanton, Weathers all sidelined. Bellinger just returned. This isn&#039;t the Yankees lineup anyone circled this game for.</p>
-                    <span class="hc-mm-news-meta">MLB · Aug 29, 2026</span>
+                    <a href="/the-tank/articles/arsenal-vs-aston-villa-over-3-5-goals-deadline-day/">Arsenal and Villa are mid-teardown, and now they have to play each other.</a>
+                    <p class="hc-mm-excerpt">Arteta is answering exit questions on Martinelli, Jesus and Vieira all week, not exactly ideal derby prep.</p>
+                    <span class="hc-mm-news-meta">EPL · Aug 30, 2026</span>
                 </li>
             </ul>
             </div>
             <div class="hc-mm-results">
                 <h4 class="hc-mm-results-heading">Recent Results</h4>
                 <ul class="hc-mm-results-list">
-                <li><span class="hc-mm-result-chip is-neg">$DOGS</span> $DOGS sinks 4.1 points with Steelers&#039; recent loss.</li>
-                <li><span class="hc-mm-result-chip is-pos">$DOGS</span> The DOGS index experiences a local high as Browns deliver.</li>
-                <li><span class="hc-mm-result-chip is-neg">$DOGS</span> Buyers up in arms as Under 34.5 fails to impress. The market falls 4.9 points.</li>
+                <li><span class="hc-mm-result-chip is-pos">$DOGS</span> $DOGS climbs 5.5 points as the Over hits in Chicago Bears vs. Tennessee Titans.</li>
+                <li><span class="hc-mm-result-chip is-pos">$DOGS</span> The DOGS index experiences a local high as Under 7.5 hits in Boston Red Sox vs. New York Yankees.</li>
+                <li><span class="hc-mm-result-chip is-pos">$DOGS</span> Buyers applaud as Cincinnati Bengals vs. Philadelphia Eagles clears the total. The market climbs 5.7 points.</li>
             </ul>
             </div>
         </article></div>
@@ -959,7 +1052,7 @@
         <section id="explore" class="hc-section" aria-labelledby="hc-explore-heading">
             <h2 id="hc-explore-heading" class="hc-visually-hidden">Explore the world by sport</h2>
             <div class="hc-explore-wrap">
-                <img class="hc-explore-logo" src="/assets/images/explore-logo.webp" alt="" aria-hidden="true" loading="lazy" width="720" height="463">
+                <img class="hc-explore-logo" src="/assets/images/explore-logo.webp" alt="" aria-hidden="true" loading="lazy" width="453" height="248">
                 <div class="hc-explore-row">
                     <div id="hc-map-root">
                         <picture>
@@ -975,7 +1068,7 @@
             &copy; 2026 Heatchecks &middot; <a href="/">Home</a>
         </div>
     </main>
-    <script type="application/json" id="homepage-data">{"initialSport":"Baseball","loggedIn":false,"sports":[{"sport":"Baseball","live":true,"slug":"red-sox-yankees-total-8-5-wild-card-injuries","href":"/the-tank/articles/red-sox-yankees-total-8-5-wild-card-injuries/","deck":{"hook":"The Yankees are missing Judge, Stanton, and Weathers, just got Bellinger back, and Red Sox-Yankees still has Wild Card weight on it.","cards":["Judge, Stanton, Weathers all sidelined. Bellinger just returned. This isn't the Yankees lineup anyone circled this game for.","Boston shows up mid-race too, a team that's been feast-or-famine at the plate all year."],"call":{"sides":["Over 8.5","Under 8.5"],"question":"Does this Yankees-Red Sox game go over or under 8.5 total runs?","sidesImpliedProb":[0.38,0.62]},"tagline":"Wild Card, Walking Wounded","contextLabel":"O 8.5 Totals","oddsOrMarketLabel":"MLB · Boston Red Sox vs. New York Yankees","settleDateLabel":"Resolves Aug 29, 2026","gameTimeLabel":"Sat, Aug 29 · 1:05 PM ET","kickoff":"2026-08-29T17:05:00Z"}},{"sport":"Basketball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Football","live":true,"slug":"bears-titans-preseason-finale-total-37-5","href":"/the-tank/articles/bears-titans-preseason-finale-total-37-5/","deck":{"hook":"The last tune-up before Week 1, and the total is the only stat that tells you how much either team actually wanted to show.","cards":["Bears close out preseason in Nashville with the whole Caleb Williams hype train watching. The question isn't how good he looks. It's whether he even plays long enough to matter.","Preseason finales usually mean starters in street clothes and backups running it safe. If either staff breaks that pattern here, this total moves fast."],"call":{"sides":["Over 37.5","Under 37.5"],"question":"Bears vs. Titans preseason finale: over or under 37.5 combined points?","sidesImpliedProb":[0.455,0.545]},"tagline":"Preseason Finale Tell","contextLabel":"O 37.5 Totals","oddsOrMarketLabel":"NFL · Chicago Bears vs. Tennessee Titans","settleDateLabel":"Resolves Aug 29, 2026","gameTimeLabel":"Sat, Aug 29 · 6:00 PM ET","kickoff":"2026-08-29T22:00:00Z"}},{"sport":"Soccer","live":true,"slug":"newcastle-tottenham-savio-debut-total-goals","href":"/the-tank/articles/newcastle-tottenham-savio-debut-total-goals/","deck":{"hook":"Spurs got humiliated on opening day and panic bought their way out of it. Newcastle is round one of finding out if it worked.","cards":["Tottenham lost 3-0 on opening day and responded by breaking the bank for Sávio, the kind of move that screams crisis mode.","Newcastle at home have zero interest in being anyone's redemption arc. They're the first real test of whether the new signing changes anything."],"call":{"sides":["Over 3.5","Under 3.5"],"question":"Newcastle vs Tottenham: over or under 3.5 total goals?","sidesImpliedProb":[0.345,0.655]},"tagline":"Panic Buy Debut","contextLabel":"O 3.5 Totals","oddsOrMarketLabel":"EPL · Newcastle United FC vs. Tottenham Hotspur FC","settleDateLabel":"Resolves Aug 29, 2026","gameTimeLabel":"Sat, Aug 29 · 12:30 PM ET","kickoff":"2026-08-29T16:30:00Z"}}]}</script>
+    <script type="application/json" id="homepage-data">{"initialSport":"Baseball","loggedIn":false,"sports":[{"sport":"Baseball","live":true,"slug":"white-sox-twins-tristan-peters-homer-streak-moneyline","href":"/the-tank/articles/white-sox-twins-tristan-peters-homer-streak-moneyline/","deck":{"hook":"A White Sox rookie just tied an MLB record nobody's touched since 1900. Now his team needs a win to match him.","cards":["Tristan Peters has gone deep in five consecutive games, tying the White Sox franchise record and the MLB rookie record in the same swing.","Chicago has another rookie, Murakami, who put up his own five-game homer streak this season. No team since 1900 has had two rookies do that in one year."],"call":{"sides":["Chicago White Sox","Minnesota Twins"],"question":"Who wins tonight: White Sox or Twins?","sidesImpliedProb":[0.485,0.515]},"tagline":"Rookie History, Live","contextLabel":"Moneyline","oddsOrMarketLabel":"MLB · Chicago White Sox vs. Minnesota Twins","settleDateLabel":"Resolves Aug 30, 2026","gameTimeLabel":"Sun, Aug 30 · 2:10 PM ET","kickoff":"2026-08-30T18:10:00Z"}},{"sport":"Basketball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Football","live":true,"slug":"jets-titans-breece-hall-injury-spread","href":"/the-tank/articles/jets-titans-breece-hall-injury-spread/","deck":{"hook":"Breece Hall got hurt in practice and now the Jets' entire gameplan in Nashville is in question.","cards":["Breece Hall went down Monday with an upper right leg issue, and his status for Titans-Jets is uncertain.","Lose Hall and the Jets lose their easiest source of offense, the kind that keeps a defense honest and a clock moving."],"call":{"sides":["Titans -2.5","Jets +2.5"],"question":"Do the Titans cover -2.5 against a Jets team that might be without Breece Hall?","sidesImpliedProb":[0.525,0.475]},"tagline":"Breece Hall Injury Watch","contextLabel":"O -2.5 Spreads","oddsOrMarketLabel":"NFL · New York Jets vs. Tennessee Titans","settleDateLabel":"Resolves Sep 13, 2026","gameTimeLabel":"Sun, Sep 13 · 1:00 PM ET","kickoff":"2026-09-13T17:00:00.000Z"}},{"sport":"Soccer","live":true,"slug":"arsenal-vs-aston-villa-over-3-5-goals-deadline-day","href":"/the-tank/articles/arsenal-vs-aston-villa-over-3-5-goals-deadline-day/","deck":{"hook":"Arsenal and Villa are mid-teardown, and now they have to play each other.","cards":["Arteta is answering exit questions on Martinelli, Jesus and Vieira all week, not exactly ideal derby prep.","Villa sold Watkins and ripped out Rogers, Konsa, Tielemans and Digne in one summer. That's a new spine, untested under derby lights."],"call":{"sides":["Over 3.5","Under 3.5"],"question":"Arsenal vs Aston Villa: Over or Under 3.5 total goals?","sidesImpliedProb":[0.305,0.695]},"tagline":"Deadline Week Derby","contextLabel":"O 3.5 Totals","oddsOrMarketLabel":"EPL · Arsenal FC vs. Aston Villa FC","settleDateLabel":"Resolves Aug 31, 2026","gameTimeLabel":"Mon, Aug 31 · 3:00 PM ET","kickoff":"2026-08-31T19:00:00Z"}}]}</script>
     <script type="module" src="/assets/homepage.js" defer></script>
 </body>
 </html>

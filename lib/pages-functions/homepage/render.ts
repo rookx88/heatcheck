@@ -110,7 +110,7 @@ function renderSportRow(slots: SportSlot[]): string {
                 <span class="hc-tanks-wind"></span>
                 <span class="hc-tanks-wind hc-tanks-wind--b"></span>
             </div>
-            <h2 id="hc-tanks-heading">Newest Tanks Available</h2>
+            <h2 id="hc-tanks-heading">Sports Tanks Available</h2>
             <p class="hc-section-sub hc-section-sub--tanks">Tanks are Heatcheck&rsquo;s most important invention. With the wisdom of the user, it unlocks embers, the currency of the world that allows you to grow your mud puppy. Make your pick on a tank. Get it right. Earn Ember.</p>
             <div class="hc-tanks-layout">
                 <div id="hc-showcase-root" aria-hidden="true"></div>
@@ -374,10 +374,31 @@ function homepageStyles(): string {
         }
         /* position:relative on all four here (z-index left at 'auto') is what makes
            them paint above .hc-tanks-backdrop - see that rule's comment. */
+        /* Marquee-sign title bar: black fill, red outline, dotted-LED lettering
+           (Bitcount Grid Single - loaded homepage-only, see the extra font <link>
+           in renderHomepage). text-transform off: the LED face reads as designed
+           in mixed case, not the Montserrat all-caps the other section titles use. */
         #tanks h2 {
             position: relative;
-            background: #8b1c18; color: #ffffff;
+            background: #000000; color: #fff6c8;
+            border: 2px solid #8b1c18; border-radius: 4px;
             margin: 0 -1.1rem 0.75rem; padding: 0.65rem 1.1rem;
+            font-family: 'Bitcount Grid Single', 'Courier New', monospace;
+            font-weight: 700; text-transform: none; letter-spacing: 0.02em;
+            text-shadow: 0 0 12px rgba(255, 240, 170, 0.4);
+            animation: hc-tanks-title-blink 9s linear infinite;
+        }
+        /* A marquee bulb-flicker, not a cursor blink: steady for ~8s, then two
+           quick dips (~100ms each) and back to full. Dim, never off. */
+        @keyframes hc-tanks-title-blink {
+            0%, 88.8% { color: #fff6c8; text-shadow: 0 0 12px rgba(255, 240, 170, 0.4); }
+            89.3%, 90% { color: rgba(255, 246, 200, 0.5); text-shadow: 0 0 4px rgba(255, 240, 170, 0.15); }
+            90.5%, 91.6% { color: #fff6c8; text-shadow: 0 0 12px rgba(255, 240, 170, 0.4); }
+            92.1%, 92.7% { color: rgba(255, 246, 200, 0.62); text-shadow: 0 0 6px rgba(255, 240, 170, 0.2); }
+            93.2%, 100% { color: #fff6c8; text-shadow: 0 0 12px rgba(255, 240, 170, 0.4); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #tanks h2 { animation: none; }
         }
         .hc-section-sub--tanks { position: relative; margin-top: 0; }
 
@@ -557,6 +578,10 @@ export function renderHomepage(options: RenderHomepageOptions): string {
 <html lang="en">
 <head>
     ${head}
+    <!-- Homepage-only face for the Tanks panel title (see #tanks h2). Kept out of
+         renderHead's shared font request so the waitlist/article pages don't pay
+         for a face only this page uses. -->
+    <link href="https://fonts.googleapis.com/css2?family=Bitcount+Grid+Single:wght@100..900&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/assets/homepage.css">
     <style>${homepageStyles()}${marketMoversStyles()}</style>
 </head>
