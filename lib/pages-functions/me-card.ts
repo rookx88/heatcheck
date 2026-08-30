@@ -33,10 +33,15 @@ import ORBITRON_BOLD from './fonts/orbitron-bold.bin';
 import ORBITRON_BLACK from './fonts/orbitron-black.bin';
 import { MAX_LEVEL } from './leveling';
 
-// Canvas matches the committed art assets (810x1440 - the 1080x1920 reference
-// scaled by 0.75; every coordinate below is reference * 0.75).
-const W = 810;
-const H = 1440;
+// Canvas matches the committed art assets (540x960 - the 1080x1920 reference scaled
+// by 0.5). Half-size is deliberate CPU management, not a quality tradeoff: the first
+// deployed 810x1440 render died with Cloudflare error 1102 (Worker exceeded resource
+// limits) - two full-bleed color-matrix filter passes plus a megapixel PNG encode
+// blow the production CPU budget that the local dev runtime doesn't enforce. At
+// 540x960 every per-pixel cost drops 4x, and Discord displays attachments at ~550px
+// wide anyway, so nothing visible in chat is lost.
+const W = 540;
+const H = 960;
 
 const ORANGE = '#f97316';
 
@@ -121,44 +126,48 @@ export async function renderMeCard(input: MeCardInput): Promise<Uint8Array | nul
         const { bg, char } = getArt();
         const avatarRaw = await fetchAvatarDataUri(input.avatarUrl);
 
-        // Circle geometry (reference * 0.75): center (405, 480), ring radius 338.
-        const ringR = 338;
-        const cx = 405;
-        const cy = 480;
-        const ringWidth = 10;
+        // Circle geometry (reference * 0.5): center (270, 320), ring radius 225.
+        const ringR = 225;
+        const cx = 270;
+        const cy = 320;
+        const ringWidth = 7;
         const avatarR = ringR - ringWidth;
 
         const tintFilter = tier.hue !== 0 || tier.sat !== 1 ? 'filter="url(#tint)"' : '';
         const name = escapeXml(input.displayName);
         // Rough per-glyph width for Permanent Marker at a given size - shrink long
         // names instead of overflowing into the rank block.
-        const nameSize = Math.min(64, Math.max(30, Math.floor(560 / Math.max(1, input.displayName.length) / 0.62)));
+        const nameSize = Math.min(43, Math.max(20, Math.floor(373 / Math.max(1, input.displayName.length) / 0.62)));
         const lvlColor = input.level >= MAX_LEVEL ? tier.ring : '#ffffff';
 
+        // Glow = three cheap concentric translucent circles, NOT a gaussian blur -
+        // the blur was a real slice of the CPU budget that error 1102 said we don't
+        // have.
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
 <defs>
   <filter id="tint"><feColorMatrix type="hueRotate" values="${tier.hue}"/><feColorMatrix type="saturate" values="${tier.sat}"/></filter>
   <filter id="mono"><feColorMatrix type="saturate" values="0"/></filter>
-  <filter id="glowblur" x="-40%" y="-40%" width="180%" height="180%"><feGaussianBlur stdDeviation="22"/></filter>
   <clipPath id="avclip"><circle cx="${cx}" cy="${cy}" r="${avatarR}"/></clipPath>
 </defs>
 <rect width="${W}" height="${H}" fill="#000000"/>
 <image xlink:href="${bg}" width="${W}" height="${H}" ${tintFilter}/>
 ${tier.darken > 0 ? `<rect width="${W}" height="${H}" fill="#000000" opacity="${tier.darken}"/>` : ''}
-<circle cx="${cx}" cy="${cy}" r="${ringR + 16}" fill="${tier.glow}" filter="url(#glowblur)"/>
+<circle cx="${cx}" cy="${cy}" r="${ringR + 26}" fill="${tier.glow}" opacity="0.25"/>
+<circle cx="${cx}" cy="${cy}" r="${ringR + 16}" fill="${tier.glow}" opacity="0.4"/>
+<circle cx="${cx}" cy="${cy}" r="${ringR + 8}" fill="${tier.glow}" opacity="0.6"/>
 <circle cx="${cx}" cy="${cy}" r="${ringR}" fill="${tier.ring}"/>
 ${avatarRaw
     ? `<g clip-path="url(#avclip)"><image xlink:href="${avatarRaw}" x="${cx - avatarR}" y="${cy - avatarR}" width="${avatarR * 2}" height="${avatarR * 2}" preserveAspectRatio="xMidYMid slice" filter="url(#mono)"/></g>`
     : `<circle cx="${cx}" cy="${cy}" r="${avatarR}" fill="#1a1a22"/>`}
 <image xlink:href="${char}" width="${W}" height="${H}" ${tintFilter}/>
-<rect x="52" y="1125" width="${W - 104}" height="235" rx="8" fill="#ffffff" opacity="0.22"/>
-<text x="${W / 2}" y="1255" text-anchor="middle" font-family="Anton" font-size="122" fill="#ffffff">${input.points.toLocaleString('en-US')}</text>
-<text x="80" y="1330" font-family="Orbitron" font-weight="700" font-size="27" letter-spacing="3" fill="#ffffff">SKILL RATING: ${input.sr}</text>
-<text x="${W - 78}" y="1336" text-anchor="end" font-family="Orbitron" font-weight="900" font-size="46" letter-spacing="2" fill="${lvlColor}">LVL ${input.level}</text>
-<text x="44" y="110" font-family="Permanent Marker" font-size="${nameSize}" fill="${ORANGE}" transform="rotate(-6 44 110)">${name}</text>
-<text x="${W - 96}" y="150" text-anchor="middle" font-family="Anton" font-size="122" fill="#ffffff">${input.rank}</text>
-<rect x="${W - 168}" y="172" width="144" height="42" fill="${ORANGE}"/>
-<text x="${W - 96}" y="203" text-anchor="middle" font-family="Orbitron" font-weight="900" font-size="26" letter-spacing="3" fill="#0c0c0e">RANK</text>
+<rect x="35" y="750" width="${W - 70}" height="157" rx="6" fill="#ffffff" opacity="0.22"/>
+<text x="${W / 2}" y="837" text-anchor="middle" font-family="Anton" font-size="81" fill="#ffffff">${input.points.toLocaleString('en-US')}</text>
+<text x="53" y="887" font-family="Orbitron" font-weight="700" font-size="18" letter-spacing="2" fill="#ffffff">SKILL RATING: ${input.sr}</text>
+<text x="${W - 52}" y="891" text-anchor="end" font-family="Orbitron" font-weight="900" font-size="31" letter-spacing="1.5" fill="${lvlColor}">LVL ${input.level}</text>
+<text x="29" y="73" font-family="Permanent Marker" font-size="${nameSize}" fill="${ORANGE}" transform="rotate(-6 29 73)">${name}</text>
+<text x="${W - 64}" y="100" text-anchor="middle" font-family="Anton" font-size="81" fill="#ffffff">${input.rank}</text>
+<rect x="${W - 112}" y="115" width="96" height="28" fill="${ORANGE}"/>
+<text x="${W - 64}" y="136" text-anchor="middle" font-family="Orbitron" font-weight="900" font-size="17" letter-spacing="2" fill="#0c0c0e">RANK</text>
 </svg>`;
 
         const resvg = new Resvg(svg, {
