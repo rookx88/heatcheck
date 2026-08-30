@@ -178,8 +178,9 @@ button.pet-widget__name--prompt:focus-visible {
 /* Desktop sizing, per docking mode. The ground shadow is percentage-based so it
    scales with him either way. */
 @media (min-width: 1024px) {
+  /* Same stacked column as mobile, beside the pet - only the size caps lift.
+     (The row layout was dropped by request: desktop stacks the buttons too.) */
   .pet-widget__actions {
-    flex-direction: row;
     max-width: none;
     max-height: none;
     overflow: visible;
