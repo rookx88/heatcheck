@@ -135,19 +135,77 @@ function subjectFor(item: TickerResultItem): string {
     return item.outcomeLabel;
 }
 
+// The market types whose sides are Over/Under on a game score (mirrors
+// GAME_LINE_MARKET_TYPES' totals subset in tank-providers.ts).
+const TOTALS_MARKET_TYPES = ['totals', 'team_totals'];
+
+// 'Over' | 'Under' from the tagged side's labels (outcome label first, then the call's
+// pick label); null when the market words its sides some other way (e.g. Kalshi Yes/No -
+// those fall through to the generic game-line sentences).
+function totalsSideWord(item: TickerResultItem): 'Over' | 'Under' | null {
+    for (const label of [item.outcomeLabel, item.pickLabel]) {
+        if (/^over\b/i.test(label)) return 'Over';
+        if (/^under\b/i.test(label)) return 'Under';
+    }
+    return null;
+}
+
 // One newsline-style sentence per settled result, rotating through 3 phrasings so a card's
 // results list doesn't read as a repeated mad-lib. All three read the SAME two facts (won,
 // |delta| in points - deliberately not the %-formatted valueLabel per the "points, not
 // percent" ask) off the event; only the copy differs.
+//
+// Three market shapes, three sentence families (user feedback 2026-08-29: an Over can't
+// "win", a matchup can't "lose", and "Over 8.5 don't deliver" fails agreement):
+//   totals       - the side hits or misses IN a game; the game clears or stays under.
+//   player props - the player is the singular animate subject; the pick label ("Over 1.5
+//                  hits") is what they deliver on or miss, never the subject itself.
+//   team lines   - the tagged team is the subject (original templates, plural verbs).
 function buildResultSentence(item: TickerResultItem, displayName: string, templateIndex: number): string {
     const tickerWord = displayName.replace(/^\$/, '');
     const points = Math.abs(item.delta).toFixed(1);
+    const t = templateIndex % 3;
+
+    const totalsSide = TOTALS_MARKET_TYPES.includes(item.market) ? totalsSideWord(item) : null;
+    if (totalsSide) {
+        const matchup = item.player; // the game-line matchup fallback ("Away vs. Home")
+        const line = (item.pickLabel.match(/\d+(?:\.\d+)?/) ?? [])[0];
+        if (t === 0) {
+            return `${displayName} ${item.won ? 'climbs' : 'sinks'} ${points} points as the ${totalsSide} ${item.won ? 'hits' : 'misses'} in ${matchup}.`;
+        }
+        if (t === 1) {
+            return `The ${tickerWord} index experiences a local ${item.won ? 'high' : 'low'} as ${item.pickLabel || `the ${totalsSide}`} ${item.won ? 'hits' : 'misses'}.`;
+        }
+        // Whether the GAME cleared the number follows from side + outcome: an Over
+        // winning and an Under losing both mean the total was cleared.
+        const cleared = (totalsSide === 'Over') === item.won;
+        const gameAction = cleared ? 'clears the total' : line ? `stays under ${line}` : 'stays under the total';
+        return item.won
+            ? `Buyers applaud as ${matchup} ${gameAction}. The market climbs ${points} points.`
+            : `Buyers up in arms as ${matchup} ${gameAction}. The market falls ${points} points.`;
+    }
+
+    if (/_player_/.test(item.market)) {
+        const player = item.player;
+        if (t === 0) {
+            return `${displayName} ${item.won ? 'climbs' : 'sinks'} ${points} points with ${possessive(player)} recent ${item.won ? 'win' : 'loss'}.`;
+        }
+        if (t === 1) {
+            return item.pickLabel
+                ? `The ${tickerWord} index experiences a local ${item.won ? 'high' : 'low'} as ${player} ${item.won ? 'delivers on' : 'misses'} ${item.pickLabel}.`
+                : `The ${tickerWord} index experiences a local ${item.won ? 'high' : 'low'} as ${player} ${item.won ? 'delivers' : 'comes up short'}.`;
+        }
+        return item.won
+            ? `Buyers applaud heroics as ${player} impresses. The market climbs ${points} points.`
+            : `Buyers up in arms as ${player} fails to impress. The market falls ${points} points.`;
+    }
+
     const subject = subjectFor(item);
-    // A pickLabel with substance ("Over 37.5") beats the subject; a bare side word
-    // ("Under", "Yes") doesn't - "as Under deliver" reads as broken as the possessive.
+    // A pickLabel with substance beats the subject; a bare side word ("Under", "Yes")
+    // doesn't - "as Under deliver" reads as broken as the possessive.
     const pickLabelIsBareSide = /^(over|under|yes|no)$/i.test(item.pickLabel.trim());
     const pick = (item.pickLabel && !pickLabelIsBareSide) ? item.pickLabel : subject;
-    switch (templateIndex % 3) {
+    switch (t) {
         case 0:
             return `${displayName} ${item.won ? 'climbs' : 'sinks'} ${points} points with ${possessive(subject)} recent ${item.won ? 'win' : 'loss'}.`;
         case 1:
