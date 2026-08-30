@@ -81,30 +81,30 @@ function tankdaqIndexesStyles(): string {
         @media (max-width: 759px) {
             .hc-tqb-board { aspect-ratio: 3 / 4; }
         }
-        /* Tile type scales off the tile's own font-size (set inline by the client as
-           min(tile-proportional rem, viewport-proportional vw) so labels shrink with
-           the board on phones); children size in em against it. overflow:hidden means
-           a worst-case long label clips inside its tile instead of bleeding across
-           neighbors. */
+        /* Tiles are BLACK with neon green/red borders (direction) - magnitude shows as
+           tile area plus border/glow intensity, all set inline by the client. The
+           tile's own font-size is computed in px from the measured board width
+           (ResizeObserver), so labels always fit; children size in em against it and
+           overflow:hidden keeps any worst case inside its own tile. */
         .hc-tqb-tile {
             position: absolute; display: flex; flex-direction: column;
             align-items: center; justify-content: center; gap: 0.15em;
             text-decoration: none; text-align: center; overflow: hidden;
-            border: 2px solid #000000; box-sizing: border-box;
+            background: #000000; box-sizing: border-box; border-radius: 3px;
             transition: filter 0.15s ease;
         }
-        .hc-tqb-tile:hover, .hc-tqb-tile:focus-visible { filter: brightness(1.2); outline: none; z-index: 1; }
+        .hc-tqb-tile:hover, .hc-tqb-tile:focus-visible { filter: brightness(1.35); outline: none; z-index: 1; }
         .hc-tqb-sym {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; font-size: 1em;
-            color: #ffffff; text-shadow: 1px 1px 2px rgba(0,0,0,0.55); line-height: 1.1;
+            color: #ffffff; line-height: 1.1;
         }
         .hc-tqb-delta {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.72em;
-            color: rgba(255,255,255,0.92); text-shadow: 1px 1px 2px rgba(0,0,0,0.55); line-height: 1.1;
+            line-height: 1.1;
         }
         .hc-tqb-total {
             font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.55em;
-            color: rgba(255,255,255,0.7); text-shadow: 1px 1px 2px rgba(0,0,0,0.5); line-height: 1.1;
+            color: rgba(255,255,255,0.6); line-height: 1.1;
         }
 
         .hc-tqb-legend {
@@ -112,7 +112,11 @@ function tankdaqIndexesStyles(): string {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.68rem;
             letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.6);
         }
-        .hc-tqb-swatch { display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 3px; vertical-align: -1px; margin-right: 0.3rem; }
+        .hc-tqb-swatch {
+            display: inline-block; width: 0.7rem; height: 0.7rem; border-radius: 3px;
+            vertical-align: -1px; margin-right: 0.3rem;
+            background: #000000; border: 2px solid currentColor; box-sizing: border-box;
+        }
 
         .hc-tqb-loading, .hc-tqb-error { margin: 2.5rem 0; color: rgba(255,255,255,0.7); }
     `;

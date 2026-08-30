@@ -6,7 +6,7 @@
 // /api/tickers/chart (full event series - the 24h deltas are computed here, same rule
 // as the detail page). Styles live in scripts/templates/tankdaq-indexes-template.ts.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
 interface TickerRow { key: string; displayName: string; ruleType: string; tabOrder: number; value: number }
@@ -97,11 +97,27 @@ function squarify(weights: number[], width: number, height: number): Rect[] {
 
 // ---------------------------------------------------------------------------------
 
+// Per-direction neon, as rgb triplets so border/glow alphas can scale with magnitude.
+const NEON = { pos: '61, 220, 100', neg: '255, 107, 87', zero: '148, 163, 184' } as const;
+
 const TankdaqBoard: React.FC = () => {
     const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
     const [tiles, setTiles] = useState<Tile[]>([]);
     const [note, setNote] = useState('');
     const [maxAbs, setMaxAbs] = useState(0);
+    const boardRef = useRef<HTMLDivElement | null>(null);
+    const [boardW, setBoardW] = useState(0);
+
+    // Measure the board so tile type can be sized in real px (no viewport guesswork -
+    // this is what keeps long symbols inside small tiles at every screen size).
+    useLayoutEffect(() => {
+        const el = boardRef.current;
+        if (!el) return;
+        setBoardW(el.clientWidth);
+        const ro = new ResizeObserver(() => setBoardW(el.clientWidth));
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [phase]);
 
     useEffect(() => {
         let cancelled = false;
@@ -157,39 +173,35 @@ const TankdaqBoard: React.FC = () => {
                 <h1 className="hc-tqb-title">TANKDAQ <span style={{ color: 'var(--hc-gold)' }}>Index Board</span></h1>
                 <p className="hc-tqb-sub">Every index at a glance &mdash; tile size tracks the size of the last-24h move, color its direction.</p>
             </header>
-            <div className="hc-tqb-board" role="list" aria-label="Index heatmap, last 24 hours">
-                {tiles.map((t) => {
+            <div ref={boardRef} className="hc-tqb-board" role="list" aria-label="Index heatmap, last 24 hours">
+                {boardW > 0 && tiles.map((t) => {
                     const mag = maxAbs > 0 ? Math.abs(t.delta24) / maxAbs : 0;
-                    const alpha = 0.3 + 0.65 * mag;
-                    const background = t.delta24 > 0
-                        ? `rgba(61, 220, 100, ${alpha.toFixed(2)})`
-                        : t.delta24 < 0
-                            ? `rgba(255, 107, 87, ${alpha.toFixed(2)})`
-                            : 'rgba(148, 163, 184, 0.25)';
-                    // Tile-proportional type, capped so the symbol always FITS the tile
-                    // width at the current viewport: the board spans ~100vw on phones,
-                    // so a tile w% wide is ~w vw across, and Montserrat 900 runs
-                    // ~0.68em per character. Children scale in em (template CSS).
-                    const symRem = Math.max(0.72, Math.min(1.7, Math.sqrt((t.w * t.h) / 100) * 0.55));
-                    // 0.8em/char overestimates Montserrat 900 slightly on purpose - the
-                    // board is ~90vw inside the page padding, so the safety margin is
-                    // what keeps the longest symbols fully inside their tiles.
-                    const symVwCap = (t.w / (t.displayName.length * 0.8)).toFixed(2);
+                    const dir = t.delta24 > 0 ? 'pos' : t.delta24 < 0 ? 'neg' : 'zero';
+                    const neon = NEON[dir];
+                    // Black fill, neon border - direction from the hue, magnitude from
+                    // border/glow intensity (on top of tile area).
+                    const border = `2px solid rgba(${neon}, ${(0.5 + 0.5 * mag).toFixed(2)})`;
+                    const boxShadow = `inset 0 0 ${Math.round(8 + 22 * mag)}px rgba(${neon}, ${(0.12 + 0.3 * mag).toFixed(2)})`;
+                    // Type in real px from the measured board: the symbol must fit the
+                    // tile's inner width (Montserrat 900 runs ~0.72em/char).
+                    const tileWpx = (boardW * t.w) / 100;
+                    const fitPx = (tileWpx - 14) / (t.displayName.length * 0.72);
+                    const fontPx = Math.max(9, Math.min(Math.sqrt((t.w * t.h) / 100) * 9 + 8, fitPx));
                     return (
                         <a key={t.key} role="listitem" className="hc-tqb-tile" href={`/tankdaq/${t.key}/`}
-                            style={{ left: `${t.x}%`, top: `${t.y}%`, width: `${t.w}%`, height: `${t.h}%`, background, fontSize: `min(${symRem}rem, ${symVwCap}vw)` }}
+                            style={{ left: `${t.x}%`, top: `${t.y}%`, width: `${t.w}%`, height: `${t.h}%`, border, boxShadow, fontSize: `${fontPx.toFixed(1)}px` }}
                             aria-label={`${t.displayName}: ${fmtPct(t.delta24)} in the last 24 hours, ${fmtPct(t.value)} overall`}>
                             <span className="hc-tqb-sym">{t.displayName}</span>
-                            <span className="hc-tqb-delta">{fmtPct(t.delta24)}</span>
+                            <span className="hc-tqb-delta" style={{ color: `rgb(${neon})` }}>{fmtPct(t.delta24)}</span>
                             {t.w * t.h > 90 && <span className="hc-tqb-total">{fmtPct(t.value)} all-time</span>}
                         </a>
                     );
                 })}
             </div>
             <p className="hc-tqb-legend">
-                <span><span className="hc-tqb-swatch" style={{ background: '#3ddc64' }} />Up last 24h</span>
-                <span><span className="hc-tqb-swatch" style={{ background: '#ff6b57' }} />Down last 24h</span>
-                <span><span className="hc-tqb-swatch" style={{ background: 'rgba(148,163,184,0.45)' }} />Flat</span>
+                <span style={{ color: '#3ddc64' }}><span className="hc-tqb-swatch" />Up last 24h</span>
+                <span style={{ color: '#ff6b57' }}><span className="hc-tqb-swatch" />Down last 24h</span>
+                <span style={{ color: '#94a3b8' }}><span className="hc-tqb-swatch" />Flat</span>
             </p>
             {note && <p className="hc-tqb-note">{note}</p>}
         </div>
