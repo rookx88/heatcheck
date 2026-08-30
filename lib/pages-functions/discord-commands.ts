@@ -231,16 +231,58 @@ export async function handlePostCommand(context: RequestContext, interaction: an
     return ephemeral('Unknown subcommand.');
 }
 
+// ===================================================================================
+// Search-menu formatting - every admin search menu (Tank post, Community Pick,
+// draw) had cryptic one-line options (editorial taglines, bare matchups) with
+// Discord's per-option `description` line left empty, making it hard to tell which
+// matchup / date / prop bet a row actually was. These helpers put the identifying
+// facts front and center: label carries matchup + the actual bet, description
+// carries league, kickoff (US/Eastern, the sports-schedule convention), and
+// odds/editorial context.
+// ===================================================================================
+
+// "moneyline" -> "Moneyline", "spreads" -1.5 -> "Spread -1.5",
+// "baseball_player_home_runs" 0.5 -> "home runs o/u 0.5", etc.
+function describeMarket(market: string | null | undefined, line: number | string | null | undefined): string {
+    const lineNum = line === null || line === undefined || line === '' ? null : Number(line);
+    const withLine = (base: string, prefix = 'o/u ') => (lineNum !== null && Number.isFinite(lineNum) ? `${base} ${prefix}${lineNum}` : base);
+    switch (market) {
+        case 'moneyline': return 'Moneyline';
+        case 'spreads': return lineNum !== null ? `Spread ${lineNum > 0 ? '+' : ''}${lineNum}` : 'Spread';
+        case 'totals': return withLine('Total');
+        case 'team_totals': return withLine('Team total');
+        case 'season_futures': return 'Season future';
+        default: {
+            if (!market) return 'Prop';
+            // Player-prop keys: "<sport>_player_<stat>" -> the stat, humanized.
+            const stat = market.includes('_player_') ? market.split('_player_')[1] : market;
+            return withLine(stat.replace(/_/g, ' '));
+        }
+    }
+}
+
+// "Fri Aug 21 · 9:00 PM ET" - US/Eastern because that's how sports schedules read.
+function formatKickoff(iso: string | null | undefined): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    }).format(d) + ' ET';
+}
+
 interface TankSearchRow {
     slug: string;
+    league: string;
     model_output: TankCardModelOutput | string;
+    game_snapshot: { game?: { away?: string; home?: string; kickoff?: string }; prop?: { market?: string; player?: string; line?: number | null } } | null;
 }
 
 async function handleTankSearch(context: RequestContext, search: string): Promise<Response> {
     const sql = getSql(context.env);
     const term = `%${search}%`;
     const rows = (await sql`
-        SELECT slug, model_output
+        SELECT slug, league, model_output, game_snapshot
         FROM tank_pages
         WHERE status = 'published' AND visibility = 'app'
           AND (slug ILIKE ${term} OR model_output->>'tagline' ILIKE ${term} OR model_output->>'hook' ILIKE ${term})
@@ -252,8 +294,20 @@ async function handleTankSearch(context: RequestContext, search: string): Promis
 
     const options = rows.map((row) => {
         const modelOutput: TankCardModelOutput | null = typeof row.model_output === 'string' ? JSON.parse(row.model_output) : row.model_output;
-        const label = (modelOutput?.tagline?.trim() || modelOutput?.hook || row.slug).slice(0, 100);
-        return { label, value: row.slug };
+        const tagline = (modelOutput?.tagline?.trim() || modelOutput?.hook || row.slug).slice(0, 100);
+        const game = row.game_snapshot?.game;
+        const prop = row.game_snapshot?.prop;
+        if (!game?.away || !game?.home) {
+            // Older Tank without a usable snapshot - the tagline is all we have.
+            return { label: tagline, value: row.slug };
+        }
+        const marketLabel = describeMarket(prop?.market, prop?.line);
+        // Player props: lead with the player, since that's the bet's identity.
+        const isPlayerProp = prop?.player && !prop.player.includes(' vs') && prop.player !== game.away && prop.player !== game.home;
+        const bet = isPlayerProp ? `${prop!.player} ${marketLabel}` : marketLabel;
+        const label = `${game.away} @ ${game.home} · ${bet}`.slice(0, 100);
+        const description = [row.league, formatKickoff(game.kickoff), tagline].filter(Boolean).join(' · ').slice(0, 100);
+        return { label, value: row.slug, description };
     });
     return selectMenuResponse('tpselect', `Found ${rows.length} Tank(s) — pick one to post:`, options);
 }
@@ -330,6 +384,7 @@ export async function handleTankRepostConfirm(context: RequestContext, interacti
 interface MarketSearchOption {
     label: string;
     value: string; // Polymarket market id
+    description?: string;
 }
 
 async function handleCommunityPickSearch(context: RequestContext, guildId: string, sport: string, keyword?: string, channelId?: string): Promise<Response> {
@@ -364,8 +419,21 @@ async function handleCommunityPickSearch(context: RequestContext, guildId: strin
             if (!prop.odds || prop.odds.outcomes.length !== 2) continue;
             const haystack = `${game.away} ${game.home} ${prop.player} ${prop.market}`.toLowerCase();
             if (term && !haystack.includes(term)) continue;
-            const subject = prop.player && prop.player !== game.away && prop.player !== game.home ? `${prop.player}: ` : '';
-            matches.push({ label: `${subject}${game.away} @ ${game.home}`.slice(0, 100), value: prop.id });
+
+            // Label = matchup + the actual bet; description = kickoff + both sides
+            // with live implied odds, so rows are tellable apart at a glance.
+            const marketLabel = describeMarket(prop.market, prop.line);
+            const isPlayerProp = prop.player && !prop.player.includes(' vs') && prop.player !== game.away && prop.player !== game.home;
+            const bet = isPlayerProp ? `${prop.player} ${marketLabel}` : marketLabel;
+            const [pA, pB] = prop.odds.outcomePrices;
+            const oddsPart = Number.isFinite(pA) && Number.isFinite(pB)
+                ? `${prop.odds.outcomes[0]} ${Math.round(pA * 100)}% / ${prop.odds.outcomes[1]} ${Math.round(pB * 100)}%`
+                : '';
+            matches.push({
+                label: `${game.away} @ ${game.home} · ${bet}`.slice(0, 100),
+                value: prop.id,
+                description: [formatKickoff(game.kickoff), oddsPart].filter(Boolean).join(' · ').slice(0, 100),
+            });
             if (matches.length >= MAX_SELECT_OPTIONS) break outer;
         }
     }
@@ -574,17 +642,6 @@ export async function handleCommunityVote(context: RequestContext, interaction: 
 // separate confirm step - a repeat click just shows the same winner again).
 // ===================================================================================
 
-interface DrawCandidateTank {
-    kind: 'tank';
-    tankPageId: string;
-    label: string;
-}
-interface DrawCandidatePick {
-    kind: 'community_pick';
-    pickId: string;
-    label: string;
-}
-
 export async function handleDrawCommand(context: RequestContext, interaction: any): Promise<Response> {
     const guildId: string | undefined = interaction.guild_id;
     if (!guildId) return ephemeral('Run this in a server, not a DM.');
@@ -593,7 +650,13 @@ export async function handleDrawCommand(context: RequestContext, interaction: an
     const sql = getSql(context.env);
 
     const settledTanks = (await sql`
-        SELECT dgp.tank_page_id, COALESCE(t.model_output->>'tagline', t.slug) AS label
+        SELECT dgp.tank_page_id, COALESCE(t.model_output->>'tagline', t.slug) AS label,
+               t.league,
+               t.game_snapshot->'game'->>'away' AS away,
+               t.game_snapshot->'game'->>'home' AS home,
+               t.game_snapshot->'prop'->>'market' AS market,
+               t.game_snapshot->'prop'->>'line' AS line,
+               dgp.settlement_posted_at
         FROM discord_guild_posts dgp
         JOIN tank_pages t ON t.id = dgp.tank_page_id
         WHERE dgp.guild_id = ${guildId} AND dgp.settlement_posted_at IS NOT NULL
@@ -603,10 +666,10 @@ export async function handleDrawCommand(context: RequestContext, interaction: an
           )
         ORDER BY dgp.posted_at DESC
         LIMIT 15
-    `) as unknown as { tank_page_id: string; label: string }[];
+    `) as unknown as { tank_page_id: string; label: string; league: string; away: string | null; home: string | null; market: string | null; line: string | null; settlement_posted_at: string }[];
 
     const settledPicks = (await sql`
-        SELECT id, question_text FROM community_picks
+        SELECT id, question_text, side_a_label, side_b_label, winning_side FROM community_picks
         WHERE guild_id = ${guildId} AND status = 'settled'
           AND NOT EXISTS (
               SELECT 1 FROM community_giveaway_draws d
@@ -614,22 +677,26 @@ export async function handleDrawCommand(context: RequestContext, interaction: an
           )
         ORDER BY created_at DESC
         LIMIT 10
-    `) as unknown as { id: string; question_text: string }[];
+    `) as unknown as { id: string; question_text: string; side_a_label: string; side_b_label: string; winning_side: number | null }[];
 
-    const candidates: (DrawCandidateTank | DrawCandidatePick)[] = [
-        ...settledTanks.map((t) => ({ kind: 'tank' as const, tankPageId: t.tank_page_id, label: t.label })),
-        ...settledPicks.map((p) => ({ kind: 'community_pick' as const, pickId: p.id, label: p.question_text })),
-    ];
-
-    if (candidates.length === 0) {
+    if (settledTanks.length === 0 && settledPicks.length === 0) {
         return ephemeral('Nothing settled and undrawn in this server right now.');
     }
 
-    const options = candidates.slice(0, MAX_SELECT_OPTIONS).map((c) =>
-        c.kind === 'tank'
-            ? { label: c.label.slice(0, 100), value: `tank:${c.tankPageId}` }
-            : { label: c.label.slice(0, 100), value: `community_pick:${c.pickId}` }
-    );
+    // Same label/description shape as the other search menus: what the bet was on
+    // the label, source type + winner/settled context on the description.
+    const options = [
+        ...settledTanks.map((t) => ({
+            label: (t.away && t.home ? `${t.away} @ ${t.home} · ${describeMarket(t.market, t.line)}` : t.label).slice(0, 100),
+            value: `tank:${t.tank_page_id}`,
+            description: ['Tank', t.league, `settled ${formatKickoff(t.settlement_posted_at)}`, t.label].filter(Boolean).join(' · ').slice(0, 100),
+        })),
+        ...settledPicks.map((p) => ({
+            label: p.question_text.slice(0, 100),
+            value: `community_pick:${p.id}`,
+            description: ['Community Pick', p.winning_side !== null ? `winner: ${p.winning_side === 0 ? p.side_a_label : p.side_b_label}` : ''].filter(Boolean).join(' · ').slice(0, 100),
+        })),
+    ].slice(0, MAX_SELECT_OPTIONS);
     return selectMenuResponse('dwselect', 'Pick a settled source to draw a winner from:', options);
 }
 
