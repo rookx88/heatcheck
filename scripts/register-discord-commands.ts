@@ -214,7 +214,33 @@ async function main(): Promise<void> {
         process.exit(1);
     }
 
-    const res = await fetch(`https://discord.com/api/v10/applications/${applicationId}/commands`, {
+    // --guild=<id> registers this same set to ONE guild instead of globally. Guild
+    // commands appear immediately (global ones take up to ~1 hour to propagate), so
+    // this is the testing path - and because a guild copy SHADOWS the global command
+    // of the same name in that guild, it has to be cleared (--clear-guild=<id>) once
+    // the global registration has landed, or that server keeps running the older copy.
+    const guildArg = process.argv.find((a) => a.startsWith('--guild='))?.split('=')[1];
+    const clearGuildArg = process.argv.find((a) => a.startsWith('--clear-guild='))?.split('=')[1];
+
+    if (clearGuildArg) {
+        const res = await fetch(`https://discord.com/api/v10/applications/${applicationId}/guilds/${clearGuildArg}/commands`, {
+            method: 'PUT',
+            headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
+            body: '[]',
+        });
+        if (!res.ok) {
+            console.error(`Clearing guild commands failed: ${res.status} ${await res.text()}`);
+            process.exit(1);
+        }
+        console.log(`✓ Cleared guild-scoped commands for ${clearGuildArg} — that server now uses the global set.`);
+        return;
+    }
+
+    const endpoint = guildArg
+        ? `https://discord.com/api/v10/applications/${applicationId}/guilds/${guildArg}/commands`
+        : `https://discord.com/api/v10/applications/${applicationId}/commands`;
+
+    const res = await fetch(endpoint, {
         method: 'PUT',
         headers: {
             Authorization: `Bot ${botToken}`,
@@ -229,8 +255,10 @@ async function main(): Promise<void> {
     }
 
     const registered = (await res.json()) as { name: string }[];
-    console.log(`✓ Registered ${registered.length} global command(s): ${registered.map((c) => c.name).join(', ')}`);
-    console.log('Discord can take up to ~1 hour to propagate these to every server.');
+    console.log(`✓ Registered ${registered.length} ${guildArg ? `command(s) in guild ${guildArg}` : 'global command(s)'}: ${registered.map((c) => c.name).join(', ')}`);
+    console.log(guildArg
+        ? 'Guild commands are live immediately (reload Discord with Ctrl+R if the picker looks stale). Clear them with --clear-guild=<id> once the global set has propagated.'
+        : 'Discord can take up to ~1 hour to propagate these to every server.');
 }
 
 main().catch((err) => {
