@@ -1,20 +1,32 @@
 // TANKDAQ Index Board island (/tankdaq/indexes/) - the crypto-heatmap view of every
-// Exchange ticker: a squarified treemap on black where each index's tile area tracks
-// the MAGNITUDE of its last-24h movement and its color the direction (neon green up /
-// red down, dimmer the smaller the move; slate for flat). Every tile links to the
-// index's detail page (/tankdaq/<key>/). Data: /api/tickers (meta + values) +
-// /api/tickers/chart (full event series - the 24h deltas are computed here, same rule
-// as the detail page). Styles live in scripts/templates/tankdaq-indexes-template.ts.
+// Exchange ticker: a squarified treemap of raised black blocks where each index's
+// area tracks the MAGNITUDE of its last-24h movement, its neon edge the direction
+// (green up / red down, slate flat), and its extrusion depth the magnitude again -
+// bigger movers stand taller. Every tile links to the index's detail page.
+//
+// Hovering (or focusing) a block lights it and fills the description panel under the
+// board with what that index reacts to (ticker-copy.ts). Touch can't hover, so on a
+// coarse pointer the first tap SELECTS a block (glow + description) and a second tap
+// on the same block opens its page - the tile stays a real link for mouse and
+// keyboard. ?index=<key> preselects one, so a board state is linkable.
+//
+// Data: /api/tickers (meta + values) + /api/tickers/chart (full event series - 24h
+// deltas are summed here, same rule as the detail page). Styles live in
+// scripts/templates/tankdaq-indexes-template.ts.
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { indexLabelOf, tickerCopyFor } from './lib/pages-functions/ticker-copy';
 
-interface TickerRow { key: string; displayName: string; ruleType: string; tabOrder: number; value: number }
+interface TickerRow { key: string; displayName: string; ruleType: string; description: string; tabOrder: number; value: number }
 interface SeriesEvent { delta: number; occurredAt: string }
 
 interface Tile {
     key: string;
     displayName: string;
+    indexLabel: string;
+    ruleType: string;
+    description: string;
     value: number;
     delta24: number;
     x: number; y: number; w: number; h: number; // percentages of the board
@@ -107,6 +119,31 @@ const TankdaqBoard: React.FC = () => {
     const [maxAbs, setMaxAbs] = useState(0);
     const boardRef = useRef<HTMLDivElement | null>(null);
     const [boardW, setBoardW] = useState(0);
+    const [hoverKey, setHoverKey] = useState<string | null>(null);
+    const [selectedKey, setSelectedKey] = useState<string | null>(null);
+    // Read once: a session doesn't switch pointer types mid-visit (same posture as
+    // Egg3D's reduced-motion probe).
+    const coarsePointer = useRef(
+        typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+            ? window.matchMedia('(pointer: coarse)').matches
+            : false,
+    );
+
+    // ?index=<key> preselects a block, so a board state can be linked or screenshotted.
+    useEffect(() => {
+        const key = new URLSearchParams(window.location.search).get('index');
+        if (key) setSelectedKey(key);
+    }, []);
+
+    // First tap on a coarse pointer reveals (there is no hover to reveal with); the
+    // second tap on the same block follows the link like any other visit.
+    const onTileClick = useCallback((e: React.MouseEvent, key: string) => {
+        if (!coarsePointer.current) return;
+        if (selectedKey !== key) {
+            e.preventDefault();
+            setSelectedKey(key);
+        }
+    }, [selectedKey]);
 
     // Measure the board so tile type can be sized in real px (no viewport guesswork -
     // this is what keeps long symbols inside small tiles at every screen size).
@@ -149,6 +186,9 @@ const TankdaqBoard: React.FC = () => {
                 setTiles(rows.map((r, i) => ({
                     key: r.key,
                     displayName: r.displayName,
+                    indexLabel: indexLabelOf(r.ruleType),
+                    ruleType: r.ruleType,
+                    description: r.description,
                     value: r.value,
                     delta24: r.delta24,
                     x: rects[i].x, y: (rects[i].y / 62.5) * 100, w: rects[i].w, h: (rects[i].h / 62.5) * 100,
@@ -164,6 +204,15 @@ const TankdaqBoard: React.FC = () => {
         return () => { cancelled = true; };
     }, []);
 
+    // Hover wins over selection while a pointer is on a block, so a mouse user's
+    // reading follows the cursor and a touch user's selection persists.
+    const activeKey = hoverKey ?? selectedKey;
+    const activeTile = tiles.find((t) => t.key === activeKey) ?? null;
+    // Gutter between blocks: wide enough for a block's extruded side and cast shadow
+    // to land in open space rather than on its neighbour, but scaled to the board so
+    // phones don't lose tile area to it.
+    const gutter = Math.max(5, Math.min(10, Math.round(boardW * 0.009)));
+
     if (phase === 'loading') return <p className="hc-tqb-loading">Loading the board&hellip;</p>;
     if (phase === 'error') return <p className="hc-tqb-error">Couldn&rsquo;t load the board right now &mdash; refresh to retry.</p>;
 
@@ -178,18 +227,48 @@ const TankdaqBoard: React.FC = () => {
                     const mag = maxAbs > 0 ? Math.abs(t.delta24) / maxAbs : 0;
                     const dir = t.delta24 > 0 ? 'pos' : t.delta24 < 0 ? 'neg' : 'zero';
                     const neon = NEON[dir];
-                    // Black fill, neon border - direction from the hue, magnitude from
-                    // border/glow intensity (on top of tile area).
-                    const border = `2px solid rgba(${neon}, ${(0.5 + 0.5 * mag).toFixed(2)})`;
-                    const boxShadow = `inset 0 0 ${Math.round(8 + 22 * mag)}px rgba(${neon}, ${(0.12 + 0.3 * mag).toFixed(2)})`;
+                    const active = t.key === activeKey;
+                    // Extruded block: the neon-lit face sits on a stack of shadows -
+                    // a solid neon side (depth scales with the move, so big movers
+                    // stand taller), a dimmer second step, the drop shadow it casts,
+                    // and an inset top highlight for the lit top edge. Active blocks
+                    // rise: deeper side + an outer bloom in their own colour.
+                    const depth = (2.5 + 4.5 * mag) * (active ? 1.4 : 1);
+                    const border = `2px solid rgba(${neon}, ${active ? 1 : (0.5 + 0.5 * mag).toFixed(2)})`;
+                    const boxShadow = [
+                        // The block's side face: near-solid neon, so it reads as a lit
+                        // edge rather than a glow bleeding into the black board.
+                        `0 ${depth.toFixed(1)}px 0 rgba(${neon}, ${active ? 0.95 : 0.8})`,
+                        // A hard dark under-edge grounds the side and separates the
+                        // block from whatever sits below it.
+                        `0 ${(depth + 2).toFixed(1)}px 0 rgba(0, 0, 0, 0.95)`,
+                        `0 ${(depth + 5).toFixed(1)}px ${(10 + depth).toFixed(1)}px rgba(0, 0, 0, 0.75)`,
+                        `inset 0 1px 0 rgba(255, 255, 255, ${active ? 0.22 : 0.12})`,
+                        `inset 0 0 ${Math.round(8 + 22 * mag)}px rgba(${neon}, ${(0.12 + 0.3 * mag).toFixed(2)})`,
+                        active ? `0 0 30px rgba(${neon}, 0.6)` : '',
+                    ].filter(Boolean).join(', ');
                     // Type in real px from the measured board: the symbol must fit the
                     // tile's inner width (Montserrat 900 runs ~0.72em/char).
                     const tileWpx = (boardW * t.w) / 100;
-                    const fitPx = (tileWpx - 14) / (t.displayName.length * 0.72);
+                    const fitPx = (tileWpx - 2 * gutter - 10) / (t.displayName.length * 0.72);
                     const fontPx = Math.max(9, Math.min(Math.sqrt((t.w * t.h) / 100) * 9 + 8, fitPx));
                     return (
-                        <a key={t.key} role="listitem" className="hc-tqb-tile" href={`/tankdaq/${t.key}/`}
-                            style={{ left: `${t.x}%`, top: `${t.y}%`, width: `${t.w}%`, height: `${t.h}%`, border, boxShadow, fontSize: `${fontPx.toFixed(1)}px` }}
+                        <a key={t.key} role="listitem" className={`hc-tqb-tile${active ? ' is-active' : ''}`} href={`/tankdaq/${t.key}/`}
+                            style={{
+                                // Gutters: each block is inset so its extruded side and
+                                // drop shadow land in open space, not on its neighbour.
+                                left: `calc(${t.x}% + ${gutter}px)`,
+                                top: `calc(${t.y}% + ${gutter}px)`,
+                                width: `calc(${t.w}% - ${2 * gutter}px)`,
+                                height: `calc(${t.h}% - ${2 * gutter}px)`,
+                                border, boxShadow, fontSize: `${fontPx.toFixed(1)}px`,
+                                transform: active ? 'translateY(-3px)' : undefined,
+                            }}
+                            onMouseEnter={() => setHoverKey(t.key)}
+                            onMouseLeave={() => setHoverKey((k) => (k === t.key ? null : k))}
+                            onFocus={() => setHoverKey(t.key)}
+                            onBlur={() => setHoverKey((k) => (k === t.key ? null : k))}
+                            onClick={(e) => onTileClick(e, t.key)}
                             aria-label={`${t.displayName}: ${fmtPct(t.delta24)} in the last 24 hours, ${fmtPct(t.value)} overall`}>
                             <span className="hc-tqb-sym">{t.displayName}</span>
                             <span className="hc-tqb-delta" style={{ color: `rgb(${neon})` }}>{fmtPct(t.delta24)}</span>
@@ -197,6 +276,34 @@ const TankdaqBoard: React.FC = () => {
                         </a>
                     );
                 })}
+            </div>
+            <div className="hc-tqb-detail" style={activeTile ? { borderLeftColor: `rgb(${NEON[activeTile.delta24 > 0 ? 'pos' : activeTile.delta24 < 0 ? 'neg' : 'zero']})` } : undefined}>
+                {activeTile ? (() => {
+                    const copy = tickerCopyFor(activeTile.ruleType);
+                    const dir = activeTile.delta24 > 0 ? 'pos' : activeTile.delta24 < 0 ? 'neg' : 'zero';
+                    return (
+                        <>
+                            <p className="hc-tqb-detail-head">
+                                <span className="hc-tqb-detail-name">{activeTile.displayName}</span>
+                                <span className="hc-tqb-detail-index">{activeTile.indexLabel}</span>
+                                <span className="hc-tqb-detail-delta" style={{ color: `rgb(${NEON[dir]})` }}>{fmtPct(activeTile.delta24)} <span style={{ fontSize: '0.7em', opacity: 0.7 }}>24H</span></span>
+                            </p>
+                            <p className="hc-tqb-detail-blurb">{copy?.blurb ?? activeTile.description}</p>
+                            {copy && copy.leagues.length > 0 && (
+                                <p className="hc-tqb-detail-leagues">
+                                    {copy.leagues.map((l) => <span key={l} className="hc-tqb-detail-league">{l}</span>)}
+                                </p>
+                            )}
+                            <a className="hc-tqb-detail-more" href={`/tankdaq/${activeTile.key}/`}>Open {activeTile.displayName} &rarr;</a>
+                        </>
+                    );
+                })() : (
+                    <p className="hc-tqb-detail-hint">
+                        {coarsePointer.current
+                            ? 'Tap an index to see what moves it — tap it again to open its page.'
+                            : 'Hover an index to see what moves it, or click through to its page.'}
+                    </p>
+                )}
             </div>
             <p className="hc-tqb-legend">
                 <span style={{ color: '#3ddc64' }}><span className="hc-tqb-swatch" />Up last 24h</span>

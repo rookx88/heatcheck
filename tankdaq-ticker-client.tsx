@@ -9,6 +9,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { tickerCopyFor } from './lib/pages-functions/ticker-copy';
 
 interface SeriesEvent {
     id: string;
@@ -22,7 +23,7 @@ interface NewsItem { href: string; hook: string; excerpt: string; league: string
 interface ResultItem { text: string; won: boolean }
 interface DetailResponse {
     note: string;
-    ticker: { key: string; displayName: string; indexLabel: string; description: string; value: number; eventCount: number };
+    ticker: { key: string; displayName: string; indexLabel: string; description: string; ruleType: string; value: number; eventCount: number };
     series: SeriesEvent[];
     news: NewsItem[];
     results: ResultItem[];
@@ -183,6 +184,7 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
     if (phase === 'error' || !data) return <p className="hc-tq-error">Couldn&rsquo;t load this index right now &mdash; refresh to retry.</p>;
 
     const { ticker } = data;
+    const copy = tickerCopyFor(ticker.ruleType);
     const totalSign = signOf(ticker.value);
     const d24Sign = signOf(delta24);
     const dateLabel = (iso: string) => {
@@ -195,7 +197,14 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
             <a className="hc-tq-back" href="/tankdaq/indexes/">&larr; Index Board</a>
             <header className="hc-tq-header">
                 <h1 className="hc-tq-title">{ticker.indexLabel} <span className="hc-tq-symbol">({ticker.displayName})</span></h1>
-                <p className="hc-tq-desc">{ticker.description}</p>
+                {/* The friendly blurb when this strategy has one; the ticker's own
+                    terse description is the fallback for a brand-new rule_type. */}
+                <p className="hc-tq-desc">{copy?.blurb ?? ticker.description}</p>
+                {copy && copy.leagues.length > 0 && (
+                    <p className="hc-tq-leagues" aria-label="Leagues this index covers">
+                        {copy.leagues.map((l) => <span key={l} className="hc-tq-league">{l}</span>)}
+                    </p>
+                )}
                 <p className="hc-tq-note">{data.note}</p>
             </header>
             <div className="hc-tq-layout">

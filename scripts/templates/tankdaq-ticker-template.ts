@@ -1,4 +1,6 @@
 import { renderHead, topbar, footer } from './waitlist-landing-template';
+import { escapeHtml } from '../utils/html-escape';
+import { tickerCopyFor } from '../../lib/pages-functions/ticker-copy';
 
 /**
  * TANKDAQ index detail page (/tankdaq/<key>/) - one page per Exchange ticker, the
@@ -14,11 +16,15 @@ export interface TankdaqTickerPage {
     key: string;         // 'dogs'
     displayName: string; // '$DOGS'
     indexLabel: string;  // 'Underdog Index'
-    description: string; // tickers.description
+    description: string; // tickers.description - the terse line, still what SEO meta uses
+    ruleType: string;    // eligibility strategy - keys the friendly copy (ticker-copy.ts)
 }
 
 export function generateTankdaqTickerPageHtml(baseUrl: string, ticker: TankdaqTickerPage): string {
+    const copy = tickerCopyFor(ticker.ruleType);
     const title = `${ticker.indexLabel} (${ticker.displayName}) | TANKDAQ | Heatchecks`;
+    // Meta stays composed from the TERSE description: the friendly blurb is page copy,
+    // and pasting it here would blow past the ~155 chars search results actually show.
     const description = `${ticker.description} Track how ${ticker.displayName} has moved - trend chart, recent news, and settled results.`;
     const path = `/tankdaq/${ticker.key}/`;
 
@@ -46,8 +52,9 @@ export function generateTankdaqTickerPageHtml(baseUrl: string, ticker: TankdaqTi
         <div id="tankdaq-ticker-root" data-ticker-key="${ticker.key}">
             <!-- Crawlable fallback, replaced when the island mounts. -->
             <section class="hc-tq-fallback">
-                <h1>${ticker.indexLabel} (${ticker.displayName})</h1>
-                <p>${ticker.description}</p>
+                <h1>${escapeHtml(ticker.indexLabel)} (${escapeHtml(ticker.displayName)})</h1>
+                <p>${escapeHtml(copy?.blurb ?? ticker.description)}</p>
+                ${copy && copy.leagues.length > 0 ? `<p>Leagues: ${escapeHtml(copy.leagues.join(', '))}</p>` : ''}
                 <p><a href="/tankdaq/indexes/">All TANKDAQ indexes</a> &middot; <a href="/tankdaq/">TANKDAQ floor</a></p>
             </section>
         </div>
@@ -80,7 +87,15 @@ function tankdaqTickerStyles(): string {
             font-size: clamp(1.5rem, 5vw, 2.1rem); margin: 0; line-height: 1.15;
         }
         .hc-tq-symbol { color: var(--hc-gold); }
-        .hc-tq-desc { margin: 0.35rem 0 0; color: var(--hc-bubble); font-size: 0.95rem; max-width: 64ch; }
+        .hc-tq-desc { margin: 0.35rem 0 0; color: var(--hc-bubble); font-size: 0.95rem; max-width: 64ch; line-height: 1.5; }
+        /* League chips: which sports feed this index. */
+        .hc-tq-leagues { display: flex; flex-wrap: wrap; gap: 0.35rem; margin: 0.55rem 0 0; padding: 0; }
+        .hc-tq-league {
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.62rem;
+            letter-spacing: 0.08em; text-transform: uppercase; color: var(--hc-teal);
+            background: rgba(47, 230, 217, 0.1); border: 1px solid rgba(47, 230, 217, 0.35);
+            border-radius: 999px; padding: 0.2rem 0.6rem;
+        }
         .hc-tq-note { margin: 0.4rem 0 0; font-size: 0.75rem; color: rgba(255,255,255,0.55); }
 
         .hc-tq-layout { display: flex; flex-direction: column; gap: 1.4rem; margin-top: 1.1rem; }

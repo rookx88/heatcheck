@@ -85,15 +85,11 @@ function signOf(v: number): 'pos' | 'neg' | 'zero' {
 }
 
 // "underdog" -> "Underdog Index" - the card's display title ("UNDERDOG INDEX ($DOGS)").
-// League acronyms stay fully uppercase ("nfl_favorite" -> "NFL Favorite Index").
-// Exported for the TANKDAQ index detail pages (functions/api/tickers/detail.ts).
-const ACRONYM_WORDS = new Set(['nfl', 'nba', 'mlb', 'epl']);
-export function indexLabelOf(ruleType: string): string {
-    const words = ruleType.split('_')
-        .map((w) => (ACRONYM_WORDS.has(w) ? w.toUpperCase() : w ? w[0].toUpperCase() + w.slice(1) : w))
-        .join(' ');
-    return `${words} Index`;
-}
+// Implementation moved to ticker-copy.ts (a dependency-free module the TANKDAQ client
+// bundles can import); re-exported here so this module stays the one import site for
+// everything the Market Movers surface needs.
+export { indexLabelOf } from './ticker-copy';
+import { indexLabelOf } from './ticker-copy';
 
 // Same UTC-pinned date rule as the old feed's toFeedItemViewModel / formatSettleDate.
 function utcDateLabel(iso: string): string {

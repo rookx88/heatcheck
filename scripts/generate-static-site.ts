@@ -1350,6 +1350,7 @@ async function generateAllPages(): Promise<void> {
                 displayName: t.displayName,
                 indexLabel: indexLabelOf(t.ruleType),
                 description: t.description,
+                ruleType: t.ruleType, // keys the friendly page copy (ticker-copy.ts)
             }));
             writeHtmlFile('tankdaq/indexes/index.html', generateTankdaqIndexesPageHtml(baseUrl, tickerRows));
             for (const ticker of tickerRows) {

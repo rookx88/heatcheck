@@ -1,4 +1,6 @@
 import { renderHead, topbar, footer } from './waitlist-landing-template';
+import { escapeHtml } from '../utils/html-escape';
+import { tickerCopyFor } from '../../lib/pages-functions/ticker-copy';
 
 /**
  * TANKDAQ Index Board (/tankdaq/indexes/) - the crypto-heatmap view of every Exchange
@@ -10,7 +12,7 @@ import { renderHead, topbar, footer } from './waitlist-landing-template';
  */
 export function generateTankdaqIndexesPageHtml(
     baseUrl: string,
-    tickers: Array<{ key: string; displayName: string; indexLabel: string }>,
+    tickers: Array<{ key: string; displayName: string; indexLabel: string; ruleType: string }>,
 ): string {
     const title = 'TANKDAQ Index Board | Heatchecks';
     const description = 'Every Heatchecks index at a glance - a heatmap of how each has moved in the last 24 hours.';
@@ -28,7 +30,11 @@ export function generateTankdaqIndexesPageHtml(
     const head = renderHead({ title, description, path: '/tankdaq/indexes/', baseUrl, schemaOrg });
 
     const fallbackLinks = tickers
-        .map((t) => `<li><a href="/tankdaq/${t.key}/">${t.indexLabel} (${t.displayName})</a></li>`)
+        .map((t) => {
+            const copy = tickerCopyFor(t.ruleType);
+            const blurb = copy ? ` &mdash; ${escapeHtml(copy.blurb)}` : '';
+            return `<li><a href="/tankdaq/${escapeHtml(t.key)}/">${escapeHtml(t.indexLabel)} (${escapeHtml(t.displayName)})</a>${blurb}</li>`;
+        })
         .join('\n                    ');
 
     return `<!DOCTYPE html>
@@ -81,19 +87,29 @@ function tankdaqIndexesStyles(): string {
         @media (max-width: 759px) {
             .hc-tqb-board { aspect-ratio: 3 / 4; }
         }
-        /* Tiles are BLACK with neon green/red borders (direction) - magnitude shows as
-           tile area plus border/glow intensity, all set inline by the client. The
-           tile's own font-size is computed in px from the measured board width
-           (ResizeObserver), so labels always fit; children size in em against it and
-           overflow:hidden keeps any worst case inside its own tile. */
+        /* Tiles are raised BLACK blocks with neon green/red edges (direction). The
+           client sets, inline: position/size (squarified layout, inset by a gutter so
+           each block floats free), the neon border, the stacked box-shadow that forms
+           the extruded side + drop shadow (deeper for bigger movers), and a font-size
+           computed in px from the measured board width so labels always fit. The face
+           gradient + top-edge highlight below give the block its lit-from-above look
+           (same bevel idiom as the Fishtank walls). */
         .hc-tqb-tile {
             position: absolute; display: flex; flex-direction: column;
             align-items: center; justify-content: center; gap: 0.15em;
             text-decoration: none; text-align: center; overflow: hidden;
-            background: #000000; box-sizing: border-box; border-radius: 3px;
-            transition: filter 0.15s ease;
+            background:
+                linear-gradient(158deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 38%, rgba(0,0,0,0) 60%),
+                #000000;
+            box-sizing: border-box; border-radius: 4px;
+            transition: transform 0.16s ease, filter 0.16s ease, box-shadow 0.16s ease;
+            will-change: transform;
         }
-        .hc-tqb-tile:hover, .hc-tqb-tile:focus-visible { filter: brightness(1.35); outline: none; z-index: 1; }
+        /* Hover/focus/selected all share one look: the block rises and its whole face
+           blooms in its own neon (the deeper shadow stack comes from the client). */
+        .hc-tqb-tile:hover, .hc-tqb-tile:focus-visible, .hc-tqb-tile.is-active {
+            filter: brightness(1.3); outline: none; z-index: 2;
+        }
         .hc-tqb-sym {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; font-size: 1em;
             color: #ffffff; line-height: 1.1;
@@ -107,6 +123,42 @@ function tankdaqIndexesStyles(): string {
             color: rgba(255,255,255,0.6); line-height: 1.1;
         }
 
+        /* Description panel: what the hovered/selected index reacts to. Min-height is
+           reserved so moving between tiles never reflows the page under the cursor. */
+        .hc-tqb-detail {
+            margin: 0.75rem 0 0; min-height: 6.5rem;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
+            border-left: 3px solid rgba(148,163,184,0.5);
+            border-radius: 10px; padding: 0.8rem 1rem 0.9rem;
+            transition: border-left-color 0.16s ease;
+        }
+        @media (max-width: 759px) { .hc-tqb-detail { min-height: 9rem; } }
+        .hc-tqb-detail-head { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; margin: 0 0 0.3rem; }
+        .hc-tqb-detail-name {
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; font-size: 0.95rem;
+            letter-spacing: 0.04em; color: #ffffff;
+        }
+        .hc-tqb-detail-index {
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.66rem;
+            letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.55);
+        }
+        .hc-tqb-detail-delta { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem; margin-left: auto; }
+        .hc-tqb-detail-blurb { margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--hc-bubble); }
+        .hc-tqb-detail-hint { margin: 0; font-size: 0.88rem; color: rgba(255,255,255,0.5); }
+        .hc-tqb-detail-leagues { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0 0; padding: 0; }
+        .hc-tqb-detail-league {
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.58rem;
+            letter-spacing: 0.08em; text-transform: uppercase; color: var(--hc-teal);
+            background: rgba(47, 230, 217, 0.1); border: 1px solid rgba(47, 230, 217, 0.3);
+            border-radius: 999px; padding: 0.16rem 0.5rem;
+        }
+        .hc-tqb-detail-more {
+            display: inline-block; margin: 0.55rem 0 0;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.66rem;
+            letter-spacing: 0.08em; text-transform: uppercase; color: var(--hc-gold); text-decoration: none;
+        }
+        .hc-tqb-detail-more:hover { text-decoration: underline; }
+
         .hc-tqb-legend {
             display: flex; gap: 1rem; margin: 0.6rem 0 0; flex-wrap: wrap;
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.68rem;
@@ -119,5 +171,14 @@ function tankdaqIndexesStyles(): string {
         }
 
         .hc-tqb-loading, .hc-tqb-error { margin: 2.5rem 0; color: rgba(255,255,255,0.7); }
+
+        /* Repo convention (market-movers.ts's tape): motion is optional, the
+           information is not - drop the lift and the transitions, keep every colour,
+           glow and depth cue exactly as-is. */
+        @media (prefers-reduced-motion: reduce) {
+            .hc-tqb-tile { transition: none; }
+            .hc-tqb-tile:hover, .hc-tqb-tile:focus-visible, .hc-tqb-tile.is-active { transform: none !important; }
+            .hc-tqb-detail { transition: none; }
+        }
     `;
 }
