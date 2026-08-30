@@ -273,6 +273,10 @@ button.pet-widget__name--prompt:focus-visible {
 /* Speech bubble: the pet "reads" the oldest unread notification. Absolute (never
    fixed - the map pages' transformed frames would trap a fixed box) above the pet,
    with a CSS tail pointing down at it. */
+/* Manga styling: flat white fill, bold black outline, black marker text. The
+   tail is two stacked border-triangles - ::before draws the black outline,
+   ::after a slightly smaller white fill pulled up over the bubble's bottom
+   border so the tail reads as part of the same shape. */
 .pet-widget__bubble {
   position: absolute;
   bottom: calc(100% + 14px);
@@ -283,20 +287,30 @@ button.pet-widget__name--prompt:focus-visible {
   align-items: flex-start;
   gap: 0.4rem;
   padding: 0.65rem 0.8rem;
-  background: linear-gradient(160deg, #180e2c, #07050b);
-  border: 2px solid rgba(47, 230, 217, 0.55);
+  background: #ffffff;
+  border: 3px solid #000000;
   border-radius: 14px;
-  box-shadow: 0 0 18px rgba(47, 230, 217, 0.25), 0 10px 26px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
   z-index: 3;
+}
+
+.pet-widget__bubble::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  right: 39px;
+  border: 12px solid transparent;
+  border-top-color: #000000;
 }
 
 .pet-widget__bubble::after {
   content: '';
   position: absolute;
   top: 100%;
-  right: 42px;
-  border: 9px solid transparent;
-  border-top-color: rgba(47, 230, 217, 0.55);
+  right: 44px;
+  margin-top: -4px;
+  border: 7px solid transparent;
+  border-top-color: #ffffff;
 }
 
 .pet-widget__bubble-text {
@@ -304,14 +318,14 @@ button.pet-widget__name--prompt:focus-visible {
   font-weight: 400;
   font-size: 1rem;
   line-height: 1.35;
-  color: #fff;
+  color: #000000;
   text-align: left;
 }
 
 .pet-widget__bubble-close {
   background: none;
   border: none;
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(0, 0, 0, 0.55);
   font-size: 1.05rem;
   line-height: 1;
   cursor: pointer;
@@ -320,7 +334,7 @@ button.pet-widget__name--prompt:focus-visible {
 }
 
 .pet-widget__bubble-close:hover {
-  color: #fff;
+  color: #000000;
 }
 
 @media (prefers-reduced-motion: reduce) {
