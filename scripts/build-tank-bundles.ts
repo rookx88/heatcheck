@@ -58,8 +58,11 @@ export async function buildTankBundles(): Promise<void> {
             // The two Tank Land food shops.
             { in: path.join(process.cwd(), 'champions-terrace-client.tsx'), out: 'champions-terrace' },
             { in: path.join(process.cwd(), 'quickboost-client.tsx'), out: 'quickboost-delicacies' },
-            // TANKDAQ - the exchange floor.
+            // TANKDAQ - the exchange floor, plus its Index Board heatmap and the
+            // per-ticker index detail pages (one bundle serves every /tankdaq/<key>/).
             { in: path.join(process.cwd(), 'tankdaq-client.tsx'), out: 'tankdaq' },
+            { in: path.join(process.cwd(), 'tankdaq-heatmap-client.tsx'), out: 'tankdaq-indexes' },
+            { in: path.join(process.cwd(), 'tankdaq-ticker-client.tsx'), out: 'tankdaq-ticker' },
         ],
         bundle: true,
         splitting: true, // requires format: 'esm'; this is what extracts the shared chunk

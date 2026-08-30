@@ -1,8 +1,8 @@
 // TANKDAQ (/tankdaq/) - the exchange floor, reached from the grey columned
-// building on Tank Land. Pure scene for now: the hanging INDEX PRICES sign and
-// Beaks the Broker are hover-only previews (glow + label, no navigation) until
-// their pages ship in a later phase - then swap each to an href hotspot and
-// mirror it in the page's fallback nav.
+// building on Tank Land. The hanging INDEX PRICES sign leads to the Index Board
+// heatmap (/tankdaq/indexes/, mirrored in tankdaq-template.ts's fallback nav);
+// Beaks the Broker stays a hover-only preview (glow + label, no navigation)
+// until his page ships - then give him an href and a fallback link too.
 
 import React from 'react';
 import { createRoot } from 'react-dom/client';
@@ -24,7 +24,8 @@ const Tankdaq: React.FC = () => (
             {
                 id: 'index-prices',
                 path: INDEX_PRICES_PATH,
-                ariaLabel: 'Index Prices - coming soon',
+                ariaLabel: 'Index Prices - the TANKDAQ Index Board',
+                href: '/tankdaq/indexes/',
                 label: { text: 'Index Prices', x: 412, y: 440 },
             },
             {

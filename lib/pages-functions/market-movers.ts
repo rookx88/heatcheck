@@ -86,8 +86,9 @@ function signOf(v: number): 'pos' | 'neg' | 'zero' {
 
 // "underdog" -> "Underdog Index" - the card's display title ("UNDERDOG INDEX ($DOGS)").
 // League acronyms stay fully uppercase ("nfl_favorite" -> "NFL Favorite Index").
+// Exported for the TANKDAQ index detail pages (functions/api/tickers/detail.ts).
 const ACRONYM_WORDS = new Set(['nfl', 'nba', 'mlb', 'epl']);
-function indexLabelOf(ruleType: string): string {
+export function indexLabelOf(ruleType: string): string {
     const words = ruleType.split('_')
         .map((w) => (ACRONYM_WORDS.has(w) ? w.toUpperCase() : w ? w[0].toUpperCase() + w.slice(1) : w))
         .join(' ');
@@ -217,6 +218,13 @@ function buildResultSentence(item: TickerResultItem, displayName: string, templa
     }
 }
 
+// The one sentence-composition entry point, shared by toMarketMovers below and the
+// TANKDAQ detail endpoint (functions/api/tickers/detail.ts) - the same result reads
+// the same everywhere it appears.
+export function toResultSentences(items: TickerResultItem[], displayName: string): MarketMoverResultVM[] {
+    return items.map((r, i) => ({ text: buildResultSentence(r, displayName, i), won: r.won }));
+}
+
 export function toMarketMovers(
     values: TickerValue[],
     series: Record<string, TickerSeriesEvent[]>,
@@ -244,7 +252,7 @@ export function toMarketMovers(
                 league: n.league,
                 dateLabel: utcDateLabel(n.taggedAt),
             })),
-            results: (results[t.key] ?? []).map((r, i) => ({ text: buildResultSentence(r, t.displayName, i), won: r.won })),
+            results: toResultSentences(results[t.key] ?? [], t.displayName),
         };
     });
     // Default (no-JS) presentation order: biggest movers first, tab_order as tiebreak.
@@ -347,8 +355,10 @@ export function renderMarketMoverCard(vm: MarketMoverVM, role?: 'gainer' | 'lose
             <div class="hc-mm-top">
                 <header class="hc-mm-head">
                     <h3 class="hc-mm-title">
-                        <span class="hc-mm-index">${escapeHtml(vm.indexLabel)}</span>
-                        <span class="hc-mm-name">(${escapeHtml(vm.displayName)})</span>
+                        <a class="hc-mm-title-link" href="/tankdaq/${escapeHtml(vm.key)}/">
+                            <span class="hc-mm-index">${escapeHtml(vm.indexLabel)}</span>
+                            <span class="hc-mm-name">(${escapeHtml(vm.displayName)})</span>
+                        </a>
                     </h3>
                     <p class="hc-mm-desc">${escapeHtml(vm.description)}</p>
                 </header>
@@ -386,7 +396,7 @@ export function renderTickerTape(movers: MarketMoverVM[]): string {
             ? ` <span class="hc-tape-headline">${escapeHtml(m.results[0].text)}</span>`
             : '';
         return `
-                <li class="hc-tape-item is-${m.sign}">${escapeHtml(m.displayName)} <span class="hc-mm-value is-${m.sign}">${m.valueLabel}</span>${headline}</li>`;
+                <li class="hc-tape-item is-${m.sign}"><a class="hc-tape-link" href="/tankdaq/${escapeHtml(m.key)}/">${escapeHtml(m.displayName)}</a> <span class="hc-mm-value is-${m.sign}">${m.valueLabel}</span>${headline}</li>`;
     }).join('');
     const group = (hidden: boolean) => `<ul class="hc-tape-group"${hidden ? ' aria-hidden="true"' : ''}>${items}</ul>`;
     return `
@@ -490,6 +500,13 @@ export function marketMoversStyles(): string {
         .hc-mm-tab.is-losers { background: #f0705f; }
         .hc-mm-tab[aria-pressed="true"] { opacity: 1; box-shadow: 0 -4px 12px rgba(255,255,255,0.18); }
         .hc-mm-tab:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 2px; }
+
+        /* Card title + tape symbols link to the ticker's TANKDAQ detail page - keep
+           the existing type treatment, reveal linkness on hover only. */
+        .hc-mm-title-link { color: inherit; text-decoration: none; }
+        .hc-mm-title-link:hover .hc-mm-index { text-decoration: underline; }
+        .hc-tape-link { color: inherit; text-decoration: none; }
+        .hc-tape-link:hover { text-decoration: underline; }
 
         .hc-mm-grid { display: flex; flex-direction: column; gap: 1.1rem; }
         .hc-mm-grid[data-mm-view="gainers"] .hc-mm-card[data-mm-role="loser"] { display: none; }

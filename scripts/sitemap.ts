@@ -64,6 +64,12 @@ export function generateSitemap(
         { loc: `${baseUrl}/champions-terrace/`, lastmod: today, changefreq: 'monthly', priority: '0.4' },
         { loc: `${baseUrl}/quickboost-delicacies/`, lastmod: today, changefreq: 'monthly', priority: '0.4' },
         { loc: `${baseUrl}/tankdaq/`, lastmod: today, changefreq: 'monthly', priority: '0.4' },
+        { loc: `${baseUrl}/tankdaq/indexes/`, lastmod: today, changefreq: 'daily', priority: '0.5' },
+        // One detail page per Exchange ticker - a new ticker needs a line here too
+        // (the pages themselves generate from the tickers table at build time).
+        ...['dogs', 'chalk', 'locks', 'moonshot', 'overs', 'unders', 'gridiron', 'footy'].map((key) => (
+            { loc: `${baseUrl}/tankdaq/${key}/`, lastmod: today, changefreq: 'daily', priority: '0.4' }
+        )),
         { loc: `${baseUrl}/beta/`, lastmod: today, changefreq: 'monthly', priority: '0.6' },
     ];
 

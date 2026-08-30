@@ -59,6 +59,18 @@ async function run() {
         }));
     const unknownChart = await api('GET', '/api/tickers/chart?key=nope');
     check('chart with unknown key -> 404', unknownChart.status === 404);
+    const detail = await api('GET', '/api/tickers/detail?key=dogs');
+    check('detail returns 200 with note, meta, numeric value, arrays',
+        detail.status === 200 && typeof detail.json?.note === 'string'
+        && detail.json?.ticker?.key === 'dogs' && typeof detail.json?.ticker?.value === 'number'
+        && typeof detail.json?.ticker?.indexLabel === 'string'
+        && Array.isArray(detail.json?.series) && Array.isArray(detail.json?.news) && Array.isArray(detail.json?.results));
+    check('detail results carry composed sentences when present',
+        (detail.json?.results ?? []).every((r: any) => typeof r.text === 'string' && r.text.length > 0 && typeof r.won === 'boolean'));
+    const unknownDetail = await api('GET', '/api/tickers/detail?key=nope');
+    check('detail with unknown key -> 404', unknownDetail.status === 404);
+    const noKeyDetail = await api('GET', '/api/tickers/detail');
+    check('detail without key -> 400', noKeyDetail.status === 400);
     const badTank = await api('GET', '/api/tickers/tank');
     check('tank endpoint without slug/id -> 400', badTank.status === 400);
 

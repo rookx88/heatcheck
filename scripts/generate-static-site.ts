@@ -30,7 +30,10 @@ import {
     type HomepageTankRow,
 } from '../lib/pages-functions/homepage/data';
 import { getTickerNews, getTickerResults, getTickerSeries, getTickerValues, type SqlReader } from '../lib/pages-functions/tickers';
-import { emptyMarketMovers, toMarketMovers } from '../lib/pages-functions/market-movers';
+import { emptyMarketMovers, indexLabelOf, toMarketMovers } from '../lib/pages-functions/market-movers';
+import { generateTankdaqPageHtml } from './templates/tankdaq-template';
+import { generateTankdaqIndexesPageHtml } from './templates/tankdaq-indexes-template';
+import { generateTankdaqTickerPageHtml } from './templates/tankdaq-ticker-template';
 import { generateClaimYourSpotPageHtml } from './templates/claim-your-spot-template';
 import { generateNewsletterPickPageHtml } from './templates/newsletter-pick-template';
 import { generateLoginPageHtml } from './templates/login-template';
@@ -1324,17 +1327,38 @@ async function generateAllPages(): Promise<void> {
             rootId: 'quickboost-root',
             scriptName: 'quickboost-delicacies',
         }));
-        // TANKDAQ reuses the food-shop shell (it's a generic LandScreen page
-        // template): its two hotspots are hover-only previews until the Index
-        // Prices / Beaks the Broker pages ship.
-        writeHtmlFile('tankdaq/index.html', generateFoodShopPageHtml(baseUrl, {
-            path: '/tankdaq/',
-            title: 'TANKDAQ | Heatchecks',
-            heading: 'TANKDAQ',
-            description: 'The TANKDAQ exchange floor - index prices and the broker, coming soon.',
-            rootId: 'tankdaq-root',
-            scriptName: 'tankdaq',
-        }));
+        // TANKDAQ floor (own template since the INDEX PRICES sign links to the Index
+        // Board; Beaks the Broker stays a hover-only preview).
+        writeHtmlFile('tankdaq/index.html', generateTankdaqPageHtml(baseUrl));
+
+        // Tagged-template -> pg adapter: interleaves the literal parts with $1..$n
+        // placeholders so lib/pages-functions/tickers.ts's SqlReader helpers run
+        // verbatim against the build-time pg pool. Shared by the TANKDAQ index pages
+        // here and the homepage Market Movers fallback below.
+        const sqlPg: SqlReader = async (strings, ...values) => {
+            const text = strings.reduce((acc, part, i) => acc + `$${i}` + part);
+            return (await pool.query(text, values as unknown[])).rows;
+        };
+
+        // TANKDAQ index pages: the Index Board heatmap plus one detail page per active
+        // ticker. Shells only - live numbers come from /api/tickers* client-side - but
+        // the ticker registry drives which pages exist, so a DB failure degrades to
+        // "no index pages this build" (same warn-and-continue posture as the bundles).
+        try {
+            const tickerRows = (await getTickerValues(sqlPg)).map((t) => ({
+                key: t.key,
+                displayName: t.displayName,
+                indexLabel: indexLabelOf(t.ruleType),
+                description: t.description,
+            }));
+            writeHtmlFile('tankdaq/indexes/index.html', generateTankdaqIndexesPageHtml(baseUrl, tickerRows));
+            for (const ticker of tickerRows) {
+                writeHtmlFile(`tankdaq/${ticker.key}/index.html`, generateTankdaqTickerPageHtml(baseUrl, ticker));
+            }
+            console.log(`✓ Generated TANKDAQ Index Board + ${tickerRows.length} index detail page(s)`);
+        } catch (err) {
+            console.warn('⚠ Ticker registry unavailable; skipping TANKDAQ index pages:', (err as Error).message);
+        }
         // Note: all of these URLs are hardcoded sitemap entries in sitemap.ts - not
         // pushed here too, to avoid duplicate <url> entries.
         console.log(`✓ Generated Tank Land, Tank HQ (${tankEntries.length} tank(s)), and Hatchery pages\n`);
@@ -1347,13 +1371,8 @@ async function generateAllPages(): Promise<void> {
         // (one source of SQL truth); a failure (e.g. an env whose ticker tables don't
         // exist yet) degrades to the empty section, never a broken build.
         console.log('Generating homepage (logged-out SSR fallback)...');
-        // Tagged-template -> pg adapter: interleaves the literal parts with $1..$n
-        // placeholders so lib/pages-functions/tickers.ts's SqlReader helpers run
-        // verbatim against the build-time pg pool.
-        const sqlPg: SqlReader = async (strings, ...values) => {
-            const text = strings.reduce((acc, part, i) => acc + `$${i}` + part);
-            return (await pool.query(text, values as unknown[])).rows;
-        };
+        // sqlPg (defined with the TANKDAQ index pages above) adapts the SqlReader
+        // helpers onto the build-time pg pool - one source of SQL truth.
         let marketMovers = emptyMarketMovers();
         try {
             const [tickerValues, tickerSeries, tickerNews, tickerResults] = await Promise.all([
