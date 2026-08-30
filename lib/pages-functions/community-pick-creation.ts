@@ -9,7 +9,9 @@
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import type { Env } from './db';
 import { postDiscordChannelMessage } from './discord-api';
-import { buildCommunityPickCardMessage } from './discord-community-card';
+import { buildCommunityPickCardMessage, buildCommunityVoteButtons } from './discord-community-card';
+import { renderCommunityPickImage } from './community-pick-image';
+import { postImageToChannel } from './leaderboard-image';
 
 export interface CreateCommunityPickInput {
     guildId: string;
@@ -72,18 +74,40 @@ export async function createAndPostCommunityPick(
         throw err;
     }
 
-    const card = buildCommunityPickCardMessage({
+    // Rendered image card first (the brand aesthetic), the branded purple embed as
+    // automatic render-fallback - either way the SAME vote buttons ride the message,
+    // so cpvote: handling never cares which form posted.
+    const voteButtons = buildCommunityVoteButtons({
         id: pickId,
-        questionText: input.question,
         sideALabel: input.sideALabel,
         sideBLabel: input.sideBLabel,
         sideAPoints: input.sideAPoints,
         sideBPoints: input.sideBPoints,
-        resolveDate: input.resolveDate,
     });
 
     try {
-        await postDiscordChannelMessage(env, input.channelId, card);
+        const png = await renderCommunityPickImage({
+            questionText: input.question,
+            sideALabel: input.sideALabel,
+            sideBLabel: input.sideBLabel,
+            sideAPoints: input.sideAPoints,
+            sideBPoints: input.sideBPoints,
+            resolveDate: input.resolveDate,
+        });
+        if (png) {
+            await postImageToChannel(env, input.channelId, png, 'community-pick.png', voteButtons);
+        } else {
+            const card = buildCommunityPickCardMessage({
+                id: pickId,
+                questionText: input.question,
+                sideALabel: input.sideALabel,
+                sideBLabel: input.sideBLabel,
+                sideAPoints: input.sideAPoints,
+                sideBPoints: input.sideBPoints,
+                resolveDate: input.resolveDate,
+            });
+            await postDiscordChannelMessage(env, input.channelId, card);
+        }
         return { status: 'created', pickId };
     } catch (err) {
         console.error('[community-pick-creation] Failed to post Community Pick card:', err);

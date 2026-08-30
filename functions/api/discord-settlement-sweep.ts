@@ -46,6 +46,7 @@ import { deriveTaglineFallback } from '../../tank-deck-format';
 import { awardCommunityPoints } from '../../lib/pages-functions/community-points';
 import { pointsForProbability } from '../../lib/pages-functions/community-points-formula';
 import { drawGiveawayWinner } from '../../lib/pages-functions/discord-draw';
+import { brandEmbed } from '../../lib/pages-functions/discord-brand';
 import { buildGiveawayResultMessage, buildNoEligiblePoolMessage } from '../../lib/pages-functions/discord-community-card';
 import type { PropOdds } from '../../tank-types';
 
@@ -174,12 +175,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             const pointsLabel = row.community_points_label || DEFAULT_COMMUNITY_POINTS_LABEL;
             const pointsLine = correct > 0 ? `\n\n+${pointsAwarded} ${pointsLabel} to ${correct} of you.` : '';
 
-            const embed = {
-                title: `${tagline} — settled`,
+            const embed = brandEmbed({
+                kind: 'settlement',
+                plate: 'TANK — SETTLED',
+                title: tagline,
                 url: tankUrl,
-                description: summary + pointsLine,
-                color: 0x2fe6d9,
-            };
+                body: summary + pointsLine,
+                footer: 'trust',
+            });
 
             if (row.settlement_visibility !== 'private') {
                 await postDiscordChannelMessage(context.env, row.channel_id, { embeds: [embed] });

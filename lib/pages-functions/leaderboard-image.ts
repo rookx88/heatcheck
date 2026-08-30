@@ -135,12 +135,12 @@ export function toBase64(buf: ArrayBuffer): string {
 
 // Built lazily once per isolate, not per request - the bytes never change.
 let logoDataUri: string | null = null;
-function getLogoDataUri(): string {
+export function getLogoDataUri(): string {
     if (!logoDataUri) logoDataUri = `data:image/png;base64,${toBase64(HEATCHECKS_LOGO)}`;
     return logoDataUri;
 }
 let discordIconDataUri: string | null = null;
-function getDiscordIconDataUri(): string {
+export function getDiscordIconDataUri(): string {
     if (!discordIconDataUri) discordIconDataUri = `data:image/png;base64,${toBase64(DISCORD_ICON)}`;
     return discordIconDataUri;
 }
@@ -585,23 +585,35 @@ export async function renderWelcomeImage(): Promise<Uint8Array | null> {
 // permission smoke test: a render failure quietly returns 'embed_needed' (caller
 // posts the plain-embed version instead), but a channel POST failure THROWS - that's
 // the signal the wizard's catch turns into permission guidance.
-export async function postWelcomeImageToChannel(env: Env, channelId: string): Promise<'posted' | 'embed_needed'> {
-    const png = await renderWelcomeImage();
-    if (!png) return 'embed_needed';
-
-    // Bare attachment, deliberately NOT wrapped in an embed: Discord caps embed
-    // images around ~430px display width, while plain attachments get ~550px - the
-    // welcome card reads noticeably bigger without the wrapper (Sammy flagged the
-    // embedded version as too small).
+// Posts a rendered PNG to a channel as a bare attachment (deliberately NOT wrapped
+// in an embed: Discord caps embed images around ~430px display width vs ~550px for
+// plain attachments), optionally with message components (e.g. vote buttons).
+// Throws on channel-post failure - callers own that signal (the wizard's permission
+// smoke test depends on it).
+export async function postImageToChannel(
+    env: Env,
+    channelId: string,
+    png: Uint8Array,
+    filename: string,
+    components?: unknown[]
+): Promise<string> {
     const form = new FormData();
-    form.append('payload_json', JSON.stringify({ content: '' }));
-    form.append('files[0]', new Blob([png], { type: 'image/png' }), 'welcome.png');
+    form.append('payload_json', JSON.stringify({ content: '', components: components ?? [] }));
+    form.append('files[0]', new Blob([png], { type: 'image/png' }), filename);
     const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
         method: 'POST',
         headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
         body: form,
     });
-    if (!res.ok) throw new Error(`Welcome image post failed: ${res.status} ${await res.text().catch(() => '')}`);
+    if (!res.ok) throw new Error(`Image post failed: ${res.status} ${await res.text().catch(() => '')}`);
+    const message = (await res.json()) as { id: string };
+    return message.id;
+}
+
+export async function postWelcomeImageToChannel(env: Env, channelId: string): Promise<'posted' | 'embed_needed'> {
+    const png = await renderWelcomeImage();
+    if (!png) return 'embed_needed';
+    await postImageToChannel(env, channelId, png, 'welcome.png');
     return 'posted';
 }
 

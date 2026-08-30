@@ -18,6 +18,7 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
 import { hasManageGuildPermission, postDiscordChannelMessage } from './discord-api';
 import { postWelcomeImageToChannel } from './leaderboard-image';
+import { brandEmbed } from './discord-brand';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
 import type { PropOdds } from '../../tank-types';
 
@@ -66,10 +67,18 @@ function json(body: unknown): Response {
     return new Response(JSON.stringify(body), { headers: { 'Content-Type': 'application/json' } });
 }
 
+// Every wizard step renders as one branded embed (green strip, HEATCHECKS SETUP
+// plate) - the embed-world translation of the card aesthetic, applied here once for
+// all screens instead of per-call-site.
 function screen(content: string, rows: unknown[] = [], firstResponse = false): Response {
     return json({
         type: firstResponse ? RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE : RESPONSE_UPDATE_MESSAGE,
-        data: { content, components: rows, embeds: [], flags: firstResponse ? EPHEMERAL_FLAG : undefined },
+        data: {
+            content: '',
+            embeds: [brandEmbed({ kind: 'system', plate: 'HEATCHECKS SETUP', body: content })],
+            components: rows,
+            flags: firstResponse ? EPHEMERAL_FLAG : undefined,
+        },
     });
 }
 
@@ -127,9 +136,9 @@ export async function handleSetupWizardCommand(context: RequestContext, interact
         ? `\n\nThis server is already set up (posting to <#${(existing[0] as any).channel_id}>) — this will **update** your settings; nothing resets until you change it.`
         : '';
 
+    // NOTE: no '#' markdown headers in any screen copy - embeds don't render them.
     return screen(
         [
-            '## Heatchecks setup',
             "This setup will get your Discord server ready to go in a couple of minutes. Every choice can be changed later with `/heatchecks-config`.",
             '',
             '**What Heatchecks will never do:** read your message history, DM your members unprompted, distribute prizes, or touch real money. It only posts cards to the channels you pick and replies when someone uses it.' + updateMode,
@@ -407,7 +416,7 @@ function ephScreen(): Response {
 function doneScreen(): Response {
     return screen(
         [
-            "## You're all set! 🔥",
+            "**You're all set! 🔥**",
             `Your first Tank cards arrive around <t:${nextSweepUnix()}:t> (<t:${nextSweepUnix()}:R>) — or post recent ones right now with the button below.`,
             '',
             '**More you can do**',

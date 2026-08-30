@@ -27,6 +27,7 @@ import { getSql, type Env } from './db';
 import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, getGuildLabels, buildDiscordAvatarUrl, fetchGuildIconUrl, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL } from './discord-api';
 import type { LeaderboardMessage } from './discord-leaderboard-card';
 import { computeSkillRatings } from './skill-rating';
+import { brandEmbed } from './discord-brand';
 import { computeLevels } from './leveling';
 import type { MeCardInput } from './me-card';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
@@ -62,6 +63,19 @@ function ephemeral(content: string): Response {
     );
 }
 
+function ephemeralEmbed(embed: Record<string, unknown>): Response {
+    return new Response(
+        JSON.stringify({ type: RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE, data: { embeds: [embed], flags: EPHEMERAL_FLAG } }),
+        { headers: { 'Content-Type': 'application/json' } }
+    );
+}
+
+// Light branding for trivial text acks (league join/leave, config changes, Posted!)
+// - a small gray HEATCHECKS tag under the line, no embed bloat.
+function brandLine(text: string): string {
+    return `${text}\n-# HEATCHECKS`;
+}
+
 // Component-interaction response that edits the message the component is attached to
 // (response type 7) rather than creating a new one - every multi-step admin flow in
 // this file updates in place instead of stacking ephemeral messages.
@@ -75,9 +89,10 @@ export function updateMessageResponse(content: string, buttons?: { label: string
     );
 }
 
-// Message payload (content + optional components) for the deferred admin flows.
+// Message payload for the deferred admin flows.
 interface DeferredMessageData {
-    content: string;
+    content?: string;
+    embeds?: unknown[];
     components?: unknown[];
 }
 
@@ -111,7 +126,7 @@ function deferredEphemeral(context: RequestContext, interaction: any, work: Prom
                 fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`, {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: data.content, components: data.components ?? [] }),
+                    body: JSON.stringify({ content: data.content ?? '', embeds: data.embeds ?? [], components: data.components ?? [] }),
                 })
             )
     );
@@ -155,20 +170,23 @@ async function buildConfigOverview(context: RequestContext, guildId: string): Pr
     const weekly = parse(c.weekly_leaderboard);
     const enabledSports = SUPPORTED_SPORTS.filter((s) => !disabled.includes(s));
 
-    return ephemeral([
-        '**Current Heatchecks settings**',
-        `Main channel: <#${c.channel_id}>`,
-        `Community Pick channels: ${cpChannels.length ? cpChannels.map((id) => `<#${id}>`).join(' ') : 'main channel only'}`,
-        `Tank posts: ${c.tank_posts_enabled ? `on (${c.daily_post_limit == null ? 'all' : `max ${c.daily_post_limit}/day`})` : 'off'}`,
-        `Sports: ${enabledSports.length === SUPPORTED_SPORTS.length ? 'all' : enabledSports.join(', ') || 'none'}`,
-        `Settlement results: ${c.settlement_visibility === 'private' ? 'private (members use /my-results)' : 'announced in channel'}`,
-        `Auto-draw on settlement: ${c.auto_draw_enabled ? 'on' : 'off'}`,
-        `Names: points = "${c.community_points_label || DEFAULT_COMMUNITY_POINTS_LABEL}", leaderboard = "${c.leaderboard_label || DEFAULT_LEADERBOARD_LABEL}"`,
-        `Weekly leaderboard post: ${weekly.length ? weekly.join(', ') : 'off'}`,
-        `Member commands: ${c.ephemeral_user_commands ? 'visible only to the member' : 'visible to everyone'}`,
-        '',
-        'Change anything with the options on this command, or re-run /heatchecks-setup for the guided flow.',
-    ].join('\n'));
+    return ephemeralEmbed(brandEmbed({
+        kind: 'system',
+        plate: 'SERVER SETTINGS',
+        body: [
+            `**Main channel:** <#${c.channel_id}>`,
+            `**Community Pick channels:** ${cpChannels.length ? cpChannels.map((id) => `<#${id}>`).join(' ') : 'main channel only'}`,
+            `**Tank posts:** ${c.tank_posts_enabled ? `on (${c.daily_post_limit == null ? 'all' : `max ${c.daily_post_limit}/day`})` : 'off'}`,
+            `**Sports:** ${enabledSports.length === SUPPORTED_SPORTS.length ? 'all' : enabledSports.join(', ') || 'none'}`,
+            `**Settlement results:** ${c.settlement_visibility === 'private' ? 'private (members use /my-results)' : 'announced in channel'}`,
+            `**Auto-draw on settlement:** ${c.auto_draw_enabled ? 'on' : 'off'}`,
+            `**Names:** points = "${c.community_points_label || DEFAULT_COMMUNITY_POINTS_LABEL}", leaderboard = "${c.leaderboard_label || DEFAULT_LEADERBOARD_LABEL}"`,
+            `**Weekly leaderboard post:** ${weekly.length ? weekly.join(', ') : 'off'}`,
+            `**Member commands:** ${c.ephemeral_user_commands ? 'visible only to the member' : 'visible to everyone'}`,
+            '',
+            'Change anything with the options on this command, or re-run /heatchecks-setup for the guided flow.',
+        ].join('\n'),
+    }));
 }
 
 // ===================================================================================
@@ -234,7 +252,7 @@ export async function handleConfigCommand(context: RequestContext, interaction: 
                 : 'Settlement results now post to the channel again.'
         );
     }
-    return ephemeral(replies.join(' '));
+    return ephemeral(brandLine(replies.join(' ')));
 }
 
 // ===================================================================================
@@ -376,7 +394,7 @@ async function postTankAndRespond(context: RequestContext, guildId: string, slug
             VALUES (${guildId}, ${tankRow.id}, ${messageId})
             ON CONFLICT (guild_id, tank_page_id) DO UPDATE SET message_id = EXCLUDED.message_id, posted_at = NOW()
         `;
-        return updateMessageResponse(isRepost ? 'Reposted.' : 'Posted!');
+        return updateMessageResponse(brandLine(isRepost ? 'Reposted.' : 'Posted!'));
     } catch (err) {
         console.error('[discord-commands] Failed to post Tank on demand:', err);
         return updateMessageResponse('Something went wrong posting that Tank. Try again shortly.');
@@ -616,7 +634,7 @@ export async function handleCommunityPickConfirm(context: RequestContext, intera
 
     if (result.status === 'duplicate') return updateMessageResponse('This market already has a Community Pick posted in this server.');
     if (result.status === 'post_failed') return updateMessageResponse('Created, but posting the card failed - try /heatchecks-post community-pick again shortly.');
-    return updateMessageResponse('Posted!');
+    return updateMessageResponse(brandLine('Posted!'));
 }
 
 // ===================================================================================
@@ -856,7 +874,7 @@ export async function handleLeagueCommand(context: RequestContext, interaction: 
             VALUES (${seasonId}, ${discordUserId})
             ON CONFLICT (league_season_id, discord_user_id) DO NOTHING
         `;
-        return ephemeral(`You're in! Points from ${sport} Community Picks count toward this server's ${sport} league leaderboard from now on.`);
+        return ephemeral(brandLine(`You're in! Points from ${sport} Community Picks count toward this server's ${sport} league leaderboard from now on.`));
     }
 
     if (subName === 'leave') {
@@ -868,7 +886,7 @@ export async function handleLeagueCommand(context: RequestContext, interaction: 
         if (rows.length === 0) return ephemeral(`There's no active ${sport} league in this server.`);
         const seasonId = (rows[0] as unknown as { id: string }).id;
         await sql`DELETE FROM league_memberships WHERE league_season_id = ${seasonId} AND discord_user_id = ${discordUserId}`;
-        return ephemeral(`You've left this server's ${sport} league.`);
+        return ephemeral(brandLine(`You've left this server's ${sport} league.`));
     }
 
     return ephemeral("Couldn't read that command.");
@@ -1091,22 +1109,22 @@ async function myResultsData(context: RequestContext, guildId: string, discordUs
     const resultLine = (label: string, correct: boolean, points: number | null) =>
         correct ? `✓ ${label} — correct${points !== null ? ` (+${points} pts)` : ''}` : `✗ ${label} — incorrect`;
 
-    const sections: string[] = [];
+    const fields: { name: string; value: string }[] = [];
     if (tankRows.length > 0) {
         const lines = tankRows.map((r) => {
             const modelOutput = typeof r.model_output === 'string' ? JSON.parse(r.model_output) : r.model_output;
             const tagline = modelOutput?.tagline?.trim() || (modelOutput ? deriveTaglineFallback(modelOutput.hook) : r.slug);
             return resultLine(`${tagline} (${r.side})`, r.result === 'correct', r.points_awarded);
         });
-        sections.push(`**Real Tanks**\n${lines.join('\n')}`);
+        fields.push({ name: 'Real Tanks', value: lines.join('\n').slice(0, 1024) });
     }
     if (pickRows.length > 0) {
         const lines = pickRows.map((r) => {
             const pickedLabel = r.side_chosen === 0 ? r.side_a_label : r.side_b_label;
             return resultLine(`${r.question_text} (${pickedLabel})`, r.side_chosen === r.winning_side, r.points_awarded);
         });
-        sections.push(`**Community Picks**\n${lines.join('\n')}`);
+        fields.push({ name: 'Community Picks', value: lines.join('\n').slice(0, 1024) });
     }
 
-    return { content: `**Your recent results in this server**\n\n${sections.join('\n\n')}` };
+    return { embeds: [brandEmbed({ kind: 'system', plate: 'YOUR RESULTS', body: 'Your recent settled calls in this server.', fields })] };
 }

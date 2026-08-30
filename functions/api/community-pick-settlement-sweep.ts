@@ -19,7 +19,7 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { fetchMarket, resolveMarket, outcomeOrderMismatch } from '../../lib/pages-functions/gamma';
 import { postDiscordChannelMessage } from '../../lib/pages-functions/discord-api';
-import { buildCommunitySettlementRecapMessage, buildGiveawayResultMessage, buildNoEligiblePoolMessage } from '../../lib/pages-functions/discord-community-card';
+import { buildCommunitySettlementRecapMessage, buildGiveawayResultMessage, buildMultiWinnerGiveawayMessage, buildNoEligiblePoolMessage } from '../../lib/pages-functions/discord-community-card';
 import { awardCommunityPoints } from '../../lib/pages-functions/community-points';
 import { drawGiveawayWinner, drawMultipleGiveawayWinners } from '../../lib/pages-functions/discord-draw';
 
@@ -146,15 +146,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 });
                 const drawMessage = winners.length === 0
                     ? buildNoEligiblePoolMessage(row.question_text)
-                    : {
-                        embeds: [{
-                            author: { name: '🎉 Giveaway draw' },
-                            title: row.question_text,
-                            description: `Randomly selected winner${winners.length === 1 ? '' : 's'} (from correct calls): ${winners.map((w) => `<@${w}>`).join(' ')}`,
-                            color: 0xffc72c,
-                        }],
-                        components: [],
-                    };
+                    : buildMultiWinnerGiveawayMessage(row.question_text, winners);
                 await postDiscordChannelMessage(context.env, row.channel_id, drawMessage);
             } else if (row.auto_draw_enabled) {
                 const draw = await drawGiveawayWinner(sql, context.env, {

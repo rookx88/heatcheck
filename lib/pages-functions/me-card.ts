@@ -88,7 +88,7 @@ export function tierForLevel(level: number): Tier {
     return tier;
 }
 
-function escapeXml(s: string): string {
+export function escapeXml(s: string): string {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
@@ -103,7 +103,7 @@ function getArt(): { bg: string; char: string } {
 // Raw buffers handed straight to resvg's own text engine (CustomFontsOptions).
 // Family names come from the TTFs themselves: "Anton", "Permanent Marker",
 // "Orbitron"; weight selection picks between the two Orbitron buffers.
-const FONT_BUFFERS = [ANTON, PERMANENT_MARKER, ORBITRON_BOLD, ORBITRON_BLACK].map((b) => new Uint8Array(b));
+export const FONT_BUFFERS = [ANTON, PERMANENT_MARKER, ORBITRON_BOLD, ORBITRON_BLACK].map((b) => new Uint8Array(b));
 
 async function fetchAvatarDataUri(url: string): Promise<string | null> {
     try {

@@ -9,6 +9,7 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { renderLeaderboardImage, renderWelcomeImage, getLastRenderError } from '../../lib/pages-functions/leaderboard-image';
 import { renderMeCard, getLastMeError } from '../../lib/pages-functions/me-card';
+import { renderCommunityPickImage, getLastCpImageError } from '../../lib/pages-functions/community-pick-image';
 
 const SAMPLE_ROWS = [
     { rank: 1, displayName: 'Sample One', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/0.png', scoreLine: '3694 Community Points', scoreValue: '3,694', sr: 712 },
@@ -40,6 +41,16 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             level: Math.max(1, Math.min(27, Number(params.get('level') ?? '3') || 3)),
         });
         if (!png) return jsonResponse({ ok: false, error: getLastMeError() ?? 'unknown' }, { status: 500 });
+    } else if (params.get('cp') === '1') {
+        png = await renderCommunityPickImage({
+            questionText: 'Boston Red Sox vs. New York Yankees',
+            sideALabel: 'Boston Red Sox',
+            sideBLabel: 'New York Yankees',
+            sideAPoints: 58,
+            sideBPoints: 42,
+            resolveDate: new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString(),
+        });
+        if (!png) return jsonResponse({ ok: false, error: getLastCpImageError() ?? 'unknown' }, { status: 500 });
     } else if (params.get('welcome') === '1') {
         png = await renderWelcomeImage();
     } else {
