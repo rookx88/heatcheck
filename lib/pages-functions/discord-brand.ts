@@ -27,8 +27,10 @@ export const TRUST_LINE = 'Entertainment only — no real-money wagering. Heatch
 
 export interface BrandEmbedOptions {
     kind: BrandKind;
-    // Plate-style caps label, e.g. "HEATCHECKS SETUP", "COMMUNITY PICK — SETTLED".
-    plate: string;
+    // Plate-style caps label, e.g. "COMMUNITY PICK — SETTLED". Omit on surfaces
+    // that attach a pre-rendered banner above the embed - the banner IS the plate
+    // there, and repeating it reads as a stutter.
+    plate?: string;
     title?: string;
     url?: string;
     body?: string;
@@ -40,8 +42,8 @@ export interface BrandEmbedOptions {
 export function brandEmbed(opts: BrandEmbedOptions): Record<string, unknown> {
     const embed: Record<string, unknown> = {
         color: KIND_COLOR[opts.kind],
-        author: { name: opts.plate.toUpperCase() },
     };
+    if (opts.plate) embed.author = { name: opts.plate.toUpperCase() };
     if (opts.title) embed.title = opts.title;
     if (opts.url) embed.url = opts.url;
     if (opts.body) embed.description = opts.body;

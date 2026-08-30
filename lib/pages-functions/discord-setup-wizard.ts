@@ -82,7 +82,7 @@ function json(body: unknown): Response {
 function screen(content: string, rows: unknown[] = [], firstResponse = false): Response {
     const data = {
         content: '',
-        embeds: [brandEmbed({ kind: 'system', plate: 'HEATCHECKS SETUP', body: content })],
+        embeds: [brandEmbed({ kind: 'system', body: content })],
         components: rows,
         flags: firstResponse ? EPHEMERAL_FLAG : undefined,
     };

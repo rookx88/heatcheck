@@ -188,7 +188,6 @@ async function buildConfigOverview(context: RequestContext, guildId: string): Pr
 
     return ephemeralEmbedWithBanner(brandEmbed({
         kind: 'system',
-        plate: 'SERVER SETTINGS',
         body: [
             `**Main channel:** <#${c.channel_id}>`,
             `**Community Pick channels:** ${cpChannels.length ? cpChannels.map((id) => `<#${id}>`).join(' ') : 'main channel only'}`,
@@ -1143,7 +1142,7 @@ async function myResultsData(context: RequestContext, guildId: string, discordUs
     }
 
     return {
-        embeds: [brandEmbed({ kind: 'system', plate: 'YOUR RESULTS', body: 'Your recent settled calls in this server.', fields })],
+        embeds: [brandEmbed({ kind: 'system', body: 'Your recent settled calls in this server.', fields })],
         file: { data: BANNER_RESULTS, name: 'your-results.png' },
     };
 }
