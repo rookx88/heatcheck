@@ -591,13 +591,13 @@ export function marketMoversStyles(): string {
         .hc-mm-result-chip.is-neg { background: #e33a24; }
         .hc-mm-results-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: 'Nunito', sans-serif; }
 
-        /* Same orange frame as #tanks (homepage/render.ts), at every viewport - not
-           just inside the desktop-only white-panel treatment below - so the two
-           sections read as matching game panels side by side. box-sizing:border-box
-           (global reset) keeps the added border from disturbing the desktop grid's
-           stretch-alignment between the two panels. */
+        /* Framed at every viewport - not just inside the desktop-only white-panel
+           treatment below - so this and #tanks read as matching game panels side by
+           side. Light-blue frame (the card blue) against the black header band.
+           box-sizing:border-box (global reset) keeps the added border from disturbing
+           the desktop grid's stretch-alignment between the two panels. */
         #market-movers {
-            border: 3px solid #000000;
+            border: 3px solid #5ec1ee;
             border-radius: 6px;
             padding: 0 1rem 1.1rem;
             overflow: hidden;
@@ -626,7 +626,7 @@ export function marketMoversStyles(): string {
             }
             .hc-mm-band {
                 display: flex; align-items: center; gap: 1rem;
-                background: #5e35b1;
+                background: #000000;
                 margin: 0 -1rem 0.25rem; padding: 0.6rem 1rem;
             }
             .hc-mm-logo { width: clamp(140px, 14vw, 190px); margin: 0; flex-shrink: 0; }
