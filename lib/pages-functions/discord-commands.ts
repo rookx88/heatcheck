@@ -27,6 +27,8 @@ import { getSql, type Env } from './db';
 import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, getGuildLabels, buildDiscordAvatarUrl, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL } from './discord-api';
 import type { LeaderboardMessage } from './discord-leaderboard-card';
 import { computeSkillRatings } from './skill-rating';
+import { computeLevels } from './leveling';
+import type { MeCardInput } from './me-card';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
 import { buildGiveawayResultMessage, buildNoEligiblePoolMessage } from './discord-community-card';
 import { drawGiveawayWinner, type GiveawaySourceType } from './discord-draw';
@@ -872,53 +874,33 @@ export async function buildSrLeaderboardMessage(env: Env, guildId: string): Prom
 }
 
 // ===================================================================================
-// /me - a personal rank card: your Community Points rank in this guild, points,
-// accuracy, and SR, rendered through the same image pipeline as /leaderboard.
+// /me - gathers the personal-card inputs (points, Community Points rank, SR, LVL);
+// rendering/delivery is lib/pages-functions/me-card.ts's layered-art card.
 // ===================================================================================
 
-export async function buildMeMessage(env: Env, guildId: string, discordUserId: string): Promise<LeaderboardMessage> {
+export async function buildMeCardInput(env: Env, guildId: string, discordUserId: string): Promise<MeCardInput> {
     const sql = getSql(env);
-    const [members, { communityPointsLabel }] = await Promise.all([
-        fetchGuildMembers(env, guildId),
-        getGuildLabels(sql, guildId),
-    ]);
+    const members = await fetchGuildMembers(env, guildId);
     const member = members.find((m) => m.user.id === discordUserId)?.user;
 
-    const [pointsRows, rankRows, pickRows, srById] = await Promise.all([
+    const [pointsRows, rankRows, srById, levelById] = await Promise.all([
         sql`SELECT points FROM community_points WHERE guild_id = ${guildId} AND discord_user_id = ${discordUserId}`,
         sql`
             SELECT COUNT(*)::int AS ahead FROM community_points
             WHERE guild_id = ${guildId} AND points > COALESCE(
                 (SELECT points FROM community_points WHERE guild_id = ${guildId} AND discord_user_id = ${discordUserId}), 0)
         `,
-        sql`
-            SELECT COUNT(*) FILTER (WHERE p.result = 'correct')::int AS correct,
-                   COUNT(*) FILTER (WHERE p.result IS NOT NULL)::int AS settled
-            FROM discord_links dl JOIN picks p ON p.waitlist_id = dl.waitlist_id
-            WHERE dl.discord_user_id = ${discordUserId}
-        `,
         computeSkillRatings(sql, guildId, [discordUserId]),
+        computeLevels(sql, guildId, [discordUserId]),
     ]);
 
-    const points = Number((pointsRows[0] as any)?.points ?? 0);
-    const rank = Number((rankRows[0] as any)?.ahead ?? 0) + 1;
-    const correct = Number((pickRows[0] as any)?.correct ?? 0);
-    const settled = Number((pickRows[0] as any)?.settled ?? 0);
-    const sr = srById.get(discordUserId) ?? 0;
-
-    const displayName = member?.global_name || member?.username || 'You';
-    const accLine = settled > 0 ? ` · ${Math.round((correct / settled) * 100)}% (${correct}/${settled})` : '';
     return {
-        content: `**${displayName} — your Heatchecks stats**`,
-        headerLabel: 'YOUR STATS',
-        rows: [{
-            rank,
-            displayName,
-            avatarUrl: buildDiscordAvatarUrl(discordUserId, member?.avatar),
-            scoreLine: `${points} ${communityPointsLabel}${accLine}`,
-            scoreValue: points.toLocaleString('en-US'),
-            sr,
-        }],
+        displayName: member?.global_name || member?.username || 'You',
+        avatarUrl: buildDiscordAvatarUrl(discordUserId, member?.avatar),
+        points: Number((pointsRows[0] as any)?.points ?? 0),
+        rank: Number((rankRows[0] as any)?.ahead ?? 0) + 1,
+        sr: srById.get(discordUserId) ?? 0,
+        level: levelById.get(discordUserId)?.level ?? 1,
     };
 }
 

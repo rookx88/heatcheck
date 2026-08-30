@@ -54,8 +54,9 @@ import {
     buildCommunityPointsLeaderboardMessage,
     buildLeagueLeaderboardMessage,
     buildSrLeaderboardMessage,
-    buildMeMessage,
+    buildMeCardInput,
 } from '../../../lib/pages-functions/discord-commands';
+import { sendMeCard } from '../../../lib/pages-functions/me-card';
 
 const DISCORD_PING = 1;
 const DISCORD_APPLICATION_COMMAND = 2;
@@ -271,11 +272,36 @@ function handleLeaderboardCommand(context: RequestContext, interaction: any): Pr
     return deferImageCommand(context, interaction, buildMessage);
 }
 
-function handleMeCommand(context: RequestContext, interaction: any): Promise<Response> | Response {
+async function handleMeCommand(context: RequestContext, interaction: any): Promise<Response> {
     const guildId: string | undefined = interaction.guild_id;
     const discordUserId: string | undefined = interaction.member?.user?.id;
     if (!guildId || !discordUserId) return ephemeral('Run this in a server, not a DM.');
-    return deferImageCommand(context, interaction, buildMeMessage(context.env, guildId, discordUserId));
+
+    const applicationId: string | undefined = interaction.application_id;
+    const interactionToken: string | undefined = interaction.token;
+    if (!applicationId || !interactionToken) return ephemeral("Couldn't process that command - try again.");
+
+    const sql = getSql(context.env);
+    const cfgRows = await sql`SELECT ephemeral_user_commands FROM discord_guild_configs WHERE guild_id = ${guildId}`;
+    const makeEphemeral = Boolean((cfgRows[0] as any)?.ephemeral_user_commands);
+
+    context.waitUntil(
+        buildMeCardInput(context.env, guildId, discordUserId)
+            .then((input) => sendMeCard(applicationId, interactionToken, input))
+            .catch((err) => {
+                console.error('[POST /api/discord/interactions] /me failed:', err);
+                return fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: 'Could not build your card right now — try again shortly.' }),
+                }).then(() => undefined);
+            })
+    );
+
+    return new Response(
+        JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE, data: makeEphemeral ? { flags: EPHEMERAL_FLAG } : {} }),
+        { headers: { 'Content-Type': 'application/json' } }
+    );
 }
 
 interface LeaderboardRow {

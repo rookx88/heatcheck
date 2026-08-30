@@ -96,7 +96,8 @@ function rankNumeralColor(rank: number): string {
 }
 
 let wasmInitPromise: Promise<void> | null = null;
-function ensureWasmInit(): Promise<void> {
+// Exported for me-card.ts, which renders through the same pipeline.
+export function ensureWasmInit(): Promise<void> {
     // Guarded by this module-level promise so init only ever runs once per warm
     // isolate, not once per request. Both inputs are already compiled
     // WebAssembly.Modules (see the import comments above) - initYoga/initWasm only
@@ -121,7 +122,8 @@ const FONTS: { name: string; data: ArrayBuffer; weight: 400 | 700 | 800 | 900; s
 
 // Chunked base64 - spreading a whole Uint8Array into String.fromCharCode can blow the
 // argument-count limit on larger buffers (the 28KB logo is already pushing it).
-function toBase64(buf: ArrayBuffer): string {
+// Exported for me-card.ts (which embeds ~500KB art layers).
+export function toBase64(buf: ArrayBuffer): string {
     const bytes = new Uint8Array(buf);
     let binary = '';
     const CHUNK = 8192;
