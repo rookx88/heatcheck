@@ -396,7 +396,41 @@ function homepageStyles(): string {
 
         /* Tighter seam under Market Movers (mobile especially). */
         #explore.hc-section { margin-top: 1rem; }
-        .hc-explore-wrap { position: relative; margin-top: 0.75rem; }
+        /* The explore panel: logo + world map framed together in a dark-orange
+           bordered card over a midnight-purple night sky. The stars live on the
+           two pseudo-element layers below (different tile sizes + twinkle phases
+           so the field reads organic, not repeated); overflow:hidden clips both
+           layers to the rounded corners. */
+        .hc-explore-wrap {
+            position: relative; margin-top: 0.75rem;
+            border: 3px solid #a34a14; border-radius: 20px;
+            padding: 1.1rem 1.1rem 1.5rem;
+            background: linear-gradient(180deg, #1e1136 0%, #160c27 55%, #120a20 100%);
+            overflow: hidden;
+        }
+        .hc-explore-wrap::before, .hc-explore-wrap::after {
+            content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 0;
+        }
+        .hc-explore-wrap::before {
+            background-image:
+                radial-gradient(1.6px 1.6px at 22px 34px, rgba(255,255,255,0.95), transparent 55%),
+                radial-gradient(1.1px 1.1px at 118px 76px, rgba(255,255,255,0.7), transparent 55%),
+                radial-gradient(1.4px 1.4px at 205px 140px, rgba(214,196,255,0.85), transparent 55%),
+                radial-gradient(1px 1px at 68px 182px, rgba(255,255,255,0.6), transparent 55%),
+                radial-gradient(1.8px 1.8px at 168px 22px, rgba(255,241,214,0.9), transparent 55%);
+            background-size: 260px 230px;
+            animation: hc-star-twinkle 5s ease-in-out infinite;
+        }
+        .hc-explore-wrap::after {
+            background-image:
+                radial-gradient(1.2px 1.2px at 44px 120px, rgba(255,255,255,0.8), transparent 55%),
+                radial-gradient(1.7px 1.7px at 250px 60px, rgba(214,226,255,0.9), transparent 55%),
+                radial-gradient(1px 1px at 150px 210px, rgba(255,255,255,0.55), transparent 55%),
+                radial-gradient(1.3px 1.3px at 300px 170px, rgba(255,244,214,0.75), transparent 55%);
+            background-size: 340px 280px;
+            animation: hc-star-twinkle 7s ease-in-out 2.5s infinite;
+        }
+        @keyframes hc-star-twinkle { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
         /* The world is pulled up so the EXPLORE logo slightly overlaps its top-left
            corner - but the map (and its hover region labels) LAYER OVER the logo:
            the map stacks above (z 2 vs 1), while the layout overlap comes from the
@@ -407,11 +441,21 @@ function homepageStyles(): string {
             position: relative; z-index: 1;
             pointer-events: none; filter: drop-shadow(0 8px 16px rgba(0,0,0,0.45));
         }
-        #hc-map-root { position: relative; z-index: 2; }
+        /* The world floats over the night sky: a slow vertical bob plus a deep
+           drop shadow onto the panel behind it. The EXPLORE logo deliberately
+           does NOT share the animation - it stays put while the world drifts. */
+        #hc-map-root {
+            position: relative; z-index: 2;
+            filter: drop-shadow(0 24px 28px rgba(0,0,0,0.55));
+            animation: hc-world-float 7s ease-in-out infinite;
+        }
+        @keyframes hc-world-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
         .hc-world-map-static, #hc-map-root svg { display: block; width: 100%; height: auto; }
 
         @media (prefers-reduced-motion: reduce) {
             .hc-sport-row { scroll-behavior: auto; }
+            #hc-map-root { animation: none; }
+            .hc-explore-wrap::before, .hc-explore-wrap::after { animation: none; }
         }
         @media (max-width: 420px) {
             .hc-home { padding: 0.6rem 1rem 0.85rem; }
