@@ -1,5 +1,5 @@
 // Shared giveaway-draw logic: builds the eligible pool for a settled source and picks
-// one winner at random. Used by both /heatchecks-draw (manual, functions/api/discord/
+// one winner at random. Used by both `/heatchecks draw` (manual, functions/api/discord/
 // interactions.ts) and the auto-draw call sites (functions/api/discord-settlement-
 // sweep.ts, functions/api/community-pick-settlement-sweep.ts, when a guild's
 // discord_guild_configs.auto_draw_enabled is set) - one function, so a manual draw and

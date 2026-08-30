@@ -1,11 +1,11 @@
 // Handlers for every Discord command/component added since the original pick-button
-// bot: /heatchecks-setup, /heatchecks-config, /heatchecks-post (tank + community-pick
-// subcommands), /heatchecks-draw, Community Pick voting, and the Community Points
+// bot: the /heatchecks admin hub (setup, settings, post <tank|community-pick|
+// leaderboard>, draw), Community Pick voting, and the Community Points
 // /leaderboard view. Imported and dispatched from functions/api/discord/
 // interactions.ts, which owns the one Ed25519-verify-first entry point - nothing here
 // is reachable except through that already-verified request.
 //
-// Admin-search flows (/heatchecks-post, /heatchecks-draw) all follow the same shape:
+// Admin-search flows (/heatchecks post, /heatchecks draw) all follow the same shape:
 // search command -> ephemeral select menu of up to 25 matches -> pick one -> either
 // act immediately (draw; first-time Tank post) or show a Confirm/Cancel step first
 // (Community Pick creation, since it creates new persistent state from a live market
@@ -24,14 +24,14 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, getGuildLabels, buildDiscordAvatarUrl, fetchGuildIconUrl, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL } from './discord-api';
+import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, clearMessageComponents, getGuildLabels, buildDiscordAvatarUrl, fetchGuildIconUrl, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL } from './discord-api';
 import type { LeaderboardMessage } from './discord-leaderboard-card';
 import { computeSkillRatings } from './skill-rating';
 import { brandEmbed } from './discord-brand';
 // Pre-rendered branded headers (leaderboard-style navy/Orbitron plates, generated at
 // build time - zero runtime CPU), attached above the matching embeds.
 import BANNER_RESULTS from './art/banner-results.bin';
-import BANNER_SETTINGS from './art/banner-settings.bin';
+import { buildSettingsPanel } from './discord-setup-wizard';
 import { computeLevels } from './leveling';
 import type { MeCardInput } from './me-card';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
@@ -98,6 +98,20 @@ export function updateMessageResponse(content: string, buttons?: { label: string
     );
 }
 
+// Manage Server re-check for the MID-FLOW steps of an admin flow (the select menus
+// and confirm buttons), not just the command that opened it. Those components live on
+// ephemeral messages only the invoking admin can see, so this isn't closing a hole a
+// stranger could walk through - it closes the one real case: an admin demoted (or
+// role-restricted via Server Settings -> Integrations) while a menu is still sitting
+// open on their screen, who could otherwise finish the flow anyway. Same posture the
+// entry-point commands and handleDrawButton already take; returns the denial as a
+// type-7 update so it lands in the flow's own message rather than stacking a new one.
+function denyIfNotAdmin(interaction: any): Response | null {
+    return hasManageGuildPermission(interaction)
+        ? null
+        : updateMessageResponse('You need the "Manage Server" permission to do that.');
+}
+
 // Message payload for the deferred admin flows.
 interface DeferredMessageData {
     content?: string;
@@ -153,59 +167,17 @@ function deferredEphemeral(context: RequestContext, interaction: any, work: Prom
     );
 }
 
-// /heatchecks-setup now lives in lib/pages-functions/discord-setup-wizard.ts (the
+// `/heatchecks setup` now lives in lib/pages-functions/discord-setup-wizard.ts (the
 // guided wizard; the old channel-option quick path survives there unchanged).
 
-interface ConfigOverviewRow {
-    channel_id: string;
-    disabled_sports: string[] | string;
-    auto_draw_enabled: boolean;
-    community_points_label: string | null;
-    leaderboard_label: string | null;
-    settlement_visibility: string;
-    tank_posts_enabled: boolean;
-    daily_post_limit: number | null;
-    community_pick_channel_ids: string[] | string;
-    weekly_leaderboard: string[] | string;
-    ephemeral_user_commands: boolean;
-}
-
-async function buildConfigOverview(context: RequestContext, guildId: string): Promise<Response> {
-    const sql = getSql(context.env);
-    const rows = await sql`
-        SELECT channel_id, disabled_sports, auto_draw_enabled, community_points_label, leaderboard_label,
-               settlement_visibility, tank_posts_enabled, daily_post_limit, community_pick_channel_ids,
-               weekly_leaderboard, ephemeral_user_commands
-        FROM discord_guild_configs WHERE guild_id = ${guildId}
-    `;
-    if (rows.length === 0) return ephemeral('This server has no configuration yet — run /heatchecks-setup first.');
-    const c = rows[0] as unknown as ConfigOverviewRow;
-    const parse = (v: string[] | string): string[] => (Array.isArray(v) ? v : JSON.parse(v ?? '[]'));
-    const disabled = parse(c.disabled_sports);
-    const cpChannels = parse(c.community_pick_channel_ids);
-    const weekly = parse(c.weekly_leaderboard);
-    const enabledSports = SUPPORTED_SPORTS.filter((s) => !disabled.includes(s));
-
-    return ephemeralEmbedWithBanner(brandEmbed({
-        kind: 'system',
-        body: [
-            `**Main channel:** <#${c.channel_id}>`,
-            `**Community Pick channels:** ${cpChannels.length ? cpChannels.map((id) => `<#${id}>`).join(' ') : 'main channel only'}`,
-            `**Tank posts:** ${c.tank_posts_enabled ? `on (${c.daily_post_limit == null ? 'all' : `max ${c.daily_post_limit}/day`})` : 'off'}`,
-            `**Sports:** ${enabledSports.length === SUPPORTED_SPORTS.length ? 'all' : enabledSports.join(', ') || 'none'}`,
-            `**Settlement results:** ${c.settlement_visibility === 'private' ? 'private (members use /my-results)' : 'announced in channel'}`,
-            `**Auto-draw on settlement:** ${c.auto_draw_enabled ? 'on' : 'off'}`,
-            `**Names:** points = "${c.community_points_label || DEFAULT_COMMUNITY_POINTS_LABEL}", leaderboard = "${c.leaderboard_label || DEFAULT_LEADERBOARD_LABEL}"`,
-            `**Weekly leaderboard post:** ${weekly.length ? weekly.join(', ') : 'off'}`,
-            `**Member commands:** ${c.ephemeral_user_commands ? 'visible only to the member' : 'visible to everyone'}`,
-            '',
-            'Change anything with the options on this command, or re-run /heatchecks-setup for the guided flow.',
-        ].join('\n'),
-    }), BANNER_SETTINGS, 'server-settings.png');
-}
+// Bare `/heatchecks settings` opens the interactive settings panel, which lives in
+// lib/pages-functions/discord-setup-wizard.ts next to the step screens it reuses -
+// one implementation of "show and change this guild's settings," not a read-only
+// overview here and a separate editing flow there.
 
 // ===================================================================================
-// /heatchecks-config - per-guild sport filter + auto-draw toggle.
+// `/heatchecks settings` - bare opens the interactive panel; the option form below is
+// the power-user shortcut (one flag, one write, no clicking).
 // ===================================================================================
 
 export async function handleConfigCommand(context: RequestContext, interaction: any): Promise<Response> {
@@ -221,10 +193,11 @@ export async function handleConfigCommand(context: RequestContext, interaction: 
     const leaderboardNameOpt = options.find((o: any) => o.name === 'leaderboard_name')?.value as string | undefined;
     const settlementVisibilityOpt = options.find((o: any) => o.name === 'settlement_visibility')?.value as string | undefined;
 
-    // Bare /heatchecks-config = show current settings (the config surface used to be
-    // write-only, which made every option invisible unless you already knew it).
+    // Bare = the interactive panel: current values plus a button for every setting,
+    // including the ones that have no flag here at all (cadence, extra channels,
+    // weekly post, member-command visibility) and used to be wizard-only.
     if (sport === undefined && autoDrawOpt === undefined && pointsNameOpt === undefined && leaderboardNameOpt === undefined && settlementVisibilityOpt === undefined) {
-        return buildConfigOverview(context, guildId);
+        return buildSettingsPanel(context, guildId, true);
     }
     if (sport !== undefined && enabledOpt === undefined) {
         return ephemeral('Specify enabled:true or enabled:false along with the sport.');
@@ -233,7 +206,7 @@ export async function handleConfigCommand(context: RequestContext, interaction: 
     const sql = getSql(context.env);
     const existing = await sql`SELECT disabled_sports FROM discord_guild_configs WHERE guild_id = ${guildId}`;
     if (existing.length === 0) {
-        return ephemeral('Run /heatchecks-setup first to choose a channel for this server.');
+        return ephemeral('Run `/heatchecks setup` first to choose a channel for this server.');
     }
 
     const replies: string[] = [];
@@ -271,7 +244,7 @@ export async function handleConfigCommand(context: RequestContext, interaction: 
 }
 
 // ===================================================================================
-// /heatchecks-post - two subcommands: an on-demand real-Tank push, and Community Pick
+// `/heatchecks post` - an on-demand real-Tank push, and Community Pick
 // creation. Card rendering is shared with functions/api/discord-sweep.ts (Tank side)
 // - not a parallel rendering path.
 // ===================================================================================
@@ -405,7 +378,7 @@ interface TankRowForPost {
 async function postTankAndRespond(context: RequestContext, guildId: string, slug: string, isRepost: boolean): Promise<Response> {
     const sql = getSql(context.env);
     const configRows = await sql`SELECT channel_id FROM discord_guild_configs WHERE guild_id = ${guildId}`;
-    if (configRows.length === 0) return updateMessageResponse('This server has no channel configured - run /heatchecks-setup first.');
+    if (configRows.length === 0) return updateMessageResponse('This server has no channel configured - run `/heatchecks setup` first.');
     const channelId = (configRows[0] as unknown as { channel_id: string }).channel_id;
 
     const tankRows = (await sql`
@@ -435,6 +408,8 @@ async function postTankAndRespond(context: RequestContext, guildId: string, slug
 }
 
 export async function handleTankPostSelect(context: RequestContext, interaction: any): Promise<Response> {
+    const denied = denyIfNotAdmin(interaction);
+    if (denied) return denied;
     const slug: string | undefined = interaction.data?.values?.[0];
     const guildId: string | undefined = interaction.guild_id;
     if (!slug || !guildId) return updateMessageResponse("Couldn't read your selection.");
@@ -457,6 +432,8 @@ export async function handleTankPostSelect(context: RequestContext, interaction:
 }
 
 export async function handleTankRepostConfirm(context: RequestContext, interaction: any, customId: string): Promise<Response> {
+    const denied = denyIfNotAdmin(interaction);
+    if (denied) return denied;
     const guildId: string | undefined = interaction.guild_id;
     const slug = customId.split(':')[1];
     if (!slug || !guildId) return updateMessageResponse("Couldn't read your selection.");
@@ -473,7 +450,7 @@ interface MarketSearchOption {
 
 async function communityPickSearchData(context: RequestContext, guildId: string, sport: string, keyword?: string, channelId?: string): Promise<DeferredMessageData> {
     const configRows = await getSql(context.env)`SELECT channel_id, community_pick_channel_ids FROM discord_guild_configs WHERE guild_id = ${guildId}`;
-    if (configRows.length === 0) return { content: 'Run /heatchecks-setup first to choose a channel for this server.' };
+    if (configRows.length === 0) return { content: 'Run `/heatchecks setup` first to choose a channel for this server.' };
 
     // Optional target channel - must be the main channel or one of the wizard's
     // approved Community Pick channels.
@@ -481,7 +458,7 @@ async function communityPickSearchData(context: RequestContext, guildId: string,
         const cfg = configRows[0] as unknown as { channel_id: string; community_pick_channel_ids: string[] | string };
         const extras: string[] = Array.isArray(cfg.community_pick_channel_ids) ? cfg.community_pick_channel_ids : JSON.parse((cfg.community_pick_channel_ids as string) ?? '[]');
         if (channelId !== cfg.channel_id && !extras.includes(channelId)) {
-            return { content: `<#${channelId}> isn't an approved Community Pick channel - add it in /heatchecks-setup (step 2) first.` };
+            return { content: `<#${channelId}> isn't an approved Community Pick channel - add it in /heatchecks settings → Channels first.` };
         }
     }
 
@@ -609,6 +586,8 @@ function communityPickConfirmScreen(
 }
 
 export async function handleCommunityPickSelect(context: RequestContext, interaction: any, customId: string): Promise<Response> {
+    const denied = denyIfNotAdmin(interaction);
+    if (denied) return denied;
     const [, sport, channelId = ''] = customId.split(':');
     const marketId: string | undefined = interaction.data?.values?.[0];
     if (!marketId || !sport) return updateMessageResponse("Couldn't read your selection.");
@@ -626,6 +605,8 @@ export async function handleCommunityPickSelect(context: RequestContext, interac
 // Giveaway winner-count select on the confirm screen - re-renders the same screen
 // with the chosen count baked into the Create button.
 export async function handleCommunityGiveawaySelect(context: RequestContext, interaction: any, customId: string): Promise<Response> {
+    const denied = denyIfNotAdmin(interaction);
+    if (denied) return denied;
     const [, marketId, sport, channelId = ''] = customId.split(':');
     const gwCount = Number(interaction.data?.values?.[0] ?? '0') || 0;
     if (!marketId || !sport) return updateMessageResponse("Couldn't read your selection.");
@@ -639,6 +620,8 @@ export async function handleCommunityGiveawaySelect(context: RequestContext, int
 }
 
 export async function handleCommunityPickConfirm(context: RequestContext, interaction: any, customId: string): Promise<Response> {
+    const denied = denyIfNotAdmin(interaction);
+    if (denied) return denied;
     const guildId: string | undefined = interaction.guild_id;
     const [, marketId, sport, targetChannelId = '', gwRaw = '0'] = customId.split(':');
     const giveawayWinnerCount = Math.max(0, Math.min(25, Number(gwRaw) || 0));
@@ -670,7 +653,7 @@ export async function handleCommunityPickConfirm(context: RequestContext, intera
 
     const sql = getSql(context.env);
     const configRows = await sql`SELECT channel_id, community_pick_channel_ids FROM discord_guild_configs WHERE guild_id = ${guildId}`;
-    if (configRows.length === 0) return updateMessageResponse('This server has no channel configured - run /heatchecks-setup first.');
+    if (configRows.length === 0) return updateMessageResponse('This server has no channel configured - run `/heatchecks setup` first.');
     const cfg = configRows[0] as unknown as { channel_id: string; community_pick_channel_ids: string[] | string };
     const extras: string[] = Array.isArray(cfg.community_pick_channel_ids) ? cfg.community_pick_channel_ids : JSON.parse((cfg.community_pick_channel_ids as string) ?? '[]');
     // Re-validate the target channel server-side (custom_ids are client-round-tripped).
@@ -697,7 +680,7 @@ export async function handleCommunityPickConfirm(context: RequestContext, intera
     });
 
     if (result.status === 'duplicate') return updateMessageResponse('This market already has a Community Pick posted in this server.');
-    if (result.status === 'post_failed') return updateMessageResponse('Created, but posting the card failed - try /heatchecks-post community-pick again shortly.');
+    if (result.status === 'post_failed') return updateMessageResponse('Created, but posting the card failed - try `/heatchecks post community-pick` again shortly.');
     return updateMessageResponse(brandLine('Posted!'));
 }
 
@@ -757,7 +740,7 @@ export async function handleCommunityVote(context: RequestContext, interaction: 
 }
 
 // ===================================================================================
-// /heatchecks-draw - search settled, undrawn sources in this guild, draw immediately
+// `/heatchecks draw` - search settled, undrawn sources in this guild, draw immediately
 // on selection (idempotent via community_giveaway_draws' own unique constraint, so no
 // separate confirm step - a repeat click just shows the same winner again).
 // ===================================================================================
@@ -824,6 +807,8 @@ async function drawSearchData(context: RequestContext, guildId: string): Promise
 }
 
 export async function handleDrawSelect(context: RequestContext, interaction: any): Promise<Response> {
+    const denied = denyIfNotAdmin(interaction);
+    if (denied) return denied;
     const value: string | undefined = interaction.data?.values?.[0];
     const guildId: string | undefined = interaction.guild_id;
     if (!value || !guildId) return updateMessageResponse("Couldn't read your selection.");
@@ -838,6 +823,48 @@ export async function handleDrawSelect(context: RequestContext, interaction: any
         return updateMessageResponse('No eligible participants to draw from for that one.');
     }
     return updateMessageResponse(`Winner: <@${result.winnerDiscordUserId}>${result.status === 'already_drawn' ? ' (already drawn previously)' : ''}`);
+}
+
+// The "Draw a winner" button on a settlement recap - the same draw as the search
+// command, minus the search: the recap already identifies the source. The recap is a
+// PUBLIC message, so Manage Server is re-checked here (a member who clicks gets a
+// private "you need permission" reply and nothing happens). The winner announcement
+// posts publicly like an auto-draw would; the button is then stripped from the recap
+// best-effort, so a settled pick is only ever drawn once by hand.
+export async function handleDrawButton(context: RequestContext, interaction: any, customId: string): Promise<Response> {
+    const guildId: string | undefined = interaction.guild_id;
+    if (!guildId) return ephemeral('Run this in a server, not a DM.');
+    if (!hasManageGuildPermission(interaction)) return ephemeral('Only admins (Manage Server) can draw a winner.');
+
+    const [, sourceType, sourceId] = customId.split(':') as [string, GiveawaySourceType, string];
+    if ((sourceType !== 'tank' && sourceType !== 'community_pick') || !sourceId) {
+        return ephemeral("Couldn't process that button.");
+    }
+
+    const sql = getSql(context.env);
+    const drawnBy: string | undefined = interaction.member?.user?.id;
+    const result = await drawGiveawayWinner(sql, context.env, { guildId, sourceType, sourceId, drawnBy: drawnBy ?? null });
+
+    const sourceLabel: string = interaction.message?.embeds?.[0]?.title ?? 'Settled pick';
+    // A winner is public (same as an auto-draw announcement); an empty pool is only
+    // the clicking admin's problem, so it stays private rather than adding channel
+    // noise to a recap that's still offering the button.
+    const body = result.status === 'no_pool'
+        ? { ...buildNoEligiblePoolMessage(sourceLabel), flags: EPHEMERAL_FLAG }
+        : buildGiveawayResultMessage(sourceLabel, result.winnerDiscordUserId);
+
+    // Only retire the button once a winner actually exists - an empty pool is worth
+    // retrying later (someone could still be linked/added), a drawn winner is not.
+    const channelId: string | undefined = interaction.channel_id;
+    const messageId: string | undefined = interaction.message?.id;
+    if (result.status !== 'no_pool' && channelId && messageId) {
+        context.waitUntil(clearMessageComponents(context.env, channelId, messageId));
+    }
+
+    return new Response(
+        JSON.stringify({ type: RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE, data: body }),
+        { headers: { 'Content-Type': 'application/json' } }
+    );
 }
 
 // ===================================================================================
@@ -1103,7 +1130,7 @@ export async function buildMeCardInput(env: Env, guildId: string, discordUserId:
 // same RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE + EPHEMERAL_FLAG every other reply in
 // this file uses), so it's the one place a picker can see their own recent results
 // and awarded points without a channel broadcast or a DM - the alternative when a
-// guild has set /heatchecks-config settlement_visibility:Private (see
+// guild has set `/heatchecks settings settlement_visibility:Private` (see
 // functions/api/discord-settlement-sweep.ts and
 // functions/api/community-pick-settlement-sweep.ts, which skip their channel post
 // in that mode but keep awarding points exactly as before). Works the same way

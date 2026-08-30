@@ -1,4 +1,4 @@
-// The /heatchecks-setup guided wizard - a chained ephemeral flow (every step edits
+// The `/heatchecks setup` guided wizard - a chained ephemeral flow (every step edits
 // the same message, response type 7) that walks an admin from "bot just joined" to
 // fully configured in ~2 minutes. Settings write as-you-go: the guild config row is
 // created the moment a channel is chosen (step 2), and every later step just updates
@@ -16,7 +16,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { hasManageGuildPermission, postDiscordChannelMessage } from './discord-api';
+import { hasManageGuildPermission, postDiscordChannelMessage, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL } from './discord-api';
 import { postWelcomeImageToChannel } from './leaderboard-image';
 import { brandEmbed } from './discord-brand';
 // Pre-rendered branded header (navy card, black plate, Orbitron green - the
@@ -25,6 +25,7 @@ import { brandEmbed } from './discord-brand';
 // response; type-7 updates that omit the attachments field retain it, so the banner
 // stays pinned above the embed through every step.
 import BANNER_SETUP from './art/banner-setup.bin';
+import BANNER_SETTINGS from './art/banner-settings.bin';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
 import type { PropOdds } from '../../tank-types';
 
@@ -124,7 +125,7 @@ export function buildWelcomeCardMessage(): { embeds: unknown[] } {
 }
 
 // ===================================================================================
-// Entry - /heatchecks-setup. With a channel option: the original quick-set path,
+// Entry - `/heatchecks setup`. With a channel option: the original quick-set path,
 // unchanged. Bare: the wizard.
 // ===================================================================================
 
@@ -137,10 +138,10 @@ export async function handleSetupWizardCommand(context: RequestContext, interact
     const configuredBy: string | undefined = interaction.member?.user?.id;
     const sql = getSql(context.env);
 
-    // Quick path: /heatchecks-setup channel:#x still works exactly as before.
+    // Quick path: `/heatchecks setup channel:#x` still works exactly as before.
     if (channelId && configuredBy) {
         await upsertChannel(sql, guildId, channelId, configuredBy);
-        return screen(`Done — Tank posts will now go to <#${channelId}>. Run \`/heatchecks-setup\` with no options for the full guided setup.`, [], true);
+        return screen(`Done — Tank posts will now go to <#${channelId}>. Run \`/heatchecks setup\` with no options for the full guided setup.`, [], true);
     }
 
     const existing = await sql`SELECT channel_id FROM discord_guild_configs WHERE guild_id = ${guildId}`;
@@ -151,7 +152,7 @@ export async function handleSetupWizardCommand(context: RequestContext, interact
     // NOTE: no '#' markdown headers in any screen copy - embeds don't render them.
     return screen(
         [
-            "This setup will get your Discord server ready to go in a couple of minutes. Every choice can be changed later with `/heatchecks-config`.",
+            "This setup will get your Discord server ready to go in a couple of minutes. Every choice can be changed later with `/heatchecks settings`.",
             '',
             '**What Heatchecks will never do:** read your message history, DM your members unprompted, distribute prizes, or touch real money. It only posts cards to the channels you pick and replies when someone uses it.' + updateMode,
         ].join('\n'),
@@ -215,7 +216,7 @@ export async function handleWizardComponent(context: RequestContext, interaction
         case 'welcome': {
             const rows = await sql`SELECT channel_id FROM discord_guild_configs WHERE guild_id = ${guildId}`;
             const chanId = (rows[0] as any)?.channel_id;
-            if (!chanId) return screen('No channel configured — restart with /heatchecks-setup.');
+            if (!chanId) return screen('No channel configured — restart with `/heatchecks setup`.');
             try {
                 // Rendered welcome card in the leaderboard's aesthetic; the plain
                 // embed only if rendering itself fails. Channel-post failures throw
@@ -432,14 +433,382 @@ function doneScreen(): Response {
             `Your first Tank cards arrive around <t:${nextSweepUnix()}:t> (<t:${nextSweepUnix()}:R>) — or post recent ones right now with the button below.`,
             '',
             '**More you can do**',
-            '• `/heatchecks-post community-pick` — post your first Community Prop, with an optional giveaway for correct calls',
-            '• `/heatchecks-post tank` — push any Tank on demand',
+            '• `/heatchecks post community-pick` — post your first Community Prop, with an optional giveaway for correct calls',
+            '• `/heatchecks post tank` — push any Tank on demand',
             '• `/heatchecks-league join` — NFL season league (activates the weekly Tuesday slate)',
-            '• `/heatchecks-draw` — draw a giveaway winner from any settled pick',
-            '• `/heatchecks-config` — see or change any of these settings, anytime',
+            '• `/heatchecks post leaderboard` — post the standings publicly, any time',
+            '• `/heatchecks draw` — draw a giveaway winner from any settled pick',
+            '• `/heatchecks settings` — see or change any of these settings, anytime',
+            '',
+            'Only admins with **Manage Server** can run any of that; everyone else can vote, pick, and check their own stats. `/heatchecks settings` → **Access & privacy** has the full breakdown and how to narrow it further.',
         ].join('\n'),
         [buttonRow([{ label: 'Post the latest Tanks now', customId: 'wz:backfill', style: STYLE_SUCCESS }])]
     );
+}
+
+// ===================================================================================
+// The settings panel - what bare `/heatchecks settings` opens. Same problem the
+// wizard solved for first-run, solved for day two: every setting used to be either a
+// flag you had to already know the name of, or wizard-only (cadence, extra channels,
+// weekly post, member-command visibility had NO command form at all). This panel is
+// the single place all of them live: current values on top, one button per setting,
+// and every change lands back here so the state you just changed is visible.
+//
+// It reuses this file's step screens and its exact UPDATE-the-same-message pattern,
+// but under the `st:` prefix rather than `wz:` - the wizard chains forward step by
+// step, the panel always returns to the panel. Changes write immediately; there's no
+// save step to abandon.
+// ===================================================================================
+
+interface GuildSettingsRow {
+    channel_id: string;
+    disabled_sports: string[] | string;
+    auto_draw_enabled: boolean;
+    community_points_label: string | null;
+    leaderboard_label: string | null;
+    settlement_visibility: string;
+    tank_posts_enabled: boolean;
+    daily_post_limit: number | null;
+    community_pick_channel_ids: string[] | string;
+    weekly_leaderboard: string[] | string;
+    ephemeral_user_commands: boolean;
+    configured_by_discord_user_id: string;
+    configured_at: string | Date;
+}
+
+const parseJsonArray = (v: string[] | string | null): string[] => (Array.isArray(v) ? v : JSON.parse((v as string) ?? '[]'));
+
+// The panel's own screen shell - the settings banner instead of the setup one, and
+// (like the wizard) attached only on the first response; every later type-7 update
+// omits attachments so Discord keeps it pinned above the embed.
+function panelScreen(body: string, rows: unknown[], firstResponse: boolean): Response {
+    const data = {
+        content: '',
+        embeds: [brandEmbed({ kind: 'system', body })],
+        components: rows,
+        flags: firstResponse ? EPHEMERAL_FLAG : undefined,
+    };
+    if (!firstResponse) return json({ type: RESPONSE_UPDATE_MESSAGE, data });
+
+    const form = new FormData();
+    form.append('payload_json', JSON.stringify({ type: RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE, data }));
+    form.append('files[0]', new Blob([new Uint8Array(BANNER_SETTINGS)], { type: 'image/png' }), 'server-settings.png');
+    return new Response(form);
+}
+
+// One sub-screen for one setting, always with a way back to the panel.
+function settingScreen(body: string, rows: unknown[]): Response {
+    return panelScreen(body, [...rows, buttonRow([{ label: '← Back to settings', customId: 'st:panel' }])], false);
+}
+
+export async function buildSettingsPanel(context: RequestContext, guildId: string, firstResponse: boolean): Promise<Response> {
+    const sql = getSql(context.env);
+    const rows = await sql`
+        SELECT channel_id, disabled_sports, auto_draw_enabled, community_points_label, leaderboard_label,
+               settlement_visibility, tank_posts_enabled, daily_post_limit, community_pick_channel_ids,
+               weekly_leaderboard, ephemeral_user_commands,
+               configured_by_discord_user_id, configured_at
+        FROM discord_guild_configs WHERE guild_id = ${guildId}
+    `;
+    if (rows.length === 0) {
+        return panelScreen('This server has no configuration yet — run `/heatchecks setup` first.', [], firstResponse);
+    }
+    const c = rows[0] as unknown as GuildSettingsRow;
+    const disabled = parseJsonArray(c.disabled_sports);
+    const cpChannels = parseJsonArray(c.community_pick_channel_ids);
+    const weekly = parseJsonArray(c.weekly_leaderboard);
+    const enabledSports = ALL_LEAGUES.filter((s) => !disabled.includes(s));
+
+    const body = [
+        `**Main channel:** <#${c.channel_id}>`,
+        `**Community Pick channels:** ${cpChannels.length ? cpChannels.map((id) => `<#${id}>`).join(' ') : 'main channel only'}`,
+        `**Tank posts:** ${c.tank_posts_enabled ? `on (${c.daily_post_limit == null ? 'all' : `max ${c.daily_post_limit}/day`})` : 'off'}`,
+        `**Sports:** ${enabledSports.length === ALL_LEAGUES.length ? 'all' : enabledSports.join(', ') || 'none'}`,
+        `**Settlement results:** ${c.settlement_visibility === 'private' ? 'private (members use /my-results)' : 'announced in channel'}`,
+        `**Auto-draw on settlement:** ${c.auto_draw_enabled ? 'on' : 'off'}`,
+        `**Names:** points = "${c.community_points_label || DEFAULT_COMMUNITY_POINTS_LABEL}", leaderboard = "${c.leaderboard_label || DEFAULT_LEADERBOARD_LABEL}"`,
+        `**Weekly leaderboard post:** ${weekly.length ? weekly.join(', ') : 'off'}`,
+        `**Member commands:** ${c.ephemeral_user_commands ? 'visible only to the member' : 'visible to everyone'}`,
+        `**Who can run \`/heatchecks\`:** admins with Manage Server — everyone else can only vote, pick, and check their own stats.`,
+        configuredByLine(c),
+        '',
+        'Pick anything below to change it — or re-run `/heatchecks setup` for the guided walkthrough.',
+    ].join('\n');
+
+    return panelScreen(body, [
+        buttonRow([
+            { label: 'Channels', customId: 'st:chans' },
+            { label: 'Tank posts', customId: 'st:tank' },
+            { label: 'Sports', customId: 'st:sports' },
+            { label: 'Results', customId: 'st:vis' },
+            { label: 'Auto-draw', customId: 'st:draw' },
+        ]),
+        buttonRow([
+            { label: 'Names', customId: 'st:names' },
+            { label: 'Weekly post', customId: 'st:weekly' },
+            { label: 'Member commands', customId: 'st:eph' },
+            { label: 'Access & privacy', customId: 'st:access' },
+        ]),
+    ], firstResponse);
+}
+
+// "Last configured by" - configured_by_discord_user_id/configured_at have been stored
+// since the table was created but never surfaced anywhere. In a server with several
+// admins, "who changed this, and when" is the first question asked when a setting
+// looks wrong, so the panel that shows the settings should answer it too.
+// Neon hands timestamps back as Date objects, so go through new Date() rather than
+// Date.parse() on a string that may already be one.
+function configuredByLine(c: GuildSettingsRow): string {
+    const ts = new Date(c.configured_at).getTime();
+    const when = Number.isNaN(ts) ? '' : ` on <t:${Math.floor(ts / 1000)}:D>`;
+    return `**Last configured by:** <@${c.configured_by_discord_user_id}>${when}`;
+}
+
+// The access/privacy explainer. Until this existed, the only trust copy an admin ever
+// saw was the wizard's first screen - a one-time thing, gone the moment setup ended -
+// and the permission model itself was never stated anywhere at all. This is the
+// standing, re-readable version of both, plus the one genuinely actionable thing an
+// admin can do about it: Discord's own per-command role/channel overrides, which are
+// strictly narrower than our Manage Server default and which most admins don't know
+// exist.
+//
+// Every claim here has to stay true of the code: the "re-checks on every request"
+// line is only honest because hasManageGuildPermission gates the entry-point
+// commands, the wizard steps, this panel, AND (see discord-commands.ts's
+// denyIfNotAdmin) the mid-flow select/confirm steps.
+function accessScreen(): Response {
+    return settingScreen(
+        [
+            '**Access & privacy**',
+            '',
+            '**Who can do what**',
+            '• **Admins with Manage Server** — `/heatchecks` and everything under it: setup, settings, posting, draws.',
+            '• **Everyone else** — `/leaderboard`, `/me`, `/my-results`, `/heatchecks-league`, and the pick and vote buttons on cards.',
+            '',
+            'Discord hides admin commands from members who lack the permission, and Heatchecks re-checks it on every request — so a hidden command is never the only thing standing between a member and an admin action.',
+            '',
+            '**Want tighter control?**',
+            'Server Settings → Integrations → Heatchecks lets you limit any command to specific roles or channels — staff-only posting, say, or member commands confined to a bot channel. Your rules there are narrower than ours and they win.',
+            '',
+            '**What Heatchecks never does**',
+            'Read your message history, DM your members unprompted, distribute prizes, or touch real money. It posts to the channels you pick and replies when someone uses it.',
+            '',
+            '**Channel permissions it needs**',
+            'View Channel, Send Messages, Embed Links, Attach Files — in your main channel and any Community Pick channel.',
+        ].join('\n'),
+        []
+    );
+}
+
+// Every st:* component lands here. Writes are one-column UPDATEs on an existing row
+// (the panel refuses to open without one), so an interrupted panel can't half-write a
+// guild's config any more than the wizard can.
+export async function handleSettingsComponent(context: RequestContext, interaction: any, customId: string): Promise<Response> {
+    const guildId: string | undefined = interaction.guild_id;
+    const userId: string | undefined = interaction.member?.user?.id;
+    if (!guildId || !userId) return panelScreen("Couldn't read that.", [], false);
+    if (!hasManageGuildPermission(interaction)) return panelScreen('You need the "Manage Server" permission to change settings.', [], false);
+
+    const sql = getSql(context.env);
+    const [, step, arg] = customId.split(':');
+
+    switch (step) {
+        case 'panel':
+            return buildSettingsPanel(context, guildId, false);
+
+        case 'access':
+            return accessScreen();
+
+        case 'chans':
+            return settingScreen(
+                '**Channels**\nMain channel is where Tank cards and announcements post. Community Pick channels are the extra channels admins may post picks into.',
+                [
+                    { type: ACTION_ROW, components: [{ type: CHANNEL_SELECT, custom_id: 'st:setchan', channel_types: [GUILD_TEXT], placeholder: 'Main channel' }] },
+                    { type: ACTION_ROW, components: [{ type: CHANNEL_SELECT, custom_id: 'st:setcpchans', channel_types: [GUILD_TEXT], min_values: 1, max_values: 5, placeholder: 'Community Pick channels' }] },
+                    buttonRow([{ label: 'Clear extra channels', customId: 'st:setcpchans:clear' }]),
+                ]
+            );
+
+        case 'setchan': {
+            const chanId = interaction.data?.values?.[0];
+            if (!chanId) return settingScreen("Couldn't read that channel — try again.", []);
+            await upsertChannel(sql, guildId, chanId, userId);
+            return buildSettingsPanel(context, guildId, false);
+        }
+
+        case 'setcpchans': {
+            const ids: string[] = arg === 'clear' ? [] : (interaction.data?.values ?? []);
+            await sql`UPDATE discord_guild_configs SET community_pick_channel_ids = ${JSON.stringify(ids)}::jsonb WHERE guild_id = ${guildId}`;
+            return buildSettingsPanel(context, guildId, false);
+        }
+
+        case 'tank':
+            return settingScreen(
+                '**Tank posts**\nDaily prop-pick cards from heatchecks.io. Turn them on or off, and cap how many post per day.',
+                [
+                    buttonRow([
+                        { label: 'On', customId: 'st:settank:on', style: STYLE_PRIMARY },
+                        { label: 'Off', customId: 'st:settank:off' },
+                    ]),
+                    buttonRow([
+                        { label: '1 a day', customId: 'st:setcad:1' },
+                        { label: '3 a day', customId: 'st:setcad:3' },
+                        { label: 'All of them', customId: 'st:setcad:all' },
+                    ]),
+                ]
+            );
+
+        case 'settank':
+            await sql`UPDATE discord_guild_configs SET tank_posts_enabled = ${arg === 'on'} WHERE guild_id = ${guildId}`;
+            return buildSettingsPanel(context, guildId, false);
+
+        case 'setcad': {
+            const limit = arg === 'all' ? null : Number(arg);
+            await sql`UPDATE discord_guild_configs SET daily_post_limit = ${limit} WHERE guild_id = ${guildId}`;
+            return buildSettingsPanel(context, guildId, false);
+        }
+
+        case 'sports':
+            return settingScreen(
+                '**Sports**\nWhich sports post in this server. Picking replaces the current selection.',
+                [{
+                    type: ACTION_ROW,
+                    components: [{
+                        type: STRING_SELECT, custom_id: 'st:setsports', min_values: 1, max_values: 5, placeholder: 'Pick sports',
+                        options: [
+                            { label: 'All sports', value: 'all' },
+                            { label: 'Baseball', value: 'baseball' },
+                            { label: 'Soccer (Football)', value: 'soccer' },
+                            { label: 'Basketball', value: 'basketball' },
+                            { label: 'American Football', value: 'football' },
+                        ],
+                    }],
+                }]
+            );
+
+        case 'setsports': {
+            const values: string[] = interaction.data?.values ?? [];
+            const enabled = values.includes('all') ? ALL_LEAGUES : values.flatMap((v) => SPORT_GROUPS[v] ?? []);
+            const disabled = ALL_LEAGUES.filter((l) => !enabled.includes(l));
+            await sql`UPDATE discord_guild_configs SET disabled_sports = ${JSON.stringify(disabled)}::jsonb WHERE guild_id = ${guildId}`;
+            return buildSettingsPanel(context, guildId, false);
+        }
+
+        case 'vis':
+            return settingScreen(
+                '**Settlement results**\nWhen picks settle, announce results in the channel, or keep them private (members check `/my-results`)?',
+                [buttonRow([
+                    { label: 'Announce in channel', customId: 'st:setvis:channel', style: STYLE_PRIMARY },
+                    { label: 'Keep results private', customId: 'st:setvis:private' },
+                ])]
+            );
+
+        case 'setvis':
+            await sql`UPDATE discord_guild_configs SET settlement_visibility = ${arg === 'private' ? 'private' : 'channel'} WHERE guild_id = ${guildId}`;
+            return buildSettingsPanel(context, guildId, false);
+
+        case 'draw':
+            return settingScreen(
+                '**Auto-draw**\nAutomatically draw a giveaway winner whenever something settles here. Off means you draw by hand — the "Draw a winner" button on a settled card, or `/heatchecks draw`.\n\nHeatchecks only ever names a winner; it never supplies or distributes prizes.',
+                [buttonRow([
+                    { label: 'On', customId: 'st:setdraw:on', style: STYLE_PRIMARY },
+                    { label: 'Off', customId: 'st:setdraw:off' },
+                ])]
+            );
+
+        case 'setdraw':
+            await sql`UPDATE discord_guild_configs SET auto_draw_enabled = ${arg === 'on'} WHERE guild_id = ${guildId}`;
+            return buildSettingsPanel(context, guildId, false);
+
+        case 'names':
+            return settingScreen(
+                '**Names**\nWhat this server calls its leaderboard and its points. Cosmetic only — scoring is unchanged.',
+                [buttonRow([
+                    { label: 'Rename leaderboard', customId: 'st:setlbname' },
+                    { label: 'Rename points', customId: 'st:setptsname' },
+                    { label: 'Reset both', customId: 'st:setnames:reset' },
+                ])]
+            );
+
+        case 'setlbname':
+            return json({
+                type: RESPONSE_MODAL,
+                data: {
+                    custom_id: 'stm:lbname', title: 'Name your leaderboard',
+                    components: [{ type: ACTION_ROW, components: [{ type: TEXT_INPUT, custom_id: 'name', label: 'Leaderboard name', style: 1, max_length: 40, required: true }] }],
+                },
+            });
+
+        case 'setptsname':
+            return json({
+                type: RESPONSE_MODAL,
+                data: {
+                    custom_id: 'stm:ptsname', title: 'Name your points',
+                    components: [{ type: ACTION_ROW, components: [{ type: TEXT_INPUT, custom_id: 'name', label: 'Points name', style: 1, max_length: 40, required: true }] }],
+                },
+            });
+
+        case 'setnames':
+            await sql`UPDATE discord_guild_configs SET leaderboard_label = NULL, community_points_label = NULL WHERE guild_id = ${guildId}`;
+            return buildSettingsPanel(context, guildId, false);
+
+        case 'weekly':
+            return settingScreen(
+                '**Weekly leaderboard post**\nPost your leaderboard automatically every week. Picking replaces the current selection.',
+                [
+                    {
+                        type: ACTION_ROW,
+                        components: [{
+                            type: STRING_SELECT, custom_id: 'st:setweekly', min_values: 1, max_values: 3, placeholder: 'Which leaderboards?',
+                            options: [
+                                { label: 'Community Points', value: 'community' },
+                                { label: 'Accuracy', value: 'accuracy' },
+                                { label: 'Skill Rating', value: 'sr' },
+                            ],
+                        }],
+                    },
+                    buttonRow([{ label: 'Turn weekly post off', customId: 'st:setweekly:off' }]),
+                ]
+            );
+
+        case 'setweekly': {
+            const values: string[] = arg === 'off' ? [] : (interaction.data?.values ?? []);
+            await sql`UPDATE discord_guild_configs SET weekly_leaderboard = ${JSON.stringify(values)}::jsonb WHERE guild_id = ${guildId}`;
+            return buildSettingsPanel(context, guildId, false);
+        }
+
+        case 'eph':
+            return settingScreen(
+                '**Member commands**\n`/me`, `/leaderboard`, and `/my-results` — should replies be visible only to the member who asks, or posted for everyone?',
+                [buttonRow([
+                    { label: 'Only visible to them', customId: 'st:seteph:yes' },
+                    { label: 'Visible to everyone', customId: 'st:seteph:no', style: STYLE_PRIMARY },
+                ])]
+            );
+
+        case 'seteph':
+            await sql`UPDATE discord_guild_configs SET ephemeral_user_commands = ${arg === 'yes'} WHERE guild_id = ${guildId}`;
+            return buildSettingsPanel(context, guildId, false);
+    }
+    return buildSettingsPanel(context, guildId, false);
+}
+
+// Settings-mode modal submits (stm:*) - same two rename modals the wizard uses, but
+// they return to the panel instead of advancing a step.
+export async function handleSettingsModal(context: RequestContext, interaction: any, customId: string): Promise<Response> {
+    const guildId: string | undefined = interaction.guild_id;
+    if (!guildId) return panelScreen("Couldn't read that.", [], false);
+    if (!hasManageGuildPermission(interaction)) return panelScreen('You need the "Manage Server" permission to change settings.', [], false);
+
+    const value: string = (interaction.data?.components?.[0]?.components?.[0]?.value ?? '').trim().slice(0, 40);
+    const sql = getSql(context.env);
+
+    if (customId === 'stm:lbname' && value) {
+        await sql`UPDATE discord_guild_configs SET leaderboard_label = ${value} WHERE guild_id = ${guildId}`;
+    } else if (customId === 'stm:ptsname' && value) {
+        await sql`UPDATE discord_guild_configs SET community_points_label = ${value} WHERE guild_id = ${guildId}`;
+    }
+    return buildSettingsPanel(context, guildId, false);
 }
 
 // ===================================================================================
@@ -457,7 +826,7 @@ interface BackfillTankRow {
 
 async function runBackfill(context: RequestContext, sql: ReturnType<typeof getSql>, guildId: string): Promise<Response> {
     const cfg = await sql`SELECT channel_id, disabled_sports FROM discord_guild_configs WHERE guild_id = ${guildId}`;
-    if (cfg.length === 0) return screen('No channel configured — restart with /heatchecks-setup.');
+    if (cfg.length === 0) return screen('No channel configured — restart with `/heatchecks setup`.');
     const channelId = (cfg[0] as any).channel_id as string;
     const rawDisabled = (cfg[0] as any).disabled_sports;
     const disabled: string[] = Array.isArray(rawDisabled) ? rawDisabled : JSON.parse(rawDisabled ?? '[]');

@@ -1,6 +1,6 @@
 // Builds the Discord message body (embed + pick buttons) for a real Tank - the one
 // rendering path shared by the daily sweep (functions/api/discord-sweep.ts) and the
-// on-demand admin push (functions/api/discord/interactions.ts's "heatchecks-post
+// on-demand admin push (functions/api/discord/interactions.ts's "/heatchecks post
 // tank" branch), so the two can never drift into rendering the same Tank two
 // different ways. Pure - no I/O, no DB access; callers own fetching the row and
 // posting the result via lib/pages-functions/discord-api.ts#postDiscordChannelMessage.

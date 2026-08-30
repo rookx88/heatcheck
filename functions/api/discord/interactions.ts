@@ -24,8 +24,8 @@
 //   LIVE (fetchGuildMembers) rather than from any stored table. Deferred (type 5)
 //   since the member fetch + DB query can exceed Discord's 3-second window; the real
 //   reply follows via a webhook PATCH once ready.
-// - Everything else (heatchecks-setup/-config/-post/-draw, and every
-//   search-select/confirm component those commands drive) is handled in
+// - Everything else (the /heatchecks admin hub - setup/settings/post/draw - and every
+//   search-select/confirm component those subcommands drive) is handled in
 //   discord-commands.ts - see that file's own header for the full rundown.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
@@ -36,7 +36,7 @@ import { fetchGuildMembers, getGuildLabels, buildDiscordAvatarUrl, hasManageGuil
 import type { LeaderboardMessage } from '../../../lib/pages-functions/discord-leaderboard-card';
 import { sendLeaderboardResult, postLeaderboardToChannel } from '../../../lib/pages-functions/leaderboard-image';
 import { computeSkillRatings } from '../../../lib/pages-functions/skill-rating';
-import { handleSetupWizardCommand, handleWizardComponent, handleWizardModal } from '../../../lib/pages-functions/discord-setup-wizard';
+import { handleSetupWizardCommand, handleWizardComponent, handleWizardModal, handleSettingsComponent, handleSettingsModal } from '../../../lib/pages-functions/discord-setup-wizard';
 import {
     handleConfigCommand,
     handlePostCommand,
@@ -48,6 +48,7 @@ import {
     handleCommunityGiveawaySelect,
     handleCommunityVote,
     handleDrawSelect,
+    handleDrawButton,
     handleLeagueCommand,
     handleMyResultsCommand,
     updateMessageResponse,
@@ -185,6 +186,26 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     if (interaction.type === DISCORD_APPLICATION_COMMAND) {
         const commandName = interaction.data?.name;
+        // The admin hub: /heatchecks setup | settings | draw | post <tank|
+        // community-pick|leaderboard>. Each branch hands its handler an interaction
+        // shaped exactly like the old top-level command's - data.options rewritten to
+        // the subcommand's own options (or, for the post group, to the single
+        // subcommand entry handlePostCommand already reads) - so the handlers below
+        // stay untouched by the reshuffle.
+        if (commandName === 'heatchecks') {
+            const first = interaction.data?.options?.[0];
+            const shim = { ...interaction, data: { ...interaction.data, options: first?.options ?? [] } };
+            if (first?.name === 'setup') return handleSetupWizardCommand(context, shim);
+            if (first?.name === 'settings') return handleConfigCommand(context, shim);
+            if (first?.name === 'draw') return handleDrawCommand(context, shim);
+            if (first?.name === 'post') {
+                if (first.options?.[0]?.name === 'leaderboard') return handlePostLeaderboardCommand(context, shim);
+                return handlePostCommand(context, shim);
+            }
+            return new Response('Unknown subcommand.', { status: 400 });
+        }
+        // The pre-hub command names, kept live so admins mid-propagation (Discord
+        // takes up to an hour to swap a global command set) don't hit a dead command.
         if (commandName === 'heatchecks-setup') return handleSetupWizardCommand(context, interaction);
         if (commandName === 'heatchecks-config') return handleConfigCommand(context, interaction);
         if (commandName === 'heatchecks-post') {
@@ -206,12 +227,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (interaction.type === DISCORD_MODAL_SUBMIT) {
         const customId = typeof interaction.data?.custom_id === 'string' ? interaction.data.custom_id : '';
         if (customId.startsWith('wzm:')) return handleWizardModal(context, interaction, customId);
+        if (customId.startsWith('stm:')) return handleSettingsModal(context, interaction, customId);
         return ephemeral("Couldn't process that.");
     }
 
     if (interaction.type === DISCORD_MESSAGE_COMPONENT) {
         const customId = typeof interaction.data?.custom_id === 'string' ? interaction.data.custom_id : '';
         if (customId.startsWith('wz:')) return handleWizardComponent(context, interaction, customId);
+        if (customId.startsWith('st:')) return handleSettingsComponent(context, interaction, customId);
+        if (customId.startsWith('dwbtn:')) return handleDrawButton(context, interaction, customId);
         if (customId.startsWith('pick:')) return handlePickButton(context, interaction, customId);
         if (customId === 'tpselect') return handleTankPostSelect(context, interaction);
         if (customId.startsWith('tprepost:')) return handleTankRepostConfirm(context, interaction, customId);
@@ -279,7 +303,7 @@ function handleLeaderboardCommand(context: RequestContext, interaction: any): Pr
     return deferImageCommand(context, interaction, buildMessage);
 }
 
-// /heatchecks-post leaderboard - an admin posts the leaderboard card publicly, once,
+// `/heatchecks post leaderboard` - an admin posts the leaderboard card publicly, once,
 // on demand, into the main channel or an approved Community Pick channel. Reuses the
 // exact builders + channel delivery (image-first, embed fallback) the weekly
 // auto-post runs on - a new trigger, not new rendering logic.
@@ -306,13 +330,13 @@ async function handlePostLeaderboardCommand(context: RequestContext, interaction
             const sql = getSql(context.env);
             const cfgRows = await sql`SELECT channel_id, community_pick_channel_ids FROM discord_guild_configs WHERE guild_id = ${guildId}`;
             if (cfgRows.length === 0) {
-                await patch('This server has no channel configured - run /heatchecks-setup first.');
+                await patch('This server has no channel configured - run `/heatchecks setup` first.');
                 return;
             }
             const cfg = cfgRows[0] as unknown as { channel_id: string; community_pick_channel_ids: string[] | string };
             const extras: string[] = Array.isArray(cfg.community_pick_channel_ids) ? cfg.community_pick_channel_ids : JSON.parse((cfg.community_pick_channel_ids as string) ?? '[]');
             if (requestedChannel && requestedChannel !== cfg.channel_id && !extras.includes(requestedChannel)) {
-                await patch(`<#${requestedChannel}> isn't an approved channel - use the main channel or one added in /heatchecks-setup (step 2).`);
+                await patch(`<#${requestedChannel}> isn't an approved channel - use the main channel or one added in /heatchecks settings → Channels.`);
                 return;
             }
             const channelId = requestedChannel ?? cfg.channel_id;

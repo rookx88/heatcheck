@@ -6,8 +6,8 @@
 // (not a plain incoming webhook - see lib/pages-functions/discord-api.ts's
 // postDiscordChannelMessage comment for why that distinction matters for the pick
 // buttons to work at all), respecting each guild's sport filter
-// (discord_guild_configs.disabled_sports, set via /heatchecks-config). Card rendering
-// is shared with the on-demand "/heatchecks-post tank" command via
+// (discord_guild_configs.disabled_sports, set via `/heatchecks settings`). Card rendering
+// is shared with the on-demand "/heatchecks post tank" command via
 // lib/pages-functions/discord-tank-card.ts - not a parallel rendering path.
 //
 // discord_guild_posts is the per-(guild, Tank) idempotency marker - a row is
@@ -29,7 +29,7 @@
 // page isn't live yet - no discord_guild_posts row is written, so the Tank is retried
 // naturally on the next sweep slot once the page deploys. One probe per distinct Tank
 // per run (cached across guilds); a probe failure counts as not-live, never post on
-// uncertainty. The on-demand /heatchecks-post admin command is deliberately ungated -
+// uncertainty. The on-demand /heatchecks post admin command is deliberately ungated -
 // explicit human action, latency-sensitive interaction flow.
 
 import type { PagesFunction } from '@cloudflare/workers-types';

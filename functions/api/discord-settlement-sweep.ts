@@ -47,7 +47,7 @@ import { awardCommunityPoints } from '../../lib/pages-functions/community-points
 import { pointsForProbability } from '../../lib/pages-functions/community-points-formula';
 import { drawGiveawayWinner } from '../../lib/pages-functions/discord-draw';
 import { brandEmbed } from '../../lib/pages-functions/discord-brand';
-import { buildGiveawayResultMessage, buildNoEligiblePoolMessage } from '../../lib/pages-functions/discord-community-card';
+import { buildGiveawayResultMessage, buildNoEligiblePoolMessage, buildDrawButtonRow } from '../../lib/pages-functions/discord-community-card';
 import type { PropOdds } from '../../tank-types';
 
 const MAX_ANNOUNCEMENTS_PER_RUN = 20;
@@ -184,8 +184,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 footer: 'trust',
             });
 
+            // Same one-click draw affordance the Community Pick recap carries: skipped
+            // when auto-draw is already going to announce a winner for this Tank, or
+            // when nobody in this guild picked it (nothing to draw from).
+            const drawRow = !row.auto_draw_enabled && total > 0
+                ? [buildDrawButtonRow('tank', row.tank_page_id)]
+                : [];
+
             if (row.settlement_visibility !== 'private') {
-                await postDiscordChannelMessage(context.env, row.channel_id, { embeds: [embed] });
+                await postDiscordChannelMessage(context.env, row.channel_id, { embeds: [embed], components: drawRow });
             }
             await sql`
                 UPDATE discord_guild_posts SET settlement_posted_at = NOW()

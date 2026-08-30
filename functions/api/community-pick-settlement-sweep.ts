@@ -123,11 +123,16 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             const winningLabel = correctVotes.length > 0
                 ? (winningSide === 0 ? row.side_a_label : row.side_b_label)
                 : null;
+            // One-click draw on the recap, but only when nothing is already drawing
+            // for this pick (a per-pick giveaway or the guild-wide auto-draw both
+            // announce their own winner moments later) and there's actually a pool.
+            const offerDrawButton = row.giveaway_winner_count === 0 && !row.auto_draw_enabled && votes.length > 0;
             const recap = buildCommunitySettlementRecapMessage({
                 questionText: row.question_text,
                 winningLabel,
                 correctCount: correctVotes.length,
                 totalCount: votes.length,
+                drawSourceId: offerDrawButton ? row.id : undefined,
             });
             if (row.settlement_visibility !== 'private') {
                 await postDiscordChannelMessage(context.env, row.channel_id, recap);

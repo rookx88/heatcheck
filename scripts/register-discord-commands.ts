@@ -12,6 +12,7 @@ dotenv.config();
 
 const APPLICATION_COMMAND_TYPE_CHAT_INPUT = 1;
 const APPLICATION_COMMAND_TYPE_SUB_COMMAND = 1;
+const APPLICATION_COMMAND_TYPE_SUB_COMMAND_GROUP = 2;
 const OPTION_TYPE_STRING = 3;
 const OPTION_TYPE_BOOLEAN = 5;
 const OPTION_TYPE_CHANNEL = 7;
@@ -35,95 +36,108 @@ const LEAGUE_SPORTS = ['NFL'];
 const leagueSportChoices = LEAGUE_SPORTS.map((s) => ({ name: s, value: s }));
 
 const commands = [
+    // One admin command. Everything an admin can do hangs off /heatchecks as a
+    // subcommand (setup / settings / draw) or a subcommand group (post), so there is
+    // one name to remember and Discord's own picker does the navigating - replacing
+    // the four separate heatchecks-* commands admins previously had to know by name.
+    // Member commands stay top-level on purpose: they're the discoverable surface and
+    // shouldn't hide behind an admin hub.
     {
-        name: 'heatchecks-setup',
-        description: 'Guided setup — get Heatchecks running in this server in a couple of minutes',
+        name: 'heatchecks',
+        description: 'Set up, configure, post, and run Heatchecks in this server',
         type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
         default_member_permissions: MANAGE_GUILD_PERMISSION,
         options: [
             {
-                name: 'channel',
-                // Optional quick path: with a channel it just sets the channel like
-                // before; bare, it runs the full guided wizard.
-                description: 'Quick-set the post channel (leave empty for the full guided setup)',
-                type: OPTION_TYPE_CHANNEL,
-                required: false,
-                channel_types: [CHANNEL_TYPE_GUILD_TEXT],
-            },
-        ],
-    },
-    {
-        name: 'heatchecks-config',
-        description: 'Configure sports, auto-draw, and display names for this server',
-        type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
-        default_member_permissions: MANAGE_GUILD_PERMISSION,
-        options: [
-            { name: 'sport', description: 'Sport to toggle (pair with enabled)', type: OPTION_TYPE_STRING, required: false, choices: sportChoices },
-            { name: 'enabled', description: 'Enable or disable that sport', type: OPTION_TYPE_BOOLEAN, required: false },
-            { name: 'auto_draw', description: 'Automatically draw a giveaway winner when something settles', type: OPTION_TYPE_BOOLEAN, required: false },
-            { name: 'points_name', description: 'Custom display name for "Community Points" in this server', type: OPTION_TYPE_STRING, required: false },
-            { name: 'leaderboard_name', description: 'Custom display name for "Leaderboard" in this server', type: OPTION_TYPE_STRING, required: false },
-            {
-                name: 'settlement_visibility',
-                description: 'Post settlement results to the channel, or keep them private (members use /my-results)',
-                type: OPTION_TYPE_STRING,
-                required: false,
-                choices: [
-                    { name: 'Channel', value: 'channel' },
-                    { name: 'Private', value: 'private' },
-                ],
-            },
-        ],
-    },
-    {
-        name: 'heatchecks-post',
-        description: 'Post a Tank or create a Community Pick on demand',
-        type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
-        default_member_permissions: MANAGE_GUILD_PERMISSION,
-        options: [
-            {
-                name: 'tank',
-                description: 'Post an existing real Tank right now',
-                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
-                options: [
-                    { name: 'search', description: 'Keyword to search Tanks', type: OPTION_TYPE_STRING, required: true },
-                ],
-            },
-            {
-                name: 'community-pick',
-                description: 'Create a Community Pick from a live Polymarket market',
-                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
-                options: [
-                    { name: 'sport', description: 'Sport to search', type: OPTION_TYPE_STRING, required: true, choices: sportChoices },
-                    { name: 'keyword', description: 'Optional keyword filter', type: OPTION_TYPE_STRING, required: false },
-                    { name: 'channel', description: 'Post to an approved Community Pick channel (default: main channel)', type: OPTION_TYPE_CHANNEL, required: false, channel_types: [CHANNEL_TYPE_GUILD_TEXT] },
-                ],
-            },
-            {
-                name: 'leaderboard',
-                description: 'Post the leaderboard card publicly right now',
+                name: 'setup',
+                description: 'Guided setup — get Heatchecks running in this server in a couple of minutes',
                 type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
                 options: [
                     {
-                        name: 'view', description: 'Which leaderboard to post', type: OPTION_TYPE_STRING, required: true,
-                        choices: [
-                            { name: 'Community Points', value: 'community' },
-                            { name: 'Accuracy', value: 'accuracy' },
-                            { name: 'Skill Rating', value: 'sr' },
-                            { name: 'League', value: 'league' },
-                        ],
+                        name: 'channel',
+                        // Optional quick path: with a channel it just sets the channel
+                        // like before; bare, it runs the full guided wizard.
+                        description: 'Quick-set the post channel (leave empty for the full guided setup)',
+                        type: OPTION_TYPE_CHANNEL,
+                        required: false,
+                        channel_types: [CHANNEL_TYPE_GUILD_TEXT],
                     },
-                    { name: 'sport', description: 'Sport (required for view:League)', type: OPTION_TYPE_STRING, required: false, choices: leagueSportChoices },
-                    { name: 'channel', description: 'Post to an approved channel (default: main channel)', type: OPTION_TYPE_CHANNEL, required: false, channel_types: [CHANNEL_TYPE_GUILD_TEXT] },
                 ],
             },
+            {
+                name: 'settings',
+                // Bare opens the interactive settings panel (every setting, including
+                // the ones with no flag here); the options below stay as the
+                // one-shot power-user path.
+                description: "See and change this server's settings",
+                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
+                options: [
+                    { name: 'sport', description: 'Sport to toggle (pair with enabled)', type: OPTION_TYPE_STRING, required: false, choices: sportChoices },
+                    { name: 'enabled', description: 'Enable or disable that sport', type: OPTION_TYPE_BOOLEAN, required: false },
+                    { name: 'auto_draw', description: 'Automatically draw a giveaway winner when something settles', type: OPTION_TYPE_BOOLEAN, required: false },
+                    { name: 'points_name', description: 'Custom display name for "Community Points" in this server', type: OPTION_TYPE_STRING, required: false },
+                    { name: 'leaderboard_name', description: 'Custom display name for "Leaderboard" in this server', type: OPTION_TYPE_STRING, required: false },
+                    {
+                        name: 'settlement_visibility',
+                        description: 'Post settlement results to the channel, or keep them private (members use /my-results)',
+                        type: OPTION_TYPE_STRING,
+                        required: false,
+                        choices: [
+                            { name: 'Channel', value: 'channel' },
+                            { name: 'Private', value: 'private' },
+                        ],
+                    },
+                ],
+            },
+            {
+                name: 'post',
+                description: 'Post a Tank, Community Pick, or leaderboard on demand',
+                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND_GROUP,
+                options: [
+                    {
+                        name: 'tank',
+                        description: 'Post an existing real Tank right now',
+                        type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
+                        options: [
+                            { name: 'search', description: 'Keyword to search Tanks', type: OPTION_TYPE_STRING, required: true },
+                        ],
+                    },
+                    {
+                        name: 'community-pick',
+                        description: 'Create a Community Pick from a live Polymarket market',
+                        type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
+                        options: [
+                            { name: 'sport', description: 'Sport to search', type: OPTION_TYPE_STRING, required: true, choices: sportChoices },
+                            { name: 'keyword', description: 'Optional keyword filter', type: OPTION_TYPE_STRING, required: false },
+                            { name: 'channel', description: 'Post to an approved Community Pick channel (default: main channel)', type: OPTION_TYPE_CHANNEL, required: false, channel_types: [CHANNEL_TYPE_GUILD_TEXT] },
+                        ],
+                    },
+                    {
+                        name: 'leaderboard',
+                        description: 'Post the leaderboard card publicly right now',
+                        type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
+                        options: [
+                            {
+                                name: 'view', description: 'Which leaderboard to post', type: OPTION_TYPE_STRING, required: true,
+                                choices: [
+                                    { name: 'Community Points', value: 'community' },
+                                    { name: 'Accuracy', value: 'accuracy' },
+                                    { name: 'Skill Rating', value: 'sr' },
+                                    { name: 'League', value: 'league' },
+                                ],
+                            },
+                            { name: 'sport', description: 'Sport (required for view:League)', type: OPTION_TYPE_STRING, required: false, choices: leagueSportChoices },
+                            { name: 'channel', description: 'Post to an approved channel (default: main channel)', type: OPTION_TYPE_CHANNEL, required: false, channel_types: [CHANNEL_TYPE_GUILD_TEXT] },
+                        ],
+                    },
+                ],
+            },
+            {
+                name: 'draw',
+                description: 'Randomly draw a giveaway winner from a settled Tank or Community Pick',
+                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
+            },
         ],
-    },
-    {
-        name: 'heatchecks-draw',
-        description: 'Randomly draw a giveaway winner from a settled Tank or Community Pick',
-        type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
-        default_member_permissions: MANAGE_GUILD_PERMISSION,
     },
     {
         name: 'heatchecks-league',

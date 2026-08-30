@@ -13,7 +13,7 @@
 //
 // end_date on league_seasons is exactly what gates this job (the "active NFL
 // season" query below simply won't return a guild whose season has ended) - manual
-// /heatchecks-post community-pick posting is unaffected either way.
+// `/heatchecks post community-pick` posting is unaffected either way.
 //
 // Isolation reminder: this file never writes to ember_ledger, ember_balances,
 // picks, or any shop table - only (via createAndPostCommunityPick) community_picks,

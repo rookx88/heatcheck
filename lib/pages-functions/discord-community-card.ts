@@ -62,11 +62,27 @@ export function buildCommunityPickCardMessage(input: CommunityPickCardInput): Di
     return { embeds: [embed], components: buildCommunityVoteButtons(input) };
 }
 
+// The one-click alternative to hunting for a settled source in /heatchecks draw:
+// rides the settlement recap itself, which already knows exactly which pick just
+// settled. Manage Server is re-checked when the button is clicked (the recap is a
+// public message, so anyone can press it) - see handleDrawButton in
+// lib/pages-functions/discord-commands.ts.
+export function buildDrawButtonRow(sourceType: 'tank' | 'community_pick', sourceId: string): unknown {
+    return {
+        type: ACTION_ROW_TYPE,
+        components: [{ type: BUTTON_TYPE, style: BUTTON_STYLE_SECONDARY, label: 'Draw a winner', custom_id: `dwbtn:${sourceType}:${sourceId}` }],
+    };
+}
+
 export interface CommunitySettlementRecapInput {
     questionText: string;
     winningLabel: string | null; // null when nobody in this guild got it right
     correctCount: number;
     totalCount: number;
+    // Adds the one-click draw button. Omitted when a draw is already running for this
+    // pick (per-pick giveaway or guild auto-draw), so the recap never offers a button
+    // for something that's about to announce itself anyway.
+    drawSourceId?: string;
 }
 
 export function buildCommunitySettlementRecapMessage(input: CommunitySettlementRecapInput): DiscordMessageBody {
@@ -76,7 +92,7 @@ export function buildCommunitySettlementRecapMessage(input: CommunitySettlementR
 
     return {
         embeds: [brandEmbed({ kind: 'settlement', plate: 'COMMUNITY PICK — SETTLED', title: input.questionText, body: summary, footer: 'trust' })],
-        components: [],
+        components: input.drawSourceId ? [buildDrawButtonRow('community_pick', input.drawSourceId)] : [],
     };
 }
 

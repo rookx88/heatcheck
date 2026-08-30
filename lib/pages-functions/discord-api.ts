@@ -18,7 +18,7 @@ export interface GuildLabels {
 }
 
 // Resolves a guild's custom display names for "Community Points" and "Leaderboard"
-// (set via /heatchecks-config, add_custom_labels_to_discord_guild_configs.sql),
+// (set via `/heatchecks settings`, add_custom_labels_to_discord_guild_configs.sql),
 // falling back to the defaults when unset - purely cosmetic, every caller that
 // renders either word anywhere goes through this one place so a guild's choice is
 // never applied in some spots and missed in others.
@@ -32,7 +32,7 @@ export async function getGuildLabels(sql: NeonQueryFunction<false, false>, guild
 }
 
 // Server-authoritative permission check for every admin-only slash command
-// (/heatchecks-setup, /heatchecks-config, /heatchecks-post, /heatchecks-draw) -
+// (the /heatchecks admin hub: setup, settings, post, draw) -
 // re-checked here against the invoking member's real permission bitfield rather than
 // trusted solely from Discord's UI-level command visibility
 // (default_member_permissions at registration time, scripts/register-discord-commands.ts).
@@ -186,6 +186,26 @@ export async function postDiscordChannelMessage(
             continue;
         }
         throw new Error(`Discord message post failed: ${res.status} ${await res.text()}`);
+    }
+}
+
+// Strips the components off an already-posted message - used after a one-shot button
+// is consumed (the "Draw a winner" button on a settlement recap), so the recap can't
+// be clicked again once it's done its job. Best-effort by design: the draw itself is
+// already committed and idempotent, so a failure here is cosmetic and never throws
+// into the caller's response path.
+export async function clearMessageComponents(env: Env, channelId: string, messageId: string): Promise<void> {
+    try {
+        await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
+            method: 'PATCH',
+            headers: {
+                Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ components: [] }),
+        });
+    } catch (err) {
+        console.error('[discord-api] clearMessageComponents failed:', err);
     }
 }
 
