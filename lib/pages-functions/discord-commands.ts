@@ -75,16 +75,49 @@ export function updateMessageResponse(content: string, buttons?: { label: string
     );
 }
 
-function selectMenuResponse(customId: string, content: string, options: { label: string; value: string; description?: string }[]): Response {
+// Message payload (content + optional components) for the deferred admin flows.
+interface DeferredMessageData {
+    content: string;
+    components?: unknown[];
+}
+
+function selectMenuData(customId: string, content: string, options: { label: string; value: string; description?: string }[]): DeferredMessageData {
+    return {
+        content,
+        components: [{ type: ACTION_ROW_TYPE, components: [{ type: SELECT_MENU_TYPE, custom_id: customId, options: options.slice(0, MAX_SELECT_OPTIONS) }] }],
+    };
+}
+
+const RESPONSE_DEFERRED = 5;
+
+// Ack-first plumbing for every command whose real work (DB round-trips, Polymarket
+// pagination) can't be trusted inside Discord's hard 3-second response window -
+// especially right after a deploy, when a cold isolate + cold DB connection stack up
+// ("The application did not respond" twice in live testing). Immediate ephemeral
+// deferred ack, real content via webhook PATCH to @original, error fallback so the
+// interaction can never hang.
+function deferredEphemeral(context: RequestContext, interaction: any, work: Promise<DeferredMessageData>): Response {
+    const applicationId: string | undefined = interaction.application_id;
+    const token: string | undefined = interaction.token;
+    if (!applicationId || !token) return ephemeral("Couldn't process that command - try again.");
+
+    context.waitUntil(
+        work
+            .catch((err) => {
+                console.error('[discord-commands] Deferred command failed:', err);
+                return { content: 'Something went wrong — try again shortly.' } as DeferredMessageData;
+            })
+            .then((data) =>
+                fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ content: data.content, components: data.components ?? [] }),
+                })
+            )
+    );
+
     return new Response(
-        JSON.stringify({
-            type: RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-                content,
-                flags: EPHEMERAL_FLAG,
-                components: [{ type: ACTION_ROW_TYPE, components: [{ type: SELECT_MENU_TYPE, custom_id: customId, options: options.slice(0, MAX_SELECT_OPTIONS) }] }],
-            },
-        }),
+        JSON.stringify({ type: RESPONSE_DEFERRED, data: { flags: EPHEMERAL_FLAG } }),
         { headers: { 'Content-Type': 'application/json' } }
     );
 }
@@ -219,14 +252,14 @@ export async function handlePostCommand(context: RequestContext, interaction: an
     if (sub?.name === 'tank') {
         const search = sub.options?.find((o: any) => o.name === 'search')?.value as string | undefined;
         if (!search) return ephemeral('Missing search keyword.');
-        return handleTankSearch(context, search);
+        return deferredEphemeral(context, interaction, tankSearchData(context, search));
     }
     if (sub?.name === 'community-pick') {
         const sport = sub.options?.find((o: any) => o.name === 'sport')?.value as string | undefined;
         const keyword = sub.options?.find((o: any) => o.name === 'keyword')?.value as string | undefined;
         const channel = sub.options?.find((o: any) => o.name === 'channel')?.value as string | undefined;
         if (!sport) return ephemeral('Missing sport.');
-        return handleCommunityPickSearch(context, guildId, sport, keyword, channel);
+        return deferredEphemeral(context, interaction, communityPickSearchData(context, guildId, sport, keyword, channel));
     }
     return ephemeral('Unknown subcommand.');
 }
@@ -278,7 +311,7 @@ interface TankSearchRow {
     game_snapshot: { game?: { away?: string; home?: string; kickoff?: string }; prop?: { market?: string; player?: string; line?: number | null } } | null;
 }
 
-async function handleTankSearch(context: RequestContext, search: string): Promise<Response> {
+async function tankSearchData(context: RequestContext, search: string): Promise<DeferredMessageData> {
     const sql = getSql(context.env);
     const term = `%${search}%`;
     const rows = (await sql`
@@ -290,7 +323,7 @@ async function handleTankSearch(context: RequestContext, search: string): Promis
         LIMIT ${MAX_SELECT_OPTIONS}
     `) as unknown as TankSearchRow[];
 
-    if (rows.length === 0) return ephemeral(`No Tanks found matching "${search}".`);
+    if (rows.length === 0) return { content: `No Tanks found matching "${search}".` };
 
     const options = rows.map((row) => {
         const modelOutput: TankCardModelOutput | null = typeof row.model_output === 'string' ? JSON.parse(row.model_output) : row.model_output;
@@ -309,7 +342,7 @@ async function handleTankSearch(context: RequestContext, search: string): Promis
         const description = [row.league, formatKickoff(game.kickoff), tagline].filter(Boolean).join(' · ').slice(0, 100);
         return { label, value: row.slug, description };
     });
-    return selectMenuResponse('tpselect', `Found ${rows.length} Tank(s) — pick one to post:`, options);
+    return selectMenuData('tpselect', `Found ${rows.length} Tank(s) — pick one to post:`, options);
 }
 
 interface TankRowForPost {
@@ -387,9 +420,9 @@ interface MarketSearchOption {
     description?: string;
 }
 
-async function handleCommunityPickSearch(context: RequestContext, guildId: string, sport: string, keyword?: string, channelId?: string): Promise<Response> {
+async function communityPickSearchData(context: RequestContext, guildId: string, sport: string, keyword?: string, channelId?: string): Promise<DeferredMessageData> {
     const configRows = await getSql(context.env)`SELECT channel_id, community_pick_channel_ids FROM discord_guild_configs WHERE guild_id = ${guildId}`;
-    if (configRows.length === 0) return ephemeral('Run /heatchecks-setup first to choose a channel for this server.');
+    if (configRows.length === 0) return { content: 'Run /heatchecks-setup first to choose a channel for this server.' };
 
     // Optional target channel - must be the main channel or one of the wizard's
     // approved Community Pick channels.
@@ -397,7 +430,7 @@ async function handleCommunityPickSearch(context: RequestContext, guildId: strin
         const cfg = configRows[0] as unknown as { channel_id: string; community_pick_channel_ids: string[] | string };
         const extras: string[] = Array.isArray(cfg.community_pick_channel_ids) ? cfg.community_pick_channel_ids : JSON.parse((cfg.community_pick_channel_ids as string) ?? '[]');
         if (channelId !== cfg.channel_id && !extras.includes(channelId)) {
-            return ephemeral(`<#${channelId}> isn't an approved Community Pick channel - add it in /heatchecks-setup (step 2) first.`);
+            return { content: `<#${channelId}> isn't an approved Community Pick channel - add it in /heatchecks-setup (step 2) first.` };
         }
     }
 
@@ -406,7 +439,7 @@ async function handleCommunityPickSearch(context: RequestContext, guildId: strin
         games = await fetchLiveGames([sport]);
     } catch (err) {
         console.error('[discord-commands] fetchLiveGames failed:', err);
-        return ephemeral('Could not reach Polymarket right now - try again shortly.');
+        return { content: 'Could not reach Polymarket right now - try again shortly.' };
     }
 
     const term = keyword?.trim().toLowerCase();
@@ -439,12 +472,12 @@ async function handleCommunityPickSearch(context: RequestContext, guildId: strin
     }
 
     if (matches.length === 0) {
-        return ephemeral(`No live two-sided markets found for ${sport}${term ? ` matching "${keyword}"` : ''}.`);
+        return { content: `No live two-sided markets found for ${sport}${term ? ` matching "${keyword}"` : ''}.` };
     }
     // sport and target channel ride the select menu's own custom_id (":"-split,
     // safe even for multi-word sports like "La Liga" since only literal colons
     // split) so they survive through the select and confirm steps.
-    return selectMenuResponse(`cpselect:${sport}:${channelId ?? ''}`, `Found ${matches.length} market(s) — pick one:`, matches);
+    return selectMenuData(`cpselect:${sport}:${channelId ?? ''}`, `Found ${matches.length} market(s) — pick one:`, matches);
 }
 
 function parseMarketOutcomes(market: any): { question: string; outcomes: string[]; outcomePrices: number[] } | null {
@@ -646,7 +679,10 @@ export async function handleDrawCommand(context: RequestContext, interaction: an
     const guildId: string | undefined = interaction.guild_id;
     if (!guildId) return ephemeral('Run this in a server, not a DM.');
     if (!hasManageGuildPermission(interaction)) return ephemeral('You need the "Manage Server" permission to run this.');
+    return deferredEphemeral(context, interaction, drawSearchData(context, guildId));
+}
 
+async function drawSearchData(context: RequestContext, guildId: string): Promise<DeferredMessageData> {
     const sql = getSql(context.env);
 
     const settledTanks = (await sql`
@@ -680,7 +716,7 @@ export async function handleDrawCommand(context: RequestContext, interaction: an
     `) as unknown as { id: string; question_text: string; side_a_label: string; side_b_label: string; winning_side: number | null }[];
 
     if (settledTanks.length === 0 && settledPicks.length === 0) {
-        return ephemeral('Nothing settled and undrawn in this server right now.');
+        return { content: 'Nothing settled and undrawn in this server right now.' };
     }
 
     // Same label/description shape as the other search menus: what the bet was on
@@ -697,7 +733,7 @@ export async function handleDrawCommand(context: RequestContext, interaction: an
             description: ['Community Pick', p.winning_side !== null ? `winner: ${p.winning_side === 0 ? p.side_a_label : p.side_b_label}` : ''].filter(Boolean).join(' · ').slice(0, 100),
         })),
     ].slice(0, MAX_SELECT_OPTIONS);
-    return selectMenuResponse('dwselect', 'Pick a settled source to draw a winner from:', options);
+    return selectMenuData('dwselect', 'Pick a settled source to draw a winner from:', options);
 }
 
 export async function handleDrawSelect(context: RequestContext, interaction: any): Promise<Response> {
@@ -1011,7 +1047,12 @@ export async function handleMyResultsCommand(context: RequestContext, interactio
     const guildId: string | undefined = interaction.guild_id;
     const discordUserId: string | undefined = interaction.member?.user?.id;
     if (!guildId || !discordUserId) return ephemeral('Run this in a server, not a DM.');
+    // Deferred like the other DB-backed commands - a cold isolate + cold DB
+    // connection can't be trusted inside Discord's 3-second window.
+    return deferredEphemeral(context, interaction, myResultsData(context, guildId, discordUserId));
+}
 
+async function myResultsData(context: RequestContext, guildId: string, discordUserId: string): Promise<DeferredMessageData> {
     const sql = getSql(context.env);
     const [tankRows, pickRows] = await Promise.all([
         sql`
@@ -1041,7 +1082,7 @@ export async function handleMyResultsCommand(context: RequestContext, interactio
     ]);
 
     if (tankRows.length === 0 && pickRows.length === 0) {
-        return ephemeral("No settled results yet - once something you picked or voted on settles, check back here.");
+        return { content: "No settled results yet - once something you picked or voted on settles, check back here." };
     }
 
     // points_awarded is read back from the already-stored transaction, never
@@ -1067,5 +1108,5 @@ export async function handleMyResultsCommand(context: RequestContext, interactio
         sections.push(`**Community Picks**\n${lines.join('\n')}`);
     }
 
-    return ephemeral(`**Your recent results in this server**\n\n${sections.join('\n\n')}`);
+    return { content: `**Your recent results in this server**\n\n${sections.join('\n\n')}` };
 }
