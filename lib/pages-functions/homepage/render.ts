@@ -498,8 +498,10 @@ function homepageStyles(): string {
                where the fixed pet widget visually lives when logged in. */
             #explore { margin-top: 2rem; }
             /* The logo stays IN FLOW above (so the world sits right under it, same
-               slight overlap as mobile via the logo's negative bottom margin). */
-            #explore .hc-explore-wrap { margin-top: 0.5rem; }
+               slight overlap as mobile via the logo's negative bottom margin). The
+               panel is cut to exactly the tanks column's width (half the two-column
+               span minus half the 1.5rem gap) so the two cards read as one rail. */
+            #explore .hc-explore-wrap { margin-top: 0.5rem; width: calc(50% - 0.75rem); }
             #hc-map-root { max-width: 620px; }
             .hc-footer { padding-top: 1.25rem; }
         }
