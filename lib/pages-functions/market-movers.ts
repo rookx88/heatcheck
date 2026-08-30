@@ -174,7 +174,7 @@ function buildResultSentence(item: TickerResultItem, displayName: string, templa
             return `${displayName} ${item.won ? 'climbs' : 'sinks'} ${points} points as the ${totalsSide} ${item.won ? 'hits' : 'misses'} in ${matchup}.`;
         }
         if (t === 1) {
-            return `The ${tickerWord} index experiences a local ${item.won ? 'high' : 'low'} as ${item.pickLabel || `the ${totalsSide}`} ${item.won ? 'hits' : 'misses'}.`;
+            return `The ${tickerWord} index experiences a local ${item.won ? 'high' : 'low'} as ${item.pickLabel || `the ${totalsSide}`} ${item.won ? 'hits' : 'misses'} in ${matchup}.`;
         }
         // Whether the GAME cleared the number follows from side + outcome: an Over
         // winning and an Under losing both mean the total was cleared.
