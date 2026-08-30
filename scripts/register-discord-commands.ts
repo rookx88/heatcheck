@@ -99,6 +99,24 @@ const commands = [
                     { name: 'channel', description: 'Post to an approved Community Pick channel (default: main channel)', type: OPTION_TYPE_CHANNEL, required: false, channel_types: [CHANNEL_TYPE_GUILD_TEXT] },
                 ],
             },
+            {
+                name: 'leaderboard',
+                description: 'Post the leaderboard card publicly right now',
+                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
+                options: [
+                    {
+                        name: 'view', description: 'Which leaderboard to post', type: OPTION_TYPE_STRING, required: true,
+                        choices: [
+                            { name: 'Community Points', value: 'community' },
+                            { name: 'Accuracy', value: 'accuracy' },
+                            { name: 'Skill Rating', value: 'sr' },
+                            { name: 'League', value: 'league' },
+                        ],
+                    },
+                    { name: 'sport', description: 'Sport (required for view:League)', type: OPTION_TYPE_STRING, required: false, choices: leagueSportChoices },
+                    { name: 'channel', description: 'Post to an approved channel (default: main channel)', type: OPTION_TYPE_CHANNEL, required: false, channel_types: [CHANNEL_TYPE_GUILD_TEXT] },
+                ],
+            },
         ],
     },
     {

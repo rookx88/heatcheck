@@ -32,9 +32,9 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from '../../../lib/pages-functions/db';
 import { verifyDiscordRequest } from '../../../lib/pages-functions/discord-verify';
 import { submitPick, type SubmitPickResult } from '../../../lib/pages-functions/picks';
-import { fetchGuildMembers, getGuildLabels, buildDiscordAvatarUrl } from '../../../lib/pages-functions/discord-api';
+import { fetchGuildMembers, getGuildLabels, buildDiscordAvatarUrl, hasManageGuildPermission } from '../../../lib/pages-functions/discord-api';
 import type { LeaderboardMessage } from '../../../lib/pages-functions/discord-leaderboard-card';
-import { sendLeaderboardResult } from '../../../lib/pages-functions/leaderboard-image';
+import { sendLeaderboardResult, postLeaderboardToChannel } from '../../../lib/pages-functions/leaderboard-image';
 import { computeSkillRatings } from '../../../lib/pages-functions/skill-rating';
 import { handleSetupWizardCommand, handleWizardComponent, handleWizardModal } from '../../../lib/pages-functions/discord-setup-wizard';
 import {
@@ -187,7 +187,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         const commandName = interaction.data?.name;
         if (commandName === 'heatchecks-setup') return handleSetupWizardCommand(context, interaction);
         if (commandName === 'heatchecks-config') return handleConfigCommand(context, interaction);
-        if (commandName === 'heatchecks-post') return handlePostCommand(context, interaction);
+        if (commandName === 'heatchecks-post') {
+            // The leaderboard subcommand is handled here rather than in
+            // discord-commands.ts - the accuracy builder and the channel-post
+            // delivery live in this file's import graph (pulling them into
+            // discord-commands would create a cycle).
+            if (interaction.data?.options?.[0]?.name === 'leaderboard') return handlePostLeaderboardCommand(context, interaction);
+            return handlePostCommand(context, interaction);
+        }
         if (commandName === 'heatchecks-draw') return handleDrawCommand(context, interaction);
         if (commandName === 'heatchecks-league') return handleLeagueCommand(context, interaction);
         if (commandName === 'my-results') return handleMyResultsCommand(context, interaction);
@@ -270,6 +277,68 @@ function handleLeaderboardCommand(context: RequestContext, interaction: any): Pr
         : buildAccuracyLeaderboardMessage(context.env, guildId);
 
     return deferImageCommand(context, interaction, buildMessage);
+}
+
+// /heatchecks-post leaderboard - an admin posts the leaderboard card publicly, once,
+// on demand, into the main channel or an approved Community Pick channel. Reuses the
+// exact builders + channel delivery (image-first, embed fallback) the weekly
+// auto-post runs on - a new trigger, not new rendering logic.
+async function handlePostLeaderboardCommand(context: RequestContext, interaction: any): Promise<Response> {
+    const guildId: string | undefined = interaction.guild_id;
+    if (!guildId) return ephemeral('Run this in a server, not a DM.');
+    if (!hasManageGuildPermission(interaction)) return ephemeral('You need the "Manage Server" permission to run this.');
+
+    const applicationId: string | undefined = interaction.application_id;
+    const interactionToken: string | undefined = interaction.token;
+    if (!applicationId || !interactionToken) return ephemeral("Couldn't process that command - try again.");
+
+    const sub = interaction.data?.options?.[0];
+    const view: string = sub?.options?.find((o: any) => o.name === 'view')?.value ?? 'community';
+    const sport: string | undefined = sub?.options?.find((o: any) => o.name === 'sport')?.value;
+    const requestedChannel: string | undefined = sub?.options?.find((o: any) => o.name === 'channel')?.value;
+    if (view === 'league' && !sport) return ephemeral('Pick a sport for the league leaderboard (e.g. sport:NFL).');
+
+    context.waitUntil((async () => {
+        const patchUrl = `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`;
+        const patch = (content: string) =>
+            fetch(patchUrl, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
+        try {
+            const sql = getSql(context.env);
+            const cfgRows = await sql`SELECT channel_id, community_pick_channel_ids FROM discord_guild_configs WHERE guild_id = ${guildId}`;
+            if (cfgRows.length === 0) {
+                await patch('This server has no channel configured - run /heatchecks-setup first.');
+                return;
+            }
+            const cfg = cfgRows[0] as unknown as { channel_id: string; community_pick_channel_ids: string[] | string };
+            const extras: string[] = Array.isArray(cfg.community_pick_channel_ids) ? cfg.community_pick_channel_ids : JSON.parse((cfg.community_pick_channel_ids as string) ?? '[]');
+            if (requestedChannel && requestedChannel !== cfg.channel_id && !extras.includes(requestedChannel)) {
+                await patch(`<#${requestedChannel}> isn't an approved channel - use the main channel or one added in /heatchecks-setup (step 2).`);
+                return;
+            }
+            const channelId = requestedChannel ?? cfg.channel_id;
+
+            const message =
+                view === 'league' ? await buildLeagueLeaderboardMessage(context.env, guildId, sport as string)
+                : view === 'sr' ? await buildSrLeaderboardMessage(context.env, guildId)
+                : view === 'accuracy' ? await buildAccuracyLeaderboardMessage(context.env, guildId)
+                : await buildCommunityPointsLeaderboardMessage(context.env, guildId);
+
+            if (message.rows.length === 0) {
+                await patch(message.content || 'Nothing to post for that view yet.');
+                return;
+            }
+            await postLeaderboardToChannel(context.env, channelId, message.content, message.headerLabel, message.rows);
+            await patch(`Leaderboard posted to <#${channelId}>.`);
+        } catch (err) {
+            console.error('[POST /api/discord/interactions] Manual leaderboard post failed:', err);
+            await patch('Could not post the leaderboard - try again shortly.').catch(() => undefined);
+        }
+    })());
+
+    return new Response(
+        JSON.stringify({ type: RESPONSE_DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE, data: { flags: EPHEMERAL_FLAG } }),
+        { headers: { 'Content-Type': 'application/json' } }
+    );
 }
 
 async function handleMeCommand(context: RequestContext, interaction: any): Promise<Response> {
