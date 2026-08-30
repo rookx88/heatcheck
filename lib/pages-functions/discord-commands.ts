@@ -678,11 +678,15 @@ export async function handleCommunityPickConfirm(context: RequestContext, intera
         ? targetChannelId
         : cfg.channel_id;
 
-    // 30 days out is a simple, generous default resolve window - Community Picks
-    // don't carry their own admin-set date input in this pass; the settlement sweep
-    // re-checks the market's own actual close state regardless, so this field mainly
-    // exists for display copy on the card, not as the real gate on resolution.
-    const resolveDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    // Resolve display date: the day after kickoff when the game time is known
+    // (games resolve within hours of ending - the old now+30d placeholder made
+    // cards claim absurdly late dates), else the market's own endDate, else a
+    // 30-day fallback. The settlement sweep checks the market's real close state
+    // regardless - this is honest display copy, not the resolution gate.
+    const marketEnd = parseGameStartTime((market as any).endDate as string | undefined);
+    const resolveDate = kickoff
+        ? new Date(kickoff.getTime() + 24 * 60 * 60 * 1000).toISOString()
+        : (marketEnd ? marketEnd.toISOString() : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString());
 
     const result = await createAndPostCommunityPick(sql, context.env, {
         guildId, channelId, createdBy, sport: sport || null, marketId,

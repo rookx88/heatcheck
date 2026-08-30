@@ -73,10 +73,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
 
         const question = `${game.away} vs. ${game.home}`;
-        // prop.settleDate (this specific market's own resolution deadline) over
-        // Game.settleDate - see tank-types.ts's Prop.settleDate comment on why the
-        // event-level date isn't reliable for any one prop.
-        const resolveDate = prop.settleDate || game.settleDate || game.kickoff;
+        // Day after kickoff - honest display copy (games resolve within hours of
+        // ending; Polymarket's own market endDate pads out a week or more, which
+        // made cards claim absurdly late resolve dates). Falls back to the market's
+        // padded deadline only when kickoff is somehow unparseable.
+        const kickoffMs = new Date(game.kickoff).getTime();
+        const resolveDate = Number.isFinite(kickoffMs)
+            ? new Date(kickoffMs + 24 * 60 * 60 * 1000).toISOString()
+            : (prop.settleDate || game.settleDate || game.kickoff);
 
         for (const guild of guildRows) {
             try {
