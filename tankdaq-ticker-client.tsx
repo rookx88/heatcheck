@@ -10,6 +10,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { tickerCopyFor } from './lib/pages-functions/ticker-copy';
+import { ContentChrome } from './components/ContentChrome';
 
 interface SeriesEvent {
     id: string;
@@ -180,8 +181,10 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
         [data],
     );
 
-    if (phase === 'loading') return <p className="hc-tq-loading">Loading index&hellip;</p>;
-    if (phase === 'error' || !data) return <p className="hc-tq-error">Couldn&rsquo;t load this index right now &mdash; refresh to retry.</p>;
+    // Identity chrome renders in every phase - it hydrates from its own endpoint and
+    // must not wait on (or disappear with) this page's data.
+    if (phase === 'loading') return <><ContentChrome /><p className="hc-tq-loading">Loading index&hellip;</p></>;
+    if (phase === 'error' || !data) return <><ContentChrome /><p className="hc-tq-error">Couldn&rsquo;t load this index right now &mdash; refresh to retry.</p></>;
 
     const { ticker } = data;
     const copy = tickerCopyFor(ticker.ruleType);
@@ -194,6 +197,7 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
 
     return (
         <div>
+            <ContentChrome />
             <a className="hc-tq-back" href="/tankdaq/indexes/">&larr; Index Board</a>
             <header className="hc-tq-header">
                 <h1 className="hc-tq-title">{ticker.indexLabel} <span className="hc-tq-symbol">({ticker.displayName})</span></h1>

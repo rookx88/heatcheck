@@ -41,6 +41,9 @@ export function generateTankdaqIndexesPageHtml(
 <html lang="en">
 <head>
     ${head}
+    <!-- Emitted by esbuild from the island's component imports (MapHud/PetWidget/
+         NotificationsHost chrome) - without it the identity HUD renders unstyled. -->
+    <link rel="stylesheet" href="/assets/tankdaq-indexes.css">
     <style>${tankdaqIndexesStyles()}</style>
 </head>
 <body>
@@ -142,7 +145,9 @@ function tankdaqIndexesStyles(): string {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.66rem;
             letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.55);
         }
-        .hc-tqb-detail-delta { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem; margin-left: auto; }
+        /* Inline, NOT pushed to the panel's right edge: the fixed PetWidget sits
+           bottom-right and would cover a right-aligned value on a short page. */
+        .hc-tqb-detail-delta { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem; }
         .hc-tqb-detail-blurb { margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--hc-bubble); }
         .hc-tqb-detail-hint { margin: 0; font-size: 0.88rem; color: rgba(255,255,255,0.5); }
         .hc-tqb-detail-leagues { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0 0; padding: 0; }
@@ -158,6 +163,11 @@ function tankdaqIndexesStyles(): string {
             letter-spacing: 0.08em; text-transform: uppercase; color: var(--hc-gold); text-decoration: none;
         }
         .hc-tqb-detail-more:hover { text-decoration: underline; }
+
+        /* Keep the last rows clear of the fixed PetWidget's corner on wide screens. */
+        @media (min-width: 1024px) {
+            .hc-tqb-detail, .hc-tqb-legend, .hc-tqb-note { padding-right: 22ch; }
+        }
 
         .hc-tqb-legend {
             display: flex; gap: 1rem; margin: 0.6rem 0 0; flex-wrap: wrap;

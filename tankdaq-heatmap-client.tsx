@@ -17,6 +17,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { indexLabelOf, tickerCopyFor } from './lib/pages-functions/ticker-copy';
+import { ContentChrome } from './components/ContentChrome';
 
 interface TickerRow { key: string; displayName: string; ruleType: string; description: string; tabOrder: number; value: number }
 interface SeriesEvent { delta: number; occurredAt: string }
@@ -213,11 +214,14 @@ const TankdaqBoard: React.FC = () => {
     // phones don't lose tile area to it.
     const gutter = Math.max(5, Math.min(10, Math.round(boardW * 0.009)));
 
-    if (phase === 'loading') return <p className="hc-tqb-loading">Loading the board&hellip;</p>;
-    if (phase === 'error') return <p className="hc-tqb-error">Couldn&rsquo;t load the board right now &mdash; refresh to retry.</p>;
+    // Identity chrome renders in every phase - it hydrates from its own endpoint and
+    // must not wait on (or disappear with) the board's data.
+    if (phase === 'loading') return <><ContentChrome /><p className="hc-tqb-loading">Loading the board&hellip;</p></>;
+    if (phase === 'error') return <><ContentChrome /><p className="hc-tqb-error">Couldn&rsquo;t load the board right now &mdash; refresh to retry.</p></>;
 
     return (
         <div>
+            <ContentChrome />
             <header className="hc-tqb-header">
                 <h1 className="hc-tqb-title">TANKDAQ <span style={{ color: 'var(--hc-gold)' }}>Index Board</span></h1>
                 <p className="hc-tqb-sub">Every index at a glance &mdash; tile size tracks the size of the last-24h move, color its direction.</p>

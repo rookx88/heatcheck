@@ -1,0 +1,17 @@
+/* The positioned slot ContentChrome puts MapHud in on scrolling content pages.
+   MapHud.css pins .map-hud to top/right 1rem of its containing block - which on a map
+   page is the LandScreen frame. Here the slot IS that containing block, so the offsets
+   are zeroed and the chip sits flush at the slot's right edge, under the page topbar.
+   The slot reserves the chip's height so nothing jumps when the HUD finishes
+   hydrating, and the dropdown overlays the page instead of pushing it down. */
+
+.hc-chrome-hud {
+  position: relative;
+  min-height: 2.4rem;
+  margin: 0.15rem 0 0.35rem;
+}
+
+.hc-chrome-hud .map-hud {
+  top: 0;
+  right: 0;
+}

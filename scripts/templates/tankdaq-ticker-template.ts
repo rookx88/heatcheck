@@ -44,6 +44,9 @@ export function generateTankdaqTickerPageHtml(baseUrl: string, ticker: TankdaqTi
 <html lang="en">
 <head>
     ${head}
+    <!-- Emitted by esbuild from the island's component imports (MapHud/PetWidget/
+         NotificationsHost chrome) - without it the identity HUD renders unstyled. -->
+    <link rel="stylesheet" href="/assets/tankdaq-ticker.css">
     <style>${tankdaqTickerStyles()}</style>
 </head>
 <body>
