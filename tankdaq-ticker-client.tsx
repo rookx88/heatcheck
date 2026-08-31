@@ -10,6 +10,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { tickerCopyFor } from './lib/pages-functions/ticker-copy';
+import { sumSince } from './lib/pages-functions/ticker-window';
 import { ContentChrome } from './components/ContentChrome';
 
 interface SeriesEvent {
@@ -47,11 +48,6 @@ function fmtPct(v: number): string {
 }
 function signOf(v: number): 'pos' | 'neg' | 'zero' {
     return v > 0 ? 'pos' : v < 0 ? 'neg' : 'zero';
-}
-function sumDeltasSince(series: SeriesEvent[], cutoffMs: number): number {
-    let sum = 0;
-    for (const e of series) if (new Date(e.occurredAt).getTime() >= cutoffMs) sum += e.delta;
-    return Number(sum.toFixed(3));
 }
 
 // ---------------------------------------------------------------------------------
@@ -177,7 +173,7 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
     }, [tickerKey]);
 
     const delta24 = useMemo(
-        () => (data ? sumDeltasSince(data.series, Date.now() - 24 * HOUR_MS) : 0),
+        () => (data ? sumSince(data.series, Date.now() - 24 * HOUR_MS) : 0),
         [data],
     );
 

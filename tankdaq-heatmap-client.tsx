@@ -1,8 +1,15 @@
 // TANKDAQ Index Board island (/tankdaq/indexes/) - the crypto-heatmap view of every
 // Exchange ticker: a squarified treemap of raised black blocks where each index's
-// area tracks the MAGNITUDE of its last-24h movement, its neon edge the direction
-// (green up / red down, slate flat), and its extrusion depth the magnitude again -
-// bigger movers stand taller. Every tile links to the index's detail page.
+// area tracks the MAGNITUDE of its movement over the active window, its neon edge the
+// direction (green up / red down, slate flat), and its extrusion depth the magnitude
+// again - bigger movers stand taller. Every tile links to its detail page.
+//
+// ADAPTIVE WINDOW: 24h is the headline, but ticker events arrive in bursts (a publish
+// tags, a resolved game settles), so plenty of real days have none at all - and a
+// board where every index reads 0.0% degenerates into eight equal grey blocks that
+// look broken rather than quiet. So the window widens until it finds movement:
+// 24h -> 7d -> 30d -> all-time, and the board says which one it settled on. It never
+// invents movement; it only widens the lens and labels the lens honestly.
 //
 // Hovering (or focusing) a block lights it and fills the description panel under the
 // board with what that index reacts to (ticker-copy.ts). Touch can't hover, so on a
@@ -10,17 +17,17 @@
 // on the same block opens its page - the tile stays a real link for mouse and
 // keyboard. ?index=<key> preselects one, so a board state is linkable.
 //
-// Data: /api/tickers (meta + values) + /api/tickers/chart (full event series - 24h
+// Data: /api/tickers (meta + values) + /api/tickers/chart (full event series - window
 // deltas are summed here, same rule as the detail page). Styles live in
 // scripts/templates/tankdaq-indexes-template.ts.
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { indexLabelOf, tickerCopyFor } from './lib/pages-functions/ticker-copy';
+import { chooseWindow, type WindowInfo, type WindowedEvent as SeriesEvent } from './lib/pages-functions/ticker-window';
 import { ContentChrome } from './components/ContentChrome';
 
 interface TickerRow { key: string; displayName: string; ruleType: string; description: string; tabOrder: number; value: number }
-interface SeriesEvent { delta: number; occurredAt: string }
 
 interface Tile {
     key: string;
@@ -28,12 +35,14 @@ interface Tile {
     indexLabel: string;
     ruleType: string;
     description: string;
-    value: number;
-    delta24: number;
+    value: number;   // all-time cumulative
+    delta: number;   // movement over the active window (see WINDOWS)
     x: number; y: number; w: number; h: number; // percentages of the board
 }
 
-const HOUR_MS = 3600_000;
+// Window selection + summing live in lib/pages-functions/ticker-window.ts: pure,
+// CSS-free, and therefore directly testable (this island can't be imported outside a
+// bundler - it pulls component stylesheets).
 
 function fmtPct(v: number): string {
     const n = Object.is(v, -0) ? 0 : v;
@@ -118,6 +127,7 @@ const TankdaqBoard: React.FC = () => {
     const [tiles, setTiles] = useState<Tile[]>([]);
     const [note, setNote] = useState('');
     const [maxAbs, setMaxAbs] = useState(0);
+    const [windowInfo, setWindowInfo] = useState<WindowInfo>({ label: 'the last 24 hours', short: '24H', widened: false });
     const boardRef = useRef<HTMLDivElement | null>(null);
     const [boardW, setBoardW] = useState(0);
     const [hoverKey, setHoverKey] = useState<string | null>(null);
@@ -167,20 +177,15 @@ const TankdaqBoard: React.FC = () => {
                 const chart = (await chartRes.json()) as { series: Record<string, SeriesEvent[]> };
                 if (cancelled) return;
 
-                const cutoff = Date.now() - 24 * HOUR_MS;
-                const rows = list.tickers.map((t) => {
-                    let delta24 = 0;
-                    for (const e of chart.series[t.key] ?? []) {
-                        if (new Date(e.occurredAt).getTime() >= cutoff) delta24 += e.delta;
-                    }
-                    return { ...t, delta24: Number(delta24.toFixed(3)) };
-                });
+                // Widen until something actually moved - see ADAPTIVE WINDOW up top.
+                const { deltas, info } = chooseWindow(list.tickers, chart.series, Date.now());
+                const rows = list.tickers.map((t, i) => ({ ...t, delta: deltas[i] }));
 
-                const biggest = Math.max(...rows.map((r) => Math.abs(r.delta24)), 0);
+                const biggest = Math.max(...rows.map((r) => Math.abs(r.delta)), 0);
                 // Weight floor keeps quiet indexes visible and tappable; an all-quiet
-                // day degrades to equal tiles.
+                // board degrades to equal tiles.
                 const floor = biggest > 0 ? biggest * 0.15 : 1;
-                const weights = rows.map((r) => Math.max(Math.abs(r.delta24), floor));
+                const weights = rows.map((r) => Math.max(Math.abs(r.delta), floor));
                 // 100x62.5 mirrors the desktop board's 16:10 aspect so "squarified"
                 // is judged in roughly the shape the tiles actually render in.
                 const rects = squarify(weights, 100, 62.5);
@@ -191,10 +196,11 @@ const TankdaqBoard: React.FC = () => {
                     ruleType: r.ruleType,
                     description: r.description,
                     value: r.value,
-                    delta24: r.delta24,
+                    delta: r.delta,
                     x: rects[i].x, y: (rects[i].y / 62.5) * 100, w: rects[i].w, h: (rects[i].h / 62.5) * 100,
                 })));
                 setMaxAbs(biggest);
+                setWindowInfo(info);
                 setNote(list.note);
                 setPhase('ready');
             } catch (err) {
@@ -224,12 +230,15 @@ const TankdaqBoard: React.FC = () => {
             <ContentChrome />
             <header className="hc-tqb-header">
                 <h1 className="hc-tqb-title">TANKDAQ <span style={{ color: 'var(--hc-gold)' }}>Index Board</span></h1>
-                <p className="hc-tqb-sub">Every index at a glance &mdash; tile size tracks the size of the last-24h move, color its direction.</p>
+                <p className="hc-tqb-sub">Every index at a glance &mdash; tile size tracks the size of the move over {windowInfo.label}, color its direction.</p>
+                {windowInfo.widened && (
+                    <p className="hc-tqb-widened">No index moved in the last 24 hours &mdash; showing {windowInfo.label} instead.</p>
+                )}
             </header>
-            <div ref={boardRef} className="hc-tqb-board" role="list" aria-label="Index heatmap, last 24 hours">
+            <div ref={boardRef} className="hc-tqb-board" role="list" aria-label={`Index heatmap, ${windowInfo.label}`}>
                 {boardW > 0 && tiles.map((t) => {
-                    const mag = maxAbs > 0 ? Math.abs(t.delta24) / maxAbs : 0;
-                    const dir = t.delta24 > 0 ? 'pos' : t.delta24 < 0 ? 'neg' : 'zero';
+                    const mag = maxAbs > 0 ? Math.abs(t.delta) / maxAbs : 0;
+                    const dir = t.delta > 0 ? 'pos' : t.delta < 0 ? 'neg' : 'zero';
                     const neon = NEON[dir];
                     const active = t.key === activeKey;
                     // Extruded block: the neon-lit face sits on a stack of shadows -
@@ -252,9 +261,11 @@ const TankdaqBoard: React.FC = () => {
                         active ? `0 0 30px rgba(${neon}, 0.6)` : '',
                     ].filter(Boolean).join(', ');
                     // Type in real px from the measured board: the symbol must fit the
-                    // tile's inner width (Montserrat 900 runs ~0.72em/char).
+                    // tile's inner width. 0.8em/char is a deliberate over-estimate of
+                    // Montserrat 900 - the wide-glyph symbols ($MOONSHOT, $GRIDIRON)
+                    // graze the edge at a tighter ratio.
                     const tileWpx = (boardW * t.w) / 100;
-                    const fitPx = (tileWpx - 2 * gutter - 10) / (t.displayName.length * 0.72);
+                    const fitPx = (tileWpx - 2 * gutter - 10) / (t.displayName.length * 0.8);
                     const fontPx = Math.max(9, Math.min(Math.sqrt((t.w * t.h) / 100) * 9 + 8, fitPx));
                     return (
                         <a key={t.key} role="listitem" className={`hc-tqb-tile${active ? ' is-active' : ''}`} href={`/tankdaq/${t.key}/`}
@@ -273,24 +284,25 @@ const TankdaqBoard: React.FC = () => {
                             onFocus={() => setHoverKey(t.key)}
                             onBlur={() => setHoverKey((k) => (k === t.key ? null : k))}
                             onClick={(e) => onTileClick(e, t.key)}
-                            aria-label={`${t.displayName}: ${fmtPct(t.delta24)} in the last 24 hours, ${fmtPct(t.value)} overall`}>
+                            aria-label={`${t.displayName}: ${fmtPct(t.delta)} over ${windowInfo.label}, ${fmtPct(t.value)} overall`}>
                             <span className="hc-tqb-sym">{t.displayName}</span>
-                            <span className="hc-tqb-delta" style={{ color: `rgb(${neon})` }}>{fmtPct(t.delta24)}</span>
-                            {t.w * t.h > 90 && <span className="hc-tqb-total">{fmtPct(t.value)} all-time</span>}
+                            <span className="hc-tqb-delta" style={{ color: `rgb(${neon})` }}>{fmtPct(t.delta)}</span>
+                            {/* The all-time subline is redundant when all-time IS the metric. */}
+                            {t.w * t.h > 90 && windowInfo.short !== 'ALL' && <span className="hc-tqb-total">{fmtPct(t.value)} all-time</span>}
                         </a>
                     );
                 })}
             </div>
-            <div className="hc-tqb-detail" style={activeTile ? { borderLeftColor: `rgb(${NEON[activeTile.delta24 > 0 ? 'pos' : activeTile.delta24 < 0 ? 'neg' : 'zero']})` } : undefined}>
+            <div className="hc-tqb-detail" style={activeTile ? { borderLeftColor: `rgb(${NEON[activeTile.delta > 0 ? 'pos' : activeTile.delta < 0 ? 'neg' : 'zero']})` } : undefined}>
                 {activeTile ? (() => {
                     const copy = tickerCopyFor(activeTile.ruleType);
-                    const dir = activeTile.delta24 > 0 ? 'pos' : activeTile.delta24 < 0 ? 'neg' : 'zero';
+                    const dir = activeTile.delta > 0 ? 'pos' : activeTile.delta < 0 ? 'neg' : 'zero';
                     return (
                         <>
                             <p className="hc-tqb-detail-head">
                                 <span className="hc-tqb-detail-name">{activeTile.displayName}</span>
                                 <span className="hc-tqb-detail-index">{activeTile.indexLabel}</span>
-                                <span className="hc-tqb-detail-delta" style={{ color: `rgb(${NEON[dir]})` }}>{fmtPct(activeTile.delta24)} <span style={{ fontSize: '0.7em', opacity: 0.7 }}>24H</span></span>
+                                <span className="hc-tqb-detail-delta" style={{ color: `rgb(${NEON[dir]})` }}>{fmtPct(activeTile.delta)} <span style={{ fontSize: '0.7em', opacity: 0.7 }}>{windowInfo.short}</span></span>
                             </p>
                             <p className="hc-tqb-detail-blurb">{copy?.blurb ?? activeTile.description}</p>
                             {copy && copy.leagues.length > 0 && (
@@ -310,8 +322,8 @@ const TankdaqBoard: React.FC = () => {
                 )}
             </div>
             <p className="hc-tqb-legend">
-                <span style={{ color: '#3ddc64' }}><span className="hc-tqb-swatch" />Up last 24h</span>
-                <span style={{ color: '#ff6b57' }}><span className="hc-tqb-swatch" />Down last 24h</span>
+                <span style={{ color: '#3ddc64' }}><span className="hc-tqb-swatch" />Up &middot; {windowInfo.short}</span>
+                <span style={{ color: '#ff6b57' }}><span className="hc-tqb-swatch" />Down &middot; {windowInfo.short}</span>
                 <span style={{ color: '#94a3b8' }}><span className="hc-tqb-swatch" />Flat</span>
             </p>
             {note && <p className="hc-tqb-note">{note}</p>}

@@ -79,6 +79,14 @@ function tankdaqIndexesStyles(): string {
         }
         .hc-tqb-sub { margin: 0.35rem 0 0; color: var(--hc-bubble); font-size: 0.95rem; }
         .hc-tqb-note { margin: 0.6rem 0 0; font-size: 0.75rem; color: rgba(255,255,255,0.55); }
+        /* Shown only when 24h came back empty and the board widened its window. */
+        .hc-tqb-widened {
+            margin: 0.45rem 0 0; font-family: 'Montserrat', 'Nunito', sans-serif;
+            font-weight: 800; font-size: 0.66rem; letter-spacing: 0.06em; text-transform: uppercase;
+            color: var(--hc-gold);
+            background: rgba(255, 199, 44, 0.1); border: 1px solid rgba(255, 199, 44, 0.35);
+            border-radius: 999px; padding: 0.3rem 0.75rem; display: inline-block;
+        }
 
         /* The board: pure black, hairline teal frame; tiles are absolutely positioned
            percentage rects from the client's squarified layout. */
