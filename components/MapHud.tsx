@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { logout } from '../tank-pick-client';
 import { getToolbarState } from '../toolbar-state-client';
 import { dispatchInboxOpen } from '../notifications-client';
+import { HEADER_MENU_ITEMS } from './headerMenuItems';
 import './MapHud.css';
 
 // Same flame glyph the homepage's ember chip uses.
@@ -111,23 +112,33 @@ export const MapHud: React.FC = () => {
             </button>
             {menuOpen && (
                 <div className="map-hud__menu" role="menu">
-                    <a className="map-hud__item" role="menuitem" href="/">Home</a>
-                    <a className="map-hud__item" role="menuitem" href="/my-tanks/">My Tanks</a>
-                    <a className="map-hud__item" role="menuitem" href="/account/">Account</a>
-                    {/* Dispatches to the page's NotificationsHost - the modal can't
-                        render here, inside the transformed map frame (fixed-overlay
-                        containing-block trap). */}
-                    <button
-                        type="button"
-                        className="map-hud__item"
-                        role="menuitem"
-                        onClick={() => { setMenuOpen(false); dispatchInboxOpen(); }}
-                    >
-                        Inbox
-                    </button>
-                    <button type="button" className="map-hud__item" role="menuitem" onClick={doLogout} disabled={loggingOut}>
-                        {loggingOut ? 'Logging out…' : 'Log out'}
-                    </button>
+                    {HEADER_MENU_ITEMS.map((item) => {
+                        if (item.href) {
+                            return (
+                                <a key={item.label} className="map-hud__item" role="menuitem" href={item.href}>
+                                    {item.label}
+                                </a>
+                            );
+                        }
+                        if (item.action === 'inbox') {
+                            return (
+                                <button
+                                    key={item.label}
+                                    type="button"
+                                    className="map-hud__item"
+                                    role="menuitem"
+                                    onClick={() => { setMenuOpen(false); dispatchInboxOpen(); }}
+                                >
+                                    {item.label}
+                                </button>
+                            );
+                        }
+                        return (
+                            <button key={item.label} type="button" className="map-hud__item" role="menuitem" onClick={doLogout} disabled={loggingOut}>
+                                {loggingOut ? 'Logging out…' : item.label}
+                            </button>
+                        );
+                    })}
                 </div>
             )}
         </div>

@@ -16,8 +16,9 @@ import { RegisterModal } from './components/RegisterModal';
 import { NotificationsHost } from './components/NotificationsHost';
 import { dispatchInboxOpen } from './notifications-client';
 import { getTodayStatus, logout, PICKS_UPDATED_EVENT } from './tank-pick-client';
-// The header chip's mini nav reuses the map pages' MapHud menu styling.
+// The header chip's mini nav reuses the map pages' MapHud menu styling and item list.
 import './components/MapHud.css';
+import { HEADER_MENU_ITEMS } from './components/headerMenuItems';
 import { WorldMap } from './components/WorldMap';
 import { WORLD_MAP_REGIONS, type WorldMapRegion } from './components/worldMapRegions';
 import type { Sport } from './sport-map';
@@ -120,10 +121,11 @@ function mountRegisterCta() {
     });
 }
 
-// Header identity chip -> the same mini nav the map pages' MapHud has (Home /
-// Log out). The chip itself is server-rendered (.hc-auth, logged-in only); this
-// just makes it clickable and hangs the dropdown off it. Vanilla, like the other
-// header/row enhancements.
+// Header identity chip -> the same mini nav the map pages' MapHud has, built from
+// the shared HEADER_MENU_ITEMS list so the two renderers can't drift apart again.
+// The chip itself is server-rendered (.hc-auth, logged-in only); this just makes it
+// clickable and hangs the dropdown off it. Vanilla, like the other header/row
+// enhancements.
 function mountHeaderMenu() {
     const auth = document.querySelector<HTMLElement>('.hc-auth');
     if (!auth) return; // logged out - the header shows the Log in button instead
@@ -138,11 +140,11 @@ function mountHeaderMenu() {
     menu.className = 'map-hud__menu hc-auth-menu';
     menu.setAttribute('role', 'menu');
     menu.hidden = true;
-    menu.innerHTML = `
-        <a class="map-hud__item" role="menuitem" href="/">Home</a>
-        <a class="map-hud__item" role="menuitem" href="/my-tanks/">My Tanks</a>
-        <button type="button" class="map-hud__item" role="menuitem" data-hc-inbox>Inbox</button>
-        <button type="button" class="map-hud__item" role="menuitem" data-hc-logout>Log out</button>`;
+    menu.innerHTML = HEADER_MENU_ITEMS.map((item) => (
+        item.href
+            ? `<a class="map-hud__item" role="menuitem" href="${item.href}">${item.label}</a>`
+            : `<button type="button" class="map-hud__item" role="menuitem" data-hc-action="${item.action}">${item.label}</button>`
+    )).join('');
     auth.appendChild(menu);
 
     const setOpen = (open: boolean) => {
@@ -163,11 +165,11 @@ function mountHeaderMenu() {
     document.addEventListener('pointerdown', (e) => {
         if (!auth.contains(e.target as Node)) setOpen(false);
     });
-    menu.querySelector<HTMLButtonElement>('[data-hc-inbox]')?.addEventListener('click', () => {
+    menu.querySelector<HTMLButtonElement>('[data-hc-action="inbox"]')?.addEventListener('click', () => {
         setOpen(false);
         dispatchInboxOpen();
     });
-    menu.querySelector<HTMLButtonElement>('[data-hc-logout]')?.addEventListener('click', async (e) => {
+    menu.querySelector<HTMLButtonElement>('[data-hc-action="logout"]')?.addEventListener('click', async (e) => {
         const btn = e.currentTarget as HTMLButtonElement;
         btn.disabled = true;
         btn.textContent = 'Logging out…';

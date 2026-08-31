@@ -39,5 +39,12 @@ export async function getToolbarState(): Promise<ToolbarState | null> {
     if (res.status === 401) return null;
     const data = await parseJsonSafe(res);
     if (!res.ok) throw new Error(data.message || `GET /api/toolbar-state failed: ${res.status}`);
+    // Every real 200 carries `session` (the un-onboarded partial shape included), so a
+    // 200 without one isn't this endpoint answering - it's a static-fallback HTML page
+    // being served at this path, which parseJsonSafe quietly turns into {}. Treat that
+    // as logged out rather than letting callers render a phantom identity: MapHud would
+    // otherwise show a nameless chip, and the article pages hide their register banner
+    // whenever that chip appears.
+    if (!data || typeof data !== 'object' || !data.session) return null;
     return data as ToolbarState;
 }

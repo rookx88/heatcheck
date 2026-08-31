@@ -232,6 +232,15 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
         .tank-article-register-banner:hover { transform: translateY(-2px); filter: brightness(1.05); }
         .tank-article-register-banner:active { transform: scale(0.97); }
         .tank-article-register-banner:focus-visible { outline: 3px solid var(--hc-teal); outline-offset: 3px; }
+        /* "Register, free to play" is the wrong pitch for someone already signed in.
+           These pages are static (no session at build time), so the swap keys off what
+           the client-side chrome actually resolved to: MapHud only renders its identity
+           chip when /api/toolbar-state says logged in, and renders nothing at all while
+           hydrating - so the banner is the default and simply drops out once a chip
+           appears. No-JS readers and crawlers keep the banner, which is right for them.
+           Logged out, MapHud shows its own "Log in" pill next to the banner, matching
+           the homepage header's logged-out pairing. */
+        .tank-article:has(.map-hud__chip) .tank-article-register-banner { display: none; }
     </style>
 </head>
 <body>
@@ -244,6 +253,13 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
                 <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
             </a>
         </div>
+
+        <!-- Identity chrome slot (ContentChrome, mounted by tank-article-deck.js):
+             the username + Ember chip and its mini nav for signed-in readers. Sits
+             under the topbar as its own row, the placement ContentChrome.css's
+             .hc-chrome-hud is written for - it reserves the chip's height so the
+             article doesn't jump when hydration finishes. -->
+        <div id="tank-article-chrome"></div>
 
         <header class="tank-article-header">
             <p>${escapeHtml(game.league)} &middot; ${escapeHtml(eventName)}</p>
