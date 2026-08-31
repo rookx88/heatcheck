@@ -134,17 +134,27 @@ function tankdaqIndexesStyles(): string {
             color: rgba(255,255,255,0.6); line-height: 1.1;
         }
 
-        /* Description panel: what the hovered/selected index reacts to. Min-height is
-           reserved so moving between tiles never reflows the page under the cursor. */
-        .hc-tqb-detail {
-            margin: 0.75rem 0 0; min-height: 6.5rem;
-            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.12);
-            border-left: 3px solid rgba(148,163,184,0.5);
-            border-radius: 10px; padding: 0.8rem 1rem 0.9rem;
-            transition: border-left-color 0.16s ease;
+        /* Description card: what the hovered/selected index reacts to, floating OVER
+           the board next to its block (positioned inline by the client, clamped to the
+           board's bounds). pointer-events:none is load-bearing - the card sits under
+           the cursor, so without it the tile would lose hover the instant the card
+           appeared (flicker), and on touch it would swallow the second tap that opens
+           the page. */
+        .hc-tqb-pop {
+            position: absolute; z-index: 6; pointer-events: none;
+            width: min(320px, calc(100% - 24px));
+            background: rgba(7, 5, 11, 0.94);
+            border: 1px solid rgba(255,255,255,0.16);
+            border-left: 3px solid rgba(148,163,184,0.6);
+            border-radius: 12px; padding: 0.7rem 0.85rem 0.8rem;
+            box-shadow: 0 18px 44px rgba(0,0,0,0.65);
+            backdrop-filter: blur(6px);
         }
-        @media (max-width: 759px) { .hc-tqb-detail { min-height: 9rem; } }
-        .hc-tqb-detail-head { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; margin: 0 0 0.3rem; }
+        /* One-line prompt under the board - the card itself only exists on hover/tap. */
+        .hc-tqb-hint {
+            margin: 0.6rem 0 0; font-size: 0.85rem; color: rgba(255,255,255,0.5);
+        }
+        .hc-tqb-detail-head { display: flex; align-items: baseline; gap: 0.45rem; flex-wrap: wrap; margin: 0 0 0.3rem; }
         .hc-tqb-detail-name {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; font-size: 0.95rem;
             letter-spacing: 0.04em; color: #ffffff;
@@ -156,8 +166,7 @@ function tankdaqIndexesStyles(): string {
         /* Inline, NOT pushed to the panel's right edge: the fixed PetWidget sits
            bottom-right and would cover a right-aligned value on a short page. */
         .hc-tqb-detail-delta { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem; }
-        .hc-tqb-detail-blurb { margin: 0; font-size: 0.9rem; line-height: 1.5; color: var(--hc-bubble); }
-        .hc-tqb-detail-hint { margin: 0; font-size: 0.88rem; color: rgba(255,255,255,0.5); }
+        .hc-tqb-detail-blurb { margin: 0; font-size: 0.85rem; line-height: 1.45; color: var(--hc-bubble); }
         .hc-tqb-detail-leagues { display: flex; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0 0; padding: 0; }
         .hc-tqb-detail-league {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.58rem;
@@ -165,16 +174,17 @@ function tankdaqIndexesStyles(): string {
             background: rgba(47, 230, 217, 0.1); border: 1px solid rgba(47, 230, 217, 0.3);
             border-radius: 999px; padding: 0.16rem 0.5rem;
         }
+        /* Not a link (the card can't take pointer events) - a cue that the block
+           underneath is clickable. */
         .hc-tqb-detail-more {
-            display: inline-block; margin: 0.55rem 0 0;
-            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.66rem;
-            letter-spacing: 0.08em; text-transform: uppercase; color: var(--hc-gold); text-decoration: none;
+            display: inline-block; margin: 0.5rem 0 0;
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.62rem;
+            letter-spacing: 0.08em; text-transform: uppercase; color: var(--hc-gold);
         }
-        .hc-tqb-detail-more:hover { text-decoration: underline; }
 
         /* Keep the last rows clear of the fixed PetWidget's corner on wide screens. */
         @media (min-width: 1024px) {
-            .hc-tqb-detail, .hc-tqb-legend, .hc-tqb-note { padding-right: 22ch; }
+            .hc-tqb-legend, .hc-tqb-note, .hc-tqb-hint { padding-right: 22ch; }
         }
 
         .hc-tqb-legend {

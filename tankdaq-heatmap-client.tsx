@@ -129,9 +129,17 @@ const TankdaqBoard: React.FC = () => {
     const [maxAbs, setMaxAbs] = useState(0);
     const [windowInfo, setWindowInfo] = useState<WindowInfo>({ label: 'the last 24 hours', short: '24H', widened: false });
     const boardRef = useRef<HTMLDivElement | null>(null);
+    const popRef = useRef<HTMLDivElement | null>(null);
     const [boardW, setBoardW] = useState(0);
+    const [boardH, setBoardH] = useState(0);
+    const [popH, setPopH] = useState(0);
     const [hoverKey, setHoverKey] = useState<string | null>(null);
     const [selectedKey, setSelectedKey] = useState<string | null>(null);
+
+    // Hover wins over selection while a pointer is on a block, so a mouse user's
+    // reading follows the cursor and a touch user's selection persists.
+    const activeKey = hoverKey ?? selectedKey;
+    const activeTile = tiles.find((t) => t.key === activeKey) ?? null;
     // Read once: a session doesn't switch pointer types mid-visit (same posture as
     // Egg3D's reduced-motion probe).
     const coarsePointer = useRef(
@@ -157,15 +165,23 @@ const TankdaqBoard: React.FC = () => {
     }, [selectedKey]);
 
     // Measure the board so tile type can be sized in real px (no viewport guesswork -
-    // this is what keeps long symbols inside small tiles at every screen size).
+    // this is what keeps long symbols inside small tiles at every screen size) and so
+    // the hover card can be clamped inside the board's bounds.
     useLayoutEffect(() => {
         const el = boardRef.current;
         if (!el) return;
-        setBoardW(el.clientWidth);
-        const ro = new ResizeObserver(() => setBoardW(el.clientWidth));
+        const measure = () => { setBoardW(el.clientWidth); setBoardH(el.clientHeight); };
+        measure();
+        const ro = new ResizeObserver(measure);
         ro.observe(el);
         return () => ro.disconnect();
     }, [phase]);
+
+    // The card's own height decides whether it can sit above its block or has to sit
+    // below; measured after it renders, so the first frame may be a few px off.
+    useLayoutEffect(() => {
+        if (popRef.current) setPopH(popRef.current.offsetHeight);
+    }, [activeKey, boardW]);
 
     useEffect(() => {
         let cancelled = false;
@@ -211,10 +227,6 @@ const TankdaqBoard: React.FC = () => {
         return () => { cancelled = true; };
     }, []);
 
-    // Hover wins over selection while a pointer is on a block, so a mouse user's
-    // reading follows the cursor and a touch user's selection persists.
-    const activeKey = hoverKey ?? selectedKey;
-    const activeTile = tiles.find((t) => t.key === activeKey) ?? null;
     // Gutter between blocks: wide enough for a block's extruded side and cast shadow
     // to land in open space rather than on its neighbour, but scaled to the board so
     // phones don't lose tile area to it.
@@ -292,13 +304,23 @@ const TankdaqBoard: React.FC = () => {
                         </a>
                     );
                 })}
-            </div>
-            <div className="hc-tqb-detail" style={activeTile ? { borderLeftColor: `rgb(${NEON[activeTile.delta > 0 ? 'pos' : activeTile.delta < 0 ? 'neg' : 'zero']})` } : undefined}>
-                {activeTile ? (() => {
+                {activeTile && (() => {
                     const copy = tickerCopyFor(activeTile.ruleType);
                     const dir = activeTile.delta > 0 ? 'pos' : activeTile.delta < 0 ? 'neg' : 'zero';
+                    // Anchor beside the block, then clamp inside the board so a card
+                    // never hangs off an edge. Prefer the side of the block's centre
+                    // with more room, so the card covers the map rather than its own
+                    // block wherever possible.
+                    const popW = Math.min(320, boardW - 24);
+                    const cx = (boardW * (activeTile.x + activeTile.w / 2)) / 100;
+                    const blockTop = (boardH * activeTile.y) / 100;
+                    const blockBottom = (boardH * (activeTile.y + activeTile.h)) / 100;
+                    const left = Math.max(12, Math.min(cx - popW / 2, boardW - popW - 12));
+                    const above = blockTop - popH - 10;
+                    const top = above >= 12 ? above : Math.min(blockBottom + 10, Math.max(12, boardH - popH - 12));
                     return (
-                        <>
+                        <div ref={popRef} className="hc-tqb-pop" role="status"
+                            style={{ left: `${left}px`, top: `${top}px`, width: `${popW}px`, borderLeftColor: `rgb(${NEON[dir]})` }}>
                             <p className="hc-tqb-detail-head">
                                 <span className="hc-tqb-detail-name">{activeTile.displayName}</span>
                                 <span className="hc-tqb-detail-index">{activeTile.indexLabel}</span>
@@ -310,17 +332,18 @@ const TankdaqBoard: React.FC = () => {
                                     {copy.leagues.map((l) => <span key={l} className="hc-tqb-detail-league">{l}</span>)}
                                 </p>
                             )}
-                            <a className="hc-tqb-detail-more" href={`/tankdaq/${activeTile.key}/`}>Open {activeTile.displayName} &rarr;</a>
-                        </>
+                            <span className="hc-tqb-detail-more">
+                                {coarsePointer.current ? `Tap again to open ${activeTile.displayName}` : `Click to open ${activeTile.displayName}`} &rarr;
+                            </span>
+                        </div>
                     );
-                })() : (
-                    <p className="hc-tqb-detail-hint">
-                        {coarsePointer.current
-                            ? 'Tap an index to see what moves it — tap it again to open its page.'
-                            : 'Hover an index to see what moves it, or click through to its page.'}
-                    </p>
-                )}
+                })()}
             </div>
+            <p className="hc-tqb-hint">
+                {coarsePointer.current
+                    ? 'Tap an index to see what moves it — tap it again to open its page.'
+                    : 'Hover an index to see what moves it, or click through to its page.'}
+            </p>
             <p className="hc-tqb-legend">
                 <span style={{ color: '#3ddc64' }}><span className="hc-tqb-swatch" />Up &middot; {windowInfo.short}</span>
                 <span style={{ color: '#ff6b57' }}><span className="hc-tqb-swatch" />Down &middot; {windowInfo.short}</span>
