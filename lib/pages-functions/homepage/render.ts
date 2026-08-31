@@ -531,13 +531,14 @@ function homepageStyles(): string {
 
 export function renderHomepage(options: RenderHomepageOptions): string {
     const { baseUrl, user, data } = options;
-    // Feeds og:/twitter: (link unfurls in Discord, X, iMessage), the SEO meta
-    // description, AND the schema.org blocks below - one pair, so it's kept inside
-    // ~160 chars to survive Google's snippet truncation while still reading whole in
-    // a Discord embed. Describes the game (free sports world, Ember, Mud Puppy), not
-    // the retired article site the old copy was written for.
     const title = 'Heatchecks | A Free Sports World With a Pet to Raise';
-    const description = "Make free calls on the day's baseball, basketball, football, and soccer storylines, earn Ember when you're right, and hatch and raise your own Mud Puppy.";
+    // Two lengths on purpose. `description` feeds the Google snippet (truncates
+    // ~155 chars), the X card (~200) and the schema.org blocks below, so it stays
+    // short enough to never be cut mid-sentence. `ogDescription` is the full pitch,
+    // used only for og:description - the Discord/Facebook/iMessage unfurl renders
+    // several hundred characters in full.
+    const description = 'A new way to create value for sports fans: earn Ember from your sports takes, grow your Mud Puppy, invest in sport indexes, and explore the world.';
+    const ogDescription = "A new way to create value for sports fans. Real-time sports fuels the world of Heatchecks. Use your passion for sports to earn ember (the world's currency), grow your Mud Puppy and build into your franchise. Earn through sports takes, investing in sport indexes, play games, explore the world. And that's just the beginning...";
 
     const schemaOrg = [
         {
@@ -557,7 +558,7 @@ export function renderHomepage(options: RenderHomepageOptions): string {
         },
     ];
 
-    const head = renderHead({ title, description, path: '/', baseUrl, schemaOrg });
+    const head = renderHead({ title, description, ogDescription, path: '/', baseUrl, schemaOrg });
 
     // Island hydration payload. initialSport = first live sport so the showcase opens
     // on real content. The < escape keeps model prose containing "</script>" (or

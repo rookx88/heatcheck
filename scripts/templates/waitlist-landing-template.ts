@@ -12,6 +12,11 @@ interface HeadOptions {
     description: string;
     path: string; // e.g. '/', '/waitlist/', '/beta/'
     baseUrl: string;
+    // Points canonical (and og:url) at a DIFFERENT page than this one. Only used to
+    // consolidate Tank articles that cover the same game - see the cluster logic in
+    // generate-static-site.ts. Defaults to `path`, so every other caller keeps the
+    // self-referential canonical it has always emitted.
+    canonicalPath?: string;
     schemaOrg?: any;
     ogType?: 'website' | 'article';
     articleMeta?: {
@@ -22,15 +27,27 @@ interface HeadOptions {
     // Per-page override - Tank articles pass their own generated card
     // (scripts/generate-og-image.ts) here instead of the generic site-wide placeholder.
     ogImage?: string;
+    // Longer copy for og:description ONLY (the Discord/Facebook/iMessage unfurl, which
+    // renders a few hundred characters happily). `description` stays the short form,
+    // because it also feeds the Google snippet (truncates ~155 chars) and the X card
+    // (~200) - both of which would cut a long pitch off mid-sentence. Defaults to
+    // `description`, so every other page is unaffected.
+    ogDescription?: string;
 }
 
 export function renderHead(options: HeadOptions): string {
     const { title, description, path, baseUrl, schemaOrg, articleMeta } = options;
+    const ogDescription = options.ogDescription || description;
     const ogType = options.ogType || 'website';
-    const url = `${baseUrl}${path}`;
+    // og:url tracks the canonical rather than the page's own path - a consolidated page
+    // should point shares at the version search engines are being told to keep.
+    const canonicalUrl = `${baseUrl}${options.canonicalPath || path}`;
     const ogImage = options.ogImage || `${baseUrl}/assets/images/og-share-world-map.jpg`;
+    // Escape `<` the same way the deck payload does (tank-article-template.ts): a stray
+    // "</script>" in any model-derived field would otherwise terminate this block early
+    // and drop the rest of the page's structured data. \u003c re-parses as "<".
     const schemaScript = schemaOrg
-        ? `<script type="application/ld+json">\n${JSON.stringify(schemaOrg, null, 2)}\n</script>`
+        ? `<script type="application/ld+json">\n${JSON.stringify(schemaOrg, null, 2).replace(/</g, '\\u003c')}\n</script>`
         : '';
 
     // Postgres timestamp columns come back as JS Date objects at runtime (despite the
@@ -55,12 +72,12 @@ export function renderHead(options: HeadOptions): string {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>${escapeHtml(title)}</title>
     <meta name="description" content="${escapeHtml(description)}">
-    <link rel="canonical" href="${escapeHtml(url)}">
+    <link rel="canonical" href="${escapeHtml(canonicalUrl)}">
 
     <meta property="og:title" content="${escapeHtml(title)}">
-    <meta property="og:description" content="${escapeHtml(description)}">
+    <meta property="og:description" content="${escapeHtml(ogDescription)}">
     <meta property="og:image" content="${escapeHtml(ogImage)}">
-    <meta property="og:url" content="${escapeHtml(url)}">
+    <meta property="og:url" content="${escapeHtml(canonicalUrl)}">
     <meta property="og:type" content="${ogType}">
     <meta property="og:site_name" content="HeatChecks">${articleMetaTags}
 
