@@ -531,8 +531,13 @@ function homepageStyles(): string {
 
 export function renderHomepage(options: RenderHomepageOptions): string {
     const { baseUrl, user, data } = options;
-    const title = 'Heatchecks | Live Sports Prop Stories, Every Day';
-    const description = 'Daily prop storylines across baseball, basketball, football, and soccer. Read the story, explore the sports world, and make your own call in the Tank.';
+    // Feeds og:/twitter: (link unfurls in Discord, X, iMessage), the SEO meta
+    // description, AND the schema.org blocks below - one pair, so it's kept inside
+    // ~160 chars to survive Google's snippet truncation while still reading whole in
+    // a Discord embed. Describes the game (free sports world, Ember, Mud Puppy), not
+    // the retired article site the old copy was written for.
+    const title = 'Heatchecks | A Free Sports World With a Pet to Raise';
+    const description = "Make free calls on the day's baseball, basketball, football, and soccer storylines, earn Ember when you're right, and hatch and raise your own Mud Puppy.";
 
     const schemaOrg = [
         {
