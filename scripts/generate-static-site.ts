@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
 import * as fs from 'fs';
 import * as path from 'path';
+import sharp from 'sharp';
 import { generateArticlePage } from './templates/article-template';
 import { generateArchivePage } from './templates/archive-template';
 import { generateLeagueHubPage } from './templates/league-hub-template';
@@ -22,6 +23,7 @@ import { buildMyTanks } from './build-my-tanks';
 import { buildAnalyticsBeacon } from './build-analytics-beacon';
 import { generateBaseHtml } from './templates/base-template';
 import { generateBetaInfoPageHtml } from './templates/waitlist-landing-template';
+import { generate404Page } from './templates/404-template';
 import { renderHomepage } from '../lib/pages-functions/homepage/render';
 import {
     filterAndSortLiveRows,
@@ -372,6 +374,108 @@ function writeBinaryFile(relativePath: string, data: Buffer): void {
     const publicPath = path.join(publicDir, relativePath);
     ensureDir(path.dirname(publicPath));
     fs.writeFileSync(publicPath, data);
+}
+
+/**
+ * Find Tank articles that cover the SAME game and pick one to carry the canonical.
+ *
+ * Curation can select more than one prop from a single game, which produces several
+ * articles competing for the same matchup query while each self-canonicalizes. The
+ * loser pages stay live and fully functional - only the search signal consolidates.
+ *
+ * Keyed on away|home|kickoff, NOT on the team names alone: a three-game series is three
+ * different games between the same two teams, and keying on teams would wrongly
+ * canonicalize a Saturday article onto a Sunday one.
+ *
+ * Returns slug -> canonical slug, containing ONLY the losers. A page absent from the
+ * map keeps the self-referential canonical it has always had.
+ */
+function buildCanonicalClusters(pages: TankPageRecord[]): Map<string, string> {
+    const clusters = new Map<string, TankPageRecord[]>();
+    for (const page of pages) {
+        const game = page.game_snapshot?.game;
+        if (!game?.kickoff || !game.away || !game.home) continue;
+        const key = `${game.away}|${game.home}|${new Date(game.kickoff).getTime()}`;
+        const bucket = clusters.get(key);
+        if (bucket) bucket.push(page);
+        else clusters.set(key, [page]);
+    }
+
+    // Postgres hands these back as Date objects, so go through new Date().getTime()
+    // rather than Date.parse(), which would truncate to whole seconds.
+    const publishedMs = (p: TankPageRecord): number =>
+        new Date(p.published_at || p.created_at).getTime();
+
+    const canonicalBySlug = new Map<string, string>();
+    for (const bucket of clusters.values()) {
+        if (bucket.length < 2) continue;
+        // Newest wins - the latest angle on a game reflects the most recent news. Slug
+        // breaks ties so the choice is stable build over build.
+        const winner = [...bucket].sort((a, b) => {
+            const delta = publishedMs(b) - publishedMs(a);
+            return delta !== 0 ? delta : a.slug.localeCompare(b.slug);
+        })[0];
+        for (const page of bucket) {
+            if (page.slug !== winner.slug) canonicalBySlug.set(page.slug, winner.slug);
+        }
+    }
+
+    if (canonicalBySlug.size > 0) {
+        console.log(`✓ Consolidated ${canonicalBySlug.size} duplicate Tank article(s) onto their newest sibling`);
+    }
+    return canonicalBySlug;
+}
+
+/**
+ * Delete article directories that no longer correspond to a published row.
+ *
+ * The build writes article pages but has never removed them, so a Tank that gets
+ * unpublished or flipped to newsletter_only stays on disk - live, indexable, and
+ * self-canonicalizing - while dropping out of the sitemap. Pruning makes that
+ * self-correcting instead of a cleanup someone has to remember.
+ *
+ * The zero-row guard matters: the caller's try/catch lets the build "succeed" with no
+ * articles when the DB is unreachable, and without this check that failure mode would
+ * delete the entire corpus.
+ */
+export function pruneStaleTankArticles(publishedSlugs: string[], baseDirs: string[] = [distDir, publicDir]): number {
+    if (publishedSlugs.length === 0) {
+        console.warn('⚠ Skipping stale-article prune: no published Tank articles in this build');
+        return 0;
+    }
+
+    const keep = new Set(publishedSlugs);
+    let removed = 0;
+    for (const baseDir of baseDirs) {
+        const articlesDir = path.join(baseDir, 'the-tank', 'articles');
+        if (!fs.existsSync(articlesDir)) continue;
+        for (const entry of fs.readdirSync(articlesDir, { withFileTypes: true })) {
+            if (!entry.isDirectory() || keep.has(entry.name)) continue;
+            fs.rmSync(path.join(articlesDir, entry.name), { recursive: true, force: true });
+            console.log(`✓ Pruned stale Tank article: ${path.join(articlesDir, entry.name)}`);
+            removed++;
+        }
+    }
+
+    // The cards an unpublished article left behind. Without this they accumulate
+    // forever - the directory was already ~70MB of orphans before the article
+    // variant started adding a second file per Tank. Same zero-row guard as above
+    // protects them: an unreachable DB must not wipe the set.
+    for (const baseDir of baseDirs) {
+        const ogDir = path.join(baseDir, 'assets', 'og');
+        if (!fs.existsSync(ogDir)) continue;
+        for (const entry of fs.readdirSync(ogDir, { withFileTypes: true })) {
+            if (!entry.isFile()) continue;
+            const slug = entry.name.replace(/(-article)?\.(png|webp)$/, '');
+            if (slug === entry.name || keep.has(slug)) continue; // unknown naming, or still published
+            fs.rmSync(path.join(ogDir, entry.name), { force: true });
+            console.log(`✓ Pruned stale matchup card: ${path.join(ogDir, entry.name)}`);
+            removed++;
+        }
+    }
+
+    if (removed === 0) console.log('✓ No stale Tank articles to prune');
+    return removed;
 }
 
 /**
@@ -829,6 +933,14 @@ async function generateAllPages(): Promise<void> {
         writeHtmlFile('beta/index.html', generateBetaInfoPageHtml(baseUrl));
         console.log('✓ Generated beta info page\n');
 
+        // Not-found page. Its presence at the build root is what makes Cloudflare Pages
+        // return a real 404 for unmatched routes - without it Pages falls back to
+        // serving /index.html with a 200, so every dead URL was an indexable copy of the
+        // homepage. No DB dependency, so it runs unconditionally.
+        console.log('Generating 404 page...');
+        writeHtmlFile('404.html', generate404Page(baseUrl));
+        console.log('✓ Generated 404 page\n');
+
         // Build the interactive world map bundle before generating any page that embeds it.
         // No DB dependency, so this runs unconditionally here.
         console.log('Building world map bundle...');
@@ -1184,9 +1296,16 @@ async function generateAllPages(): Promise<void> {
             posts,
             schemaOrg
         });
-        const aboutPath = 'about/index.html';
-        writeHtmlFile(aboutPath, aboutHtml);
-        console.log('✓ Generated about page\n');
+        // /about/ has been 301'd to / since the relaunch (see generate-redirects.ts), so
+        // this page is unreachable - but it kept being written on every build, shipping a
+        // stale description of the old "sports intelligence platform" product into dist/.
+        // Gated with the rest of the legacy site rather than deleted, so a LEGACY_BUILD
+        // run still reproduces the old output exactly.
+        if (LEGACY_BUILD) {
+            const aboutPath = 'about/index.html';
+            writeHtmlFile(aboutPath, aboutHtml);
+            console.log('✓ Generated about page\n');
+        }
         
         // Build both Tank client bundles together (shared chunk extraction - see
         // build-tank-bundles.ts) before either piece of Tank HTML that references them.
@@ -1212,48 +1331,77 @@ async function generateAllPages(): Promise<void> {
         let homepageRows: HomepageTankRow[] = [];
         try {
             const tankPagesResult = await pool.query(
-                `SELECT id, slug, league, angle, game_snapshot, model_output, created_at, published_at
+                `SELECT id, slug, league, angle, game_snapshot, model_output, created_at, updated_at, published_at
                  FROM tank_pages
                  WHERE status = 'published' AND visibility = 'app' AND slug IS NOT NULL AND model_output IS NOT NULL`
             );
-            const tankPages: TankPageRecord[] = [];
-            for (const row of tankPagesResult.rows) {
-                const tankPage: TankPageRecord = {
-                    id: row.id,
-                    slug: row.slug,
-                    league: row.league,
-                    angle: row.angle,
-                    game_snapshot: row.game_snapshot,
-                    model_output: row.model_output,
-                    created_at: row.created_at,
-                    published_at: row.published_at,
-                };
-                tankPages.push(tankPage);
+            // Map every row up front - the canonical clustering below needs to see the
+            // whole set before any page can be rendered.
+            const tankPages: TankPageRecord[] = tankPagesResult.rows.map(row => ({
+                id: row.id,
+                slug: row.slug,
+                league: row.league,
+                angle: row.angle,
+                game_snapshot: row.game_snapshot,
+                model_output: row.model_output,
+                created_at: row.created_at,
+                updated_at: row.updated_at,
+                published_at: row.published_at,
+            }));
 
-                // Per-article Twitter/OG card (scripts/generate-og-image.ts) - replaces
-                // the generic site-wide placeholder every Tank article used to share.
-                // Generation failure degrades to that placeholder for just this one
-                // article (renderHead's default) rather than failing the whole build.
+            const canonicalBySlug = buildCanonicalClusters(tankPages);
+
+            let cardFailures = 0;
+            for (const tankPage of tankPages) {
+                const row = tankPage;
+                // Two renders of the same card (scripts/generate-og-image.ts), from one
+                // set of copy: the 'social' PNG is the og:image a crawler unfurls, and
+                // the 'article' WebP is the matchup image the page itself shows under
+                // its headline. Independent try/catch each, so one failing doesn't cost
+                // the reader the other. Failure degrades that surface only - the social
+                // card falls back to the site-wide placeholder (renderHead's default)
+                // and the page simply omits its figure - never a broken image, and
+                // never a failed build for one bad row.
+                const { prop, game } = tankPage.game_snapshot;
+                const cardData = {
+                    league: tankPage.league,
+                    contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
+                    tagline: truncateHeaderLabel(tankPage.model_output.tagline || deriveTaglineFallback(tankPage.model_output.hook)),
+                    hook: tankPage.model_output.hook,
+                    sides: tankPage.model_output.call.sides,
+                    oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
+                    settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
+                };
+
                 let ogImageUrl: string | undefined;
                 try {
-                    const { prop, game } = tankPage.game_snapshot;
-                    const png = await generateOgImage({
-                        league: tankPage.league,
-                        contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
-                        tagline: truncateHeaderLabel(tankPage.model_output.tagline || deriveTaglineFallback(tankPage.model_output.hook)),
-                        hook: tankPage.model_output.hook,
-                        sides: tankPage.model_output.call.sides,
-                        oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
-                        settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
-                    });
-                    writeBinaryFile(`assets/og/${row.slug}.png`, png);
+                    writeBinaryFile(`assets/og/${row.slug}.png`, await generateOgImage(cardData, 'social'));
                     ogImageUrl = `${baseUrl}/assets/og/${row.slug}.png`;
                 } catch (error: any) {
-                    console.warn(`⚠ OG card generation failed for ${row.slug}, falling back to the default share image:`, error.message);
+                    cardFailures++;
+                    console.warn(`⚠ Social card generation failed for ${row.slug}, falling back to the default share image:`, error.message);
                 }
 
-                const html = generateTankArticlePage(tankPage, baseUrl, ogImageUrl);
+                // WebP, not the raw PNG: resvg emits ~1MB of unoptimized RGBA, which is
+                // the wrong thing to put near the top of an article. Same encoder the
+                // landing art uses (sharp q82) takes it to ~40KB. The og:image above
+                // stays PNG deliberately - see renderHead's note on unfurlers and WebP.
+                let articleImageUrl: string | undefined;
+                try {
+                    const articlePng = await generateOgImage(cardData, 'article');
+                    writeBinaryFile(`assets/og/${row.slug}-article.webp`, await sharp(articlePng).webp({ quality: 82 }).toBuffer());
+                    articleImageUrl = `/assets/og/${row.slug}-article.webp`;
+                } catch (error: any) {
+                    cardFailures++;
+                    console.warn(`⚠ Article card generation failed for ${row.slug}, the page will render without its matchup image:`, error.message);
+                }
+
+                const html = generateTankArticlePage(tankPage, baseUrl, ogImageUrl, canonicalBySlug.get(row.slug), articleImageUrl);
                 writeHtmlFile(`the-tank/articles/${row.slug}/index.html`, html);
+                // Consolidated articles stay in the sitemap on purpose. Google has to
+                // fetch a duplicate to see its canonical tag, and with the hub listing
+                // filtered to upcoming kickoffs these pages have no internal links left
+                // to be recrawled through - dropping them here would strand the signal.
                 tankArticleUrls.push({
                     loc: `${baseUrl}/the-tank/articles/${row.slug}/`,
                     lastmod: new Date(row.published_at || row.created_at).toISOString().split('T')[0],
@@ -1261,7 +1409,23 @@ async function generateAllPages(): Promise<void> {
                     priority: '0.6',
                 });
             }
-            console.log(`✓ Generated ${tankPagesResult.rows.length} Tank articles\n`);
+            console.log(`✓ Generated ${tankPages.length} Tank articles\n`);
+            // One summary line instead of leaving single warnings buried in a 69-article
+            // scroll. Every card failing is a different kind of problem from one failing
+            // - it means the renderer itself is broken (missing fonts, resvg/sharp not
+            // installed), and shipping a whole corpus of placeholder-shared,
+            // image-less articles silently is worse than failing the build.
+            const cardsExpected = tankPages.length * 2;
+            if (cardFailures >= cardsExpected && cardsExpected > 0) {
+                throw new Error(
+                    `All ${cardsExpected} matchup card renders failed - the card renderer is broken, ` +
+                    `not the content. Check the fonts in scripts/assets/fonts and that satori/resvg/sharp installed.`
+                );
+            }
+            if (cardFailures > 0) {
+                console.warn(`⚠ ${cardFailures} of ${cardsExpected} matchup card renders failed (see the warnings above)\n`);
+            }
+            pruneStaleTankArticles(tankPages.map(p => p.slug));
             homepageRows = tankPages as unknown as HomepageTankRow[];
 
             // Active feed for the-tank's carousel: published pages whose game hasn't

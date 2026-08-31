@@ -1,5 +1,6 @@
 import { renderHead, footer } from './waitlist-landing-template';
 import { escapeHtml } from '../utils/html-escape';
+import { repairTruncatedTitle } from '../utils/seo-title';
 import type { Prop, Game, TankArticle } from '../../tank-types';
 import { formatMarketLabel, formatOddsLabel, formatSettleDate, formatGameTime, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../../tank-deck-format';
 
@@ -11,6 +12,7 @@ export interface TankPageRecord {
     game_snapshot: { prop: Prop; game: Game };
     model_output: TankArticle;
     created_at: string;
+    updated_at?: string | null;
     published_at: string | null;
 }
 
@@ -28,9 +30,26 @@ export interface TankPageRecord {
  * directly under the topbar - the plain-text header/body/cards below it are the
  * crawlable, no-JS fallback, same progressive-enhancement pattern as the Tank hub.
  */
-export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 'https://heatchecks.io', ogImageUrl?: string): string {
+export function generateTankArticlePage(
+    page: TankPageRecord,
+    baseUrl: string = 'https://heatchecks.io',
+    ogImageUrl?: string,
+    // Set only when this article shares a game with another one. Points canonical at
+    // the cluster's surviving article so the two stop competing in search; the page
+    // itself stays fully live either way. See the cluster logic in generate-static-site.
+    canonicalSlug?: string,
+    // The matchup card rendered for the page itself (generate-og-image's 'article'
+    // variant), shown under the headline. Undefined when that render failed - the
+    // figure is then omitted entirely rather than pointing at an image that isn't
+    // there. Distinct from ogImageUrl, which is the social PNG a crawler unfurls.
+    articleImageUrl?: string,
+): string {
     const { prop, game } = page.game_snapshot;
     const { seo, body, hook, cards, call } = page.model_output;
+    // The model enforces its own "<= 60 chars" cap by stopping mid-word, so titles can
+    // arrive already broken. Repaired once here, then used for <title>, og/twitter,
+    // JSON-LD headline and the <h1> alike - they must not diverge.
+    const title = repairTruncatedTitle(seo.title, page.slug);
     // tagline is the one new field on TankArticle - already-published rows generated
     // before it existed won't have it, so fall back to a truncated hook rather than
     // showing a blank wall header.
@@ -38,19 +57,37 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
 
     const url = `${baseUrl}/the-tank/articles/${page.slug}/`;
     const publishedTime = page.published_at || page.created_at;
+    // Falls back to publishedTime for rows that predate updated_at being selected, so
+    // dateModified is never absent - just equal, which is the honest signal there.
+    const modifiedTime = page.updated_at || publishedTime;
 
     const eventName = `${game.away} @ ${game.home}`;
-    const factualHeadline = `${prop.player} ${prop.market.replace(/_/g, ' ')} — ${eventName}`;
 
     const schemaOrg = [
         {
             '@context': 'https://schema.org',
             '@type': 'Article',
-            headline: factualHeadline,
+            // headline must match the page's visible title - Google treats a mismatch as
+            // a structured-data error, and the old "factual headline" built from the prop
+            // record stuttered badly on team props, where prop.player holds the matchup:
+            // "Arsenal FC vs. Aston Villa FC totals — Arsenal FC @ Aston Villa FC".
+            // This is not a break from the rule in the doc comment above: headline is by
+            // definition the page's title, and every FACTUAL field below (about, teams,
+            // startDate) still comes only from the frozen game_snapshot.
+            headline: title,
+            // The page's own lead image, which Google lists as recommended for Article
+            // and which was previously absent. Not a break from the rule above either:
+            // this is the asset this page renders, not a claim about the event.
+            ...(ogImageUrl ? { image: [ogImageUrl] } : {}),
             datePublished: publishedTime,
-            dateModified: publishedTime,
+            dateModified: modifiedTime,
             author: { '@type': 'Organization', name: 'HeatChecks' },
-            publisher: { '@type': 'Organization', name: 'HeatChecks' },
+            publisher: {
+                '@type': 'Organization',
+                name: 'HeatChecks',
+                url: baseUrl,
+                logo: { '@type': 'ImageObject', url: `${baseUrl}/assets/images/heatchecks-logo.png` },
+            },
             mainEntityOfPage: { '@type': 'WebPage', '@id': url },
             about: {
                 '@type': 'SportsEvent',
@@ -64,14 +101,16 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
     ];
 
     const head = renderHead({
-        title: seo.title,
+        title,
         description: seo.meta_description,
         path: `/the-tank/articles/${page.slug}/`,
+        canonicalPath: canonicalSlug ? `/the-tank/articles/${canonicalSlug}/` : undefined,
         baseUrl,
         ogType: 'article',
         schemaOrg,
         articleMeta: {
             publishedTime,
+            modifiedTime,
             section: page.league,
         },
         ogImage: ogImageUrl,
@@ -148,6 +187,20 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
             background: linear-gradient(90deg, transparent, var(--hc-teal), transparent);
             opacity: 0.7;
         }
+        /* Matchup card between the headline and the body (generate-og-image's
+           'article' variant). Framed like the register banner above - same radius,
+           teal hairline and drop shadow - so the two read as one house treatment.
+           aspect-ratio plus the img's width/height attrs hold the space before it
+           loads, which matters here: it sits above the fold and would otherwise
+           shove the whole article down as it arrives. */
+        .tank-article-hero {
+            margin: 1.5rem 0 0;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 1200 / 630;
+            box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(47, 230, 217, 0.25);
+        }
+        .tank-article-hero img { display: block; width: 100%; height: auto; }
         .tank-article-body {
             margin-top: 1.5rem;
             padding-left: 1rem;
@@ -264,9 +317,13 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
         <header class="tank-article-header">
             <p>${escapeHtml(game.league)} &middot; ${escapeHtml(eventName)}</p>
             <p class="tank-article-gametime">${escapeHtml(formatGameTime(game.kickoff))}</p>
-            <h1>${escapeHtml(seo.title)}</h1>
+            <h1>${escapeHtml(title)}</h1>
             <div class="tank-article-divider"></div>
         </header>
+${articleImageUrl ? `
+        <figure class="tank-article-hero">
+            <img src="${escapeHtml(articleImageUrl)}" alt="${escapeHtml(`${game.league} matchup card: ${eventName}`)}" width="1200" height="630" loading="eager">
+        </figure>` : ''}
 
         <div class="tank-article-body">
             ${bodyHtml}

@@ -28,6 +28,12 @@ export async function generateRedirectsFile(
         '/about         /  301',
         '/archive/*     /  301',
         '/archive       /  301',
+        '',
+        '# Tank articles that were unpublished and pruned from the build. Only the ones',
+        '# with a genuine live equivalent get a redirect - the rest are meant to 404 now',
+        '# that 404.html exists, which is the honest answer for content that is gone.',
+        '/the-tank/articles/mike-vrabel-patriots-head-coach-out-by-2026/*  /the-tank/articles/mike-vrabel-patriots-hot-seat-fired-2026/  301',
+        '/the-tank/articles/mike-vrabel-patriots-head-coach-out-by-2026    /the-tank/articles/mike-vrabel-patriots-hot-seat-fired-2026/  301',
     ];
 
     const redirectsContent = redirects.join('\n') + '\n';
@@ -37,7 +43,8 @@ export async function generateRedirectsFile(
     }
     fs.writeFileSync(outputPath, redirectsContent, 'utf-8');
 
-    console.log(`✓ Generated ${redirects.length} redirect entries in ${outputPath}`);
+    const ruleCount = redirects.filter(line => line.trim() && !line.trim().startsWith('#')).length;
+    console.log(`✓ Generated ${ruleCount} redirect entries in ${outputPath}`);
 }
 
 // Run if called directly (ES module check)
