@@ -263,17 +263,20 @@ async function buildWorldMapImages(): Promise<void> {
         `world-map.png (${(pngInfo.size / 1024).toFixed(0)}KB) [trimmed to ${pngInfo.width}x${pngInfo.height}]`
     );
 
-    // OG card: flatten onto the same midnight-purple the page background uses,
-    // since the source has transparent padding and a JPG can't carry alpha - a
-    // transparent-turned-white background would look like a bug in every link
-    // preview.
+    // OG card: the WHOLE planet, letterboxed onto the same midnight-purple the page
+    // background uses. `contain`, never `cover` - the source is square and the card is
+    // 1.91:1, so a cover crop keeps only a middle band and amputates the hockey and
+    // golf islands plus the top and bottom of the globe, which reads in a Discord
+    // unfurl as some other, wrong image. Flattening also matters: the source has
+    // transparent padding and a JPG can't carry alpha, so a transparent-turned-white
+    // background would look like a bug in every link preview.
     const ogPath = path.join(outDir, 'og-share-world-map.jpg');
     await sharp(trimmedBuffer)
+        .resize(1200, 630, { fit: 'contain', background: '#160c27' })
         .flatten({ background: '#160c27' })
-        .resize(1200, 630, { fit: 'cover', position: 'attention' })
         .jpeg({ quality: 85 })
         .toFile(ogPath);
-    console.log(`✓ og-share-world-map.jpg (${(fs.statSync(ogPath).size / 1024).toFixed(0)}KB) [1200x630]`);
+    console.log(`✓ og-share-world-map.jpg (${(fs.statSync(ogPath).size / 1024).toFixed(0)}KB) [1200x630, whole planet]`);
 }
 
 /**
