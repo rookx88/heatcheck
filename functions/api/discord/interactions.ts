@@ -58,6 +58,7 @@ import {
     buildMeCardInput,
 } from '../../../lib/pages-functions/discord-commands';
 import { sendMeCard } from '../../../lib/pages-functions/me-card';
+import { handlePvpCommand, handlePvpComponent } from '../../../lib/pages-functions/pvp';
 
 const DISCORD_PING = 1;
 const DISCORD_APPLICATION_COMMAND = 2;
@@ -218,6 +219,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
         if (commandName === 'heatchecks-draw') return handleDrawCommand(context, interaction);
         if (commandName === 'heatchecks-league') return handleLeagueCommand(context, interaction);
+        if (commandName === 'pvp') return handlePvpCommand(context, interaction);
         if (commandName === 'my-results') return handleMyResultsCommand(context, interaction);
         if (commandName === 'me') return handleMeCommand(context, interaction);
         if (commandName === 'leaderboard') return handleLeaderboardCommand(context, interaction);
@@ -236,6 +238,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         if (customId.startsWith('wz:')) return handleWizardComponent(context, interaction, customId);
         if (customId.startsWith('st:')) return handleSettingsComponent(context, interaction, customId);
         if (customId.startsWith('dwbtn:')) return handleDrawButton(context, interaction, customId);
+        if (customId.startsWith('pv:')) return handlePvpComponent(context, interaction, customId);
         if (customId.startsWith('pick:')) return handlePickButton(context, interaction, customId);
         if (customId === 'tpselect') return handleTankPostSelect(context, interaction);
         if (customId.startsWith('tprepost:')) return handleTankRepostConfirm(context, interaction, customId);

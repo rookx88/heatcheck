@@ -64,19 +64,29 @@ async function runSettle(env: Env): Promise<string> {
     let preview = '';
     let previewDiscord = '';
     let previewCommunityPicks = '';
+    let previewPvp = '';
+    let previewIndexSlate = '';
     if (env.PREVIEW_SETTLE_URL) {
         preview = await callSettle('preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
         previewDiscord = await callSiblingSweep('discord-settlement-sweep', '/api/discord-settlement-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
         previewCommunityPicks = await callSiblingSweep('community-pick-settlement-sweep', '/api/community-pick-settlement-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
+        previewPvp = await callSiblingSweep('pvp-settlement-sweep', '/api/pvp-settlement-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
+        // Exchange slate settlement: scores each index's locked positions against the
+        // real results and writes the day's close per index. Preview-only for the same
+        // reason as the rest of this block - only preview carries the slate code.
+        previewIndexSlate = await callSiblingSweep('index-settle', '/api/index-settle', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
     }
 
     const live = await callSettle('production', env.SETTLE_URL, env.SETTLE_SECRET);
     const liveDiscord = await callSiblingSweep('discord-settlement-sweep', '/api/discord-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
     const liveCommunityPicks = await callSiblingSweep('community-pick-settlement-sweep', '/api/community-pick-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
+    // PvP rides this same cron rather than getting its own trigger - the Workers Free
+    // plan's 5 account-wide cron triggers are all spent (see worker-curate's toml).
+    const livePvp = await callSiblingSweep('pvp-settlement-sweep', '/api/pvp-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
 
     return JSON.stringify({
-        production: live, productionDiscordSweep: liveDiscord, productionCommunityPickSweep: liveCommunityPicks,
-        preview, previewDiscordSweep: previewDiscord, previewCommunityPickSweep: previewCommunityPicks,
+        production: live, productionDiscordSweep: liveDiscord, productionCommunityPickSweep: liveCommunityPicks, productionPvpSweep: livePvp,
+        preview, previewDiscordSweep: previewDiscord, previewCommunityPickSweep: previewCommunityPicks, previewPvpSweep: previewPvp, previewIndexSlate,
     });
 }
 

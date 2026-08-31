@@ -39,6 +39,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             rank: 13,
             sr: 517,
             level: Math.max(1, Math.min(27, Number(params.get('level') ?? '3') || 3)),
+            // ?pvp=W-D-L, defaulting to a non-zero record so the preview exercises
+            // the line; ?pvp=0-0-0 checks the hide branch.
+            pvpRecord: (() => {
+                const [w, d, l] = (params.get('pvp') ?? '4-2-1').split('-').map((n) => Math.max(0, Number(n) || 0));
+                return { w: w ?? 0, d: d ?? 0, l: l ?? 0 };
+            })(),
         });
         if (!png) return jsonResponse({ ok: false, error: getLastMeError() ?? 'unknown' }, { status: 500 });
     } else if (params.get('cp') === '1') {

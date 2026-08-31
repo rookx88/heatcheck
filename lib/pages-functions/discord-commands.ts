@@ -33,6 +33,7 @@ import { brandEmbed } from './discord-brand';
 import BANNER_RESULTS from './art/banner-results.bin';
 import { buildSettingsPanel } from './discord-setup-wizard';
 import { computeLevels } from './leveling';
+import { computePvpRecords } from './pvp-record';
 import type { MeCardInput } from './me-card';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
 import { buildGiveawayResultMessage, buildNoEligiblePoolMessage } from './discord-community-card';
@@ -60,7 +61,7 @@ export const SUPPORTED_SPORTS = ['NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A
 
 type RequestContext = Parameters<PagesFunction<Env>>[0];
 
-function ephemeral(content: string): Response {
+export function ephemeral(content: string): Response {
     return new Response(
         JSON.stringify({ type: RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE, data: { content, flags: EPHEMERAL_FLAG } }),
         { headers: { 'Content-Type': 'application/json' } }
@@ -113,7 +114,7 @@ function denyIfNotAdmin(interaction: any): Response | null {
 }
 
 // Message payload for the deferred admin flows.
-interface DeferredMessageData {
+export interface DeferredMessageData {
     content?: string;
     embeds?: unknown[];
     components?: unknown[];
@@ -137,7 +138,7 @@ const RESPONSE_DEFERRED = 5;
 // ("The application did not respond" twice in live testing). Immediate ephemeral
 // deferred ack, real content via webhook PATCH to @original, error fallback so the
 // interaction can never hang.
-function deferredEphemeral(context: RequestContext, interaction: any, work: Promise<DeferredMessageData>): Response {
+export function deferredEphemeral(context: RequestContext, interaction: any, work: Promise<DeferredMessageData>): Response {
     const applicationId: string | undefined = interaction.application_id;
     const token: string | undefined = interaction.token;
     if (!applicationId || !token) return ephemeral("Couldn't process that command - try again.");
@@ -282,7 +283,7 @@ export async function handlePostCommand(context: RequestContext, interaction: an
 
 // "moneyline" -> "Moneyline", "spreads" -1.5 -> "Spread -1.5",
 // "baseball_player_home_runs" 0.5 -> "home runs o/u 0.5", etc.
-function describeMarket(market: string | null | undefined, line: number | string | null | undefined): string {
+export function describeMarket(market: string | null | undefined, line: number | string | null | undefined): string {
     const lineNum = line === null || line === undefined || line === '' ? null : Number(line);
     const withLine = (base: string, prefix = 'o/u ') => (lineNum !== null && Number.isFinite(lineNum) ? `${base} ${prefix}${lineNum}` : base);
     switch (market) {
@@ -301,7 +302,7 @@ function describeMarket(market: string | null | undefined, line: number | string
 }
 
 // "Fri Aug 21 · 9:00 PM ET" - US/Eastern because that's how sports schedules read.
-function formatKickoff(iso: string | null | undefined): string {
+export function formatKickoff(iso: string | null | undefined): string {
     if (!iso) return '';
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return '';
@@ -526,7 +527,7 @@ export function parseGameStartTime(raw: string | null | undefined): Date | null 
     return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function parseMarketOutcomes(market: any): { question: string; outcomes: string[]; outcomePrices: number[] } | null {
+export function parseMarketOutcomes(market: any): { question: string; outcomes: string[]; outcomePrices: number[] } | null {
     const question = market?.question as string | undefined;
     let outcomes: string[] = [];
     let outcomePrices: number[] = [];
@@ -1113,6 +1114,10 @@ export async function buildMeCardInput(env: Env, guildId: string, discordUserId:
         computeSkillRatings(sql, guildId, [discordUserId]),
         computeLevels(sql, guildId, [discordUserId]),
     ]);
+    // Fourth derived-on-read stat, same shape as SR and level (see
+    // lib/pages-functions/pvp-record.ts). Kept out of the Promise.all above only
+    // because it reads a different table set and is cheap enough to not matter.
+    const pvpById = await computePvpRecords(sql, guildId, [discordUserId]);
 
     return {
         displayName: member?.global_name || member?.username || 'You',
@@ -1122,6 +1127,7 @@ export async function buildMeCardInput(env: Env, guildId: string, discordUserId:
         rank: Number((rankRows[0] as any)?.ahead ?? 0) + 1,
         sr: srById.get(discordUserId) ?? 0,
         level: levelById.get(discordUserId)?.level ?? 1,
+        pvpRecord: pvpById.get(discordUserId) ?? null,
     };
 }
 

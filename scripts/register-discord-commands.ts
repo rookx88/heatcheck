@@ -16,6 +16,7 @@ const APPLICATION_COMMAND_TYPE_SUB_COMMAND_GROUP = 2;
 const OPTION_TYPE_STRING = 3;
 const OPTION_TYPE_BOOLEAN = 5;
 const OPTION_TYPE_CHANNEL = 7;
+const OPTION_TYPE_USER = 6;
 const CHANNEL_TYPE_GUILD_TEXT = 0;
 // Discord permission bit for "Manage Server", sent as a stringified bitfield -
 // default_member_permissions hides the command from members without it in Discord's
@@ -169,6 +170,24 @@ const commands = [
         description: 'Your personal rank card — rank, points, accuracy, and Skill Rating in this server',
         type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
         // No default_member_permissions - a member command, like /my-results.
+    },
+    {
+        name: 'pvp',
+        description: 'Challenge someone to a 3-pick head-to-head battle',
+        type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
+        // No default_member_permissions - a member command, like /me and /my-results.
+        // Bare opens the hub (incoming challenges, active battles, your W-D-L); with a
+        // user it issues a challenge. Deliberately NOT subcommands: a command that
+        // declares subcommands can't be invoked bare, and the public challenge ping
+        // tells a cold member to type exactly "/pvp".
+        options: [
+            {
+                name: 'user',
+                description: 'Who to challenge (leave empty to see your battles)',
+                type: OPTION_TYPE_USER,
+                required: false,
+            },
+        ],
     },
     {
         name: 'my-results',

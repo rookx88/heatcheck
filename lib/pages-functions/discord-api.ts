@@ -157,7 +157,10 @@ function sleep(ms: number): Promise<void> {
 export async function postDiscordChannelMessage(
     env: Env,
     channelId: string,
-    body: { embeds: unknown[]; components?: unknown[] }
+    // embeds is optional so a content-only message works (the PvP challenge line is
+    // one line of text, deliberately not a card); allowed_mentions lets a caller pin
+    // exactly who gets pinged - see lib/pages-functions/pvp-card.ts.
+    body: { content?: string; embeds?: unknown[]; components?: unknown[]; allowed_mentions?: unknown }
 ): Promise<string> {
     for (let attempt = 0; ; attempt++) {
         const res = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
@@ -276,4 +279,22 @@ export async function fetchGuildMembers(env: Env, guildId: string): Promise<Disc
         after = pageMembers[pageMembers.length - 1].user.id;
     }
     return members;
+}
+
+// ONE member, by id - the single-member endpoint rather than paging the whole roster.
+// Used by /pvp, which only ever needs the handful of people in your own battles;
+// fetchGuildMembers above (10 pages) is the wrong tool for that and would dominate the
+// cost of every hub render. Falls back to a neutral label rather than throwing: a name
+// missing from a screen is cosmetic, and a left-the-server opponent is a real case.
+export async function fetchGuildMemberName(env: Env, guildId: string, discordUserId: string): Promise<string> {
+    try {
+        const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${discordUserId}`, {
+            headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
+        });
+        if (!res.ok) return 'Someone';
+        const member = (await res.json()) as { nick?: string | null; user?: { global_name?: string | null; username?: string } };
+        return member.nick || member.user?.global_name || member.user?.username || 'Someone';
+    } catch {
+        return 'Someone';
+    }
 }

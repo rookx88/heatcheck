@@ -32,6 +32,7 @@ import PERMANENT_MARKER from './fonts/permanent-marker.bin';
 import ORBITRON_BOLD from './fonts/orbitron-bold.bin';
 import ORBITRON_BLACK from './fonts/orbitron-black.bin';
 import { MAX_LEVEL } from './leveling';
+import { formatPvpRecord, type PvpRecord } from './pvp-record';
 
 // Canvas matches the committed art assets (540x960 - the 1080x1920 reference scaled
 // by 0.5). Half-size is deliberate CPU management, not a quality tradeoff: the first
@@ -56,6 +57,10 @@ export interface MeCardInput {
     rank: number;
     sr: number;
     level: number;
+    // Head-to-head PvP record in this guild (wins-draws-losses), derived on read by
+    // lib/pages-functions/pvp-record.ts - never a stored column, same posture as sr
+    // and level. Null or an all-zero record hides the line on the card entirely.
+    pvpRecord: PvpRecord | null;
 }
 
 // ---- Milestone tiers -------------------------------------------------------------
@@ -143,6 +148,10 @@ export async function renderMeCard(input: MeCardInput): Promise<Uint8Array | nul
         // names instead of overflowing into the rank block.
         const nameSize = Math.min(43, Math.max(20, Math.floor(373 / Math.max(1, input.displayName.length) / 0.62)));
         const lvlColor = input.level >= MAX_LEVEL ? tier.ring : '#ffffff';
+        // Head-to-head record, in the empty band between the points number's baseline
+        // (837) and SKILL RATING's cap height. Hidden entirely at 0-0-0 - "PVP 0-0-0"
+        // is noise on the card of everyone who has never played one.
+        const pvpLine = formatPvpRecord(input.pvpRecord);
 
         // Glow = three cheap concentric translucent circles, NOT a gaussian blur -
         // the blur was a real slice of the CPU budget that error 1102 said we don't
@@ -166,6 +175,7 @@ ${avatarRaw
 <image xlink:href="${char}" width="${W}" height="${H}" ${tintFilter}/>
 <rect x="35" y="750" width="${W - 70}" height="157" rx="6" fill="#ffffff" opacity="0.22"/>
 <text x="${W / 2}" y="837" text-anchor="middle" font-family="Anton" font-size="81" fill="#ffffff">${input.points.toLocaleString('en-US')}</text>
+${pvpLine ? `<text x="53" y="866" font-family="Orbitron" font-weight="700" font-size="18" letter-spacing="2" fill="#ffffff">PVP ${pvpLine}</text>` : ''}
 <text x="53" y="887" font-family="Orbitron" font-weight="700" font-size="18" letter-spacing="2" fill="#ffffff">SKILL RATING: ${input.sr}</text>
 <text x="${W - 52}" y="891" text-anchor="end" font-family="Orbitron" font-weight="900" font-size="31" letter-spacing="1.5" fill="${lvlColor}">LVL ${input.level}</text>
 <text x="29" y="73" font-family="Permanent Marker" font-size="${nameSize}" fill="${ORANGE}" transform="rotate(-6 29 73)">${name}</text>
@@ -208,7 +218,10 @@ export async function sendMeCard(applicationId: string, token: string, input: Me
                 content: '',
                 embeds: [{
                     author: { name: input.displayName },
-                    description: `**#${input.rank}** · ${input.points.toLocaleString('en-US')} points · SR ${input.sr} · LVL ${input.level}`,
+                    // Carries the same stats the card does, PvP included - a stat
+                    // that only exists in the SVG silently disappears whenever the
+                    // render fails.
+                    description: `**#${input.rank}** · ${input.points.toLocaleString('en-US')} points · SR ${input.sr} · LVL ${input.level}${formatPvpRecord(input.pvpRecord) ? ` · PvP ${formatPvpRecord(input.pvpRecord)}` : ''}`,
                     thumbnail: { url: input.avatarUrl },
                     color: 0xf97316,
                 }],
