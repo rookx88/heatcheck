@@ -830,7 +830,10 @@ export function marketMoversStyles(): string {
                grid-row top offset. */
             #market-movers {
                 margin-top: 1.5rem;
-                background: #ffffff;
+                /* A pale wash of the house blue (#5ec1ee) rather than white. Light
+                   enough that everything tuned for a light ground still reads: dark
+                   headings, the maroon news links, the sign-coloured card rails. */
+                background: #e4f3fc;
                 padding: 0 1rem 1.25rem;
             }
             .hc-mm-band {
@@ -845,19 +848,23 @@ export function marketMoversStyles(): string {
                 border-radius: 8px; padding: 0.45rem 0.7rem;
             }
             .hc-mm-tabs { margin-top: 0.5rem; }
-            /* A fully transparent card read as flat/boring on the white panel -
-               a light tint plus a sign-colored left rail gives the card its own
-               presence instead of the text just floating on white. */
+            /* A fully transparent card read as flat/boring on the old white panel - a
+               tint plus a sign-colored left rail gives the card its own presence. The
+               tint is deeper now that the panel is itself blue: at the old 0.22 the
+               card and the panel were nearly the same colour and the card stopped
+               reading as a card. */
             .hc-mm-card {
-                background: rgba(94, 193, 238, 0.22);
+                background: rgba(94, 193, 238, 0.42);
                 padding: 1rem 1.15rem 1.2rem; border-radius: 10px;
                 border-left: 5px solid #94a3b8;
-                box-shadow: 0 2px 10px rgba(11, 21, 38, 0.08);
+                box-shadow: 0 2px 10px rgba(11, 21, 38, 0.1);
             }
             .hc-mm-card[data-sign="pos"] { border-left-color: #2f9e1e; }
             .hc-mm-card[data-sign="neg"] { border-left-color: #e33a24; }
-            /* The white desc chip vanishes white-on-white - pale blue on desktop. */
-            .hc-mm-desc { background: rgba(94, 193, 238, 0.35); }
+            /* The chip went pale blue back when the panel was white and a white chip
+               vanished into it. With a blue panel and a deeper blue card, white is the
+               colour that separates it from the card again. */
+            .hc-mm-desc { background: rgba(255, 255, 255, 0.8); }
             /* The panel is white here, so the board's caption (white at 55% on the dark
                page) would be invisible. Everything inside the SVG stays as-is - it
                carries its own black ground. */
