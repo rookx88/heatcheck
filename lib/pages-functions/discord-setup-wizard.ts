@@ -474,6 +474,8 @@ interface GuildSettingsRow {
     ephemeral_user_commands: boolean;
     pvp_enabled: boolean;
     pvp_results_visibility: string;
+    pvp_channel_id: string | null;
+    pvp_announce_challenges: boolean;
     configured_by_discord_user_id: string;
     configured_at: string | Date;
 }
@@ -509,6 +511,7 @@ export async function buildSettingsPanel(context: RequestContext, guildId: strin
         SELECT channel_id, disabled_sports, auto_draw_enabled, community_points_label, leaderboard_label,
                settlement_visibility, tank_posts_enabled, daily_post_limit, community_pick_channel_ids,
                weekly_leaderboard, ephemeral_user_commands, pvp_enabled, pvp_results_visibility,
+               pvp_channel_id, pvp_announce_challenges,
                configured_by_discord_user_id, configured_at
         FROM discord_guild_configs WHERE guild_id = ${guildId}
     `;
@@ -531,7 +534,9 @@ export async function buildSettingsPanel(context: RequestContext, guildId: strin
         `**Names:** points = "${c.community_points_label || DEFAULT_COMMUNITY_POINTS_LABEL}", leaderboard = "${c.leaderboard_label || DEFAULT_LEADERBOARD_LABEL}"`,
         `**Weekly leaderboard post:** ${weekly.length ? weekly.join(', ') : 'off'}`,
         `**Member commands:** ${c.ephemeral_user_commands ? 'visible only to the member' : 'visible to everyone'}`,
-        `**PvP battles:** ${c.pvp_enabled ? `on (results ${c.pvp_results_visibility === 'private' ? 'private' : 'posted in channel'})` : 'off'}`,
+        `**PvP battles:** ${c.pvp_enabled
+            ? `on in ${c.pvp_channel_id ? `<#${c.pvp_channel_id}>` : 'the main channel'} — challenges ${c.pvp_announce_challenges ? 'announced' : 'silent'}, results ${c.pvp_results_visibility === 'private' ? 'private' : 'announced'}`
+            : 'off'}`,
         `**Who can run \`/heatchecks\`:** admins with Manage Server — everyone else can only vote, pick, and check their own stats.`,
         configuredByLine(c),
         '',
@@ -794,25 +799,49 @@ export async function handleSettingsComponent(context: RequestContext, interacti
             await sql`UPDATE discord_guild_configs SET ephemeral_user_commands = ${arg === 'yes'} WHERE guild_id = ${guildId}`;
             return buildSettingsPanel(context, guildId, false);
 
-        case 'pvp':
+        case 'pvp': {
+            const pvpRows = await sql`SELECT channel_id, pvp_channel_id FROM discord_guild_configs WHERE guild_id = ${guildId}`;
+            const pvpCfg = pvpRows[0] as unknown as { channel_id: string; pvp_channel_id: string | null };
             return settingScreen(
                 [
                     '**PvP battles**',
                     '`/pvp` lets any two members challenge each other to a 3-pick head-to-head on games starting in the next 24 hours. Picks stay private until the battle settles.',
                     '',
-                    'A challenge posts ONE line in your main channel pinging only the person challenged. Whether the RESULT is announced is the second setting below — deliberately independent of your settlement results setting, so you can keep recaps private and still announce battles.',
+                    `**Posts to:** ${pvpCfg?.pvp_channel_id ? `<#${pvpCfg.pvp_channel_id}>` : `the main channel (<#${pvpCfg?.channel_id}>)`} — pick a channel below to give PvP its own home.`,
+                    '',
+                    'A challenge posts ONE line pinging only the person challenged; the result recap posts when the battle settles. Each is switched separately below, and both are independent of your settlement results setting — so you can keep Tank and Community Pick recaps private and still announce battles. With challenge announcements off, the person challenged finds it by running `/pvp`.',
                 ].join('\n'),
                 [
+                    { type: ACTION_ROW, components: [{ type: CHANNEL_SELECT, custom_id: 'st:setpvpchan', channel_types: [GUILD_TEXT], placeholder: 'PvP channel' }] },
                     buttonRow([
+                        { label: 'Use main channel', customId: 'st:setpvpchan:clear' },
                         { label: 'PvP on', customId: 'st:setpvp:on', style: STYLE_PRIMARY },
                         { label: 'PvP off', customId: 'st:setpvp:off' },
                     ]),
                     buttonRow([
-                        { label: 'Results in channel', customId: 'st:setpvpvis:channel', style: STYLE_PRIMARY },
+                        { label: 'Announce challenges', customId: 'st:setpvpann:on', style: STYLE_PRIMARY },
+                        { label: 'Silent challenges', customId: 'st:setpvpann:off' },
+                    ]),
+                    buttonRow([
+                        { label: 'Announce results', customId: 'st:setpvpvis:channel', style: STYLE_PRIMARY },
                         { label: 'Results private', customId: 'st:setpvpvis:private' },
                     ]),
                 ]
             );
+        }
+
+        case 'setpvpchan': {
+            // Blank = the main channel, which is why 'clear' writes NULL rather than
+            // copying channel_id: a guild that later moves its main channel should
+            // keep following it, not stay pinned to a stale copy.
+            const chanId = arg === 'clear' ? null : (interaction.data?.values?.[0] ?? null);
+            await sql`UPDATE discord_guild_configs SET pvp_channel_id = ${chanId} WHERE guild_id = ${guildId}`;
+            return buildSettingsPanel(context, guildId, false);
+        }
+
+        case 'setpvpann':
+            await sql`UPDATE discord_guild_configs SET pvp_announce_challenges = ${arg === 'on'} WHERE guild_id = ${guildId}`;
+            return buildSettingsPanel(context, guildId, false);
 
         case 'setpvp':
             await sql`UPDATE discord_guild_configs SET pvp_enabled = ${arg === 'on'} WHERE guild_id = ${guildId}`;

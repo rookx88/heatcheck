@@ -215,10 +215,19 @@ async function createChallenge(context: RequestContext, interaction: any, guildI
     if (!interaction.data?.resolved?.members?.[targetId]) return ephemeral("That person isn't in this server.");
 
     const sql = getSql(context.env);
-    const cfgRows = await sql`SELECT channel_id, pvp_enabled FROM discord_guild_configs WHERE guild_id = ${guildId}`;
+    const cfgRows = await sql`
+        SELECT channel_id, pvp_enabled, pvp_channel_id, pvp_announce_challenges
+        FROM discord_guild_configs WHERE guild_id = ${guildId}
+    `;
     if (cfgRows.length === 0) return ephemeral('This server has no channel configured — an admin needs to run `/heatchecks setup` first.');
-    const cfg = cfgRows[0] as unknown as { channel_id: string; pvp_enabled: boolean };
+    const cfg = cfgRows[0] as unknown as {
+        channel_id: string; pvp_enabled: boolean; pvp_channel_id: string | null; pvp_announce_challenges: boolean;
+    };
     if (!cfg.pvp_enabled) return ephemeral('PvP is turned off in this server.');
+    // Null pvp_channel_id means "wherever everything else goes". Resolved once, here,
+    // and snapshotted onto the battle - a battle already running keeps posting its
+    // result where it started even if an admin repoints this later.
+    const pvpChannelId = cfg.pvp_channel_id || cfg.channel_id;
 
     const live = await sql`
         SELECT id FROM pvp_battles
@@ -241,7 +250,7 @@ async function createChallenge(context: RequestContext, interaction: any, guildI
     try {
         const rows = await sql`
             INSERT INTO pvp_battles (guild_id, channel_id, challenger_id, opponent_id)
-            VALUES (${guildId}, ${cfg.channel_id}, ${me}, ${targetId})
+            VALUES (${guildId}, ${pvpChannelId}, ${me}, ${targetId})
             RETURNING id
         `;
         battleId = (rows[0] as unknown as { id: string }).id;
@@ -252,13 +261,20 @@ async function createChallenge(context: RequestContext, interaction: any, guildI
         throw err;
     }
 
+    // A server can silence the announcement, in which case the challenge is
+    // discoverable only by running /pvp - so say that plainly rather than implying
+    // they'll be pinged.
+    if (!cfg.pvp_announce_challenges) {
+        return screen(`Challenge sent to <@${targetId}>. Challenge announcements are off in this server, so tell them to run \`/pvp\` — they have 24h to accept.`);
+    }
+
     const challengerName = interaction.member?.nick || interaction.member?.user?.global_name || interaction.member?.user?.username || 'Someone';
     try {
-        const messageId = await postDiscordChannelMessage(context.env, cfg.channel_id, buildPvpChallengeMessage(challengerName, targetId));
+        const messageId = await postDiscordChannelMessage(context.env, pvpChannelId, buildPvpChallengeMessage(challengerName, targetId));
         await sql`UPDATE pvp_battles SET challenge_message_id = ${messageId} WHERE id = ${battleId}`;
     } catch (err) {
         console.error('[pvp] Challenge ping failed:', err);
-        return screen(`Challenge sent to <@${targetId}> — but I couldn't post the notice in <#${cfg.channel_id}>, so tell them to run \`/pvp\`. They have 24h to accept.`);
+        return screen(`Challenge sent to <@${targetId}> — but I couldn't post the notice in <#${pvpChannelId}>, so tell them to run \`/pvp\`. They have 24h to accept.`);
     }
 
     return screen(`Challenge sent to <@${targetId}>. They have 24h to accept — you'll see it under \`/pvp\` either way.`);
