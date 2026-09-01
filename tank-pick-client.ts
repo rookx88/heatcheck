@@ -143,6 +143,14 @@ export async function getTodayStatus(slug?: string): Promise<TodayStatus | null>
     if (res.status === 401 || res.status === 403) return null;
     const data = await parseJsonSafe(res);
     if (!res.ok) throw new Error(data.message || `GET /api/picks/today failed: ${res.status}`);
+    // Every real 200 carries a picks array (functions/api/picks/today.ts), so a 200
+    // without one isn't this endpoint answering - it's a static-fallback HTML page
+    // served at this path, which parseJsonSafe quietly turns into {}. Returning that
+    // as a TodayStatus hands callers an object missing its declared-required fields,
+    // and Fishtank's `todayStatus?.picks.find(...)` then throws through the optional
+    // chain's blind spot and takes the whole artifact down with it. Same guard, and
+    // same reasoning, as getToolbarState's in toolbar-state-client.ts.
+    if (!data || !Array.isArray(data.picks)) return null;
     return data as TodayStatus;
 }
 
