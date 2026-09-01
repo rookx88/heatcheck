@@ -48,14 +48,18 @@ export function buildTankCardMessage(baseUrl: string, row: TankCardRow): Discord
     // Tank at build time (matchup, tagline, both sides, odds, resolve date, real logo,
     // brand navy/gold/teal) - Discord's big embed image slot, not a second design
     // built from scratch. If a Tank was published without a site rebuild since (so the
-    // PNG doesn't exist yet), Discord just renders the embed without an image rather
+    // card doesn't exist yet), Discord just renders the embed without an image rather
     // than failing the post.
+    // .jpg, not .png: the card is photographic artwork, and lossless was costing ~1MB
+    // a share for a visually identical image - enough that size-capped unfurlers
+    // (WhatsApp especially) dropped the preview entirely. Same reasoning that already
+    // made the site-wide og-share-world-map a JPG.
     const embed = {
         author: { name: 'The Tank', icon_url: `${baseUrl}/assets/images/heatchecks-logo.png` },
         title: tagline,
         url: tankUrl,
         description: row.modelOutput.call.question,
-        image: { url: `${baseUrl}/assets/og/${row.slug}.png` },
+        image: { url: `${baseUrl}/assets/og/${row.slug}.jpg` },
         color: 0xffc72c,
         footer: {
             text: `Connect your account at ${baseUrl.replace(/^https?:\/\//, '')}/account to make your pick count`,

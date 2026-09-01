@@ -466,7 +466,7 @@ export function pruneStaleTankArticles(publishedSlugs: string[], baseDirs: strin
         if (!fs.existsSync(ogDir)) continue;
         for (const entry of fs.readdirSync(ogDir, { withFileTypes: true })) {
             if (!entry.isFile()) continue;
-            const slug = entry.name.replace(/(-article)?\.(png|webp)$/, '');
+            const slug = entry.name.replace(/(-article)?\.(png|jpg|webp)$/, '');
             if (slug === entry.name || keep.has(slug)) continue; // unknown naming, or still published
             fs.rmSync(path.join(ogDir, entry.name), { force: true });
             console.log(`✓ Pruned stale matchup card: ${path.join(ogDir, entry.name)}`);
@@ -1373,10 +1373,17 @@ async function generateAllPages(): Promise<void> {
                     settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
                 };
 
+                // JPEG, not the raw PNG resvg hands back: the card is photographic
+                // artwork, so lossless bought nothing and cost ~1MB a share - enough
+                // that size-capped unfurlers (WhatsApp especially) dropped the preview
+                // rather than showing it. q85 lands the same picture in ~107KB. JPEG
+                // rather than WebP for the same reason og-share-world-map.jpg is a
+                // JPG - see renderHead's note on inconsistent WebP unfurling.
                 let ogImageUrl: string | undefined;
                 try {
-                    writeBinaryFile(`assets/og/${row.slug}.png`, await generateOgImage(cardData, 'social'));
-                    ogImageUrl = `${baseUrl}/assets/og/${row.slug}.png`;
+                    const socialPng = await generateOgImage(cardData, 'social');
+                    writeBinaryFile(`assets/og/${row.slug}.jpg`, await sharp(socialPng).flatten({ background: '#0b0713' }).jpeg({ quality: 85 }).toBuffer());
+                    ogImageUrl = `${baseUrl}/assets/og/${row.slug}.jpg`;
                 } catch (error: any) {
                     cardFailures++;
                     console.warn(`⚠ Social card generation failed for ${row.slug}, falling back to the default share image:`, error.message);

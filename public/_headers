@@ -49,6 +49,13 @@
 /assets/images/*
   Cache-Control: public, no-cache
 
+# Per-article matchup cards (<slug>.jpg for social unfurls, <slug>-article.webp for
+# the image the article itself shows). Fixed names regenerated in place on every
+# build, so they're updatable exactly like the images above - and until now they
+# matched no rule here at all and fell through to the platform default.
+/assets/og/*
+  Cache-Control: public, no-cache
+
 # Card-interior video (fixed filename, updatable in place, so not immutable) - but at
 # 1.4MB a revalidation-per-open is real weight, so let it sit for a day and serve
 # stale while revalidating rather than no-cache like the images above.

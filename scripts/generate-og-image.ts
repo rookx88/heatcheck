@@ -100,6 +100,24 @@ export interface OgCardData {
     settleDateLabel: string;   // "Resolves {date}"
 }
 
+/**
+ * Which surface the card is being rendered for. Same artwork, fonts and geometry
+ * either way - only what sits on top of the background changes:
+ *
+ *   'social'  - the full share card: matchup line, tagline headline, hook, both
+ *               sides, odds/date, and the marketing CTA strip. This is the
+ *               og:image a crawler unfurls, seen by people who are NOT on the site.
+ *   'article' - the same card rendered to sit inside the article page itself,
+ *               under the headline. Drops the three text lines the page already
+ *               shows immediately above it (matchup, headline, opening sentence)
+ *               and the CTA that would be pointing readers at the page they are
+ *               already reading. Keeps the artwork, logo, league badge, and the
+ *               sides/odds row, which is the part that isn't repeated anywhere.
+ *
+ * A render mode rather than card content, so it stays out of OgCardData.
+ */
+export type OgCardVariant = 'social' | 'article';
+
 function pill(label: string, accent: string) {
     return {
         type: 'div',
@@ -124,7 +142,8 @@ function pill(label: string, accent: string) {
     };
 }
 
-function buildTree(data: OgCardData, backgroundDataUri: string, logoDataUri: string) {
+function buildTree(data: OgCardData, backgroundDataUri: string, logoDataUri: string, variant: OgCardVariant) {
+    const isArticle = variant === 'article';
     return {
         type: 'div',
         props: {
@@ -205,8 +224,13 @@ function buildTree(data: OgCardData, backgroundDataUri: string, logoDataUri: str
                                     ],
                                 },
                             },
-                            // Middle: context label, tagline headline, hook sentence
-                            {
+                            // Middle: context label, tagline headline, hook sentence.
+                            // The article variant drops all three (the page prints the
+                            // same matchup line and headline directly above the image,
+                            // and the hook opens the body text below it) but keeps the
+                            // flex growth they supplied - otherwise the bottom row
+                            // rides up under the logo instead of staying pinned down.
+                            isArticle ? { type: 'div', props: { style: { display: 'flex', flexGrow: 1 } } } : {
                                 type: 'div',
                                 props: {
                                     style: { display: 'flex', flexDirection: 'column', flexGrow: 1, justifyContent: 'center', marginTop: 6 },
@@ -300,8 +324,10 @@ function buildTree(data: OgCardData, backgroundDataUri: string, logoDataUri: str
                                                 ],
                                             },
                                         },
-                                        // Marketing CTA footer strip
-                                        {
+                                        // Marketing CTA footer strip - social only. It
+                                        // sends people to heatchecks.io, which is where
+                                        // the article variant is already being read.
+                                        ...(isArticle ? [] : [{
                                             type: 'div',
                                             props: {
                                                 style: {
@@ -321,7 +347,7 @@ function buildTree(data: OgCardData, backgroundDataUri: string, logoDataUri: str
                                                 },
                                                 children: 'Visit heatchecks.io — Make Picks → Earn Ember → Build Your Team → Find Collectibles',
                                             },
-                                        },
+                                        }]),
                                     ],
                                 },
                             },
@@ -333,12 +359,12 @@ function buildTree(data: OgCardData, backgroundDataUri: string, logoDataUri: str
     };
 }
 
-export async function generateOgImage(data: OgCardData): Promise<Buffer> {
+export async function generateOgImage(data: OgCardData, variant: OgCardVariant = 'social'): Promise<Buffer> {
     const [backgroundDataUri, logoDataUri] = await Promise.all([
         Promise.resolve(loadBackgroundDataUri()),
         loadLogoDataUri(),
     ]);
-    const svg = await satori(buildTree(data, backgroundDataUri, logoDataUri) as any, {
+    const svg = await satori(buildTree(data, backgroundDataUri, logoDataUri, variant) as any, {
         width: CARD_WIDTH,
         height: CARD_HEIGHT,
         fonts: loadFonts(),
