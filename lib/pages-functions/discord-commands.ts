@@ -54,10 +54,18 @@ const BUTTON_STYLE_SECONDARY = 2;
 const BUTTON_STYLE_DANGER = 4;
 const MAX_SELECT_OPTIONS = 25;
 
-// Matches curate.ts's SPORT_GROUPS league set - the same leagues the rest of the
-// pipeline already knows about, so a filter/search value here always means something
-// downstream.
-export const SUPPORTED_SPORTS = ['NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
+// A SUPERSET of curate.ts's SPORT_GROUPS: the eight leagues the whole pipeline knows
+// (which can produce Tank pages, homepage slots and ticker constituents) plus four
+// competitions that exist ONLY in Discord pick menus - see polymarket.ts's LEAGUE_TAGS
+// for why. Picking one of those four here yields a Community Pick or a PvP pick and
+// nothing else; no Tank will ever carry that league.
+// Must stay set-equal with discord-setup-wizard.ts's SPORT_GROUPS (its ALL_LEAGUES
+// drives disabled_sports) and with scripts/register-discord-commands.ts's own copy
+// (the slash-command choice list). Three copies, no compile-time link between them.
+export const SUPPORTED_SPORTS = [
+    'NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
+    'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup',
+];
 
 type RequestContext = Parameters<PagesFunction<Env>>[0];
 

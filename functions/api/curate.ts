@@ -89,6 +89,15 @@ export const SPORT_GROUPS: Record<string, string[]> = {
     Football: ['NFL'],
 };
 
+// The leagues this endpoint actually curates, passed EXPLICITLY to fetchLiveGames
+// rather than letting it default to polymarket.ts's SUPPORTED_LEAGUES. LEAGUE_TAGS now
+// also carries Discord-pick-menu-only competitions (EFL Championship, MLS, DFB-Pokal,
+// Carabao Cup) that this curator deliberately ignores - fetching them here would be
+// pure subrequest and latency waste against a budget this invocation already sits close
+// to, since the group filter below discards them anyway. Output is unchanged: this is
+// exactly the union of the groups above.
+const CURATE_LEAGUES = Object.values(SPORT_GROUPS).flat();
+
 interface CuratorMatch {
     candidateId: string;
     angle: string;
@@ -269,7 +278,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // 1. Live candidates. Polymarket only for now - see the file header for why Kalshi
     // (kalshi-live.ts) is disabled here rather than merged into this same request.
-    const liveGames = await fetchLiveGames(undefined, windowHours);
+    const liveGames = await fetchLiveGames(CURATE_LEAGUES, windowHours);
     const filtered = filterProps(liveGames, { marketWhitelist, minProminence, perGameCap, minLeadDays, now: new Date() });
 
     let allCandidates: CandidateEntry[] = [];

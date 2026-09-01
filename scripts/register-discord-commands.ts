@@ -27,7 +27,11 @@ const MANAGE_GUILD_PERMISSION = '32';
 // Mirrors lib/pages-functions/discord-commands.ts's SUPPORTED_SPORTS (duplicated
 // rather than imported - this script stays a standalone Node/tsx entry point, not
 // coupled to the Workers-oriented lib/pages-functions module graph).
-const SUPPORTED_SPORTS = ['NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
+const SUPPORTED_SPORTS = [
+    'NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
+    // Discord-pick-menu-only competitions - see polymarket.ts's LEAGUE_TAGS.
+    'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup',
+];
 const sportChoices = SUPPORTED_SPORTS.map((s) => ({ name: s, value: s }));
 
 // Mirrors lib/pages-functions/discord-commands.ts's SUPPORTED_LEAGUE_SPORTS -

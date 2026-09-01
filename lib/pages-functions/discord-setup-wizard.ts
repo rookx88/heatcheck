@@ -49,7 +49,10 @@ const GUILD_TEXT = 0;
 // Selecting groups ENABLES those leagues; everything not selected gets disabled.
 export const SPORT_GROUPS: Record<string, string[]> = {
     baseball: ['MLB'],
-    soccer: ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'],
+    // Includes the Discord-menu-only competitions (see polymarket.ts's LEAGUE_TAGS) so
+    // a server that turns Soccer off turns ALL of them off - ALL_LEAGUES below, and
+    // therefore disabled_sports, derives from this map.
+    soccer: ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup'],
     basketball: ['NBA'],
     football: ['NFL'],
 };
@@ -805,7 +808,7 @@ export async function handleSettingsComponent(context: RequestContext, interacti
             return settingScreen(
                 [
                     '**PvP battles**',
-                    '`/pvp` lets any two members challenge each other to a 3-pick head-to-head on games starting in the next 24 hours. Picks stay private until the battle settles.',
+                    '`/pvp` lets any two members challenge each other to a 3-pick head-to-head on games starting in the next 72 hours. Picks stay private until the battle settles.',
                     '',
                     `**Posts to:** ${pvpCfg?.pvp_channel_id ? `<#${pvpCfg.pvp_channel_id}>` : `the main channel (<#${pvpCfg?.channel_id}>)`} — pick a channel below to give PvP its own home.`,
                     '',

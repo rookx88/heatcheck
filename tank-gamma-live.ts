@@ -19,6 +19,7 @@ import {
     SUPPORTED_LEAGUES,
     LEAGUE_TAGS,
     fetchAllEventsForTag,
+    fetchSoonEventsForTag,
     parsePropShape,
     safeJsonParse,
     type GammaEvent,
@@ -46,9 +47,19 @@ function withinWindow(event: GammaEvent, now: number, windowMs: number): boolean
 // via polymarket.ts's module-level queue - unchanged from the cached-DB sync path),
 // keeps only events kicking off within the window, and shapes the result into the same
 // Game[]/Prop[] tank-filter.ts/tank-generate.ts already consume.
+export interface FetchLiveGamesOptions {
+    // One kickoff-ordered page per tag instead of paging the whole tag (see
+    // polymarket.ts#fetchSoonEventsForTag). For the INTERACTIVE Discord searches only,
+    // which fan out across many leagues inside one Worker invocation and can't afford
+    // 20 pages each. Curation and the cached sync leave this off - they want the
+    // complete set, futures included.
+    soonestFirst?: boolean;
+}
+
 export async function fetchLiveGames(
     leagues: string[] = SUPPORTED_LEAGUES,
-    windowHours: number = DEFAULT_WINDOW_HOURS
+    windowHours: number = DEFAULT_WINDOW_HOURS,
+    options: FetchLiveGamesOptions = {}
 ): Promise<Game[]> {
     const now = Date.now();
     const windowMs = windowHours * 60 * 60 * 1000;
@@ -59,7 +70,9 @@ export async function fetchLiveGames(
         if (!tags) continue;
 
         for (const tag of tags) {
-            const events = await fetchAllEventsForTag(tag);
+            const events = options.soonestFirst
+                ? await fetchSoonEventsForTag(tag)
+                : await fetchAllEventsForTag(tag);
             for (const event of events) {
                 if (!withinWindow(event, now, windowMs)) continue;
 

@@ -27,6 +27,22 @@ export const LEAGUE_TAGS: Record<string, string[]> = {
     'Serie A': ['serie-a'],
     'Bundesliga': ['bundesliga'],
     'Ligue 1': ['ligue-1'],
+    // The four below are DISCORD PICK MENU ONLY - deliberately absent from
+    // functions/api/curate.ts's SPORT_GROUPS, sport-map.ts, tickers.ts, index-slate.ts
+    // and ticker-copy.ts, so they never produce a Tank page, a homepage slot or a
+    // ticker constituent. They exist because the eight leagues above all go dark
+    // together during international breaks and the NBA/NFL offseason, leaving /pvp and
+    // Community Pick search with nothing to offer; these keep playing through it (the
+    // EFL Championship alone carried 56 games inside 24h on the day this was added).
+    // Don't "fix" the asymmetry by adding them to curate - that spends Anthropic
+    // credits generating Tank articles for lower-profile matches.
+    'EFL Championship': ['efl-championship'],
+    'MLS': ['mls'],
+    'DFB-Pokal': ['dfb-pokal'],
+    'Carabao Cup': ['carabao-cup'],
+    // Coppa Italia is NOT here on purpose: Polymarket has no tag carrying it (probed
+    // 'coppa-italia' -> 0 events). Champions/Europa League tags exist but currently
+    // carry only season futures, not fixtures - revisit when the group stage starts.
 };
 
 export const SUPPORTED_LEAGUES = Object.keys(LEAGUE_TAGS);
@@ -244,6 +260,44 @@ export async function fetchAllEventsForTag(tagSlug: string): Promise<GammaEvent[
         if (batch.length < PAGE_LIMIT) break;
     }
     return events;
+}
+
+/**
+ * ONE page of a tag's events, ordered by kickoff ascending and filtered to markets that
+ * haven't ended - i.e. the soonest games first, in a single request.
+ *
+ * Exists for the interactive Discord search paths, which run inside one Worker
+ * invocation on the Free plan's 50-subrequest ceiling: /pvp's "any sport" mode fans out
+ * across every league a guild has enabled, and fetchAllEventsForTag's up-to-20-pages
+ * would blow that budget several times over. Because Gamma sorts by start time here,
+ * one 100-event page provably contains every game inside a few days - measured
+ * 2026-09-01 against a full multi-page scan, identical counts per tag (MLB 65, EFL
+ * Championship 84, DFB-Pokal 14).
+ *
+ * Deliberately NOT used by the sync/curation paths: they want the complete set,
+ * including season futures with distant or absent start times, and they aren't
+ * latency-bound. If Gamma ever stops honoring these params the failure mode is a
+ * shorter menu, never a wrong one - callers still filter by window client-side.
+ */
+export async function fetchSoonEventsForTag(tagSlug: string): Promise<GammaEvent[]> {
+    const params = new URLSearchParams({
+        tag_slug: tagSlug,
+        closed: 'false',
+        limit: String(PAGE_LIMIT),
+        // Drops markets whose end date has already passed; start-time filtering is not
+        // supported server-side (start_date_min/start_ts both return nothing), so the
+        // window filter stays client-side in tank-gamma-live.ts.
+        end_date_min: new Date().toISOString(),
+        order: 'startTime',
+        ascending: 'true',
+    });
+    const url = `${GAMMA_BASE_URL}/events?${params.toString()}`;
+    const response = await throttledFetch(url);
+    if (!response.ok) {
+        throw new Error(`Gamma API ${response.status} for tag "${tagSlug}" (soonest)`);
+    }
+    const data = await response.json();
+    return Array.isArray(data) ? data : [];
 }
 
 async function upsertMarkets(pool: Pool, league: string, sourceTag: string, events: GammaEvent[]): Promise<number> {

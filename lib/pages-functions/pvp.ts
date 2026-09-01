@@ -5,7 +5,7 @@
 // The shape: /pvp user:@X creates a pending battle and posts ONE public line pinging
 // only the opponent. Everything after that is ephemeral - accepting, searching,
 // picking, and each player's own selections - until the battle settles and the recap
-// posts. Each player picks up to 3 props on games kicking off in the next 24h;
+// posts. Each player picks up to 3 props on games kicking off in the next 72h;
 // a correct pick pays the same underdog-weighted points a Community Pick does
 // (computePointsSplit), locked at submission. Highest total wins; equal totals draw.
 //
@@ -57,9 +57,17 @@ const STYLE_DANGER = 4;
 const MAX_SELECT_OPTIONS = 25;
 
 const PICKS_PER_PLAYER = 3;
-// How far ahead a pickable game may kick off. The admin Community Pick search uses
-// fetchLiveGames' 168h default; PvP is deliberately a "today" game.
-const SEARCH_WINDOW_HOURS = 24;
+// How far ahead a pickable game may kick off. Started at 24h ("today's slate"), which
+// emptied the menu completely during international breaks and the NBA/NFL offseason -
+// on 2026-09-01 only MLB and the EFL Championship had anything at all inside a day.
+// 72h keeps battles short (worst case ~4 days from acceptance to the last kickoff,
+// still well inside the settlement sweep's 7-day stale backstop) while covering a full
+// weekend of fixtures. The admin Community Pick search keeps fetchLiveGames' 168h
+// default - a Community Pick has no opponent waiting on it.
+const SEARCH_WINDOW_HOURS = 72;
+// Sentinel for the "any sport" row in the sport select. A '*' can never collide with a
+// league name.
+const ANY_SPORT = '*any';
 // One member spraying challenges across the roster is the only way this feature can
 // make public noise, so outgoing challenges are capped.
 const MAX_OPEN_OUTGOING = 3;
@@ -374,7 +382,7 @@ async function hubData(context: RequestContext, guildId: string, me: string): Pr
     }
 
     if (battles.length === 0) {
-        lines.push('', 'No battles going. Challenge someone with `/pvp user:@them` — you each pick 3 props on games starting in the next 24h, and the higher score wins.');
+        lines.push('', 'No battles going. Challenge someone with `/pvp user:@them` — you each pick 3 props on games starting in the next 72h, and the higher score wins.');
     }
 
     rows.push(buttonRow([{ label: 'Refresh', customId: 'pv:hub' }]));
@@ -456,25 +464,38 @@ export async function handlePvpComponent(context: RequestContext, interaction: a
             if (battle.challenger_id !== me && battle.opponent_id !== me) return updateScreen("That battle isn't yours.");
             const sport: string | undefined = interaction.data?.values?.[0];
             if (!sport) return updateScreen("Couldn't read that sport.");
-            return deferredUpdate(context, interaction, searchData(context, battle, me, sport));
+            return sport === ANY_SPORT
+                ? deferredUpdate(context, interaction, searchAnyData(context, battle, me))
+                : deferredUpdate(context, interaction, searchData(context, battle, me, sport));
         }
 
         case 'mkt': {
             if (battle.challenger_id !== me && battle.opponent_id !== me) return updateScreen("That battle isn't yours.");
-            const sport = parts[3] ?? '';
-            const marketId: string | undefined = interaction.data?.values?.[0];
-            if (!marketId) return updateScreen("Couldn't read that market.");
+            const value: string | undefined = interaction.data?.values?.[0];
+            if (!value) return updateScreen("Couldn't read that market.");
+            // value is `<marketId>|<league>`; a bare id (a menu rendered before the
+            // league started riding the value) falls back to the sport in this menu's
+            // own custom_id, which is exactly the old behaviour.
+            const bar = value.indexOf('|');
+            const marketId = bar === -1 ? value : value.slice(0, bar);
+            const sport = bar === -1 ? (parts[3] ?? '') : value.slice(bar + 1);
             return sideScreen(battle, sport, marketId);
         }
 
         case 'lock': {
             if (battle.challenger_id !== me && battle.opponent_id !== me) return updateScreen("That battle isn't yours.");
             const side = Number(parts[3]);
-            // The market id is the TAIL, so a value that ever contained a colon can't
-            // shift the side index out from under us.
-            const marketId = parts.slice(4).join(':');
+            // `pv:lock:<battle>:<side>:<sport>:<marketId>` - the market id stays the
+            // TAIL, so a value that ever contained a colon can't shift the side index.
+            // An id emitted before the sport was threaded through has NOTHING after
+            // index 4, which distinguishes the two formats exactly (no heuristics), so
+            // an ephemeral left open across the deploy still locks - it just records no
+            // league.
+            const tail = parts.slice(5).join(':');
+            const marketId = tail || (parts[4] ?? '');
+            const sport = tail ? (parts[4] ?? '') : '';
             if ((side !== 0 && side !== 1) || !marketId) return updateScreen("Couldn't read that pick.");
-            return lockPick(context, sql, battle, me, side, marketId);
+            return lockPick(context, sql, battle, me, side, marketId, sport);
         }
     }
     return updateScreen("Couldn't process that.");
@@ -515,13 +536,23 @@ async function pickScreen(context: RequestContext, sql: ReturnType<typeof getSql
 
     const rows: unknown[] = [];
     if (!closed && mine.length < PICKS_PER_PLAYER && sports.length > 0) {
+        // "Any sport" first, because the common question is "what's even on right now" -
+        // opening a dozen leagues one at a time to find out is what made the empty-menu
+        // problem feel worse than it was. Suppressed for a single-sport guild, where it
+        // would just duplicate the one league row under it.
+        const options = [
+            ...(sports.length > 1
+                ? [{ label: 'Any sport — soonest first', value: ANY_SPORT, description: `The soonest games across all ${sports.length} of this server's sports` }]
+                : []),
+            ...sports.map((s) => ({ label: s, value: s })),
+        ].slice(0, MAX_SELECT_OPTIONS);
         rows.push({
             type: ACTION_ROW,
             components: [{
                 type: STRING_SELECT,
                 custom_id: `pv:sport:${battle.id}`,
                 placeholder: `Pick ${mine.length + 1} of ${PICKS_PER_PLAYER} — choose a sport`,
-                options: sports.map((s) => ({ label: s, value: s })),
+                options,
             }],
         });
     } else if (closed) {
@@ -531,19 +562,26 @@ async function pickScreen(context: RequestContext, sql: ReturnType<typeof getSql
     return updateScreen(lines.join('\n'), rows);
 }
 
-// Per-sport cache for the 24h slate. /pvp is the first surface where a MEMBER (not an
-// admin) can trigger fetchLiveGames, which paginates every Gamma tag for a league -
-// and both players in a battle usually search the same league minutes apart. Lives for
-// the isolate's lifetime only; a stale-by-minutes slate is harmless because every pick
-// re-fetches its own market at lock time anyway.
+// Per-sport slate cache. /pvp is the first surface where a MEMBER (not an admin) can
+// trigger a Gamma fetch, both players in a battle usually search the same league
+// minutes apart, and "any sport" mode hits every enabled league at once - so this pays
+// for itself immediately. Keyed by sport AND window so a future second window can't
+// silently serve the wrong slate. Lives for the isolate's lifetime only; a
+// stale-by-minutes slate is harmless because every pick re-fetches its own market at
+// lock time anyway.
 const SLATE_TTL_MS = 5 * 60 * 1000;
 const slateCache = new Map<string, { at: number; games: Awaited<ReturnType<typeof fetchLiveGames>> }>();
 
 async function fetchSlate(sport: string): Promise<Awaited<ReturnType<typeof fetchLiveGames>>> {
-    const hit = slateCache.get(sport);
+    const key = `${sport}:${SEARCH_WINDOW_HOURS}`;
+    const hit = slateCache.get(key);
     if (hit && Date.now() - hit.at < SLATE_TTL_MS) return hit.games;
-    const games = await fetchLiveGames([sport], SEARCH_WINDOW_HOURS);
-    slateCache.set(sport, { at: Date.now(), games });
+    // soonestFirst: ONE kickoff-ordered page per tag instead of paging the whole tag.
+    // Interactive searches run inside a single Worker invocation against the Free
+    // plan's 50-subrequest ceiling, and "any sport" fans this out across every enabled
+    // league - see polymarket.ts#fetchSoonEventsForTag for why one page is sufficient.
+    const games = await fetchLiveGames([sport], SEARCH_WINDOW_HOURS, { soonestFirst: true });
+    slateCache.set(key, { at: Date.now(), games });
     return games;
 }
 
@@ -570,30 +608,19 @@ async function searchData(context: RequestContext, battle: BattleRow, me: string
         })
         .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
 
-    const options: { label: string; value: string; description: string }[] = [];
+    const options: SelectOption[] = [];
     outer: for (const game of upcoming) {
         for (const prop of game.props) {
-            if (!prop.odds || prop.odds.outcomes.length !== 2) continue;
-            if (used.has(prop.id)) continue;
-            const marketLabel = describeMarket(prop.market, prop.line);
-            const isPlayerProp = prop.player && !prop.player.includes(' vs') && prop.player !== game.away && prop.player !== game.home;
-            const bet = isPlayerProp ? `${prop.player} ${marketLabel}` : marketLabel;
-            const [pA, pB] = prop.odds.outcomePrices;
-            const oddsPart = Number.isFinite(pA) && Number.isFinite(pB)
-                ? `${prop.odds.outcomes[0]} ${Math.round(pA * 100)}% / ${prop.odds.outcomes[1]} ${Math.round(pB * 100)}%`
-                : '';
-            options.push({
-                label: `${game.away} @ ${game.home} · ${bet}`.slice(0, 100),
-                value: prop.id,
-                description: [formatKickoff(game.kickoff), oddsPart].filter(Boolean).join(' · ').slice(0, 100),
-            });
+            const option = buildMarketOption(game, prop, used, sport, false);
+            if (!option) continue;
+            options.push(option);
             if (options.length >= MAX_SELECT_OPTIONS) break outer;
         }
     }
 
     if (options.length === 0) {
         return screenData(
-            `No two-sided ${sport} markets kicking off in the next ${SEARCH_WINDOW_HOURS}h${used.size > 0 ? " that you haven't already picked" : ''}. Try another sport.`,
+            `No two-sided ${sport} markets kicking off in the next ${SEARCH_WINDOW_HOURS}h${used.size > 0 ? " that you haven't already picked" : ''}. Try another sport, or "Any sport" to see what's on.`,
             [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]
         );
     }
@@ -602,6 +629,134 @@ async function searchData(context: RequestContext, battle: BattleRow, me: string
         { type: ACTION_ROW, components: [{ type: STRING_SELECT, custom_id: `pv:mkt:${battle.id}:${sport}`, placeholder: 'Choose a market', options }] },
         buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }]),
     ]);
+}
+
+type SlateGame = Awaited<ReturnType<typeof fetchLiveGames>>[number];
+type SlateProp = SlateGame['props'][number];
+
+interface SelectOption {
+    label: string;
+    value: string;
+    description: string;
+}
+
+// One select row for one market. `value` carries the league after a '|' so the pick row
+// can record which competition it came from even in any-sport mode, where every row is
+// a different league and the menu's own custom_id can't hold it. Market ids are numeric
+// and no league name contains a '|', so splitting on the first one is unambiguous.
+function buildMarketOption(game: SlateGame, prop: SlateProp, used: Set<string>, sport: string, showLeague: boolean): SelectOption | null {
+    if (!prop.odds || prop.odds.outcomes.length !== 2) return null;
+    if (used.has(prop.id)) return null;
+    const marketLabel = describeMarket(prop.market, prop.line);
+    const isPlayerProp = prop.player && !prop.player.includes(' vs') && prop.player !== game.away && prop.player !== game.home;
+    const bet = isPlayerProp ? `${prop.player} ${marketLabel}` : marketLabel;
+    const [pA, pB] = prop.odds.outcomePrices;
+    const oddsPart = Number.isFinite(pA) && Number.isFinite(pB)
+        ? `${prop.odds.outcomes[0]} ${Math.round(pA * 100)}% / ${prop.odds.outcomes[1]} ${Math.round(pB * 100)}%`
+        : '';
+    return {
+        label: `${game.away} @ ${game.home} · ${bet}`.slice(0, 100),
+        value: `${prop.id}|${sport}`.slice(0, 100),
+        // League FIRST in any-sport mode: the 100-char clamp then eats the odds tail on
+        // long team names rather than the competition name, which is the one thing a
+        // mixed list has to answer.
+        description: [showLeague ? sport : '', formatKickoff(game.kickoff), oddsPart].filter(Boolean).join(' · ').slice(0, 100),
+    };
+}
+
+// "Any sport" - the soonest games across every league this guild has enabled, one row
+// per GAME rather than per market. Walking props the way the per-league search does
+// would let a single soccer match with a dozen two-sided markets eat half the menu, and
+// "soonest first" would degenerate into "one game, twelve ways".
+//
+// Cost: one Gamma request per league (fetchSlate's soonestFirst path) - ~12 for a
+// fully-enabled guild, plus three Neon queries and one Discord PATCH. That fits the
+// Free plan's 50-subrequest ceiling with room, and the 5-minute slate cache makes the
+// second search in a battle nearly free.
+async function searchAnyData(context: RequestContext, battle: BattleRow, me: string): Promise<DeferredMessageData> {
+    const sql = getSql(context.env);
+    const [usedRows, cfgRows] = await Promise.all([
+        sql`SELECT source_market_id FROM pvp_battle_picks WHERE battle_id = ${battle.id} AND discord_user_id = ${me}` as unknown as Promise<{ source_market_id: string }[]>,
+        sql`SELECT disabled_sports FROM discord_guild_configs WHERE guild_id = ${battle.guild_id}`,
+    ]);
+    const used = new Set(usedRows.map((r) => r.source_market_id));
+    const rawDisabled = (cfgRows[0] as any)?.disabled_sports;
+    const disabled: string[] = Array.isArray(rawDisabled) ? rawDisabled : JSON.parse(rawDisabled ?? '[]');
+    const sports = SUPPORTED_SPORTS.filter((s) => !disabled.includes(s));
+
+    const now = Date.now();
+    const entries: { game: SlateGame; sport: string; kickoff: number }[] = [];
+    let failed = 0;
+    for (const sport of sports) {
+        try {
+            for (const game of await fetchSlate(sport)) {
+                const t = new Date(game.kickoff).getTime();
+                if (!Number.isNaN(t) && t > now) entries.push({ game, sport, kickoff: t });
+            }
+        } catch (err) {
+            // One dead league must not empty the whole menu.
+            console.error(`[pvp] any-sport slate failed for ${sport}:`, err);
+            failed++;
+        }
+    }
+    if (sports.length > 0 && failed === sports.length) {
+        return screenData('Could not reach Polymarket right now — try again shortly.', [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+    }
+
+    entries.sort((a, b) => a.kickoff - b.kickoff);
+
+    const options: SelectOption[] = [];
+    // Two limits, both learned from real data: on 2026-09-01 a single Championship
+    // evening had 25+ eligible games all kicking off at 18:45, and Gamma splits one
+    // fixture across several events, so an unguarded "soonest first" rendered as the
+    // same handful of matchups repeated under one league. Per-league cap keeps the
+    // menu a spread; matchup de-dupe keeps a fixture from appearing twice.
+    const PER_LEAGUE_CAP = 6;
+    const perLeague = new Map<string, number>();
+    const seenMatchups = new Set<string>();
+    for (const entry of entries) {
+        const taken = perLeague.get(entry.sport) ?? 0;
+        if (taken >= PER_LEAGUE_CAP) continue;
+        const matchup = `${entry.sport}|${entry.game.away}|${entry.game.home}|${entry.game.kickoff}`;
+        if (seenMatchups.has(matchup)) continue;
+        // Moneyline where a game has one - it's the most legible bet in a mixed list -
+        // otherwise the most prominent two-sided market on that game.
+        const eligible = entry.game.props.filter((p) => p.odds && p.odds.outcomes.length === 2 && !used.has(p.id));
+        if (eligible.length === 0) continue;
+        const chosen = eligible.find((p) => p.market === 'moneyline')
+            ?? eligible.reduce((best, p) => (p.prominence > best.prominence ? p : best), eligible[0]);
+        const option = buildMarketOption(entry.game, chosen, used, entry.sport, true);
+        if (!option) continue;
+        seenMatchups.add(matchup);
+        perLeague.set(entry.sport, taken + 1);
+        options.push(option);
+        if (options.length >= MAX_SELECT_OPTIONS) break;
+    }
+
+    if (options.length === 0) {
+        return screenData(
+            `Nothing two-sided kicking off in the next ${SEARCH_WINDOW_HOURS}h across this server's sports. Check back later, or ask an admin to turn more sports on.`,
+            [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]
+        );
+    }
+
+    const searched = sports.length - failed;
+    return screenData(
+        `Soonest first across ${searched} league${searched === 1 ? '' : 's'} — next ${SEARCH_WINDOW_HOURS} hours. Pick one:`,
+        [
+            // '*' in the sport slot means "the league rides each option's value instead".
+            { type: ACTION_ROW, components: [{ type: STRING_SELECT, custom_id: `pv:mkt:${battle.id}:*`, placeholder: 'Choose a market', options }] },
+            buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }]),
+        ]
+    );
+}
+
+// Discord rejects a custom_id over 100 chars, which would 400 the whole screen. Sport
+// is a label, so drop it rather than lose the component if a pathological market id
+// ever ate the budget - the pick still locks, it just records no league.
+function lockId(battleId: string, side: number, sport: string, marketId: string): string {
+    const withSport = `pv:lock:${battleId}:${side}:${sport}:${marketId}`;
+    return withSport.length <= 100 ? withSport : `pv:lock:${battleId}:${side}:${marketId}`;
 }
 
 async function sideScreen(battle: BattleRow, sport: string, marketId: string): Promise<Response> {
@@ -621,15 +776,15 @@ async function sideScreen(battle: BattleRow, sport: string, marketId: string): P
 
     return updateScreen(body, [
         buttonRow([
-            { label: `${parsed.outcomes[0]} (${split.sideAPoints} pts)`, customId: `pv:lock:${battle.id}:0:${marketId}`, style: STYLE_PRIMARY },
-            { label: `${parsed.outcomes[1]} (${split.sideBPoints} pts)`, customId: `pv:lock:${battle.id}:1:${marketId}`, style: STYLE_PRIMARY },
+            { label: `${parsed.outcomes[0]} (${split.sideAPoints} pts)`, customId: lockId(battle.id, 0, sport, marketId), style: STYLE_PRIMARY },
+            { label: `${parsed.outcomes[1]} (${split.sideBPoints} pts)`, customId: lockId(battle.id, 1, sport, marketId), style: STYLE_PRIMARY },
         ]),
         buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }]),
     ]);
 }
 
 async function lockPick(
-    context: RequestContext, sql: ReturnType<typeof getSql>, battle: BattleRow, me: string, side: number, marketId: string
+    context: RequestContext, sql: ReturnType<typeof getSql>, battle: BattleRow, me: string, side: number, marketId: string, sport: string
 ): Promise<Response> {
     if (battle.status !== 'active') return updateScreen('That battle isn\'t accepting picks.');
     if (battle.picks_close_at && new Date(battle.picks_close_at).getTime() <= Date.now()) {
@@ -652,6 +807,12 @@ async function lockPick(
     if (!split) return updateScreen("That market's odds aren't usable for scoring right now — pick another.", [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
 
     const points = side === 0 ? split.sideAPoints : split.sideBPoints;
+    // custom_ids are client-round-tripped, so the league arrives untrusted: a forged
+    // over-length value would hit sport VARCHAR(20) and raise a Postgres 22001 the
+    // catch below (which only handles 23505) would turn into a 500. It's a display
+    // label - nothing authorizes, scores, or filters on it - so an unrecognized value
+    // is simply dropped.
+    const safeSport = sport && SUPPORTED_SPORTS.includes(sport) ? sport : null;
     const slotRows = await sql`
         SELECT COALESCE(MAX(slot), 0)::int AS max_slot FROM pvp_battle_picks
         WHERE battle_id = ${battle.id} AND discord_user_id = ${me}
@@ -665,7 +826,7 @@ async function lockPick(
                 battle_id, discord_user_id, slot, sport, source_market_id, question_text,
                 side_a_label, side_b_label, source_outcomes, side_chosen, points_if_correct, kickoff_at
             ) VALUES (
-                ${battle.id}, ${me}, ${slot}, ${null}, ${marketId}, ${parsed.question},
+                ${battle.id}, ${me}, ${slot}, ${safeSport}, ${marketId}, ${parsed.question},
                 ${parsed.outcomes[0]}, ${parsed.outcomes[1]}, ${JSON.stringify(parsed.outcomes)}::jsonb,
                 ${side}, ${points}, ${kickoff ? kickoff.toISOString() : null}
             )
