@@ -23,7 +23,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { postDiscordChannelMessage, deleteChannelMessage } from './discord-api';
+import { postDiscordChannelMessage, deleteChannelMessage, fetchGuildMemberName } from './discord-api';
 import { brandEmbed } from './discord-brand';
 import { buildPvpChallengeMessage } from './pvp-card';
 import { computePvpRecords, formatPvpRecord } from './pvp-record';
@@ -71,6 +71,10 @@ const ANY_SPORT = '*any';
 // One member spraying challenges across the roster is the only way this feature can
 // make public noise, so outgoing challenges are capped.
 const MAX_OPEN_OUTGOING = 3;
+// And a ceiling on battles actually in progress: three picks each, on their own 24h
+// clocks, is already a lot to keep straight. Nobody can fill your slots for you - a
+// battle only goes active when YOU accept - so this can't be used to block someone.
+const MAX_ACTIVE_BATTLES = 5;
 
 // ===================================================================================
 // Response plumbing. PvP screens carry an embed AND (often) a select plus buttons, so
@@ -129,6 +133,30 @@ function deferredUpdate(context: RequestContext, interaction: any, work: Promise
     );
 
     return json({ type: RESPONSE_DEFERRED_UPDATE_MESSAGE });
+}
+
+// Display names for buttons and select options, which (unlike an embed description)
+// cannot render a <@id> mention. One single-member REST call each, memoized for the
+// isolate's lifetime so a Refresh - or the second hub render of a session - costs
+// nothing. Display only: every ownership decision reads the battle row, never a name.
+const NAME_TTL_MS = 10 * 60 * 1000;
+const nameCache = new Map<string, { at: number; name: string }>();
+
+async function resolveNames(env: Env, guildId: string, userIds: string[]): Promise<Map<string, string>> {
+    const wanted = [...new Set(userIds)];
+    const out = new Map<string, string>();
+    const misses: string[] = [];
+    for (const id of wanted) {
+        const hit = nameCache.get(`${guildId}:${id}`);
+        if (hit && Date.now() - hit.at < NAME_TTL_MS) out.set(id, hit.name);
+        else misses.push(id);
+    }
+    const fetched = await Promise.all(misses.map((id) => fetchGuildMemberName(env, guildId, id)));
+    misses.forEach((id, i) => {
+        nameCache.set(`${guildId}:${id}`, { at: Date.now(), name: fetched[i] });
+        out.set(id, fetched[i]);
+    });
+    return out;
 }
 
 // ===================================================================================
@@ -193,6 +221,25 @@ function otherPlayer(battle: BattleRow, me: string): string {
     return battle.challenger_id === me ? battle.opponent_id : battle.challenger_id;
 }
 
+// Which battle am I in? Every screen past the hub answers that, because with several
+// battles running the pick flow is otherwise identity-free - the battle id lives only
+// in custom_ids the user can't see, so it was possible to lock a pick into the wrong
+// battle with no signal. A mention costs nothing (it renders in an embed description)
+// and is always correct without a name lookup.
+function vs(battle: BattleRow, me: string): string {
+    return `**vs <@${otherPlayer(battle, me)}>**`;
+}
+
+// Select option descriptions are plain text - Discord's <t:...:R> markup only renders
+// in message content and embed bodies - so the deadline gets spelled out there.
+function relativeFromNow(unix: number): string {
+    const mins = Math.round((unix * 1000 - Date.now()) / 60000);
+    if (mins <= 0) return 'now';
+    if (mins < 60) return `in ${mins}m`;
+    const hours = Math.round(mins / 60);
+    return hours < 48 ? `in ${hours}h` : `in ${Math.round(hours / 24)}d`;
+}
+
 function unixOf(value: string | null | undefined): number | null {
     if (!value) return null;
     const t = new Date(value).getTime();
@@ -245,13 +292,20 @@ async function createChallenge(context: RequestContext, interaction: any, guildI
     `;
     if (live.length > 0) return ephemeral('You already have a battle going with them — run `/pvp` to see it.');
 
-    // Checked BEFORE the public post, which is the whole point of the cap.
-    const outgoing = await sql`
-        SELECT COUNT(*)::int AS n FROM pvp_battles
-        WHERE guild_id = ${guildId} AND challenger_id = ${me} AND status = 'pending'
-    `;
-    if (Number((outgoing[0] as unknown as { n: number }).n) >= MAX_OPEN_OUTGOING) {
+    // Both caps are checked BEFORE the public post, which is the whole point of them.
+    const counts = (await sql`
+        SELECT
+            COUNT(*) FILTER (WHERE challenger_id = ${me} AND status = 'pending')::int AS outgoing,
+            COUNT(*) FILTER (WHERE (challenger_id = ${me} OR opponent_id = ${me}) AND status = 'active')::int AS active
+        FROM pvp_battles
+        WHERE guild_id = ${guildId}
+    `) as unknown as { outgoing: number; active: number }[];
+    if (Number(counts[0]?.outgoing ?? 0) >= MAX_OPEN_OUTGOING) {
         return ephemeral(`You've got ${MAX_OPEN_OUTGOING} challenges out already — wait for one to be answered.`);
+    }
+    // Sending an invitation you couldn't play is worse than not sending it.
+    if (Number(counts[0]?.active ?? 0) >= MAX_ACTIVE_BATTLES) {
+        return ephemeral(`You've already got ${MAX_ACTIVE_BATTLES} battles going — finish one before starting another.`);
     }
 
     let battleId: string;
@@ -318,6 +372,14 @@ async function hubData(context: RequestContext, guildId: string, me: string): Pr
     const outgoing = battles.filter((b) => b.status === 'pending' && b.challenger_id === me);
     const active = battles.filter((b) => b.status === 'active');
 
+    // Every opponent this render will name, resolved in one parallel batch.
+    const names = await resolveNames(context.env, guildId, [
+        ...active.map((b) => otherPlayer(b, me)),
+        ...incoming.map((b) => b.challenger_id),
+        ...outgoing.map((b) => b.opponent_id),
+    ]);
+    const nameOf = (id: string) => names.get(id) ?? 'Someone';
+
     // Pick counts for every active battle in one grouped query - counts only, never
     // pick rows (sealed-picks rule).
     const activeIds = active.map((b) => b.id);
@@ -331,53 +393,85 @@ async function hubData(context: RequestContext, guildId: string, me: string): Pr
     const countOf = (battleId: string, userId: string) =>
         Number(countRows.find((r) => r.battle_id === battleId && r.discord_user_id === userId)?.n ?? 0);
 
+    // Incoming: one challenge gets straight-through buttons (the common case, one
+    // click). Two or more go through a select, because two identical Accept/Decline
+    // rows are indistinguishable - Discord button labels can't render a mention, and
+    // the old build's positional correlation with the bullets above was a coin flip.
     if (incoming.length > 0) {
         lines.push('', '**Challenges for you**');
-        for (const b of incoming.slice(0, 2)) {
+        for (const b of incoming) {
             const exp = unixOf(b.expires_at);
             lines.push(`• <@${b.challenger_id}> challenged you${exp ? ` — expires <t:${exp}:R>` : ''}`);
-            rows.push(buttonRow([
-                { label: 'Accept', customId: `pv:acc:${b.id}`, style: STYLE_SUCCESS },
-                { label: 'Decline', customId: `pv:dec:${b.id}`, style: STYLE_DANGER },
-            ]));
         }
-        if (incoming.length > 2) lines.push(`• …and ${incoming.length - 2} more (answer these first)`);
+        if (incoming.length === 1) {
+            rows.push(buttonRow([
+                { label: `Accept — ${nameOf(incoming[0].challenger_id)}`, customId: `pv:acc:${incoming[0].id}`, style: STYLE_SUCCESS },
+                { label: 'Decline', customId: `pv:dec:${incoming[0].id}`, style: STYLE_DANGER },
+            ]));
+        } else {
+            rows.push({
+                type: ACTION_ROW,
+                components: [{
+                    type: STRING_SELECT,
+                    custom_id: 'pv:inc',
+                    placeholder: 'Answer a challenge',
+                    options: incoming.slice(0, MAX_SELECT_OPTIONS).map((b) => {
+                        const exp = unixOf(b.expires_at);
+                        return {
+                            label: `${nameOf(b.challenger_id)} challenged you`.slice(0, 100),
+                            value: b.id,
+                            description: (exp ? `Expires ${new Date(exp * 1000).toUTCString().slice(5, 22)} UTC` : 'Accept or decline').slice(0, 100),
+                        };
+                    }),
+                }],
+            });
+        }
     }
 
+    // Active: ONE select naming every opponent. Buttons couldn't say who they belonged
+    // to and only three fit a row, which left a fourth battle unreachable - you could
+    // not pick in it at all. A select carries the name, your progress, theirs and the
+    // deadline on every row, and holds 25.
     if (active.length > 0) {
         lines.push('', '**Active battles**');
-        const pickButtons: { label: string; customId: string; style?: number }[] = [];
-        for (const b of active.slice(0, 3)) {
+        const options = active.slice(0, MAX_SELECT_OPTIONS).map((b) => {
             const them = otherPlayer(b, me);
             const close = unixOf(b.picks_close_at);
             const mine = countOf(b.id, me);
             lines.push(`• vs <@${them}> — you ${mine}/${PICKS_PER_PLAYER} · them ${countOf(b.id, them)}/${PICKS_PER_PLAYER}${close ? ` · picks lock <t:${close}:R>` : ''}`);
-            pickButtons.push({
-                label: mine >= PICKS_PER_PLAYER ? 'View your picks' : `Make picks (${mine}/${PICKS_PER_PLAYER})`,
-                customId: `pv:pick:${b.id}`,
-                style: STYLE_PRIMARY,
-            });
-        }
-        if (pickButtons.length > 0) rows.push(buttonRow(pickButtons));
-        if (active.length > 3) lines.push(`• …and ${active.length - 3} more`);
+            return {
+                label: `vs ${nameOf(them)} — ${mine}/${PICKS_PER_PLAYER} picked`.slice(0, 100),
+                value: b.id,
+                description: `They have ${countOf(b.id, them)}/${PICKS_PER_PLAYER}${close ? ` · picks lock ${relativeFromNow(close)}` : ''}`.slice(0, 100),
+            };
+        });
+        rows.push({
+            type: ACTION_ROW,
+            components: [{
+                type: STRING_SELECT,
+                custom_id: 'pv:go',
+                placeholder: active.length === 1 ? 'Open your battle' : 'Choose a battle',
+                options,
+            }],
+        });
     }
 
     if (outgoing.length > 0) {
         lines.push('', '**Waiting on them**');
-        const shown = outgoing.slice(0, 3);
         // Cancel exists so a challenger isn't stuck for 24h waiting on someone who
         // isn't around - the live-pair index means an unanswered challenge also blocks
         // re-challenging that same person, so "cancel and go again" needs to be one
-        // click. Numbered only when there's more than one, since button labels can't
-        // render a mention.
+        // click. MAX_OPEN_OUTGOING keeps these inside a single button row.
         const cancelButtons: { label: string; customId: string; style?: number }[] = [];
-        shown.forEach((b, i) => {
+        for (const b of outgoing) {
             const exp = unixOf(b.expires_at);
-            const n = shown.length > 1 ? `${i + 1}. ` : '• ';
-            lines.push(`${n}<@${b.opponent_id}> hasn't answered${exp ? ` — expires <t:${exp}:R>` : ''}`);
-            cancelButtons.push({ label: shown.length > 1 ? `Cancel ${i + 1}` : 'Cancel challenge', customId: `pv:can:${b.id}`, style: STYLE_DANGER });
-        });
-        if (outgoing.length > 3) lines.push(`• …and ${outgoing.length - 3} more`);
+            lines.push(`• <@${b.opponent_id}> hasn't answered${exp ? ` — expires <t:${exp}:R>` : ''}`);
+            cancelButtons.push({
+                label: outgoing.length > 1 ? `Cancel — ${nameOf(b.opponent_id)}` : 'Cancel challenge',
+                customId: `pv:can:${b.id}`,
+                style: STYLE_DANGER,
+            });
+        }
         rows.push(buttonRow(cancelButtons));
     }
 
@@ -406,7 +500,14 @@ export async function handlePvpComponent(context: RequestContext, interaction: a
         return deferredUpdate(context, interaction, hubData(context, guildId, me));
     }
 
-    const battleId = parts[2];
+    // The two hub selects carry their battle in the VALUE rather than the custom_id
+    // (one component, many battles). Everything downstream is identical - the id is
+    // re-validated against the loaded row either way, so a forged value fails exactly
+    // like a forged custom_id.
+    const selectedBattleId: string | undefined = (step === 'go' || step === 'inc')
+        ? interaction.data?.values?.[0]
+        : undefined;
+    const battleId = selectedBattleId ?? parts[2];
     if (!battleId) return updateScreen("Couldn't read that battle.");
     const battle = await loadBattle(sql, battleId);
     if (!battle || battle.guild_id !== guildId) return updateScreen("Couldn't find that battle.");
@@ -421,6 +522,23 @@ export async function handlePvpComponent(context: RequestContext, interaction: a
             if (step === 'dec') {
                 await sql`UPDATE pvp_battles SET status = 'declined' WHERE id = ${battle.id} AND status = 'pending' AND opponent_id = ${me}`;
                 return deferredUpdate(context, interaction, hubData(context, guildId, me));
+            }
+            // Both sides have to have room: the challenger may have filled their
+            // slots in the time this invitation sat unanswered. Name whichever side is
+            // full - "it didn't work" is useless when the reason is someone else's
+            // battle count. The challenge stays pending and expires normally.
+            const full = (await sql`
+                SELECT
+                    COUNT(*) FILTER (WHERE challenger_id = ${me} OR opponent_id = ${me})::int AS mine,
+                    COUNT(*) FILTER (WHERE challenger_id = ${battle.challenger_id} OR opponent_id = ${battle.challenger_id})::int AS theirs
+                FROM pvp_battles
+                WHERE guild_id = ${guildId} AND status = 'active'
+            `) as unknown as { mine: number; theirs: number }[];
+            if (Number(full[0]?.mine ?? 0) >= MAX_ACTIVE_BATTLES) {
+                return updateScreen(`You've already got ${MAX_ACTIVE_BATTLES} battles going — finish one before taking this on.`);
+            }
+            if (Number(full[0]?.theirs ?? 0) >= MAX_ACTIVE_BATTLES) {
+                return updateScreen(`<@${battle.challenger_id}> already has ${MAX_ACTIVE_BATTLES} battles going — this one has to wait until one of theirs finishes.`);
             }
             // Conditional claim: a double-click is idempotent, and an expired or
             // already-answered challenge returns zero rows.
@@ -455,10 +573,27 @@ export async function handlePvpComponent(context: RequestContext, interaction: a
             return deferredUpdate(context, interaction, hubData(context, guildId, me));
         }
 
+        case 'go':
         case 'pick':
         case 'back':
             if (battle.challenger_id !== me && battle.opponent_id !== me) return updateScreen("That battle isn't yours.");
             return pickScreen(context, sql, battle, me);
+
+        // One challenge answered from the multi-challenge select: a confirm screen that
+        // names who it is, since the select row is gone once it's been used.
+        case 'inc': {
+            if (battle.opponent_id !== me) return updateScreen("That challenge isn't yours to answer.");
+            if (battle.status !== 'pending') return updateScreen('That challenge was already answered or expired.');
+            const exp = unixOf(battle.expires_at);
+            return updateScreen(
+                `<@${battle.challenger_id}> challenged you to a PvP battle${exp ? ` — expires <t:${exp}:R>` : ''}.\n\nAccept and you'll each have 24h to lock 3 picks on games starting in the next ${SEARCH_WINDOW_HOURS} hours.`,
+                [buttonRow([
+                    { label: 'Accept', customId: `pv:acc:${battle.id}`, style: STYLE_SUCCESS },
+                    { label: 'Decline', customId: `pv:dec:${battle.id}`, style: STYLE_DANGER },
+                    { label: 'Back to /pvp', customId: 'pv:hub' },
+                ])]
+            );
+        }
 
         case 'sport': {
             if (battle.challenger_id !== me && battle.opponent_id !== me) return updateScreen("That battle isn't yours.");
@@ -479,7 +614,7 @@ export async function handlePvpComponent(context: RequestContext, interaction: a
             const bar = value.indexOf('|');
             const marketId = bar === -1 ? value : value.slice(0, bar);
             const sport = bar === -1 ? (parts[3] ?? '') : value.slice(bar + 1);
-            return sideScreen(battle, sport, marketId);
+            return sideScreen(battle, me, sport, marketId);
         }
 
         case 'lock': {
@@ -597,7 +732,7 @@ async function searchData(context: RequestContext, battle: BattleRow, me: string
         games = await fetchSlate(sport);
     } catch (err) {
         console.error('[pvp] fetchLiveGames failed:', err);
-        return screenData('Could not reach Polymarket right now — try again shortly.', [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+        return screenData(`${vs(battle, me)} — could not reach Polymarket right now, try again shortly.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
     }
 
     const now = Date.now();
@@ -620,12 +755,12 @@ async function searchData(context: RequestContext, battle: BattleRow, me: string
 
     if (options.length === 0) {
         return screenData(
-            `No two-sided ${sport} markets kicking off in the next ${SEARCH_WINDOW_HOURS}h${used.size > 0 ? " that you haven't already picked" : ''}. Try another sport, or "Any sport" to see what's on.`,
+            `${vs(battle, me)}\n\nNo two-sided ${sport} markets kicking off in the next ${SEARCH_WINDOW_HOURS}h${used.size > 0 ? " that you haven't already picked" : ''}. Try another sport, or "Any sport" to see what's on.`,
             [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]
         );
     }
 
-    return screenData(`${sport} — games starting in the next ${SEARCH_WINDOW_HOURS} hours. Pick one:`, [
+    return screenData(`${vs(battle, me)}\n\n${sport} — games starting in the next ${SEARCH_WINDOW_HOURS} hours. Pick one:`, [
         { type: ACTION_ROW, components: [{ type: STRING_SELECT, custom_id: `pv:mkt:${battle.id}:${sport}`, placeholder: 'Choose a market', options }] },
         buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }]),
     ]);
@@ -700,7 +835,7 @@ async function searchAnyData(context: RequestContext, battle: BattleRow, me: str
         }
     }
     if (sports.length > 0 && failed === sports.length) {
-        return screenData('Could not reach Polymarket right now — try again shortly.', [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+        return screenData(`${vs(battle, me)} — could not reach Polymarket right now, try again shortly.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
     }
 
     entries.sort((a, b) => a.kickoff - b.kickoff);
@@ -735,14 +870,14 @@ async function searchAnyData(context: RequestContext, battle: BattleRow, me: str
 
     if (options.length === 0) {
         return screenData(
-            `Nothing two-sided kicking off in the next ${SEARCH_WINDOW_HOURS}h across this server's sports. Check back later, or ask an admin to turn more sports on.`,
+            `${vs(battle, me)}\n\nNothing two-sided kicking off in the next ${SEARCH_WINDOW_HOURS}h across this server's sports. Check back later, or ask an admin to turn more sports on.`,
             [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]
         );
     }
 
     const searched = sports.length - failed;
     return screenData(
-        `Soonest first across ${searched} league${searched === 1 ? '' : 's'} — next ${SEARCH_WINDOW_HOURS} hours. Pick one:`,
+        `${vs(battle, me)}\n\nSoonest first across ${searched} league${searched === 1 ? '' : 's'} — next ${SEARCH_WINDOW_HOURS} hours. Pick one:`,
         [
             // '*' in the sport slot means "the league rides each option's value instead".
             { type: ACTION_ROW, components: [{ type: STRING_SELECT, custom_id: `pv:mkt:${battle.id}:*`, placeholder: 'Choose a market', options }] },
@@ -759,14 +894,16 @@ function lockId(battleId: string, side: number, sport: string, marketId: string)
     return withSport.length <= 100 ? withSport : `pv:lock:${battleId}:${side}:${marketId}`;
 }
 
-async function sideScreen(battle: BattleRow, sport: string, marketId: string): Promise<Response> {
+async function sideScreen(battle: BattleRow, me: string, sport: string, marketId: string): Promise<Response> {
     const market = await fetchMarket(marketId);
     const parsed = parseMarketOutcomes(market);
-    if (!parsed) return updateScreen("Couldn't read that market's odds — pick another.", [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+    if (!parsed) return updateScreen(`${vs(battle, me)} — couldn't read that market's odds, pick another.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
     const split = computePointsSplit(parsed.outcomePrices);
-    if (!split) return updateScreen("That market's odds aren't usable for scoring right now — pick another.", [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+    if (!split) return updateScreen(`${vs(battle, me)} — those odds aren't usable for scoring right now, pick another.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
 
     const body = [
+        vs(battle, me),
+        '',
         `**${parsed.question}**`,
         '',
         `${parsed.outcomes[0]} → **${split.sideAPoints} pts** · ${parsed.outcomes[1]} → **${split.sideBPoints} pts**`,
@@ -786,25 +923,25 @@ async function sideScreen(battle: BattleRow, sport: string, marketId: string): P
 async function lockPick(
     context: RequestContext, sql: ReturnType<typeof getSql>, battle: BattleRow, me: string, side: number, marketId: string, sport: string
 ): Promise<Response> {
-    if (battle.status !== 'active') return updateScreen('That battle isn\'t accepting picks.');
+    if (battle.status !== 'active') return updateScreen(`${vs(battle, me)} — that battle isn't accepting picks.`);
     if (battle.picks_close_at && new Date(battle.picks_close_at).getTime() <= Date.now()) {
-        return updateScreen('The pick window has closed on this battle.');
+        return updateScreen(`${vs(battle, me)} — the pick window has closed on this battle.`);
     }
 
     // Re-fetch fresh: the preview odds shown a moment ago are NOT what gets stored -
     // same discipline handleCommunityPickConfirm follows.
     const market = await fetchMarket(marketId);
     const parsed = parseMarketOutcomes(market);
-    if (!parsed) return updateScreen("Couldn't read that market anymore — pick another.", [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+    if (!parsed) return updateScreen(`${vs(battle, me)} — couldn't read that market anymore, pick another.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
     if (resolveMarket(market).status === 'resolved') {
-        return updateScreen('That market has already resolved — pick another.', [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+        return updateScreen(`${vs(battle, me)} — that market has already resolved, pick another.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
     }
     const kickoff = parseGameStartTime((market as any)?.gameStartTime);
     if (kickoff && kickoff.getTime() <= Date.now()) {
-        return updateScreen('That game has already started — pick an upcoming one.', [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+        return updateScreen(`${vs(battle, me)} — that game has already started, pick an upcoming one.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
     }
     const split = computePointsSplit(parsed.outcomePrices);
-    if (!split) return updateScreen("That market's odds aren't usable for scoring right now — pick another.", [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+    if (!split) return updateScreen(`${vs(battle, me)} — those odds aren't usable for scoring right now, pick another.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
 
     const points = side === 0 ? split.sideAPoints : split.sideBPoints;
     // custom_ids are client-round-tripped, so the league arrives untrusted: a forged
@@ -818,7 +955,7 @@ async function lockPick(
         WHERE battle_id = ${battle.id} AND discord_user_id = ${me}
     `;
     const slot = Number((slotRows[0] as unknown as { max_slot: number }).max_slot) + 1;
-    if (slot > PICKS_PER_PLAYER) return updateScreen(`You've already made all ${PICKS_PER_PLAYER} picks.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+    if (slot > PICKS_PER_PLAYER) return updateScreen(`${vs(battle, me)} — you've already made all ${PICKS_PER_PLAYER} picks in this one.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
 
     try {
         await sql`
@@ -837,8 +974,8 @@ async function lockPick(
             // the true one. Neither message can leak anything about the opponent:
             // both are scoped to this caller's own rows by the constraint itself.
             const detail = String(err?.detail ?? err?.message ?? '');
-            if (detail.includes('slot')) return updateScreen("That didn't land — try once more.", [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
-            return updateScreen('You already picked that market in this battle.', [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+            if (detail.includes('slot')) return updateScreen(`${vs(battle, me)} — that didn't land, try once more.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
+            return updateScreen(`${vs(battle, me)} — you already picked that market in this battle.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
         }
         throw err;
     }
