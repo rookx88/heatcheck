@@ -341,6 +341,43 @@ export function generateTankArticlePage(
            Logged out, MapHud shows its own "Log in" pill next to the banner, matching
            the homepage header's logged-out pairing. */
         .tank-article:has(.map-hud__chip) .tank-article-register-banner { display: none; }
+
+        /* Desktop: story on the left, indexes and the Call deck stacked on the right.
+           Everything above this line is the phone layout and stays untouched - the
+           column wrappers carry no styles until this breakpoint, so narrow viewports
+           render the same single stacked column they always did.
+
+           1180px is not arbitrary: the rail is fixed at 480px because that is the
+           Fishtank's own max width (components/Fishtank.tsx renders at width:100%,
+           maxWidth:480) - a narrower rail would squeeze its fixed-pixel 3D scene
+           rather than scale it. Add ~600px of prose column, the 2.75rem gutter and
+           the page's 1.25rem side padding and 1180 is the first width where both
+           columns get their natural size. Below it, one column is still correct.
+
+           .tank-article's own cap has to lift here too, or the grid would be laid out
+           inside the 720px reading measure and there would be nothing to split. */
+        @media (min-width: 1180px) {
+            .tank-article { max-width: 1180px; }
+            .tank-article-columns {
+                display: grid;
+                grid-template-columns: minmax(0, 1fr) 480px;
+                column-gap: 2.75rem;
+                /* Start, not stretch: the rail is usually taller than a ~270-word
+                   story, and stretching would leave the deck floating mid-column. */
+                align-items: start;
+            }
+            /* The prose keeps its own comfortable measure inside the wider page -
+               the extra width goes to the rail, not to 1100px-long lines of text. */
+            .tank-article-main-col { max-width: 680px; }
+            /* The header is centred on phones, where it spans the full width. Beside
+               a rail it reads as a column, so left-align it with the prose under it. */
+            .tank-article-main-col .tank-article-header { text-align: left; }
+            .tank-article-main-col .tank-article-divider { margin-left: 0; }
+            /* First thing in the rail, so it should sit level with the headline
+               rather than inheriting the phone layout's stacking gap. */
+            .tank-article-side-col > :first-child { margin-top: 0; }
+            .tank-article-side-col .tank-article-artifact-section { margin-top: 2rem; }
+        }
     </style>
 </head>
 <body>
@@ -361,37 +398,49 @@ export function generateTankArticlePage(
              article doesn't jump when hydration finishes. -->
         <div id="tank-article-chrome"></div>
 
-        <header class="tank-article-header">
-            <p>${escapeHtml(game.league)} &middot; ${escapeHtml(eventName)}</p>
-            <p class="tank-article-gametime">${escapeHtml(formatGameTime(game.kickoff))}</p>
-            <h1>${escapeHtml(title)}</h1>
-            <div class="tank-article-divider"></div>
-        </header>
+        <!-- Two wrappers that do NOTHING below the desktop breakpoint: they carry no
+             styles there, so they lay out as plain blocks and the phone view renders
+             exactly the stacked order it always has. Only the media query at the
+             bottom of the stylesheet turns this into a grid. Splitting the columns in
+             the DOM (rather than reordering with grid placement) keeps source order
+             equal to reading order for crawlers and no-JS readers. -->
+        <div class="tank-article-columns">
+            <div class="tank-article-main-col">
+                <header class="tank-article-header">
+                    <p>${escapeHtml(game.league)} &middot; ${escapeHtml(eventName)}</p>
+                    <p class="tank-article-gametime">${escapeHtml(formatGameTime(game.kickoff))}</p>
+                    <h1>${escapeHtml(title)}</h1>
+                    <div class="tank-article-divider"></div>
+                </header>
 ${articleImageUrl ? `
-        <figure class="tank-article-hero">
-            <img src="${escapeHtml(articleImageUrl)}" alt="${escapeHtml(`${game.league} matchup card: ${eventName}`)}" width="1200" height="630" loading="eager">
-        </figure>` : ''}
+                <figure class="tank-article-hero">
+                    <img src="${escapeHtml(articleImageUrl)}" alt="${escapeHtml(`${game.league} matchup card: ${eventName}`)}" width="1200" height="630" loading="eager">
+                </figure>` : ''}
 
-        <div class="tank-article-body">
-            ${bodyHtml}
-        </div>
-
-        <!-- The indexes this story moved. The cards list below is the fallback, and it
-             is the REAL content until the island proves otherwise: it stays for
-             untagged Tanks, for no-JS readers, and if the fetch fails. The island only
-             replaces these children when it has at least one tag to show. -->
-        <section id="tank-article-indexes" data-slug="${escapeHtml(page.slug)}">
-            <ul class="tank-article-cards">
-                ${cardsHtml}
-            </ul>
-        </section>
-
-        <div class="tank-article-artifact-section">
-            <p class="tank-article-artifact-label">Make The Call</p>
-            <div class="tank-article-artifact">
-                <div id="tank-article-deck-root" data-hook="${escapeHtml(hook)}"></div>
-                <script type="application/json" id="tank-article-deck-data">${deckPayload}</script>
+                <div class="tank-article-body">
+                    ${bodyHtml}
+                </div>
             </div>
+
+            <aside class="tank-article-side-col">
+                <!-- The indexes this story moved. The cards list below is the fallback, and it
+                     is the REAL content until the island proves otherwise: it stays for
+                     untagged Tanks, for no-JS readers, and if the fetch fails. The island only
+                     replaces these children when it has at least one tag to show. -->
+                <section id="tank-article-indexes" data-slug="${escapeHtml(page.slug)}">
+                    <ul class="tank-article-cards">
+                        ${cardsHtml}
+                    </ul>
+                </section>
+
+                <div class="tank-article-artifact-section">
+                    <p class="tank-article-artifact-label">Make The Call</p>
+                    <div class="tank-article-artifact">
+                        <div id="tank-article-deck-root" data-hook="${escapeHtml(hook)}"></div>
+                        <script type="application/json" id="tank-article-deck-data">${deckPayload}</script>
+                    </div>
+                </div>
+            </aside>
         </div>
 
         <a class="tank-article-back" href="${baseUrl}/the-tank-hq/">&larr; Back to The Tank HQ</a>
