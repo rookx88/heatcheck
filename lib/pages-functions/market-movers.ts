@@ -221,6 +221,76 @@ export function toResultSentences(items: TickerResultItem[], displayName: string
     return items.map((r, i) => ({ text: buildResultSentence(r, displayName, i), won: r.won }));
 }
 
+// -----------------------------------------------------------------------------------
+// News sentences - the article-page counterpart to the result sentences above.
+//
+// A tag is a different kind of event from a settle: it is the market REPRICING on a
+// story, before any game has been played, so none of the win/loss templates above
+// apply. These read like investors reacting to a stock story.
+//
+// Two numbers, and they must not be conflated. rawPoints is the market's real 3-day
+// move (vivid, typically 1-10 points); indexPct is what the index actually did after
+// tag_scale_pct, which is well under a point. Quoting the raw number as the index's
+// move would overstate it, so every template below attributes each number to its own
+// subject: the market moved X, the index moved Y.
+// -----------------------------------------------------------------------------------
+
+export interface TickerNewsMoveItem {
+    subject: string;   // the story's subject - matchup, player, or side label
+    market: string;    // prop.market, to pick the right phrasing family
+    outcomeLabel: string;
+    pickLabel: string;
+    rawPoints: number; // the market's own 3-day repricing, signed
+    indexPct: number;  // what the index MOVED on this story, signed (already scaled)
+}
+
+// Below this the market didn't really move - most publishes don't coincide with a
+// repricing (measured: half of all real tags moved under 0.5 points), and the copy
+// must not manufacture drama on a quiet market.
+const FLAT_POINTS = 0.5;
+
+export function buildNewsSentence(item: TickerNewsMoveItem, displayName: string, templateIndex: number): string {
+    const tickerWord = displayName.replace(/^\$/, '');
+    const raw = Math.abs(item.rawPoints).toFixed(1);
+    // Magnitude only - the direction verb carries the sign, and the tile beside this
+    // sentence already shows where the index STANDS. Saying "climbs to -41.8%" would
+    // read as a contradiction: the story moved it up, the index level is negative.
+    const moved = `${Math.abs(item.indexPct).toFixed(1)}%`;
+    const subject = subjectFor({
+        player: item.subject, market: item.market, outcomeLabel: item.outcomeLabel,
+        pickLabel: item.pickLabel, tickerKey: '', won: false, delta: 0, occurredAt: '',
+    });
+    const up = item.rawPoints > 0;
+    const flat = Math.abs(item.rawPoints) < FLAT_POINTS;
+
+    if (flat) {
+        // Deliberately only two flat phrasings and no numbers quoted: there is nothing
+        // to report but the absence of a move.
+        return templateIndex % 2 === 0
+            ? `${displayName} barely blinks at ${subject}; the market held its price.`
+            : `Traders shrug at ${subject}, and the ${tickerWord} index sits still.`;
+    }
+
+    switch (templateIndex % 3) {
+        case 0:
+            return up
+                ? `Buyers pile in on ${subject} — the market moved ${raw} points. ${displayName} climbs ${moved}.`
+                : `Buyers stay wary on ${subject} — the market slid ${raw} points. ${displayName} eases ${moved}.`;
+        case 1:
+            return up
+                ? `The ${tickerWord} index catches a bid, up ${moved}, as the market repriced ${subject} by ${raw} points.`
+                : `The ${tickerWord} index gives ground, down ${moved}, as the market marked ${subject} down ${raw} points.`;
+        default:
+            return up
+                ? `${raw} points of buying on ${subject}. ${displayName} follows it up ${moved}.`
+                : `${raw} points came off ${subject}. ${displayName} follows it down ${moved}.`;
+    }
+}
+
+export function toNewsSentences(items: TickerNewsMoveItem[], displayName: string): string[] {
+    return items.map((it, i) => buildNewsSentence(it, displayName, i));
+}
+
 export function toMarketMovers(
     values: TickerValue[],
     series: Record<string, TickerSeriesEvent[]>,

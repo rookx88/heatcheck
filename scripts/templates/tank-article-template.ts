@@ -234,6 +234,53 @@ export function generateTankArticlePage(
             line-height: 1.5;
             color: rgba(255,255,255,0.85);
         }
+
+        /* "Indexes this story moved" - the TANKDAQ tile look (black face, lit corner,
+           neon edge by direction) in a plain wrapping row rather than a treemap: with
+           2-4 tiles there is no area to encode, so tile size must not pretend to mean
+           anything. Colours match tankdaq-indexes-template.ts exactly. */
+        .hc-tai-heading {
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.78rem;
+            letter-spacing: 0.14em; text-transform: uppercase; color: var(--hc-teal);
+            margin: 1.9rem 0 0.2rem;
+        }
+        .hc-tai-sub { margin: 0 0 0.9rem; font-size: 0.8rem; color: rgba(255,255,255,0.5); }
+        .hc-tai-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.8rem; }
+        .hc-tai-row { display: flex; align-items: stretch; gap: 0.85rem; }
+        .hc-tai-tile {
+            flex: 0 0 auto; width: 116px; min-height: 84px;
+            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.15rem;
+            text-decoration: none; text-align: center;
+            background:
+                linear-gradient(158deg, rgba(255,255,255,0.07) 0%, rgba(255,255,255,0.02) 38%, rgba(0,0,0,0) 60%),
+                #000000;
+            border-radius: 6px; box-sizing: border-box;
+            transition: filter 0.16s ease, transform 0.16s ease;
+        }
+        .hc-tai-tile:hover, .hc-tai-tile:focus-visible { filter: brightness(1.3); transform: translateY(-2px); outline: none; }
+        .hc-tai-sym {
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; font-size: 0.95rem;
+            color: #ffffff; line-height: 1.1;
+        }
+        .hc-tai-val { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem; line-height: 1.1; }
+        .hc-tai-label {
+            font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.56rem;
+            letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.55); line-height: 1.15;
+        }
+        .hc-tai-note {
+            flex: 1 1 auto; display: flex; align-items: center;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px; padding: 0.8rem 1rem;
+            font-size: 0.9rem; line-height: 1.5; color: rgba(255,255,255,0.85);
+        }
+        @media (max-width: 520px) {
+            .hc-tai-row { flex-direction: column; gap: 0.5rem; }
+            .hc-tai-tile { width: 100%; min-height: 0; flex-direction: row; gap: 0.6rem; padding: 0.6rem; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .hc-tai-tile { transition: none; }
+            .hc-tai-tile:hover, .hc-tai-tile:focus-visible { transform: none; }
+        }
         .tank-article-artifact-section {
             margin-top: 2.5rem;
             text-align: center;
@@ -329,9 +376,15 @@ ${articleImageUrl ? `
             ${bodyHtml}
         </div>
 
-        <ul class="tank-article-cards">
-            ${cardsHtml}
-        </ul>
+        <!-- The indexes this story moved. The cards list below is the fallback, and it
+             is the REAL content until the island proves otherwise: it stays for
+             untagged Tanks, for no-JS readers, and if the fetch fails. The island only
+             replaces these children when it has at least one tag to show. -->
+        <section id="tank-article-indexes" data-slug="${escapeHtml(page.slug)}">
+            <ul class="tank-article-cards">
+                ${cardsHtml}
+            </ul>
+        </section>
 
         <div class="tank-article-artifact-section">
             <p class="tank-article-artifact-label">Make The Call</p>

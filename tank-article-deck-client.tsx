@@ -13,8 +13,24 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { Fishtank, type DeckPayload } from './components/Fishtank';
 import { ContentChrome } from './components/ContentChrome';
+import { ArticleIndexes } from './components/ArticleIndexes';
 
 function mount() {
+    // "Indexes this story moved", in place of the bullet cards. The cards stay in the
+    // DOM until this component confirms it has something to show - onReady fires only
+    // after a successful fetch with at least one tagged index - so an untagged Tank, a
+    // failed fetch, or no JS at all leaves the server-rendered fallback untouched.
+    // createRoot().render() appends rather than replaces, hence the explicit clear.
+    const indexRoot = document.getElementById('tank-article-indexes');
+    const indexSlug = indexRoot?.getAttribute('data-slug');
+    if (indexRoot && indexSlug) {
+        const cards = indexRoot.querySelector('.tank-article-cards');
+        const host = document.createElement('div');
+        indexRoot.appendChild(host);
+        createRoot(host).render(
+            <ArticleIndexes slug={indexSlug} onReady={() => cards?.remove()} />,
+        );
+    }
     // Identity chrome (username + Ember chip with the mini nav, the captain widget,
     // and the Inbox modal host) in its own root, mounted before - and independently
     // of - the deck: a malformed payload below must not cost a signed-in reader their
