@@ -19,6 +19,8 @@
 // may present movement as predictive.
 
 import { escapeHtml } from '../../scripts/utils/html-escape';
+import { chooseWindow } from './ticker-window';
+import { squarify, weightsFromDeltas } from './treemap';
 import {
     RETROSPECTIVE_NOTE,
     type TickerNewsItem,
@@ -395,6 +397,91 @@ export function renderTickerChartSvg(vm: MarketMoverVM): string {
 }
 
 // -----------------------------------------------------------------------------------
+// Index board - the whole Exchange at a glance, under the cards. Server-rendered SVG
+// for the same reason the sparkline above is: zero JS, no layout shift, no extra
+// request, and the labels are real text in the HTML.
+//
+// SVG also sidesteps what would otherwise block SSR entirely. The interactive TANKDAQ
+// board sizes its gutters and tile type in PIXELS measured from a ResizeObserver -
+// there is no such measurement on a server. Inside a viewBox every coordinate is
+// already resolution-independent, so the same fit-to-width math runs once here in
+// viewBox units and scales to whatever width the panel happens to give it.
+//
+// This is the glanceable version: hover glow and native tooltips, tiles linking
+// through. The hover cards and tap-to-reveal live on /tankdaq/indexes/, which the
+// caption points at - this is not a second copy of that page.
+// -----------------------------------------------------------------------------------
+
+const BOARD_W = 100;
+// Nearly 3:2. Taller than TANKDAQ's 16:10 on purpose: this board sits in a ~540px
+// column rather than full width, and eight tiles in a short box leaves the smallest
+// two unreadable. Extra height is the cheapest way to buy them area.
+const BOARD_H = 70;
+const BOARD_GUTTER = 0.7;
+// Below this (viewBox units, ~1.5% of board width) a label is too small to read at the
+// panel's real width, so the tile drops its delta line and spends all its height on
+// the symbol instead of rendering two illegible rows.
+const MIN_LEGIBLE_SIZE = 2.0;
+
+export function renderIndexBoardSvg(movers: MarketMoverVM[], now = Date.now()): string {
+    if (movers.length === 0) return '';
+
+    // Same adaptive window as the TANKDAQ board: widen until something actually moved,
+    // so a quiet day reads as quiet rather than as eight identical grey blocks.
+    const { deltas, info } = chooseWindow(
+        movers.map((m) => ({ key: m.key, value: m.value })),
+        Object.fromEntries(movers.map((m) => [m.key, m.series])),
+        now,
+    );
+    const maxAbs = Math.max(...deltas.map((d) => Math.abs(d)), 0);
+    const rects = squarify(weightsFromDeltas(deltas), BOARD_W, BOARD_H);
+
+    const tiles = movers.map((m, i) => {
+        const r = rects[i];
+        const delta = deltas[i];
+        const mag = maxAbs > 0 ? Math.abs(delta) / maxAbs : 0;
+        const dir = delta > 0 ? 'pos' : delta < 0 ? 'neg' : 'zero';
+        const neon = dir === 'pos' ? '61, 220, 100' : dir === 'neg' ? '255, 107, 87' : '148, 163, 184';
+
+        const x = r.x + BOARD_GUTTER;
+        const y = r.y + BOARD_GUTTER;
+        const w = Math.max(r.w - 2 * BOARD_GUTTER, 0.1);
+        const h = Math.max(r.h - 2 * BOARD_GUTTER, 0.1);
+
+        // Fit the symbol to the tile's inner width, same 0.8-per-char over-estimate of
+        // Montserrat 900 the client board uses - just in viewBox units.
+        const fit = (w - 1.2) / (m.displayName.length * 0.8);
+        const symSize = Math.max(1.3, Math.min(Math.sqrt((w * h) / 100) * 10 + 1.4, fit));
+        const deltaSize = symSize * 0.72;
+        const showDelta = h > symSize * 2.2 && symSize >= MIN_LEGIBLE_SIZE;
+
+        const title = `${m.displayName}: ${formatSignedPct(delta)} over ${info.label}, ${m.valueLabel} overall`;
+        return `
+                <a class="hc-mmb-tile" href="/tankdaq/${escapeHtml(m.key)}/" aria-label="${escapeHtml(title)}">
+                    <title>${escapeHtml(title)}</title>
+                    <rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}"
+                          rx="0.6" fill="#000000" stroke="rgba(${neon}, ${(0.55 + 0.45 * mag).toFixed(2)})" stroke-width="0.35"/>
+                    <text class="hc-mmb-sym" x="${(x + w / 2).toFixed(2)}" y="${(y + h / 2 + (showDelta ? -0.2 : symSize * 0.35)).toFixed(2)}"
+                          text-anchor="middle" font-size="${symSize.toFixed(2)}">${escapeHtml(m.displayName)}</text>
+                    ${showDelta ? `<text class="hc-mmb-delta" x="${(x + w / 2).toFixed(2)}" y="${(y + h / 2 + deltaSize * 1.35).toFixed(2)}"
+                          text-anchor="middle" font-size="${deltaSize.toFixed(2)}" fill="rgb(${neon})">${formatSignedPct(delta)}</text>` : ''}
+                </a>`;
+    }).join('');
+
+    const summary = `Index board: ${movers.length} indexes, sized by their move over ${info.label}`;
+    return `
+        <div class="hc-mmb">
+            <h4 class="hc-mmb-heading">The Board</h4>
+            <svg class="hc-mmb-svg" viewBox="0 0 ${BOARD_W} ${BOARD_H}" role="img" aria-label="${escapeHtml(summary)}">
+                <title>${escapeHtml(summary)}</title>
+                <rect x="0" y="0" width="${BOARD_W}" height="${BOARD_H}" fill="#000000"/>
+                ${tiles}
+            </svg>
+            <p class="hc-mmb-caption">Tile size tracks the move over ${escapeHtml(info.label)}${info.widened ? ' (nothing moved in the last 24 hours)' : ''} &middot; <a href="/tankdaq/indexes/">Open the full board</a></p>
+        </div>`;
+}
+
+// -----------------------------------------------------------------------------------
 // The reusable presentational core: one ticker's card. No section chrome, no session
 // logic, no invest/divest UI - a future stock-market page wraps this, never forks it.
 // -----------------------------------------------------------------------------------
@@ -493,14 +580,20 @@ export function renderMarketMoversSection(data: MarketMoversData): string {
     const cards = gainer
         ? renderMarketMoverCard(gainer, 'gainer') + (loser ? renderMarketMoverCard(loser, 'loser') : '')
         : '';
+    // The board sits AFTER the grid, never inside it: the gainers/losers rules are
+    // scoped to .hc-mm-grid's descendants, so a sibling can't be hidden by a tab. It
+    // also renders in the empty branch - with no card to show, the whole-board view is
+    // the one thing still worth showing.
+    const board = renderIndexBoardSvg(data.movers);
     const body = !gainer
-        ? `<p class="hc-mm-empty">No ticker activity yet — storylines get tagged as they publish.</p>`
+        ? `<p class="hc-mm-empty">No ticker activity yet — storylines get tagged as they publish.</p>${board}`
         : `
         <div class="hc-mm-tabs" data-hc-mm-tabs hidden>
             <button type="button" class="hc-mm-tab is-gainers" data-mm-view="gainers" aria-pressed="true">Top Gainers</button>
             <button type="button" class="hc-mm-tab is-losers" data-mm-view="losers" aria-pressed="false">Top Losers</button>
         </div>
-        <div class="hc-mm-grid" data-hc-mm-grid data-mm-view="all">${cards}</div>`;
+        <div class="hc-mm-grid" data-hc-mm-grid data-mm-view="all">${cards}</div>
+        ${board}`;
 
     return `
         <section id="market-movers" class="hc-section" aria-labelledby="hc-mm-heading">
@@ -677,6 +770,36 @@ export function marketMoversStyles(): string {
         .hc-mm-result-chip.is-neg { background: #e33a24; }
         .hc-mm-results-empty { font-size: 0.85rem; color: #24344f; margin: 0; font-family: 'Nunito', sans-serif; }
 
+        /* The index board, under the cards. The SVG carries its own geometry, so this
+           is only chrome: a teal-framed black plate matching the TANKDAQ board. Sized
+           by the SVG's own aspect ratio - no fixed height, no measurement. */
+        .hc-mmb { margin: 1.1rem 0 0; }
+        /* Teal on the dark page (mobile/tablet), dark on the white desktop panel - the
+           board is section-level, so unlike the card headings it doesn't sit on the
+           light-blue card ground and can't borrow its colour. */
+        .hc-mmb-heading {
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
+            letter-spacing: 0.14em; text-transform: uppercase; color: var(--hc-teal); margin: 0 0 0.45rem;
+        }
+        .hc-mmb-svg {
+            display: block; width: 100%; height: auto;
+            background: #000000; border: 2px solid rgba(47, 230, 217, 0.35); border-radius: 10px;
+        }
+        .hc-mmb-sym { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; fill: #ffffff; }
+        .hc-mmb-delta { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; }
+        /* Hover lives on the <a>, so the whole tile lights up rather than just the
+           glyph the cursor happens to be over. */
+        .hc-mmb-tile { cursor: pointer; transition: filter 0.16s ease; }
+        .hc-mmb-tile:hover, .hc-mmb-tile:focus-visible { filter: brightness(1.45); outline: none; }
+        .hc-mmb-caption {
+            margin: 0.45rem 0 0; font-size: 0.72rem; line-height: 1.4;
+            color: rgba(255,255,255,0.55);
+        }
+        .hc-mmb-caption a { color: var(--hc-gold); font-weight: 700; }
+        @media (prefers-reduced-motion: reduce) {
+            .hc-mmb-tile { transition: none; }
+        }
+
         /* Framed at every viewport - not just inside the desktop-only white-panel
            treatment below - so this and #tanks read as matching game panels side by
            side. Light-blue frame (the card blue) against the black header band.
@@ -735,6 +858,11 @@ export function marketMoversStyles(): string {
             .hc-mm-card[data-sign="neg"] { border-left-color: #e33a24; }
             /* The white desc chip vanishes white-on-white - pale blue on desktop. */
             .hc-mm-desc { background: rgba(94, 193, 238, 0.35); }
+            /* The panel is white here, so the board's caption (white at 55% on the dark
+               page) would be invisible. Everything inside the SVG stays as-is - it
+               carries its own black ground. */
+            .hc-mmb-caption { color: #47566b; }
+            .hc-mmb-heading { color: #0b1526; }
         }
 
         @media (prefers-reduced-motion: reduce) {

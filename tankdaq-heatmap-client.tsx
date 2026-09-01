@@ -25,6 +25,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createRoot } from 'react-dom/client';
 import { indexLabelOf, tickerCopyFor } from './lib/pages-functions/ticker-copy';
 import { chooseWindow, type WindowInfo, type WindowedEvent as SeriesEvent } from './lib/pages-functions/ticker-window';
+import { squarify, weightsFromDeltas } from './lib/pages-functions/treemap';
 import { ContentChrome } from './components/ContentChrome';
 
 interface TickerRow { key: string; displayName: string; ruleType: string; description: string; tabOrder: number; value: number }
@@ -49,73 +50,8 @@ function fmtPct(v: number): string {
     return `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}%`;
 }
 
-// ---------------------------------------------------------------------------------
-// Squarified treemap (Bruls et al.) - plenty at n=8. Weights in, percentage rects
-// out. Items must arrive sorted by weight descending.
-// ---------------------------------------------------------------------------------
-
-interface Weighted { weight: number; index: number }
-interface Rect { x: number; y: number; w: number; h: number }
-
-// Aspect quality of a candidate row laid against the remaining rect's shorter side:
-// strip thickness = (row weight / remaining weight) x (remaining area / side length),
-// each tile's length along the strip is its share of the side. Lower is squarer.
-function worstRatio(row: Weighted[], rect: Rect, total: number): number {
-    const side = Math.min(rect.w, rect.h);
-    const sum = row.reduce((s, r) => s + r.weight, 0);
-    if (sum === 0 || side === 0 || total === 0) return Infinity;
-    const thickness = (sum / total) * ((rect.w * rect.h) / side);
-    let worst = 0;
-    for (const r of row) {
-        const len = (r.weight / sum) * side;
-        if (len === 0 || thickness === 0) return Infinity;
-        worst = Math.max(worst, len / thickness, thickness / len);
-    }
-    return worst;
-}
-
-// Carve the row's strip off the remaining rect (vertical strip when the rect is wide,
-// horizontal when tall) and return what's left.
-function layoutRow(row: Weighted[], rect: Rect, total: number, out: Rect[]): Rect {
-    const sum = row.reduce((s, r) => s + r.weight, 0);
-    let offset = 0;
-    if (rect.w >= rect.h) {
-        const w = (sum / total) * rect.w;
-        for (const r of row) {
-            const h = (r.weight / sum) * rect.h;
-            out[r.index] = { x: rect.x, y: rect.y + offset, w, h };
-            offset += h;
-        }
-        return { x: rect.x + w, y: rect.y, w: rect.w - w, h: rect.h };
-    } else {
-        const h = (sum / total) * rect.h;
-        for (const r of row) {
-            const w = (r.weight / sum) * rect.w;
-            out[r.index] = { x: rect.x + offset, y: rect.y, w, h };
-            offset += w;
-        }
-        return { x: rect.x, y: rect.y + h, w: rect.w, h: rect.h - h };
-    }
-}
-
-function squarify(weights: number[], width: number, height: number): Rect[] {
-    const items: Weighted[] = weights.map((weight, index) => ({ weight, index })).sort((a, b) => b.weight - a.weight);
-    const out: Rect[] = new Array(weights.length);
-    let rect: Rect = { x: 0, y: 0, w: width, h: height };
-    let total = weights.reduce((s, w) => s + w, 0);
-    let row: Weighted[] = [];
-    for (const item of items) {
-        if (row.length === 0 || worstRatio([...row, item], rect, total) <= worstRatio(row, rect, total)) {
-            row.push(item);
-        } else {
-            rect = layoutRow(row, rect, total, out);
-            total -= row.reduce((s, r) => s + r.weight, 0);
-            row = [item];
-        }
-    }
-    if (row.length) layoutRow(row, rect, total, out);
-    return out;
-}
+// The squarified-treemap math lives in lib/pages-functions/treemap.ts so this board
+// and the homepage's server-rendered SVG board lay out identically by construction.
 
 // ---------------------------------------------------------------------------------
 
@@ -198,10 +134,7 @@ const TankdaqBoard: React.FC = () => {
                 const rows = list.tickers.map((t, i) => ({ ...t, delta: deltas[i] }));
 
                 const biggest = Math.max(...rows.map((r) => Math.abs(r.delta)), 0);
-                // Weight floor keeps quiet indexes visible and tappable; an all-quiet
-                // board degrades to equal tiles.
-                const floor = biggest > 0 ? biggest * 0.15 : 1;
-                const weights = rows.map((r) => Math.max(Math.abs(r.delta), floor));
+                const weights = weightsFromDeltas(rows.map((r) => r.delta));
                 // 100x62.5 mirrors the desktop board's 16:10 aspect so "squarified"
                 // is judged in roughly the shape the tiles actually render in.
                 const rects = squarify(weights, 100, 62.5);
