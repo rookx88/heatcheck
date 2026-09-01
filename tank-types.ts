@@ -33,6 +33,13 @@ export interface Game {
     league: string;             // NBA, NFL, MLB, EPL, La Liga, Serie A, Bundesliga, Ligue 1
     away: string;
     home: string;
+    // Short team codes (TOR, CLE, SHE) straight from Polymarket's event.teams[].abbreviation
+    // where it exists, else derived from the name. Optional because not every producer of a
+    // Game has them (Kalshi) and no consumer may depend on them - they exist so Discord
+    // select menus, whose labels Discord truncates hard, can name a matchup in ~9 characters
+    // instead of ~40. Always uppercase.
+    awayCode?: string;
+    homeCode?: string;
     kickoff: string;            // ISO 8601 - actual game start (Polymarket's event.startTime)
     settleDate: string;         // ISO 8601 - market resolution deadline (event.endDate), distinct
                                  // from kickoff for season-long futures with no discrete game

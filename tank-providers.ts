@@ -139,6 +139,19 @@ const SEASON_FUTURES_PATTERN = /^Will\s+(.+?)\s+(?:have|win|be)\b/i;
 const STATUS_TRIGGER_PATTERN = /^(?:Pro Football:\s*)?([A-Z][\w.'-]+(?:\s+[A-Z][\w.'-]+){1,2})\s+(?:out as|traded|to join|to sign|to [Pp]lay|rostered)\b/;
 const PLACEHOLDER_NAME_PATTERN = /^Player\s+[\dA-Z]+$/i;
 
+// A short, uppercase code for a team. Prefers Polymarket's own abbreviation (present on
+// every league checked - MLB, EPL, EFL Championship, NFL); falls back to the initials of a
+// multi-word name ("Bristol City" -> BC) or the first three letters of a single-word one.
+export function deriveTeamCode(name: string, abbreviation?: string): string {
+    const abbr = (abbreviation || '').trim();
+    if (abbr) return abbr.toUpperCase().slice(0, 5);
+    // Club suffixes carry no identity and would dominate a 2-3 letter code.
+    const words = name.replace(/\b(FC|AFC|CF|SC|AC)\b/gi, ' ').trim().split(/\s+/).filter(Boolean);
+    if (words.length === 0) return name.slice(0, 3).toUpperCase();
+    if (words.length === 1) return words[0].slice(0, 3).toUpperCase();
+    return words.map((w) => w[0]).join('').slice(0, 4).toUpperCase();
+}
+
 // No direct "prominence" signal exists on Polymarket; approximate it as a 0-99
 // percentile rank of (volume + liquidity) among the other props in the same game,
 // which is exactly the scope prominence is used for (pre-filtering, not display).
@@ -189,8 +202,10 @@ export function buildGamesFromFlatProps(rows: PolymarketPropsRow[]): Game[] {
         const first = eventRows[0];
         const teams = first.event_teams || [];
         const hasTeams = teams.length > 0;
-        const away = hasTeams ? (teams.find(t => t.ordering === 'away')?.name || teams[0]?.name || 'Away') : first.league;
-        const home = hasTeams ? (teams.find(t => t.ordering === 'home')?.name || teams[1]?.name || 'Home') : (first.event_title || 'Season Futures');
+        const awayTeam = hasTeams ? (teams.find(t => t.ordering === 'away') || teams[0]) : undefined;
+        const homeTeam = hasTeams ? (teams.find(t => t.ordering === 'home') || teams[1]) : undefined;
+        const away = hasTeams ? (awayTeam?.name || 'Away') : first.league;
+        const home = hasTeams ? (homeTeam?.name || 'Home') : (first.event_title || 'Season Futures');
         const kickoff = first.event_start_time || first.event_end_date || new Date().toISOString();
         const settleDate = first.event_end_date || first.event_start_time || kickoff;
 
@@ -219,6 +234,10 @@ export function buildGamesFromFlatProps(rows: PolymarketPropsRow[]): Game[] {
             league: first.league,
             away,
             home,
+            // Gamma ships these lowercase ("tor"); every league checked carries them, but
+            // deriveTeamCode covers the gap rather than letting a menu render "undefined".
+            awayCode: hasTeams ? deriveTeamCode(away, awayTeam?.abbreviation) : undefined,
+            homeCode: hasTeams ? deriveTeamCode(home, homeTeam?.abbreviation) : undefined,
             kickoff,
             settleDate,
             props,

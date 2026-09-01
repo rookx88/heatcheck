@@ -33,13 +33,12 @@ import { fetchLiveGames } from '../../tank-gamma-live';
 import {
     ephemeral,
     deferredEphemeral,
-    describeMarket,
-    formatKickoff,
     parseMarketOutcomes,
     parseGameStartTime,
     SUPPORTED_SPORTS,
     type DeferredMessageData,
 } from './discord-commands';
+import { pickGameLines, buildMarketOption, type MarketOption } from './market-menu';
 
 type RequestContext = Parameters<PagesFunction<Env>>[0];
 
@@ -743,10 +742,18 @@ async function searchData(context: RequestContext, battle: BattleRow, me: string
         })
         .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
 
-    const options: SelectOption[] = [];
+    const options: MarketOption[] = [];
+    // Polymarket sometimes lists one fixture as several events, which would otherwise
+    // repeat a matchup down the menu - same de-dupe the any-sport mode does.
+    const seenMatchups = new Set<string>();
     outer: for (const game of upcoming) {
-        for (const prop of game.props) {
-            const option = buildMarketOption(game, prop, used, sport, false);
+        const matchup = `${game.away}|${game.home}|${game.kickoff}`;
+        if (seenMatchups.has(matchup)) continue;
+        seenMatchups.add(matchup);
+        // At most a moneyline, a spread and a total per matchup, so a menu spans several
+        // games instead of every rung of one - see market-menu.ts#pickGameLines.
+        for (const prop of pickGameLines(game, (id) => used.has(id))) {
+            const option = buildMarketOption(game, prop, { valueSuffix: sport });
             if (!option) continue;
             options.push(option);
             if (options.length >= MAX_SELECT_OPTIONS) break outer;
@@ -767,37 +774,6 @@ async function searchData(context: RequestContext, battle: BattleRow, me: string
 }
 
 type SlateGame = Awaited<ReturnType<typeof fetchLiveGames>>[number];
-type SlateProp = SlateGame['props'][number];
-
-interface SelectOption {
-    label: string;
-    value: string;
-    description: string;
-}
-
-// One select row for one market. `value` carries the league after a '|' so the pick row
-// can record which competition it came from even in any-sport mode, where every row is
-// a different league and the menu's own custom_id can't hold it. Market ids are numeric
-// and no league name contains a '|', so splitting on the first one is unambiguous.
-function buildMarketOption(game: SlateGame, prop: SlateProp, used: Set<string>, sport: string, showLeague: boolean): SelectOption | null {
-    if (!prop.odds || prop.odds.outcomes.length !== 2) return null;
-    if (used.has(prop.id)) return null;
-    const marketLabel = describeMarket(prop.market, prop.line);
-    const isPlayerProp = prop.player && !prop.player.includes(' vs') && prop.player !== game.away && prop.player !== game.home;
-    const bet = isPlayerProp ? `${prop.player} ${marketLabel}` : marketLabel;
-    const [pA, pB] = prop.odds.outcomePrices;
-    const oddsPart = Number.isFinite(pA) && Number.isFinite(pB)
-        ? `${prop.odds.outcomes[0]} ${Math.round(pA * 100)}% / ${prop.odds.outcomes[1]} ${Math.round(pB * 100)}%`
-        : '';
-    return {
-        label: `${game.away} @ ${game.home} · ${bet}`.slice(0, 100),
-        value: `${prop.id}|${sport}`.slice(0, 100),
-        // League FIRST in any-sport mode: the 100-char clamp then eats the odds tail on
-        // long team names rather than the competition name, which is the one thing a
-        // mixed list has to answer.
-        description: [showLeague ? sport : '', formatKickoff(game.kickoff), oddsPart].filter(Boolean).join(' · ').slice(0, 100),
-    };
-}
 
 // "Any sport" - the soonest games across every league this guild has enabled, one row
 // per GAME rather than per market. Walking props the way the per-league search does
@@ -840,7 +816,7 @@ async function searchAnyData(context: RequestContext, battle: BattleRow, me: str
 
     entries.sort((a, b) => a.kickoff - b.kickoff);
 
-    const options: SelectOption[] = [];
+    const options: MarketOption[] = [];
     // Two limits, both learned from real data: on 2026-09-01 a single Championship
     // evening had 25+ eligible games all kicking off at 18:45, and Gamma splits one
     // fixture across several events, so an unguarded "soonest first" rendered as the
@@ -854,13 +830,11 @@ async function searchAnyData(context: RequestContext, battle: BattleRow, me: str
         if (taken >= PER_LEAGUE_CAP) continue;
         const matchup = `${entry.sport}|${entry.game.away}|${entry.game.home}|${entry.game.kickoff}`;
         if (seenMatchups.has(matchup)) continue;
-        // Moneyline where a game has one - it's the most legible bet in a mixed list -
-        // otherwise the most prominent two-sided market on that game.
-        const eligible = entry.game.props.filter((p) => p.odds && p.odds.outcomes.length === 2 && !used.has(p.id));
-        if (eligible.length === 0) continue;
-        const chosen = eligible.find((p) => p.market === 'moneyline')
-            ?? eligible.reduce((best, p) => (p.prominence > best.prominence ? p : best), eligible[0]);
-        const option = buildMarketOption(entry.game, chosen, used, entry.sport, true);
+        // One row per game here (not three): pickGameLines returns moneyline first, which
+        // is the most legible bet in a list mixing competitions.
+        const chosen = pickGameLines(entry.game, (id) => used.has(id))[0];
+        if (!chosen) continue;
+        const option = buildMarketOption(entry.game, chosen, { valueSuffix: entry.sport, league: entry.sport });
         if (!option) continue;
         seenMatchups.add(matchup);
         perLeague.set(entry.sport, taken + 1);

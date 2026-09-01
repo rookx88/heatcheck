@@ -41,6 +41,7 @@ import { drawGiveawayWinner, type GiveawaySourceType } from './discord-draw';
 import { fetchMarket, resolveMarket } from './gamma';
 import { createAndPostCommunityPick } from './community-pick-creation';
 import { computePointsSplit } from './community-points-formula';
+import { describeMarket, formatKickoff, pickGameLines, buildMarketOption } from './market-menu';
 import { fetchLiveGames } from '../../tank-gamma-live';
 import { deriveTaglineFallback } from '../../tank-deck-format';
 
@@ -289,35 +290,10 @@ export async function handlePostCommand(context: RequestContext, interaction: an
 // odds/editorial context.
 // ===================================================================================
 
-// "moneyline" -> "Moneyline", "spreads" -1.5 -> "Spread -1.5",
-// "baseball_player_home_runs" 0.5 -> "home runs o/u 0.5", etc.
-export function describeMarket(market: string | null | undefined, line: number | string | null | undefined): string {
-    const lineNum = line === null || line === undefined || line === '' ? null : Number(line);
-    const withLine = (base: string, prefix = 'o/u ') => (lineNum !== null && Number.isFinite(lineNum) ? `${base} ${prefix}${lineNum}` : base);
-    switch (market) {
-        case 'moneyline': return 'Moneyline';
-        case 'spreads': return lineNum !== null ? `Spread ${lineNum > 0 ? '+' : ''}${lineNum}` : 'Spread';
-        case 'totals': return withLine('Total');
-        case 'team_totals': return withLine('Team total');
-        case 'season_futures': return 'Season future';
-        default: {
-            if (!market) return 'Prop';
-            // Player-prop keys: "<sport>_player_<stat>" -> the stat, humanized.
-            const stat = market.includes('_player_') ? market.split('_player_')[1] : market;
-            return withLine(stat.replace(/_/g, ' '));
-        }
-    }
-}
-
-// "Fri Aug 21 · 9:00 PM ET" - US/Eastern because that's how sports schedules read.
-export function formatKickoff(iso: string | null | undefined): string {
-    if (!iso) return '';
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-    }).format(d) + ' ET';
-}
+// describeMarket / formatKickoff moved to lib/pages-functions/market-menu.ts, which owns
+// every "pick a market" row now that /pvp and the Community Pick search share one builder.
+// Re-exported so existing importers of this module keep working.
+export { describeMarket, formatKickoff } from './market-menu';
 
 interface TankSearchRow {
     slug: string;
@@ -490,29 +466,21 @@ async function communityPickSearchData(context: RequestContext, guildId: string,
             return Number.isNaN(t) || t > now;
         })
         .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
+    // One row per bet TYPE per matchup (moneyline / spread / total), not one per market:
+    // a single MLB game carries four spread rungs and three totals, which used to fill the
+    // whole menu with one fixture. See market-menu.ts#pickGameLines.
     outer: for (const game of searchable) {
-        for (const prop of game.props) {
-            // Community Picks are strictly two-sided (one button per side, per the
-            // brief's own schema: side_a_label/side_b_label) - a market with any
-            // other outcome count isn't eligible.
-            if (!prop.odds || prop.odds.outcomes.length !== 2) continue;
-            const haystack = `${game.away} ${game.home} ${prop.player} ${prop.market}`.toLowerCase();
+        for (const prop of pickGameLines(game)) {
+            // The keyword matches the raw market key AND the humanized label, so both
+            // "spreads" and "spread" find the same rows.
+            const haystack = `${game.away} ${game.home} ${prop.player} ${prop.market} ${describeMarket(prop.market, prop.line)}`.toLowerCase();
             if (term && !haystack.includes(term)) continue;
 
-            // Label = matchup + the actual bet; description = kickoff + both sides
-            // with live implied odds, so rows are tellable apart at a glance.
-            const marketLabel = describeMarket(prop.market, prop.line);
-            const isPlayerProp = prop.player && !prop.player.includes(' vs') && prop.player !== game.away && prop.player !== game.home;
-            const bet = isPlayerProp ? `${prop.player} ${marketLabel}` : marketLabel;
-            const [pA, pB] = prop.odds.outcomePrices;
-            const oddsPart = Number.isFinite(pA) && Number.isFinite(pB)
-                ? `${prop.odds.outcomes[0]} ${Math.round(pA * 100)}% / ${prop.odds.outcomes[1]} ${Math.round(pB * 100)}%`
-                : '';
-            matches.push({
-                label: `${game.away} @ ${game.home} · ${bet}`.slice(0, 100),
-                value: prop.id,
-                description: [formatKickoff(game.kickoff), oddsPart].filter(Boolean).join(' · ').slice(0, 100),
-            });
+            // Bet first, matchup as a short team code - Discord truncates the tail of a
+            // label, and the matchup used to consume all of it.
+            const option = buildMarketOption(game, prop);
+            if (!option) continue;
+            matches.push(option);
             if (matches.length >= MAX_SELECT_OPTIONS) break outer;
         }
     }
