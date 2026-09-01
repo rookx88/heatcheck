@@ -24,7 +24,9 @@ CREATE TABLE IF NOT EXISTS pvp_battles (
     channel_id VARCHAR(32) NOT NULL,
     challenger_id VARCHAR(32) NOT NULL,
     opponent_id VARCHAR(32) NOT NULL,
-    -- 'pending' -> 'active' (accepted) -> 'settled'; 'pending' -> 'declined' | 'expired'.
+    -- 'pending' -> 'active' (accepted) -> 'settled'
+    -- 'pending' -> 'declined' (opponent said no) | 'cancelled' (challenger withdrew)
+    --            | 'expired'  (nobody answered inside 24h)
     -- There is deliberately NO 'void' state: once accepted, a battle ALWAYS scores.
     -- A player who submitted nothing scores 0 and loses; partial submissions (1 or 2
     -- picks) score on what was submitted. See functions/api/pvp-settlement-sweep.ts.

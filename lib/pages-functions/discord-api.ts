@@ -212,6 +212,22 @@ export async function clearMessageComponents(env: Env, channelId: string, messag
     }
 }
 
+// Removes a message the bot posted - used when a PvP challenger cancels, so the
+// public "run /pvp to respond" line doesn't sit there inviting a response to a
+// challenge that no longer exists. Best-effort like clearMessageComponents above: the
+// cancellation itself is already committed, and a message someone deleted by hand (or
+// that predates this) must not turn into an error the user sees.
+export async function deleteChannelMessage(env: Env, channelId: string, messageId: string): Promise<void> {
+    try {
+        await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
+        });
+    } catch (err) {
+        console.error('[discord-api] deleteChannelMessage failed:', err);
+    }
+}
+
 export interface DiscordGuildMember {
     user: { id: string; username: string; global_name?: string | null; bot?: boolean; avatar?: string | null };
 }

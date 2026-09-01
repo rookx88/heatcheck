@@ -23,7 +23,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { postDiscordChannelMessage } from './discord-api';
+import { postDiscordChannelMessage, deleteChannelMessage } from './discord-api';
 import { brandEmbed } from './discord-brand';
 import { buildPvpChallengeMessage } from './pvp-card';
 import { computePvpRecords, formatPvpRecord } from './pvp-record';
@@ -356,10 +356,21 @@ async function hubData(context: RequestContext, guildId: string, me: string): Pr
 
     if (outgoing.length > 0) {
         lines.push('', '**Waiting on them**');
-        for (const b of outgoing.slice(0, 3)) {
+        const shown = outgoing.slice(0, 3);
+        // Cancel exists so a challenger isn't stuck for 24h waiting on someone who
+        // isn't around - the live-pair index means an unanswered challenge also blocks
+        // re-challenging that same person, so "cancel and go again" needs to be one
+        // click. Numbered only when there's more than one, since button labels can't
+        // render a mention.
+        const cancelButtons: { label: string; customId: string; style?: number }[] = [];
+        shown.forEach((b, i) => {
             const exp = unixOf(b.expires_at);
-            lines.push(`• <@${b.opponent_id}> hasn't answered${exp ? ` — expires <t:${exp}:R>` : ''}`);
-        }
+            const n = shown.length > 1 ? `${i + 1}. ` : '• ';
+            lines.push(`${n}<@${b.opponent_id}> hasn't answered${exp ? ` — expires <t:${exp}:R>` : ''}`);
+            cancelButtons.push({ label: shown.length > 1 ? `Cancel ${i + 1}` : 'Cancel challenge', customId: `pv:can:${b.id}`, style: STYLE_DANGER });
+        });
+        if (outgoing.length > 3) lines.push(`• …and ${outgoing.length - 3} more`);
+        rows.push(buttonRow(cancelButtons));
     }
 
     if (battles.length === 0) {
@@ -417,6 +428,23 @@ export async function handlePvpComponent(context: RequestContext, interaction: a
             battle.status = 'active';
             battle.picks_close_at = (claimed[0] as unknown as { picks_close_at: string }).picks_close_at;
             return pickScreen(context, sql, battle, me);
+        }
+
+        case 'can': {
+            // The challenger's side of decline. Ownership from the DB row, and the
+            // conditional UPDATE means a challenge answered a second ago can't be
+            // cancelled out from under the opponent - accept wins the race.
+            if (battle.challenger_id !== me) return updateScreen("That challenge isn't yours to cancel.");
+            const cancelled = await sql`
+                UPDATE pvp_battles SET status = 'cancelled'
+                WHERE id = ${battle.id} AND status = 'pending' AND challenger_id = ${me}
+                RETURNING challenge_message_id
+            `;
+            if (cancelled.length === 0) return updateScreen('That challenge was already answered or expired — run `/pvp` to see where it stands.');
+            // Take the public ping down with it, so nobody answers a dead challenge.
+            const messageId = (cancelled[0] as unknown as { challenge_message_id: string | null }).challenge_message_id;
+            if (messageId) context.waitUntil(deleteChannelMessage(context.env, battle.channel_id, messageId));
+            return deferredUpdate(context, interaction, hubData(context, guildId, me));
         }
 
         case 'pick':
