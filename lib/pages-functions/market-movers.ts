@@ -646,9 +646,14 @@ export function marketMoversStyles(): string {
         .hc-mm-note a { color: var(--hc-gold); font-weight: 700; }
 
         .hc-mm-tabs { display: flex; gap: 0.6rem; margin: 0.75rem 0 0; position: relative; z-index: 1; }
+        /* Same dotted-LED face as the Tanks panel title (#tanks h2 in homepage/
+           render.ts) so the two panels' headers read as one family. That font is
+           requested by a homepage-only <link> in renderHomepage - safe here because
+           Market Movers only ever renders on the homepage; anywhere else this would
+           silently fall back to Courier. */
         .hc-mm-tab {
-            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
-            font-size: clamp(0.95rem, 3.2vw, 1.25rem); letter-spacing: 0.04em; text-transform: uppercase;
+            font-family: 'Bitcount Grid Single', 'Courier New', monospace; font-weight: 700;
+            font-size: clamp(0.95rem, 3.2vw, 1.25rem); letter-spacing: 0.02em; text-transform: uppercase;
             cursor: pointer; color: #ffffff; border: none;
             border-radius: 14px 14px 0 0; padding: 0.55rem 1.3rem 0.5rem;
             text-shadow: 1.5px 0 0 #b3261e, -1.5px 0 0 #b3261e, 0 1.5px 0 #b3261e, 0 -1.5px 0 #b3261e,
