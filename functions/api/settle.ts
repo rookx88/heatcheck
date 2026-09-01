@@ -193,11 +193,23 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
     }
 
-    // Ticker tags settle independently of picks: a tagged Tank with zero picks still
-    // resolves here. No visibility filter - a newsletter_only Tank's tags still settle;
-    // its events are excluded at read time (functions/api/tickers*.ts), not at write
-    // time. No email/logEvent either: nothing user-facing fires for a ticker move.
-    const tagRows = await sql`
+    // TANK SETTLE EVENTS ARE RETIRED (slate indexes, phase 2). An index now has two
+    // legs: a published Tank's 3-day price move is the NEWS leg (still written at tag
+    // time, the way news repricing moves a stock), and the totality of a category's game
+    // results is the RESULTS leg, scored by /api/index-settle from index_positions. Every
+    // game's result must be counted exactly once, and the slate is what counts it - so
+    // settling a Tank's tag here too would double-count the games we happen to cover,
+    // and at a much larger magnitude than a daily close.
+    //
+    // Tags are left with calculated_at NULL on purpose: that column is the settle
+    // idempotency marker, and stamping it without an event would fake a settlement that
+    // never happened. Nothing scans them any more.
+    //
+    // The block below is kept, unreached, behind SETTLE_TANK_TAGS purely so the previous
+    // behaviour is one flag away while the slate legs bed in. Delete it once a full
+    // season of closes has run.
+    const SETTLE_TANK_TAGS = false;
+    const tagRows = SETTLE_TANK_TAGS ? await sql`
         SELECT tt.id, tt.ticker_key, tt.tank_id, tt.relevant_side, t.provider,
                t.game_snapshot->'prop'->>'id' AS market_id,
                t.game_snapshot->'prop'->'odds'->'outcomes' AS snapshot_outcomes,
@@ -208,7 +220,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         JOIN tank_pages t ON t.id = tt.tank_id
         JOIN tickers tk ON tk.key = tt.ticker_key
         WHERE tt.calculated_at IS NULL AND t.provider IN ('polymarket', 'kalshi')
-    `;
+    ` : [];
     const pendingTags = tagRows as unknown as PendingTickerTag[];
 
     const tickerResults: Array<{ tagId: string; tickerKey: string; status: string; delta?: number }> = [];

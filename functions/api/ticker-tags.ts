@@ -20,6 +20,7 @@ import {
     getTicker,
     getTickerConfig,
     insertTagWithEvent,
+    tagScaleOf,
 } from '../../lib/pages-functions/tickers';
 
 interface TankRow {
@@ -118,8 +119,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     let tagDelta;
     try {
         tagDelta = tank.provider === 'kalshi'
-            ? await fetchKalshiTagDelta(tank.market_id, relevantSide, cfg.tag_delta_cap_pct)
-            : await fetchTagDelta(tank.market_id, relevantSide, cfg.tag_delta_cap_pct);
+            ? await fetchKalshiTagDelta(tank.market_id, relevantSide, cfg.tag_delta_cap_pct, tagScaleOf(cfg))
+            : await fetchTagDelta(tank.market_id, relevantSide, cfg.tag_delta_cap_pct, tagScaleOf(cfg));
     } catch (err) {
         if (err instanceof TaggingError) {
             return reject(err.retriable ? 502 : 422, err.code, err.message, { retriable: err.retriable });

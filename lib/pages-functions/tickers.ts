@@ -38,6 +38,21 @@ export interface TickerConfig {
     locks_min_prob: number;
     moonshot_max_prob: number;
     settle_scale_pct: number;
+    // v3 (slate indexes). Optional so this module still runs against a v2 config row:
+    // tag_scale_pct defaults to 1 (pre-slate behaviour, unscaled tag deltas), and the
+    // close keys are only read by the slate settle path, which simply writes no closes
+    // without them.
+    tag_scale_pct?: number;
+    close_scale_pct?: number;
+    close_smoothing?: number;
+}
+
+// The news leg's weight. A published Tank's real 3-day implied-probability move is
+// multiplied by this before clamping, so news stays a nudge next to the results leg
+// (see seed_ticker_config_v3.sql for the measured balance). Absent config = 1 = the
+// original unscaled behaviour.
+export function tagScaleOf(cfg: TickerConfig): number {
+    return typeof cfg.tag_scale_pct === 'number' ? cfg.tag_scale_pct : 1;
 }
 
 // Fail-loud read of game_config['tickers'] (seed_ticker_config.sql is a deploy
@@ -227,7 +242,7 @@ interface ClobHistoryPoint {
 // Token id comes from a live Gamma lookup (tank snapshots don't store clobTokenIds),
 // history from the CLOB prices-history endpoint - a single on-demand call at tag time;
 // Polymarket retains the history, we never snapshot prices ourselves.
-export async function fetchTagDelta(marketId: string, relevantSide: number, capPct: number): Promise<TagDelta> {
+export async function fetchTagDelta(marketId: string, relevantSide: number, capPct: number, scale = 1): Promise<TagDelta> {
     const market = await fetchMarket(marketId);
     if (!market) {
         throw new TaggingError('gamma_unavailable', `Gamma market ${marketId} could not be fetched - retry in a moment.`, true);
@@ -272,8 +287,10 @@ export async function fetchTagDelta(marketId: string, relevantSide: number, capP
     // A single point means the market is younger than the window: ~zero 3-day movement
     // is the true value, not a fallback.
     const thinHistory = points.length === 1;
+    // rawDelta stays the TRUE movement (kept in event metadata); scale is the news
+    // leg's weight next to the slate's results leg - see tagScaleOf.
     const rawDelta = (priceNow - price3dAgo) * 100;
-    const delta = Math.max(-capPct, Math.min(capPct, rawDelta));
+    const delta = Math.max(-capPct, Math.min(capPct, rawDelta * scale));
     return {
         delta: Number(delta.toFixed(3)),
         rawDelta: Number(rawDelta.toFixed(3)),
@@ -293,7 +310,7 @@ const KALSHI_MAX_TRADE_PAGES = 20; // safety valve, mirrors kalshi.ts's (root) M
 // which provider they're tagging. Kalshi has no CLOB-equivalent bucketed price-history
 // endpoint, so this pages the raw (newest-first) /markets/trades endpoint back to ~3
 // days ago instead of a single prices-history call.
-export async function fetchKalshiTagDelta(ticker: string, relevantSide: number, capPct: number): Promise<TagDelta> {
+export async function fetchKalshiTagDelta(ticker: string, relevantSide: number, capPct: number, scale = 1): Promise<TagDelta> {
     const market = await fetchKalshiMarket(ticker);
     if (!market) {
         throw new TaggingError('kalshi_unavailable', `Kalshi market ${ticker} could not be fetched - retry in a moment.`, true);
@@ -347,7 +364,7 @@ export async function fetchKalshiTagDelta(ticker: string, relevantSide: number, 
     // as fetchTagDelta's thinHistory (a single CLOB bucket) above.
     const thinHistory = oldestTs > cutoffMs;
     const rawDelta = (priceNow - price3dAgo) * 100;
-    const delta = Math.max(-capPct, Math.min(capPct, rawDelta));
+    const delta = Math.max(-capPct, Math.min(capPct, rawDelta * scale));
     return {
         delta: Number(delta.toFixed(3)),
         rawDelta: Number(rawDelta.toFixed(3)),
@@ -438,15 +455,20 @@ export interface TickerValue {
     settleLossPct: number;
 }
 
-// All active tickers with their current values. A ticker's value only counts events
-// on visibility='app' Tanks - a newsletter_only Tank's events exist but never count.
+// All active tickers with their current values, summed across BOTH legs:
+//   source='slate' - the results leg (one daily close per index). No Tank behind it, so
+//                    it can't be visibility-filtered and is always counted.
+//   source='tank'  - the news leg, still gated on visibility='app': a newsletter_only
+//                    Tank's events exist but never count.
+// The LEFT JOIN matters: an inner join would silently drop every slate event, since
+// slate rows carry a NULL tank_id by construction.
 export async function getTickerValues(sql: SqlReader): Promise<TickerValue[]> {
     const rows = await sql`
         SELECT tk.key, tk.display_name, tk.description, tk.rule_type, tk.tab_order,
                tk.settle_win_pct::float8 AS settle_win_pct,
                tk.settle_loss_pct::float8 AS settle_loss_pct,
-               COALESCE(SUM(e.delta) FILTER (WHERE t.visibility = 'app'), 0)::float8 AS value,
-               COUNT(e.id) FILTER (WHERE t.visibility = 'app')::int AS event_count
+               COALESCE(SUM(e.delta) FILTER (WHERE e.source = 'slate' OR t.visibility = 'app'), 0)::float8 AS value,
+               COUNT(e.id) FILTER (WHERE e.source = 'slate' OR t.visibility = 'app')::int AS event_count
         FROM tickers tk
         LEFT JOIN ticker_events e ON e.ticker_key = tk.key
         LEFT JOIN tank_pages t ON t.id = e.tank_id
@@ -479,8 +501,11 @@ export interface TickerSeriesEvent {
 
 // The chart source: events ordered by time with a running cumulative sum, grouped per
 // ticker. The `id` tiebreak in both the window frame and ORDER BY makes same-timestamp
-// cumulatives deterministic. Same visibility='app' exclusion as getTickerValues, so a
-// chart's final cumulative always equals the ticker's current value.
+// cumulatives deterministic. The row filter here must stay character-for-character
+// equivalent to getTickerValues' FILTER above - slate events always in, tank events
+// gated on visibility='app' - because the acceptance suite asserts that a chart's final
+// cumulative equals the ticker's current value. Diverge them and that invariant breaks
+// silently.
 export async function getTickerSeries(sql: SqlReader, key?: string | null): Promise<Record<string, TickerSeriesEvent[]>> {
     const keyParam = key ?? null;
     const rows = await sql`
@@ -489,8 +514,9 @@ export async function getTickerSeries(sql: SqlReader, key?: string | null): Prom
                SUM(e.delta) OVER (PARTITION BY e.ticker_key ORDER BY e.occurred_at, e.id)::float8 AS cumulative,
                e.occurred_at
         FROM ticker_events e
-        JOIN tank_pages t ON t.id = e.tank_id AND t.visibility = 'app'
-        WHERE ${keyParam}::text IS NULL OR e.ticker_key = ${keyParam}
+        LEFT JOIN tank_pages t ON t.id = e.tank_id
+        WHERE (e.source = 'slate' OR t.visibility = 'app')
+          AND (${keyParam}::text IS NULL OR e.ticker_key = ${keyParam})
         ORDER BY e.ticker_key, e.occurred_at, e.id
     `;
     const series: Record<string, TickerSeriesEvent[]> = {};
@@ -696,8 +722,8 @@ export async function sweepUntaggedTanks(
             let tagDelta: TagDelta;
             try {
                 tagDelta = provider === 'kalshi'
-                    ? await fetchKalshiTagDelta(marketId, side, cfg.tag_delta_cap_pct)
-                    : await fetchTagDelta(marketId, side, cfg.tag_delta_cap_pct);
+                    ? await fetchKalshiTagDelta(marketId, side, cfg.tag_delta_cap_pct, tagScaleOf(cfg))
+                    : await fetchTagDelta(marketId, side, cfg.tag_delta_cap_pct, tagScaleOf(cfg));
             } catch (err) {
                 const code = err instanceof TaggingError ? err.code : 'error';
                 const message = err instanceof Error ? err.message : String(err);
