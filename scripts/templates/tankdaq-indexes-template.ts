@@ -121,6 +121,19 @@ function tankdaqIndexesStyles(): string {
         .hc-tqb-tile:hover, .hc-tqb-tile:focus-visible, .hc-tqb-tile.is-active {
             filter: brightness(1.3); outline: none; z-index: 2;
         }
+        /* A family's raised block, holding the league slices that sit on it. Purely
+           decorative - its header strip and its children carry every hover and link -
+           so it takes no pointer events and no aria role. The client sets its position,
+           tint, edge and extrusion inline, same as a tile. */
+        .hc-tqb-container {
+            box-sizing: border-box;
+            transition: transform 0.16s ease, box-shadow 0.16s ease;
+        }
+        /* The parent's own symbol/value strip sits ON its block, so it brings no face
+           of its own; and a child is recessed into that block rather than standing as
+           proud as the family it belongs to. */
+        .hc-tqb-head { background: none !important; }
+        .hc-tqb-child { will-change: auto; }
         .hc-tqb-sym {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; font-size: 1em;
             color: #ffffff; line-height: 1.1;
@@ -204,8 +217,9 @@ function tankdaqIndexesStyles(): string {
            information is not - drop the lift and the transitions, keep every colour,
            glow and depth cue exactly as-is. */
         @media (prefers-reduced-motion: reduce) {
-            .hc-tqb-tile { transition: none; }
-            .hc-tqb-tile:hover, .hc-tqb-tile:focus-visible, .hc-tqb-tile.is-active { transform: none !important; }
+            .hc-tqb-tile, .hc-tqb-container { transition: none; }
+            .hc-tqb-tile:hover, .hc-tqb-tile:focus-visible, .hc-tqb-tile.is-active,
+            .hc-tqb-container { transform: none !important; }
             .hc-tqb-detail { transition: none; }
         }
     `;

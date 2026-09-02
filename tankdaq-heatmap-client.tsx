@@ -25,14 +25,32 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { createRoot } from 'react-dom/client';
 import { indexLabelOf, tickerCopyFor } from './lib/pages-functions/ticker-copy';
 import { chooseWindow, type WindowInfo, type WindowedEvent as SeriesEvent } from './lib/pages-functions/ticker-window';
-import { squarify, weightsFromDeltas } from './lib/pages-functions/treemap';
+import { layoutNested } from './lib/pages-functions/treemap';
+import { leagueShortCode, parseLeagueRule } from './lib/pages-functions/league-rules';
 import { ContentChrome } from './components/ContentChrome';
 
-interface TickerRow { key: string; displayName: string; ruleType: string; description: string; tabOrder: number; value: number }
+interface TickerRow {
+    key: string; displayName: string; ruleType: string; description: string;
+    tabOrder: number; value: number;
+    parentKey?: string | null;
+}
+
+// A league sub-index is drawn INSIDE the index it slices, so a tile is one of three
+// things. Every tile is still an absolutely-positioned sibling in the board: the nested
+// layout hands back absolute rects, so nothing has to be a DOM descendant of anything
+// else. That is what keeps a child out of its parent's <a> (one link may not contain
+// another) and keeps a hover on a child from also firing the parent's.
+type TileKind =
+    | 'leaf'       // a top-level index with no children - the whole tile is its link
+    | 'container'  // a family's raised block; decorative, its children sit on top of it
+    | 'header'     // the family's own symbol/value strip, and its only clickable area
+    | 'child';     // one league slice, inset on its parent's block
 
 interface Tile {
     key: string;
+    kind: TileKind;
     displayName: string;
+    shortLabel: string | null; // 'NBA' etc - fallback when the tile is too narrow
     indexLabel: string;
     ruleType: string;
     description: string;
@@ -134,20 +152,61 @@ const TankdaqBoard: React.FC = () => {
                 const rows = list.tickers.map((t, i) => ({ ...t, delta: deltas[i] }));
 
                 const biggest = Math.max(...rows.map((r) => Math.abs(r.delta)), 0);
-                const weights = weightsFromDeltas(rows.map((r) => r.delta));
+
+                // A ticker whose parent isn't on the board is laid out as a root rather
+                // than dropped - a bad parent_key can never make an index disappear.
+                const present = new Set(rows.map((r) => r.key));
+                const isRoot = (r: typeof rows[number]) => !r.parentKey || !present.has(r.parentKey);
+                const roots = rows.filter(isRoot);
+                const families = roots.map((p) => rows.filter((c) => !isRoot(c) && c.parentKey === p.key));
+
                 // 100x62.5 mirrors the desktop board's 16:10 aspect so "squarified"
                 // is judged in roughly the shape the tiles actually render in.
-                const rects = squarify(weights, 100, 62.5);
-                setTiles(rows.map((r, i) => ({
-                    key: r.key,
-                    displayName: r.displayName,
-                    indexLabel: indexLabelOf(r.ruleType),
-                    ruleType: r.ruleType,
-                    description: r.description,
-                    value: r.value,
-                    delta: r.delta,
-                    x: rects[i].x, y: (rects[i].y / 62.5) * 100, w: rects[i].w, h: (rects[i].h / 62.5) * 100,
-                })));
+                const BH = 62.5;
+                const layout = layoutNested(
+                    roots.map((r) => r.delta),
+                    families.map((f) => f.map((c) => c.delta)),
+                    100, BH,
+                    { headerRatio: 0.28, headerMin: 5, headerMax: 13, padding: 1.2 },
+                );
+
+                const base = (r: TickerRow & { delta: number }) => {
+                    const rule = parseLeagueRule(r.ruleType);
+                    return {
+                        key: r.key,
+                        displayName: r.displayName,
+                        shortLabel: rule ? leagueShortCode(rule) : null,
+                        indexLabel: indexLabelOf(r.ruleType),
+                        ruleType: r.ruleType,
+                        description: r.description,
+                        value: r.value,
+                        delta: r.delta,
+                    };
+                };
+                // y and h are normalised out of the layout's 62.5-unit box into percent
+                // of the board's height, which is what the absolute positioning uses.
+                const pct = (rect: { x: number; y: number; w: number; h: number }) => ({
+                    x: rect.x, y: (rect.y / BH) * 100, w: rect.w, h: (rect.h / BH) * 100,
+                });
+
+                const next: Tile[] = [];
+                roots.forEach((r, i) => {
+                    const kids = families[i];
+                    const rect = layout.roots[i];
+                    if (kids.length === 0) {
+                        next.push({ ...base(r), kind: 'leaf', ...pct(rect) });
+                        return;
+                    }
+                    // Containers are pushed first so they paint behind the header and
+                    // children that sit on them.
+                    next.push({ ...base(r), kind: 'container', ...pct(rect) });
+                    next.push({
+                        ...base(r), kind: 'header',
+                        ...pct({ ...rect, h: layout.headers[i] }),
+                    });
+                    kids.forEach((c, j) => next.push({ ...base(c), kind: 'child', ...pct(layout.children[i][j]) }));
+                });
+                setTiles(next);
                 setMaxAbs(biggest);
                 setWindowInfo(info);
                 setNote(list.note);
@@ -164,6 +223,30 @@ const TankdaqBoard: React.FC = () => {
     // to land in open space rather than on its neighbour, but scaled to the board so
     // phones don't lose tile area to it.
     const gutter = Math.max(5, Math.min(10, Math.round(boardW * 0.009)));
+    // Children sit on an already-inset parent block, so they need far less room around
+    // them - the container's own gutter is doing most of the separating.
+    const childGutter = Math.max(2, Math.round(gutter * 0.45));
+
+    // Fit a tile's symbol to the space it actually has, in real px from the measured
+    // board. A tile too narrow for its full symbol falls back to its league tag, which
+    // says the same thing inside a family block at a third of the width; below that it
+    // shows no type at all rather than type that spills onto its neighbour.
+    const fitText = (t: Tile, innerWpx: number, innerHpx: number) => {
+        const natural = Math.sqrt((t.w * t.h) / 100) * 9 + 8;
+        // Leaves keep their original width-only fit so the top-level board renders
+        // exactly as it did; headers and children are short, so height binds there.
+        const capped = t.kind === 'leaf'
+            ? natural
+            : Math.min(natural, innerHpx * (t.kind === 'header' ? 0.58 : 0.44));
+        const sizeFor = (s: string) => Math.min(capped, innerWpx / (s.length * 0.8));
+        let text = t.displayName;
+        let px = sizeFor(text);
+        if (px < 9 && t.shortLabel) {
+            text = t.shortLabel;
+            px = sizeFor(text);
+        }
+        return { text, px: Math.max(px, 7), show: px >= 7 };
+    };
 
     // Identity chrome renders in every phase - it hydrates from its own endpoint and
     // must not wait on (or disappear with) the board's data.
@@ -186,6 +269,96 @@ const TankdaqBoard: React.FC = () => {
                     const dir = t.delta > 0 ? 'pos' : t.delta < 0 ? 'neg' : 'zero';
                     const neon = NEON[dir];
                     const active = t.key === activeKey;
+                    const pad = t.kind === 'child' ? childGutter : gutter;
+                    const box = {
+                        left: `calc(${t.x}% + ${pad}px)`,
+                        top: `calc(${t.y}% + ${pad}px)`,
+                        width: `calc(${t.w}% - ${2 * pad}px)`,
+                        height: `calc(${t.h}% - ${2 * pad}px)`,
+                    };
+                    const innerWpx = (boardW * t.w) / 100 - 2 * pad - 10;
+                    const innerHpx = (boardH * t.h) / 100 - 2 * pad;
+                    const fit = fitText(t, innerWpx, innerHpx);
+
+                    // The family's raised block. Decorative only: its header strip and
+                    // its children carry every hover and every link, so it must not
+                    // intercept a pointer heading for one of them.
+                    if (t.kind === 'container') {
+                        const depth = (2.5 + 4.5 * mag) * (active ? 1.4 : 1);
+                        return (
+                            <div key={`${t.key}-box`} className="hc-tqb-container" aria-hidden="true"
+                                style={{
+                                    ...box, position: 'absolute', boxSizing: 'border-box',
+                                    pointerEvents: 'none', borderRadius: 10,
+                                    background: `rgba(${neon}, 0.07)`,
+                                    border: `2px solid rgba(${neon}, ${active ? 1 : (0.5 + 0.5 * mag).toFixed(2)})`,
+                                    boxShadow: [
+                                        `0 ${depth.toFixed(1)}px 0 rgba(${neon}, ${active ? 0.95 : 0.8})`,
+                                        `0 ${(depth + 2).toFixed(1)}px 0 rgba(0, 0, 0, 0.95)`,
+                                        `0 ${(depth + 5).toFixed(1)}px ${(10 + depth).toFixed(1)}px rgba(0, 0, 0, 0.75)`,
+                                        `inset 0 1px 0 rgba(255, 255, 255, ${active ? 0.22 : 0.12})`,
+                                        active ? `0 0 30px rgba(${neon}, 0.6)` : '',
+                                    ].filter(Boolean).join(', '),
+                                    transform: active ? 'translateY(-3px)' : undefined,
+                                }} />
+                        );
+                    }
+
+                    // The family's own symbol and value, and the only part of a parent
+                    // that is clickable - a child sits on the same block and has to be
+                    // able to take its own click.
+                    if (t.kind === 'header') {
+                        return (
+                            <a key={`${t.key}-head`} role="listitem" className={`hc-tqb-tile hc-tqb-head${active ? ' is-active' : ''}`}
+                                href={`/tankdaq/${t.key}/`}
+                                style={{
+                                    ...box, background: 'transparent', border: 'none', boxShadow: 'none',
+                                    fontSize: `${fit.px.toFixed(1)}px`,
+                                    transform: active ? 'translateY(-3px)' : undefined,
+                                }}
+                                onMouseEnter={() => setHoverKey(t.key)}
+                                onMouseLeave={() => setHoverKey((k) => (k === t.key ? null : k))}
+                                onFocus={() => setHoverKey(t.key)}
+                                onBlur={() => setHoverKey((k) => (k === t.key ? null : k))}
+                                onClick={(e) => onTileClick(e, t.key)}
+                                aria-label={`${t.displayName}: ${fmtPct(t.delta)} over ${windowInfo.label}, ${fmtPct(t.value)} overall`}>
+                                <span className="hc-tqb-sym">{t.displayName}</span>
+                                <span className="hc-tqb-delta" style={{ color: `rgb(${neon})` }}>{fmtPct(t.delta)}</span>
+                            </a>
+                        );
+                    }
+
+                    // A league slice, recessed into its parent's block: thin edge, no
+                    // extrusion of its own. Standing a child as proud as the family it
+                    // belongs to would flatten the nesting it exists to show.
+                    if (t.kind === 'child') {
+                        return (
+                            <a key={t.key} role="listitem" className={`hc-tqb-tile hc-tqb-child${active ? ' is-active' : ''}`}
+                                href={`/tankdaq/${t.key}/`}
+                                style={{
+                                    ...box, borderRadius: 6, background: '#000',
+                                    border: `1px solid rgba(${neon}, ${active ? 1 : (0.45 + 0.5 * mag).toFixed(2)})`,
+                                    boxShadow: [
+                                        `inset 0 1px 0 rgba(255, 255, 255, ${active ? 0.18 : 0.07})`,
+                                        `inset 0 0 ${Math.round(6 + 16 * mag)}px rgba(${neon}, ${(0.1 + 0.28 * mag).toFixed(2)})`,
+                                        active ? `0 0 18px rgba(${neon}, 0.55)` : '',
+                                    ].filter(Boolean).join(', '),
+                                    fontSize: `${fit.px.toFixed(1)}px`,
+                                }}
+                                onMouseEnter={() => setHoverKey(t.key)}
+                                onMouseLeave={() => setHoverKey((k) => (k === t.key ? null : k))}
+                                onFocus={() => setHoverKey(t.key)}
+                                onBlur={() => setHoverKey((k) => (k === t.key ? null : k))}
+                                onClick={(e) => onTileClick(e, t.key)}
+                                aria-label={`${t.displayName}: ${fmtPct(t.delta)} over ${windowInfo.label}, ${fmtPct(t.value)} overall`}>
+                                {fit.show && <span className="hc-tqb-sym">{fit.text}</span>}
+                                {fit.show && fit.px >= 10 && (
+                                    <span className="hc-tqb-delta" style={{ color: `rgb(${neon})` }}>{fmtPct(t.delta)}</span>
+                                )}
+                            </a>
+                        );
+                    }
+
                     // Extruded block: the neon-lit face sits on a stack of shadows -
                     // a solid neon side (depth scales with the move, so big movers
                     // stand taller), a dimmer second step, the drop shadow it casts,
@@ -206,22 +379,16 @@ const TankdaqBoard: React.FC = () => {
                         active ? `0 0 30px rgba(${neon}, 0.6)` : '',
                     ].filter(Boolean).join(', ');
                     // Type in real px from the measured board: the symbol must fit the
-                    // tile's inner width. 0.8em/char is a deliberate over-estimate of
-                    // Montserrat 900 - the wide-glyph symbols ($MOONSHOT, $GRIDIRON)
-                    // graze the edge at a tighter ratio.
-                    const tileWpx = (boardW * t.w) / 100;
-                    const fitPx = (tileWpx - 2 * gutter - 10) / (t.displayName.length * 0.8);
-                    const fontPx = Math.max(9, Math.min(Math.sqrt((t.w * t.h) / 100) * 9 + 8, fitPx));
+                    // tile's inner width (fitText, above - 0.8em/char is a deliberate
+                    // over-estimate of Montserrat 900, since the wide-glyph symbols like
+                    // $MOONSHOT and $GRIDIRON graze the edge at a tighter ratio).
                     return (
                         <a key={t.key} role="listitem" className={`hc-tqb-tile${active ? ' is-active' : ''}`} href={`/tankdaq/${t.key}/`}
                             style={{
                                 // Gutters: each block is inset so its extruded side and
                                 // drop shadow land in open space, not on its neighbour.
-                                left: `calc(${t.x}% + ${gutter}px)`,
-                                top: `calc(${t.y}% + ${gutter}px)`,
-                                width: `calc(${t.w}% - ${2 * gutter}px)`,
-                                height: `calc(${t.h}% - ${2 * gutter}px)`,
-                                border, boxShadow, fontSize: `${fontPx.toFixed(1)}px`,
+                                ...box,
+                                border, boxShadow, fontSize: `${Math.max(9, fit.px).toFixed(1)}px`,
                                 transform: active ? 'translateY(-3px)' : undefined,
                             }}
                             onMouseEnter={() => setHoverKey(t.key)}
