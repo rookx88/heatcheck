@@ -1,6 +1,55 @@
-/* Join HeatChecks modal - just the panel sizing; the form inside is the shared
-   AuthForm (AuthForm.css). */
+/* Join HeatChecks modal - panel chrome only; the form inside is the shared
+   AuthForm (AuthForm.css). Everything here is scoped under .register-modal so it
+   restyles this one panel without touching the other tank modals that share
+   .tank-modal-* (TankScreen.css). */
 
 .register-modal {
-  max-width: 440px;
+  max-width: 460px;
+  position: relative;
+  overflow: hidden;
+}
+
+/* A soft teal aurora behind the art band, so the panel has depth instead of a
+   flat gradient. Sits behind content (the panel's children establish their own
+   stacking above it via position/z-index below). */
+.register-modal::before {
+  content: '';
+  position: absolute;
+  top: -40px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 340px;
+  height: 240px;
+  background: radial-gradient(ellipse at center, rgba(47, 230, 217, 0.16) 0%, rgba(47, 230, 217, 0) 68%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.register-modal .tank-modal-header,
+.register-modal .tank-modal-body {
+  position: relative;
+  z-index: 1;
+}
+
+/* Header: same Montserrat/teal language as the other tank modals, a touch wider
+   tracked and underlined with a fading teal rule rather than a flat 1px border. */
+.register-modal .tank-modal-header {
+  letter-spacing: 0.12em;
+  font-weight: 900;
+  border-bottom: none;
+  padding-bottom: 0.85rem;
+}
+
+.register-modal .tank-modal-header::after {
+  content: '';
+  position: absolute;
+  left: 1.25rem;
+  right: 1.25rem;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(47, 230, 217, 0) 0%, rgba(47, 230, 217, 0.45) 50%, rgba(47, 230, 217, 0) 100%);
+}
+
+.register-modal .tank-modal-body {
+  padding: 1.1rem 1.35rem 1.5rem;
 }

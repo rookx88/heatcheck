@@ -47,7 +47,15 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose }) => {
                 </div>
                 <div className="tank-modal-body">
                     <AuthForm
-                        lede="Make picks, earn Ember, hatch and raise your own Mud Puppy."
+                        // Highlighted rather than plain text so the line keys to the art
+                        // right above it: gold "Ember", purple "Mud Puppy" (the colour the
+                        // character actually is).
+                        lede={
+                            <>
+                                Make picks, earn <span className="hc-authform-hl-ember">Ember</span>, hatch
+                                and raise your own <span className="hc-authform-hl-puppy">Mud Puppy</span>.
+                            </>
+                        }
                         onDone={onClose}
                     />
                 </div>

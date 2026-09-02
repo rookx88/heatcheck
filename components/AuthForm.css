@@ -1,94 +1,234 @@
 /* Shared auth form (AuthForm.tsx) - the one place the magic-link/Discord form is
-   styled. Consolidates what used to be duplicated rule-for-rule between
-   RegisterModal.css (.register-modal-input etc.) and the /login/ page's inline
-   styles (.hc-login-input etc.). The hosting surfaces keep only their own chrome:
-   tank-modal panel (register modal) and the .hc-login glass card (/login/). */
+   styled, for both the homepage register modal and the /login/ page.
 
-.hc-auth,
-.hc-auth-sent {
+   CLASS PREFIX: `hc-authform-*`, deliberately NOT `hc-auth-*`. The homepage's own
+   header chip owns `.hc-auth { display: flex }` (homepage/render.ts); when this
+   form's root shared that name, the header rule laid the form out as a row and the
+   register modal rendered as four squashed columns. See AuthForm.tsx's header.
+
+   The look follows the homepage/tank language rather than inventing a third one:
+   navy-on-black, teal structure lines and glows, gold as the single action colour,
+   Baloo 2 for warm headings, Montserrat for the shouty bits, chunky pressable
+   buttons with a hard bottom edge. */
+
+.hc-authform {
   text-align: center;
 }
 
-.hc-auth-lede {
+/* ---------------------------------------------------------------------------
+   The art band - the sports world plus the Mud Puppy the copy promises.
+   The globe reads as a small planet on a horizon; the puppy stands in front of
+   it, overlapping, so the two form one scene instead of two floating stickers.
+   --------------------------------------------------------------------------- */
+
+.hc-authform-art {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  height: 112px;
+  margin: 0.1rem 0 0.9rem;
+}
+
+/* Teal ground-glow the scene sits in. */
+.hc-authform-art::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  transform: translateX(-50%);
+  width: 230px;
+  height: 78px;
+  background: radial-gradient(ellipse at center, rgba(47, 230, 217, 0.3) 0%, rgba(47, 230, 217, 0) 70%);
+  pointer-events: none;
+}
+
+/* Horizon rule, fading out at both ends. */
+.hc-authform-art::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: min(300px, 88%);
+  height: 1px;
+  background: linear-gradient(90deg, rgba(47, 230, 217, 0) 0%, rgba(47, 230, 217, 0.5) 50%, rgba(47, 230, 217, 0) 100%);
+  pointer-events: none;
+}
+
+.hc-authform-art-world {
+  position: relative;
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  /* Teal rim + a lifted shadow, so the planet glows like the homepage hero. */
+  filter: drop-shadow(0 0 14px rgba(47, 230, 217, 0.5)) drop-shadow(0 8px 14px rgba(0, 0, 0, 0.55));
+  animation: hc-authform-float 7s ease-in-out infinite;
+}
+
+.hc-authform-art-puppy {
+  position: relative;
+  height: 104px;
+  width: auto;
+  /* Pulled left so the puppy overlaps the globe; later in the DOM, so it paints
+     in front without needing a z-index. */
+  margin-left: -22px;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 14px rgba(168, 85, 247, 0.45));
+  animation: hc-authform-bob 3.6s ease-in-out infinite;
+}
+
+@keyframes hc-authform-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-5px); }
+}
+
+@keyframes hc-authform-bob {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50%      { transform: translateY(-3px) rotate(-1.5deg); }
+}
+
+/* ---------------------------------------------------------------------------
+   Copy
+   --------------------------------------------------------------------------- */
+
+.hc-authform-lede {
   font-family: 'Baloo 2', 'Nunito', sans-serif;
   font-weight: 800;
-  font-size: 1.05rem;
+  font-size: clamp(1.05rem, 4vw, 1.22rem);
+  line-height: 1.32;
   color: #ffffff;
-  margin: 0.25rem 0 0.4rem;
+  margin: 0 0 0.35rem;
+  text-shadow: 0 0 18px rgba(47, 230, 217, 0.28);
 }
 
-.hc-auth-copy {
+/* Key-word highlights the hosting surface opts into (the register modal golds
+   "Ember" and purples "Mud Puppy" so the line keys to the art above it). */
+.hc-authform-hl-ember {
+  color: var(--hc-gold, #ffc72c);
+  text-shadow: 0 0 12px rgba(255, 199, 44, 0.5);
+}
+
+.hc-authform-hl-puppy {
+  color: #c9a8ff;
+  text-shadow: 0 0 12px rgba(168, 85, 247, 0.55);
+}
+
+.hc-authform-copy {
   font-family: 'Nunito', sans-serif;
-  font-size: 0.95rem;
+  font-size: 0.92rem;
   line-height: 1.55;
-  color: rgba(255, 255, 255, 0.75);
-  margin: 0.75rem 0 1.1rem;
+  color: rgba(255, 255, 255, 0.72);
+  margin: 0.55rem 0 1rem;
 }
 
-.hc-auth-input {
+/* ---------------------------------------------------------------------------
+   Input
+   --------------------------------------------------------------------------- */
+
+.hc-authform-input {
   display: block;
   width: 100%;
   box-sizing: border-box;
-  padding: 0.8rem 1rem;
+  padding: 0.85rem 1rem;
   font-family: 'Nunito', sans-serif;
   font-weight: 700;
   font-size: 1rem;
+  text-align: center;
   color: #ffffff;
-  background: rgba(7, 5, 11, 0.6);
-  border: 2px solid rgba(47, 230, 217, 0.4);
-  border-radius: 12px;
-  margin-bottom: 0.85rem;
+  background: rgba(7, 5, 11, 0.72);
+  border: 2px solid rgba(47, 230, 217, 0.38);
+  border-radius: 14px;
+  margin-bottom: 0.8rem;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
-.hc-auth-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
+.hc-authform-input::placeholder {
+  color: rgba(255, 255, 255, 0.38);
   font-weight: 600;
 }
 
-.hc-auth-input:focus-visible {
-  border-color: var(--hc-teal, #2fe6d9);
-  box-shadow: 0 0 12px rgba(47, 230, 217, 0.35);
+.hc-authform-input:hover {
+  border-color: rgba(47, 230, 217, 0.55);
 }
 
-.hc-auth-button {
-  display: block;
+.hc-authform-input:focus-visible {
+  border-color: var(--hc-teal, #2fe6d9);
+  background: rgba(7, 5, 11, 0.9);
+  box-shadow: 0 0 0 4px rgba(47, 230, 217, 0.16), 0 0 18px rgba(47, 230, 217, 0.35);
+}
+
+/* ---------------------------------------------------------------------------
+   Buttons - the house "chunky pressable" shape: hard bottom edge that collapses
+   on :active, so the control physically depresses.
+   --------------------------------------------------------------------------- */
+
+.hc-authform-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
   width: 100%;
+  box-sizing: border-box;
   padding: 0.85rem 1rem;
   cursor: pointer;
   font-family: 'Montserrat', 'Nunito', sans-serif;
   font-weight: 800;
-  font-size: 1.05rem;
-  background: var(--hc-gold, #ffc72c);
+  font-size: 1.02rem;
+  letter-spacing: 0.01em;
+  background: linear-gradient(180deg, #ffd75e 0%, var(--hc-gold, #ffc72c) 100%);
   color: #1a1200;
   border: none;
   border-radius: 14px;
-  box-shadow: 0 5px 0 var(--hc-gold-dark, #b8860b), 0 10px 22px rgba(0, 0, 0, 0.4);
-  transition: transform 0.15s ease;
+  box-shadow: 0 5px 0 var(--hc-gold-dark, #b8860b), 0 10px 22px rgba(0, 0, 0, 0.45);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.2s ease;
 }
 
-.hc-auth-button:active {
+.hc-authform-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  filter: brightness(1.05);
+  box-shadow: 0 7px 0 var(--hc-gold-dark, #b8860b), 0 14px 26px rgba(0, 0, 0, 0.5);
+}
+
+.hc-authform-button:active:not(:disabled) {
   transform: translateY(3px);
   box-shadow: 0 2px 0 var(--hc-gold-dark, #b8860b);
 }
 
-.hc-auth-button:disabled {
-  opacity: 0.6;
+.hc-authform-button:focus-visible {
+  outline: 3px solid var(--hc-teal, #2fe6d9);
+  outline-offset: 3px;
+}
+
+.hc-authform-button:disabled {
+  opacity: 0.55;
   cursor: default;
 }
 
-.hc-auth-button--discord {
+.hc-authform-button--discord {
   text-decoration: none;
-  box-sizing: border-box;
-  background: #5865F2;
+  background: linear-gradient(180deg, #6b77f5 0%, #5865f2 100%);
   color: #ffffff;
-  box-shadow: 0 5px 0 #3a45c2, 0 10px 22px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 5px 0 #3a45c2, 0 10px 22px rgba(0, 0, 0, 0.45);
+}
+
+.hc-authform-button--discord:hover {
+  box-shadow: 0 7px 0 #3a45c2, 0 14px 26px rgba(0, 0, 0, 0.5);
+}
+
+.hc-authform-button--discord:active {
+  box-shadow: 0 2px 0 #3a45c2;
+}
+
+.hc-authform-discord-mark {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
 }
 
 /* Secondary dismissal ("Got it" in the modal's sent state) - visually quieter
    than the gold action so Resend stays the primary affordance. */
-.hc-auth-button--quiet {
+.hc-authform-button--quiet {
   margin-top: 0.6rem;
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.85);
@@ -96,28 +236,47 @@
   border: 2px solid rgba(255, 255, 255, 0.2);
 }
 
-.hc-auth-divider {
+.hc-authform-button--quiet:hover:not(:disabled) {
+  transform: none;
+  background: rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+}
+
+.hc-authform-button--quiet:active:not(:disabled) {
+  transform: translateY(2px);
+  box-shadow: none;
+}
+
+/* ---------------------------------------------------------------------------
+   Divider / notices
+   --------------------------------------------------------------------------- */
+
+.hc-authform-divider {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin: 1.1rem 0;
-  color: rgba(255, 255, 255, 0.4);
-  font-family: 'Nunito', sans-serif;
-  font-weight: 700;
-  font-size: 0.78rem;
+  margin: 1rem 0;
+  color: rgba(255, 255, 255, 0.45);
+  font-family: 'Montserrat', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.14em;
 }
 
-.hc-auth-divider::before,
-.hc-auth-divider::after {
+.hc-authform-divider::before,
+.hc-authform-divider::after {
   content: '';
   flex: 1;
   height: 1px;
-  background: rgba(255, 255, 255, 0.15);
+  background: linear-gradient(90deg, rgba(47, 230, 217, 0) 0%, rgba(47, 230, 217, 0.35) 100%);
 }
 
-.hc-auth-notice {
+.hc-authform-divider::after {
+  background: linear-gradient(90deg, rgba(47, 230, 217, 0.35) 0%, rgba(47, 230, 217, 0) 100%);
+}
+
+.hc-authform-notice {
   font-family: 'Nunito', sans-serif;
   font-size: 0.88rem;
   line-height: 1.5;
@@ -129,7 +288,7 @@
   margin: 0 0 1.1rem;
 }
 
-.hc-auth-error {
+.hc-authform-error {
   font-family: 'Nunito', sans-serif;
   font-weight: 700;
   font-size: 0.88rem;
@@ -137,7 +296,11 @@
   margin: 0.9rem 0 0;
 }
 
-.hc-auth-sent {
+/* ---------------------------------------------------------------------------
+   Sent state
+   --------------------------------------------------------------------------- */
+
+.hc-authform-sent {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -145,28 +308,65 @@
   padding: 1rem 0 0.5rem;
 }
 
-.hc-auth-sent .hc-auth-button {
+.hc-authform-sent .hc-authform-button {
   margin-top: 0.4rem;
 }
 
-.hc-auth-check {
-  width: 54px;
-  height: 54px;
+.hc-authform-check {
+  width: 58px;
+  height: 58px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.6rem;
+  font-size: 1.7rem;
   color: #07050b;
-  background: var(--hc-teal, #2fe6d9);
-  box-shadow: 0 0 24px rgba(47, 230, 217, 0.45);
+  background: radial-gradient(circle at 35% 30%, #7bfff2 0%, var(--hc-teal, #2fe6d9) 60%);
+  box-shadow: 0 0 26px rgba(47, 230, 217, 0.5), 0 6px 16px rgba(0, 0, 0, 0.45);
   margin-bottom: 0.35rem;
+  animation: hc-authform-pop 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 
-.hc-auth-sent-title {
+@keyframes hc-authform-pop {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.hc-authform-sent-title {
   font-family: 'Baloo 2', 'Nunito', sans-serif;
   font-weight: 800;
-  font-size: 1.05rem;
+  font-size: 1.15rem;
   color: #ffffff;
   margin: 0;
+  text-shadow: 0 0 16px rgba(47, 230, 217, 0.3);
+}
+
+/* The art is sized in fixed px, so the SAME art fills a narrow phone panel well
+   and looks undersized in the 460px desktop panel. Hence a step up rather than a
+   bigger base: phones keep the sizes above (they already read correctly), and the
+   scene grows once the panel is at or near its full width. */
+@media (min-width: 480px) {
+  .hc-authform-art { height: 142px; }
+  .hc-authform-art::before { width: 272px; height: 92px; }
+  .hc-authform-art::after { width: min(340px, 88%); }
+  .hc-authform-art-world { width: 118px; height: 118px; }
+  .hc-authform-art-puppy { height: 134px; margin-left: -26px; }
+}
+
+/* Tighter art on very small screens so the form stays above the fold. */
+@media (max-width: 380px) {
+  .hc-authform-art { height: 92px; }
+  .hc-authform-art-world { width: 74px; height: 74px; }
+  .hc-authform-art-puppy { height: 86px; margin-left: -18px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hc-authform-art-world,
+  .hc-authform-art-puppy,
+  .hc-authform-check {
+    animation: none !important;
+  }
+  .hc-authform-button {
+    transition-duration: 0.01ms !important;
+  }
 }
