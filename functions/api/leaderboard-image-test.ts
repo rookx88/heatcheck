@@ -10,6 +10,7 @@ import { jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { renderLeaderboardImage, renderWelcomeImage, getLastRenderError } from '../../lib/pages-functions/leaderboard-image';
 import { renderMeCard, getLastMeError } from '../../lib/pages-functions/me-card';
 import { renderCommunityPickImage, getLastCpImageError } from '../../lib/pages-functions/community-pick-image';
+import { renderPvpHubImage, getLastPvpHubError } from '../../lib/pages-functions/pvp-hub-image';
 
 const SAMPLE_ROWS = [
     { rank: 1, displayName: 'Sample One', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/0.png', scoreLine: '3694 Community Points', scoreValue: '3,694', sr: 712 },
@@ -47,6 +48,21 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             })(),
         });
         if (!png) return jsonResponse({ ok: false, error: getLastMeError() ?? 'unknown' }, { status: 500 });
+    } else if (params.get('pvphub') === '1') {
+        // Sample hub: one row per tier band so the ring reads can be judged at mini
+        // size, plus a pending row and an overflow footer.
+        png = await renderPvpHubImage({
+            record: params.get('record') ?? '4-1-2',
+            rows: [
+                { name: 'nikbooom', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/1.png', level: 12, sr: 517, record: { w: 4, d: 1, l: 2 }, progress: 'you 2/3 · them 1/3', status: 'picks lock in 9h', pending: false },
+                { name: 'DYSENTGARYGARY', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/2.png', level: 27, sr: 803, record: { w: 11, d: 0, l: 3 }, progress: 'you 3/3 · them 3/3', status: 'picks lock in 2h', pending: false },
+                { name: 'sniff', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/3.png', level: 1, sr: 0, record: null, progress: 'you 0/3 · them 0/3', status: 'picks lock in 21h', pending: false },
+                { name: 'a-very-long-display-name', avatarUrl: null, level: 20, sr: 640, record: { w: 2, d: 2, l: 2 }, progress: 'challenged you', status: 'expires in 6h', pending: true },
+                { name: 'rook', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/4.png', level: 7, sr: 302, record: { w: 0, d: 0, l: 1 }, progress: 'waiting on them', status: 'expires in 22h', pending: true },
+            ],
+            overflow: Number(params.get('overflow') ?? '2'),
+        });
+        if (!png) return jsonResponse({ ok: false, error: getLastPvpHubError() ?? 'unknown' }, { status: 500 });
     } else if (params.get('cp') === '1') {
         png = await renderCommunityPickImage({
             questionText: 'Boston Red Sox vs. New York Yankees',

@@ -23,10 +23,13 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { postDiscordChannelMessage, deleteChannelMessage, fetchGuildMemberName } from './discord-api';
+import { postDiscordChannelMessage, deleteChannelMessage, fetchGuildMemberBrief, buildAvatarUrlForRender } from './discord-api';
 import { brandEmbed } from './discord-brand';
 import { buildPvpChallengeMessage } from './pvp-card';
-import { computePvpRecords, formatPvpRecord } from './pvp-record';
+import { computePvpRecords, formatPvpRecord, type PvpRecord } from './pvp-record';
+import { renderPvpHubImage, MAX_IMAGE_ROWS, type PvpHubRow } from './pvp-hub-image';
+import { computeSkillRatings } from './skill-rating';
+import { computeLevels } from './leveling';
 import { fetchMarket, resolveMarket } from './gamma';
 import { computePointsSplit } from './community-points-formula';
 import { fetchLiveGames } from '../../tank-gamma-live';
@@ -123,37 +126,65 @@ function deferredUpdate(context: RequestContext, interaction: any, work: Promise
                 console.error('[pvp] Deferred screen failed:', err);
                 return screenData('Something went wrong — try again shortly.') as DeferredMessageData;
             })
-            .then((data) => fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: data.content ?? '', embeds: data.embeds ?? [], components: data.components ?? [] }),
-            }))
+            .then((data) => {
+                const url = `https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`;
+                // Only fields the caller SET are sent. Discord retains anything
+                // omitted, which is what lets a selection re-render swap the
+                // components while the card image and body stay exactly as they were.
+                const payload: Record<string, unknown> = { components: data.components ?? [] };
+                if (data.content !== undefined) payload.content = data.content;
+                if (data.embeds !== undefined) payload.embeds = data.embeds;
+                if (data.file) {
+                    // `attachments` naming ONLY the new upload is what makes this a
+                    // replacement. Discord's rule is that omitting the field RETAINS
+                    // whatever the message already carries (which is exactly what the
+                    // setup wizard relies on to keep its banner pinned) - so a re-render
+                    // that PATCHes a fresh PNG without this would leave the message
+                    // carrying both the stale and the new image.
+                    payload.attachments = [{ id: 0, filename: data.file.name }];
+                    const form = new FormData();
+                    form.append('payload_json', JSON.stringify(payload));
+                    // No Content-Type header: fetch has to set the multipart boundary.
+                    form.append('files[0]', new Blob([new Uint8Array(data.file.data)], { type: 'image/png' }), data.file.name);
+                    return fetch(url, { method: 'PATCH', body: form });
+                }
+                // No file: omit `attachments` so an image already on the message stays.
+                // That's what makes the dropdown "hold" re-renders free - they change
+                // only which option is marked and which buttons show.
+                return fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            })
             .catch((err) => console.error('[pvp] Deferred PATCH failed:', err))
     );
 
     return json({ type: RESPONSE_DEFERRED_UPDATE_MESSAGE });
 }
 
-// Display names for buttons and select options, which (unlike an embed description)
-// cannot render a <@id> mention. One single-member REST call each, memoized for the
-// isolate's lifetime so a Refresh - or the second hub render of a session - costs
-// nothing. Display only: every ownership decision reads the battle row, never a name.
+// Display names (for buttons and select options, which unlike an embed description
+// cannot render a <@id> mention) and avatars (for the hub card's mini /me cards). One
+// single-member REST call each, memoized for the isolate's lifetime so a Refresh - or
+// the second hub render of a session - costs nothing. Display only: every ownership
+// decision reads the battle row, never a name.
 const NAME_TTL_MS = 10 * 60 * 1000;
-const nameCache = new Map<string, { at: number; name: string }>();
+interface CachedMember { name: string; avatarUrl: string }
+const memberCache = new Map<string, { at: number; member: CachedMember }>();
 
-async function resolveNames(env: Env, guildId: string, userIds: string[]): Promise<Map<string, string>> {
+async function resolveMembers(env: Env, guildId: string, userIds: string[]): Promise<Map<string, CachedMember>> {
     const wanted = [...new Set(userIds)];
-    const out = new Map<string, string>();
+    const out = new Map<string, CachedMember>();
     const misses: string[] = [];
     for (const id of wanted) {
-        const hit = nameCache.get(`${guildId}:${id}`);
-        if (hit && Date.now() - hit.at < NAME_TTL_MS) out.set(id, hit.name);
+        const hit = memberCache.get(`${guildId}:${id}`);
+        if (hit && Date.now() - hit.at < NAME_TTL_MS) out.set(id, hit.member);
         else misses.push(id);
     }
-    const fetched = await Promise.all(misses.map((id) => fetchGuildMemberName(env, guildId, id)));
+    const fetched = await Promise.all(misses.map((id) => fetchGuildMemberBrief(env, guildId, id)));
     misses.forEach((id, i) => {
-        nameCache.set(`${guildId}:${id}`, { at: Date.now(), name: fetched[i] });
-        out.set(id, fetched[i]);
+        const member: CachedMember = {
+            name: fetched[i].name,
+            avatarUrl: buildAvatarUrlForRender(id, fetched[i].avatarHash),
+        };
+        memberCache.set(`${guildId}:${id}`, { at: Date.now(), member });
+        out.set(id, member);
     });
     return out;
 }
@@ -356,12 +387,19 @@ interface HubBattleRow extends BattleRow {
 }
 
 /**
- * The hub. `selected` is a battle or challenge the user just picked from one of the
- * dropdowns: a select never navigates on its own (people read that as the screen
- * jumping, or as nothing having happened), so picking one re-renders THIS screen with
- * the choice marked on the widget and the action revealed underneath.
+ * The hub, rendered as a card in the leaderboard's language with a mini /me card for
+ * each opponent (see pvp-hub-image.ts).
+ *
+ * `selected` is a battle or challenge the user just picked from one of the dropdowns: a
+ * select never navigates on its own (people read that as the screen jumping, or as
+ * nothing having happened), so picking one re-renders THIS screen with the choice
+ * marked on the widget and the action revealed underneath.
+ *
+ * `withImage` is false for exactly those selection re-renders: the underlying battles
+ * haven't changed, and omitting the attachment makes Discord retain the image already
+ * on the message - so the clicks people make most cost no render at all.
  */
-async function hubData(context: RequestContext, guildId: string, me: string, selected?: string): Promise<DeferredMessageData> {
+async function hubData(context: RequestContext, guildId: string, me: string, selected?: string, withImage = true): Promise<DeferredMessageData> {
     const sql = getSql(context.env);
     const [battles, records] = await Promise.all([
         sql`
@@ -383,13 +421,15 @@ async function hubData(context: RequestContext, guildId: string, me: string, sel
     const outgoing = battles.filter((b) => b.status === 'pending' && b.challenger_id === me);
     const active = battles.filter((b) => b.status === 'active');
 
-    // Every opponent this render will name, resolved in one parallel batch.
-    const names = await resolveNames(context.env, guildId, [
+    // Every opponent this render will show, resolved in one parallel batch (name for
+    // the components, avatar for the card).
+    const opponentIds = [
         ...active.map((b) => otherPlayer(b, me)),
         ...incoming.map((b) => b.challenger_id),
         ...outgoing.map((b) => b.opponent_id),
-    ]);
-    const nameOf = (id: string) => names.get(id) ?? 'Someone';
+    ];
+    const members = await resolveMembers(context.env, guildId, opponentIds);
+    const nameOf = (id: string) => members.get(id)?.name ?? 'Someone';
 
     // Pick counts for every active battle in one grouped query - counts only, never
     // pick rows (sealed-picks rule).
@@ -507,7 +547,88 @@ async function hubData(context: RequestContext, guildId: string, me: string, sel
     }
 
     rows.push(buttonRow([{ label: 'Refresh', customId: 'pv:hub' }]));
-    return screenData(lines.join('\n'), rows);
+
+    // A hold re-render changes only which option is marked and which buttons show,
+    // so it sends components ALONE: content, embeds and the card image all stay
+    // untouched, whether this hub rendered as an image or fell back to text.
+    if (!withImage) return { components: rows };
+    if (battles.length === 0) return screenData(lines.join('\n'), rows);
+
+    // Their level, Skill Rating and record - all three helpers take an array and are
+    // constant-query in N, so the whole opponent set costs the same as one user.
+    const statIds = [...new Set(opponentIds)];
+    const [srById, levelById, recordById] = await Promise.all([
+        computeSkillRatings(sql, guildId, statIds),
+        computeLevels(sql, guildId, statIds),
+        computePvpRecords(sql, guildId, statIds),
+    ]);
+
+    // Live battles first, then challenges waiting on you, then ones you sent - the same
+    // order the text body reads in.
+    const imageRows: PvpHubRow[] = [
+        ...active.map((b) => {
+            const them = otherPlayer(b, me);
+            const close = unixOf(b.picks_close_at);
+            return miniCardRow(members.get(them), them, srById, levelById, recordById, {
+                progress: `you ${countOf(b.id, me)}/${PICKS_PER_PLAYER} · them ${countOf(b.id, them)}/${PICKS_PER_PLAYER}`,
+                status: close ? `picks lock ${relativeFromNow(close)}` : 'picks open',
+                pending: false,
+            });
+        }),
+        ...incoming.map((b) => {
+            const exp = unixOf(b.expires_at);
+            return miniCardRow(members.get(b.challenger_id), b.challenger_id, srById, levelById, recordById, {
+                progress: 'challenged you',
+                status: exp ? `expires ${relativeFromNow(exp)}` : 'awaiting your answer',
+                pending: true,
+            });
+        }),
+        ...outgoing.map((b) => {
+            const exp = unixOf(b.expires_at);
+            return miniCardRow(members.get(b.opponent_id), b.opponent_id, srById, levelById, recordById, {
+                progress: 'waiting on them',
+                status: exp ? `expires ${relativeFromNow(exp)}` : 'unanswered',
+                pending: true,
+            });
+        }),
+    ];
+
+    const png = await renderPvpHubImage({
+        record,
+        rows: imageRows,
+        overflow: Math.max(0, imageRows.length - MAX_IMAGE_ROWS),
+    });
+    // Render failure falls back to the text hub, unchanged - the screen is never lost.
+    if (!png) return screenData(lines.join('\n'), rows);
+
+    return {
+        content: '',
+        embeds: [],
+        components: rows,
+        file: { data: png.buffer as ArrayBuffer, name: 'pvp.png' },
+    };
+}
+
+// One mini /me card's worth of data. Absent stats read as level 1 / SR 0 / no record,
+// which is exactly right for someone who has never settled anything.
+function miniCardRow(
+    member: { name: string; avatarUrl: string } | undefined,
+    userId: string,
+    srById: Map<string, number>,
+    levelById: Map<string, { level: number }>,
+    recordById: Map<string, PvpRecord>,
+    battle: { progress: string; status: string; pending: boolean }
+): PvpHubRow {
+    return {
+        name: member?.name ?? 'Someone',
+        avatarUrl: member?.avatarUrl ?? null,
+        level: levelById.get(userId)?.level ?? 1,
+        sr: srById.get(userId) ?? 0,
+        record: recordById.get(userId) ?? null,
+        progress: battle.progress,
+        status: battle.status,
+        pending: battle.pending,
+    };
 }
 
 // ===================================================================================
@@ -597,14 +718,16 @@ export async function handlePvpComponent(context: RequestContext, interaction: a
 
         // The two hub selects HOLD: they re-render the hub with the choice marked and
         // the matching action revealed, instead of navigating on a dropdown touch.
+        // Both holds pass withImage=false: nothing about the battles changed, so the
+        // card already on the message stays and this costs no render.
         case 'go':
             if (battle.challenger_id !== me && battle.opponent_id !== me) return updateScreen("That battle isn't yours.");
-            return deferredUpdate(context, interaction, hubData(context, guildId, me, battle.id));
+            return deferredUpdate(context, interaction, hubData(context, guildId, me, battle.id, false));
 
         case 'inc':
             if (battle.opponent_id !== me) return updateScreen("That challenge isn't yours to answer.");
             if (battle.status !== 'pending') return updateScreen('That challenge was already answered or expired.');
-            return deferredUpdate(context, interaction, hubData(context, guildId, me, battle.id));
+            return deferredUpdate(context, interaction, hubData(context, guildId, me, battle.id, false));
 
         case 'open':
         case 'pick':

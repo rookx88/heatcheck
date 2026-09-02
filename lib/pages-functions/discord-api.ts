@@ -256,6 +256,17 @@ export async function fetchGuildIconUrl(env: Env, guildId: string): Promise<stri
     }
 }
 
+/**
+ * A RENDER-SAFE avatar URL: always .png (buildDiscordAvatarUrl below returns .gif for
+ * animated avatars, which resvg cannot rasterize - it would silently degrade to a blank
+ * disc) and small, since a rendered card draws it at well under 100px.
+ */
+export function buildAvatarUrlForRender(userId: string, avatar: string | null | undefined, size = 128): string {
+    if (avatar) return `https://cdn.discordapp.com/avatars/${userId}/${avatar}.png?size=${size}`;
+    const defaultIndex = Number((BigInt(userId) >> 22n) % 6n);
+    return `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`;
+}
+
 export function buildDiscordAvatarUrl(userId: string, avatar: string | null | undefined): string {
     if (avatar) {
         const ext = avatar.startsWith('a_') ? 'gif' : 'png';
@@ -302,15 +313,42 @@ export async function fetchGuildMembers(env: Env, guildId: string): Promise<Disc
 // fetchGuildMembers above (10 pages) is the wrong tool for that and would dominate the
 // cost of every hub render. Falls back to a neutral label rather than throwing: a name
 // missing from a screen is cosmetic, and a left-the-server opponent is a real case.
-export async function fetchGuildMemberName(env: Env, guildId: string, discordUserId: string): Promise<string> {
+export interface GuildMemberBrief {
+    name: string;
+    /** Their avatar hash, or null for a default avatar. Feed it to buildDiscordAvatarUrl. */
+    avatarHash: string | null;
+    /** The user id, so a caller can build the default-avatar URL when avatarHash is null. */
+    userId: string;
+}
+
+// ONE member, by id, with the two display fields a rendered card needs. Same single
+// call as before - it just stops throwing the avatar away, which /pvp's hub image needs
+// to draw a mini /me card per opponent. Never throws: a member who left the server is a
+// real case, and a name missing from a screen is cosmetic.
+export async function fetchGuildMemberBrief(env: Env, guildId: string, discordUserId: string): Promise<GuildMemberBrief> {
+    const fallback: GuildMemberBrief = { name: 'Someone', avatarHash: null, userId: discordUserId };
     try {
         const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${discordUserId}`, {
             headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
         });
-        if (!res.ok) return 'Someone';
-        const member = (await res.json()) as { nick?: string | null; user?: { global_name?: string | null; username?: string } };
-        return member.nick || member.user?.global_name || member.user?.username || 'Someone';
+        if (!res.ok) return fallback;
+        const member = (await res.json()) as {
+            nick?: string | null;
+            avatar?: string | null;
+            user?: { global_name?: string | null; username?: string; avatar?: string | null };
+        };
+        return {
+            // A per-guild avatar override wins over the account avatar, same precedence
+            // Discord itself renders.
+            avatarHash: member.avatar || member.user?.avatar || null,
+            name: member.nick || member.user?.global_name || member.user?.username || 'Someone',
+            userId: discordUserId,
+        };
     } catch {
-        return 'Someone';
+        return fallback;
     }
+}
+
+export async function fetchGuildMemberName(env: Env, guildId: string, discordUserId: string): Promise<string> {
+    return (await fetchGuildMemberBrief(env, guildId, discordUserId)).name;
 }
