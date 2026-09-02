@@ -113,18 +113,7 @@ function renderSportRow(slots: SportSlot[]): string {
             <h2 id="hc-tanks-heading">Sports Tanks Available</h2>
             <p class="hc-section-sub hc-section-sub--tanks">Tanks are Heatcheck&rsquo;s most important invention. With the wisdom of the user, it unlocks embers, the currency of the world that allows you to grow your mud puppy. Make your pick on a tank. Get it right. Earn Ember.</p>
             <div class="hc-tanks-layout">
-                <!-- Tank artifact + the Ember Dash teaser stacked in one column, so the
-                     banner sits directly under the tank and takes its EXACT width: the
-                     stack owns the flex sizing the artifact used to carry, and both
-                     children are width:100% of it. Derived asset - the source art is
-                     Ember_Run_banner.png (1600x900, 2.2MB); this is the same image at
-                     2x its rendered size, 129KB. -->
-                <div class="hc-tank-stack">
-                    <div id="hc-showcase-root" aria-hidden="true"></div>
-                    <img class="hc-ember-dash" src="/assets/images/ember-dash-banner.webp"
-                         alt="Ember Dash, coming soon. While AXO Corp has their system to mine ember, others are taking riskier approaches."
-                         width="1120" height="630" loading="lazy" decoding="async">
-                </div>
+                <div id="hc-showcase-root" aria-hidden="true"></div>
                 <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
                     ${buttons}
                 </div>
@@ -252,13 +241,16 @@ function homepageStyles(): string {
         /* position:relative (z-index left 'auto') so this paints above
            .hc-tanks-backdrop - see that rule's comment for why. */
         .hc-tanks-layout { position: relative; display: flex; flex-direction: row; align-items: center; gap: 0.75rem; }
-        /* The stack now carries the flex sizing the artifact used to, so the Ember
-           Dash banner beneath it inherits exactly the tank's width at every breakpoint
-           instead of needing its own matching numbers. */
-        .hc-tank-stack { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.75rem; }
-        .hc-tanks-layout #hc-showcase-root { flex: 0 0 auto; margin: 0; min-width: 0; width: 100%; }
+        .hc-tanks-layout #hc-showcase-root { flex: 1 1 auto; margin: 0; min-width: 0; }
+        /* Ember Dash teaser - a sibling BELOW the whole tanks panel, not a child of
+           it, so it reads as its own card under the panel rather than another element
+           inside the cave. .hc-tanks-column is the wrapper both share, so the banner
+           is exactly the panel's width at every breakpoint (and, at desktop, it is
+           the wrapper that occupies the grid's tanks area - see the 1024px block). */
+        .hc-tanks-column { display: block; }
         .hc-ember-dash {
             display: block; width: 100%; height: auto;
+            margin-top: 0.9rem;
             border-radius: 12px;
             box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(47, 230, 217, 0.25);
         }
@@ -268,7 +260,7 @@ function homepageStyles(): string {
         }
         @media (min-width: 760px) {
             .hc-tanks-layout { gap: 1.5rem; }
-            .hc-tank-stack { flex: 0 1 560px; }
+            .hc-tanks-layout #hc-showcase-root { flex: 0 1 560px; }
         }
         /* Round navy-glass symbol buttons in the house teal grammar (selected =
            committed glow). Sport name is on aria-label/title, not visible text. */
@@ -527,7 +519,10 @@ function homepageStyles(): string {
                Movers' height - Market Movers (chart + news + results per card) is the
                naturally longer panel and should read that way, not get matched by an
                artificially stretched Tanks panel. */
-            #tanks { grid-area: tanks; align-self: start; }
+            /* The COLUMN takes the grid area now, not the panel itself - it carries
+               the tanks panel plus the Ember Dash teaser stacked beneath it, so both
+               sit in the left rail and the banner matches the panel's width. */
+            .hc-tanks-column { grid-area: tanks; align-self: start; }
             #market-movers { grid-area: movers; }
             #explore { grid-area: explore; }
             .hc-footer { grid-area: footer; }
@@ -616,7 +611,14 @@ export function renderHomepage(options: RenderHomepageOptions): string {
         ${renderHeader(user)}
         ${renderTickerTape(data.marketMovers.movers)}
         ${renderMobileRegisterBanner(user)}
-        ${renderSportRow(data.sportSlots)}
+        <div class="hc-tanks-column">
+            ${renderSportRow(data.sportSlots)}
+            <!-- Ember Dash teaser: BELOW the tanks panel, outside it. Derived from
+                 Ember_Run_banner.png (1600x900, 2.2MB) at 2x its rendered size. -->
+            <img class="hc-ember-dash" src="/assets/images/ember-dash-banner.webp"
+                 alt="Ember Dash, coming soon. While AXO Corp has their system to mine ember, others are taking riskier approaches."
+                 width="1120" height="630" loading="lazy" decoding="async">
+        </div>
         ${renderMarketMoversSection(data.marketMovers)}
         ${renderExplore()}
         ${footer()}
