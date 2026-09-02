@@ -504,11 +504,17 @@ function homepageStyles(): string {
                 max-width: 1240px;
                 display: grid;
                 grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+                /* Explore sits in the LEFT rail under the tanks column, with Market
+                   Movers spanning both rows beside them. It used to be a full-width
+                   row of its own below the tanks row, which meant it could not start
+                   until Movers - much the taller panel - had ended, leaving a tall
+                   dead gap under the tanks column. Stacking it in the same rail
+                   closes that space and keeps the two-card rail reading as one. */
                 grid-template-areas:
                     'header header'
                     'tape tape'
                     'tanks movers'
-                    'explore explore'
+                    'explore movers'
                     'footer footer';
                 column-gap: 1.5rem;
             }
@@ -523,8 +529,10 @@ function homepageStyles(): string {
                the tanks panel plus the Ember Dash teaser stacked beneath it, so both
                sit in the left rail and the banner matches the panel's width. */
             .hc-tanks-column { grid-area: tanks; align-self: start; }
-            #market-movers { grid-area: movers; }
-            #explore { grid-area: explore; }
+            /* align-self: start on both spanned/stacked items so neither panel gets
+               stretched to fill a row it did not earn - each keeps its natural height. */
+            #market-movers { grid-area: movers; align-self: start; }
+            #explore { grid-area: explore; align-self: start; }
             .hc-footer { grid-area: footer; }
 
             #tanks { margin-top: 1.5rem; }
@@ -532,12 +540,15 @@ function homepageStyles(): string {
             /* Explore: globe seated left on the page's own navy background (one
                consistent color story all the way down). The open right half is
                where the fixed pet widget visually lives when logged in. */
-            #explore { margin-top: 2rem; }
+            /* Sits directly under the Ember Dash banner now, so it takes the banner's
+               own rhythm rather than a full section gap. */
+            #explore { margin-top: 0.9rem; }
             /* The logo stays IN FLOW above (so the world sits right under it, same
-               slight overlap as mobile via the logo's negative bottom margin). The
-               panel is cut to exactly the tanks column's width (half the two-column
-               span minus half the 1.5rem gap) so the two cards read as one rail. */
-            #explore .hc-explore-wrap { margin-top: 0.5rem; width: calc(50% - 0.75rem); }
+               slight overlap as mobile via the logo's negative bottom margin). Full
+               width of its grid column now - the column IS the tanks-width rail, so
+               the old calc(50% - 0.75rem) that faked that width from a full-span row
+               is no longer needed. */
+            #explore .hc-explore-wrap { margin-top: 0.5rem; width: 100%; }
             #hc-map-root { max-width: 620px; }
             .hc-footer { padding-top: 1.25rem; }
         }
