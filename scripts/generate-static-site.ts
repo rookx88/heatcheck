@@ -174,6 +174,15 @@ const NEW_SITE_IMAGES = [
     // artifact, sport buttons, picks-left footer) sits in (.hc-tanks-backdrop,
     // server-rendered by homepage/render.ts).
     'tank-homepage-backdrop.webp',
+    // Ember Dash "coming soon" teaser - sits directly under the homepage tanks panel
+    // (.hc-ember-dash, server-rendered by homepage/render.ts). Downscaled from
+    // Ember_Run_banner.png (2.2MB) to ~2x its rendered size.
+    'ember-dash-banner.webp',
+    // Auth form art - the world + Mud Puppy band above the magic-link/Discord
+    // buttons, on both the homepage register modal and /login/ (components/
+    // AuthForm.tsx). Derived by scripts/make-auth-art.ts.
+    'world-map-auth.webp',
+    'mudpuppy-auth.webp',
     // Pet body sprite (components/petRender.ts) - subpath preserved on copy.
     'pets/mud_puppy_base_axol.png',
     // Satiated aura, layered behind the pet while state === 'satisfied'
