@@ -58,6 +58,10 @@ const TICKER_SECRET = process.env.TICKER_SECRET || '';
 const SETTLE_SECRET = process.env.SETTLE_SECRET || '';
 const DRY_RUN = process.argv.includes('--dry-run');
 const NO_SETTLE = process.argv.includes('--no-settle');
+// Opt-in, and only meaningful when backfilling old articles: take the tag with a zero
+// news leg when the CLOB no longer has the market's price history, so the RESULT can
+// still settle. Off by default - a normal run should never write an unmeasured delta.
+const ALLOW_MISSING_NEWS = process.argv.includes('--allow-missing-news');
 
 if (!process.env.DATABASE_URL || !BASE_URL || !TICKER_SECRET || (!NO_SETTLE && !DRY_RUN && !SETTLE_SECRET)) {
     console.error('Required env: DATABASE_URL, BASE_URL, TICKER_SECRET (+ SETTLE_SECRET unless --no-settle/--dry-run).');
@@ -85,20 +89,25 @@ interface TagResult {
     slug: string;
     tickerKey: string;
     side: number;
-    status: 'tagged' | 'already_tagged' | 'hand_tag' | 'anomaly';
+    status: 'tagged' | 'tagged_no_news' | 'already_tagged' | 'hand_tag' | 'anomaly';
     detail: string;
 }
 
-async function postTag(slug: string, tickerKey: string, relevantSide: number): Promise<{ status: number; json: any }> {
+async function post(slug: string, tickerKey: string, relevantSide: number, allowMissingNewsDelta = false) {
     const res = await fetch(`${BASE_URL}/api/ticker-tags`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Ticker-Secret': TICKER_SECRET },
-        body: JSON.stringify({ slug, tickerKey, relevantSide }),
+        body: JSON.stringify({ slug, tickerKey, relevantSide, ...(allowMissingNewsDelta ? { allowMissingNewsDelta } : {}) }),
     });
     let json: any = null;
     try { json = await res.json(); } catch { /* non-JSON -> null */ }
     return { status: res.status, json };
 }
+
+const postTag = (slug: string, tickerKey: string, relevantSide: number) => post(slug, tickerKey, relevantSide);
+// Only after the normal POST has exhausted its retries - see the call site.
+const postTagAllowingMissingNews = (slug: string, tickerKey: string, relevantSide: number) =>
+    post(slug, tickerKey, relevantSide, true);
 
 async function main() {
     const { rows: cfgRows } = await pool.query(
@@ -176,6 +185,18 @@ async function main() {
                     outcome = { slug: plan.slug, tickerKey, side: plan.side, status: 'already_tagged', detail: 'skip' };
                 } else if (status === 502 && attempt < 3) {
                     await new Promise((r) => setTimeout(r, 1500 * attempt));
+                } else if (status === 502 && json?.code === 'empty_price_history' && ALLOW_MISSING_NEWS) {
+                    // Retries are exhausted, so the history is gone rather than briefly
+                    // unavailable. Take the tag with no news leg: settle.ts reads the
+                    // entry probability from the frozen snapshot and the outcome from
+                    // Gamma, so the RESULT is still fully computable - and without a tag
+                    // row it could never be recorded at all.
+                    const retry = await postTagAllowingMissingNews(plan.slug, tickerKey, plan.side);
+                    outcome = retry.status === 201
+                        ? { slug: plan.slug, tickerKey, side: plan.side, status: 'tagged_no_news', detail: 'result only - news move unmeasurable' }
+                        : retry.status === 409
+                            ? { slug: plan.slug, tickerKey, side: plan.side, status: 'already_tagged', detail: 'skip' }
+                            : { slug: plan.slug, tickerKey, side: plan.side, status: 'hand_tag', detail: `${retry.json?.code}: ${retry.json?.message}` };
                 } else if (status === 502) {
                     outcome = { slug: plan.slug, tickerKey, side: plan.side, status: 'hand_tag', detail: `${json?.code}: ${json?.message}` };
                 } else if (status === 422 && json?.code === 'ineligible') {
@@ -199,7 +220,9 @@ async function main() {
     }
 
     const tally = (s: TagResult['status']) => results.filter((r) => r.status === s).length;
-    console.log(`\nTotals: ${tally('tagged')} tagged, ${tally('already_tagged')} already tagged, ${tally('hand_tag')} for hand-tagging, ${tally('anomaly')} anomalies.`);
+    console.log(`\nTotals: ${tally('tagged')} tagged, ${tally('tagged_no_news')} tagged result-only `
+        + `(news move unmeasurable), ${tally('already_tagged')} already tagged, `
+        + `${tally('hand_tag')} for hand-tagging, ${tally('anomaly')} anomalies.`);
     const handTag = results.filter((r) => r.status === 'hand_tag');
     if (handTag.length) {
         console.log('Hand-tag list (CLOB history unavailable or data-shaped rejection - tag manually or leave):');

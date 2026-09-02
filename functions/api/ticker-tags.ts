@@ -21,6 +21,7 @@ import {
     getTickerConfig,
     insertTagWithEvent,
     tagScaleOf,
+    type TagDelta,
 } from '../../lib/pages-functions/tickers';
 
 interface TankRow {
@@ -54,6 +55,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const slug = typeof body?.slug === 'string' ? body.slug.trim() : '';
     const tickerKey = typeof body?.tickerKey === 'string' ? body.tickerKey.trim() : '';
     const relevantSide = body?.relevantSide;
+    // Backfill-only opt-in: accept a tag whose news move can no longer be measured (see
+    // the catch around fetchTagDelta). Off unless asked for, so the normal publish-time
+    // and sweep paths keep refusing to write an unmeasured delta.
+    const allowMissingNewsDelta = body?.allowMissingNewsDelta === true;
     if ((!tankId && !slug) || (tankId && !UUID_RE.test(tankId)) || !tickerKey) {
         return reject(400, 'invalid_body', 'Provide tickerKey plus either tankId (UUID) or slug.');
     }
@@ -116,16 +121,41 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         return reject(409, 'already_tagged', `This Tank is already tagged to ${ticker.display_name}.`);
     }
 
-    let tagDelta;
+    // null ONLY on the backfill path below, where the news move is unrecoverable. Left
+    // null rather than filled with placeholder prices: a fake priceNow would be exactly
+    // the fabricated record this module refuses to write.
+    let tagDelta: TagDelta | null = null;
+    let newsDeltaUnavailable: string | null = null;
     try {
         tagDelta = tank.provider === 'kalshi'
             ? await fetchKalshiTagDelta(tank.market_id, relevantSide, cfg.tag_delta_cap_pct, tagScaleOf(cfg))
             : await fetchTagDelta(tank.market_id, relevantSide, cfg.tag_delta_cap_pct, tagScaleOf(cfg));
     } catch (err) {
         if (err instanceof TaggingError) {
-            return reject(err.retriable ? 502 : 422, err.code, err.message, { retriable: err.retriable });
+            // Retro-tagging an article whose market closed long ago: the CLOB no longer
+            // serves its price history, so the 3-day news move cannot be measured and
+            // never will be. The RESULT is unaffected - settle.ts reads the entry
+            // probability from the frozen snapshot and the outcome from Gamma, neither
+            // of which needs price history - but settlement is driven by
+            // `FROM ticker_tags`, so with no tag row the result can never land either.
+            // Refusing the tag therefore throws away a real, fully-computable result to
+            // avoid an unmeasurable news delta.
+            //
+            // So the caller may opt in to a zero news leg. The module rule this bends
+            // (never fabricate a delta, because an append-only 0 is indistinguishable
+            // from "the market genuinely didn't move") is honoured by making it
+            // DISTINGUISHABLE instead: newsDeltaUnavailable records why the 0 is there,
+            // so no reader can mistake it for a measured flat move. Opt-in only, and
+            // only for missing history - a transient upstream failure still 502s and
+            // must be retried rather than frozen at zero.
+            if (allowMissingNewsDelta && err.code === 'empty_price_history') {
+                newsDeltaUnavailable = err.message;
+            } else {
+                return reject(err.retriable ? 502 : 422, err.code, err.message, { retriable: err.retriable });
+            }
+        } else {
+            throw err;
         }
-        throw err;
     }
 
     const tagId = crypto.randomUUID();
@@ -135,19 +165,28 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             tankId: tank.id,
             tickerKey,
             relevantSide,
-            delta: tagDelta.delta,
+            delta: tagDelta?.delta ?? 0,
             metadata: {
-                rawDelta: tagDelta.rawDelta,
-                capped: tagDelta.capped,
                 capPct: cfg.tag_delta_cap_pct,
-                priceNow: tagDelta.priceNow,
-                price3dAgo: tagDelta.price3dAgo,
-                tokenId: tagDelta.tokenId,
-                historyPoints: tagDelta.historyPoints,
-                thinHistory: tagDelta.thinHistory,
+                // Omitted entirely when there was no reading to record, rather than
+                // written as zeros that would read like real measured prices.
+                ...(tagDelta ? {
+                    rawDelta: tagDelta.rawDelta,
+                    capped: tagDelta.capped,
+                    priceNow: tagDelta.priceNow,
+                    price3dAgo: tagDelta.price3dAgo,
+                    tokenId: tagDelta.tokenId,
+                    historyPoints: tagDelta.historyPoints,
+                    thinHistory: tagDelta.thinHistory,
+                } : {}),
                 snapshotProb: sideProb,
                 marketId: tank.market_id,
                 provider: tank.provider,
+                // Present ONLY when the news move could not be measured. Its presence is
+                // what separates this 0 from a real, measured flat move - anything
+                // reading these events (copy, charts, audits) must treat a tag carrying
+                // it as "no news reading", not as "the market didn't move".
+                ...(newsDeltaUnavailable ? { newsDeltaUnavailable } : {}),
             },
         });
     } catch (err) {
@@ -164,11 +203,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             slug: tank.slug,
             tickerKey,
             relevantSide,
-            delta: tagDelta.delta,
-            rawDelta: tagDelta.rawDelta,
-            capped: tagDelta.capped,
-            priceNow: tagDelta.priceNow,
-            price3dAgo: tagDelta.price3dAgo,
+            delta: tagDelta?.delta ?? 0,
+            rawDelta: tagDelta?.rawDelta ?? 0,
+            capped: tagDelta?.capped ?? false,
+            priceNow: tagDelta?.priceNow ?? null,
+            price3dAgo: tagDelta?.price3dAgo ?? null,
+            // Tells the caller this tag carries no news reading - its result leg will
+            // still settle normally off the frozen snapshot.
+            ...(newsDeltaUnavailable ? { newsDeltaUnavailable } : {}),
             note: RETROSPECTIVE_NOTE,
         },
         { status: 201 },
