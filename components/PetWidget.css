@@ -102,9 +102,12 @@
   max-height: min(60vh, 320px);
   overflow-y: auto;
   background: rgba(7, 5, 11, 0.78);
-  border: 2px solid rgba(47, 230, 217, 0.45);
+  /* Black border + green-outlined white type, matching the header mini nav
+     (components/MapHud.css) so the two menus read as one system. Brand green
+     #31e874 - the leaderboard/Discord green, not the house teal. */
+  border: 2px solid #000000;
   border-radius: 18px;
-  box-shadow: 0 0 24px rgba(47, 230, 217, 0.2), 0 10px 30px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 0 24px rgba(49, 232, 116, 0.18), 0 10px 30px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
   animation: pet-widget-actions-in 0.2s ease-out;
 }
@@ -120,13 +123,19 @@
   font-size: 0.8rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: #2fe6d9;
+  /* Same white-on-green-outline treatment as the header mini nav's items, and the
+     same green ring the nav's round chip carries - these pills ARE this menu's
+     round buttons. 1px outline for 0.8rem type. */
+  color: #ffffff;
+  text-shadow:
+    1px 0 0 #31e874, -1px 0 0 #31e874, 0 1px 0 #31e874, 0 -1px 0 #31e874,
+    1px 1px 0 #31e874, -1px -1px 0 #31e874, 1px -1px 0 #31e874, -1px 1px 0 #31e874;
   background: rgba(7, 5, 11, 0.75);
-  border: 2px solid rgba(47, 230, 217, 0.6);
+  border: 2px solid #31e874;
   border-radius: 999px;
   padding: 0.4rem 1rem;
   cursor: pointer;
-  box-shadow: 0 0 14px rgba(47, 230, 217, 0.25);
+  box-shadow: 0 0 14px rgba(49, 232, 116, 0.3);
   transition: background 0.2s ease, transform 0.15s ease;
   white-space: nowrap;
   text-align: center;
@@ -134,7 +143,8 @@
 
 .pet-widget__action:hover,
 .pet-widget__action:focus-visible {
-  background: rgba(47, 230, 217, 0.18);
+  background: rgba(49, 232, 116, 0.18);
+  border-color: #5cff9b;
   outline: none;
 }
 

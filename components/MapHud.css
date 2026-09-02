@@ -1,7 +1,17 @@
 /* Map-page HUD (top-right): username + Ember chip, with a mini nav dropdown.
-   Same identity language as the homepage header (white name, gold ember pill),
-   dropdown in the house navy-glass/teal grammar. Sits where the old checkmark back
-   button lived - above the card and (like the old button) above modal overlays. */
+   Same identity language as the homepage header (white name, gold ember pill).
+   Sits where the old checkmark back button lived - above the card and (like the old
+   button) above modal overlays.
+
+   These classes are NOT map-only: the homepage header builds its dropdown from the
+   same .map-hud__menu / .map-hud__item markup (homepage-client.tsx's
+   mountHeaderMenu), and ContentChrome puts the whole HUD on every scrolling content
+   page (Tank articles, TANKDAQ). So this file is the one place the mini nav is
+   styled, and a change here lands on all three surfaces at once.
+
+   BRAND GREEN (#31e874) is the same value the leaderboard card and the Discord
+   embeds use (leaderboard-image.ts's COLOR_GREEN, discord-brand.ts's BRAND.green) -
+   the menu's outlines and the chip's ring are that green, over a black border. */
 
 .map-hud {
   position: absolute;
@@ -18,11 +28,12 @@
   align-items: center;
   gap: 0.55rem;
   background: rgba(7, 5, 11, 0.7);
-  border: 2px solid rgba(47, 230, 217, 0.45);
+  /* Green ring on the round trigger, matching the menu's outlines. */
+  border: 2px solid #31e874;
   border-radius: 999px;
   padding: 0.35rem 0.75rem;
   cursor: pointer;
-  box-shadow: 0 0 18px rgba(47, 230, 217, 0.2);
+  box-shadow: 0 0 18px rgba(49, 232, 116, 0.25);
   backdrop-filter: blur(4px);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   -webkit-tap-highlight-color: transparent;
@@ -31,8 +42,8 @@
 .map-hud__chip:hover,
 .map-hud__chip:focus-visible,
 .map-hud__chip[aria-expanded="true"] {
-  border-color: var(--hc-teal, #2fe6d9);
-  box-shadow: 0 0 24px rgba(47, 230, 217, 0.4);
+  border-color: #5cff9b;
+  box-shadow: 0 0 24px rgba(49, 232, 116, 0.5);
   outline: none;
 }
 
@@ -78,10 +89,10 @@
   margin-top: 0.45rem;
   min-width: 150px;
   background: rgba(7, 5, 11, 0.92);
-  border: 2px solid rgba(47, 230, 217, 0.45);
+  border: 2px solid #000000;
   border-radius: 14px;
   overflow: hidden;
-  box-shadow: 0 0 24px rgba(47, 230, 217, 0.2), 0 12px 30px rgba(0, 0, 0, 0.55);
+  box-shadow: 0 0 24px rgba(49, 232, 116, 0.18), 0 12px 30px rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(4px);
   animation: map-hud-menu-in 0.15s ease-out;
 }
@@ -103,18 +114,25 @@
   font-size: 0.85rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--hc-teal, #2fe6d9);
+  /* White glyphs with a green outline drawn around them - the same 8-direction
+     text-shadow trick the ticker tape uses for its outlined type, since
+     -webkit-text-stroke eats into the glyph interior and thins the letterform at
+     this size. 1px rather than the ticker's 1.5px: these are 0.85rem. */
+  color: #ffffff;
+  text-shadow:
+    1px 0 0 #31e874, -1px 0 0 #31e874, 0 1px 0 #31e874, 0 -1px 0 #31e874,
+    1px 1px 0 #31e874, -1px -1px 0 #31e874, 1px -1px 0 #31e874, -1px 1px 0 #31e874;
   text-decoration: none;
   padding: 0.6rem 0.9rem;
 }
 
 .map-hud__item + .map-hud__item {
-  border-top: 1px solid rgba(47, 230, 217, 0.2);
+  border-top: 1px solid rgba(49, 232, 116, 0.28);
 }
 
 .map-hud__item:hover,
 .map-hud__item:focus-visible {
-  background: rgba(47, 230, 217, 0.14);
+  background: rgba(49, 232, 116, 0.16);
   outline: none;
 }
 
