@@ -1102,9 +1102,12 @@ export async function buildSrLeaderboardMessage(env: Env, guildId: string): Prom
 
 export async function buildMeCardInput(env: Env, guildId: string, discordUserId: string): Promise<MeCardInput> {
     const sql = getSql(env);
-    const [members, guildIconUrl] = await Promise.all([
+    const [members, guildIconUrl, prefRows] = await Promise.all([
         fetchGuildMembers(env, guildId),
         fetchGuildIconUrl(env, guildId),
+        // Display preference only, and person-wide rather than per-server - see
+        // create_discord_user_prefs_table.sql. No row means the default.
+        sql`SELECT me_card_avatar FROM discord_user_prefs WHERE discord_user_id = ${discordUserId}`,
     ]);
     const member = members.find((m) => m.user.id === discordUserId)?.user;
 
@@ -1123,10 +1126,15 @@ export async function buildMeCardInput(env: Env, guildId: string, discordUserId:
     // because it reads a different table set and is cheap enough to not matter.
     const pvpById = await computePvpRecords(sql, guildId, [discordUserId]);
 
+    // The glow circle holds the SERVER's icon by default; `/me avatar:My avatar`
+    // switches it to the member's own. me-card.ts falls back to avatarUrl when
+    // guildIconUrl is null, so passing null here is exactly "use my avatar".
+    const useOwnAvatar = (prefRows[0] as any)?.me_card_avatar === 'user';
+
     return {
         displayName: member?.global_name || member?.username || 'You',
         avatarUrl: buildDiscordAvatarUrl(discordUserId, member?.avatar),
-        guildIconUrl,
+        guildIconUrl: useOwnAvatar ? null : guildIconUrl,
         points: Number((pointsRows[0] as any)?.points ?? 0),
         rank: Number((rankRows[0] as any)?.ahead ?? 0) + 1,
         sr: srById.get(discordUserId) ?? 0,

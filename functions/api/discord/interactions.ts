@@ -387,6 +387,20 @@ async function handleMeCommand(context: RequestContext, interaction: any): Promi
     if (!applicationId || !interactionToken) return ephemeral("Couldn't process that command - try again.");
 
     const sql = getSql(context.env);
+
+    // `/me avatar:<Server icon|My avatar>` sets the preference and then renders the
+    // card with it - one command, no separate settings step, and every later bare /me
+    // remembers. Person-wide, so it holds across every server the bot is in.
+    const avatarChoice: string | undefined = interaction.data?.options?.find((o: any) => o.name === 'avatar')?.value;
+    if (avatarChoice === 'guild' || avatarChoice === 'user') {
+        await sql`
+            INSERT INTO discord_user_prefs (discord_user_id, me_card_avatar)
+            VALUES (${discordUserId}, ${avatarChoice})
+            ON CONFLICT (discord_user_id) DO UPDATE
+                SET me_card_avatar = EXCLUDED.me_card_avatar, updated_at = NOW()
+        `;
+    }
+
     const cfgRows = await sql`SELECT ephemeral_user_commands FROM discord_guild_configs WHERE guild_id = ${guildId}`;
     const makeEphemeral = Boolean((cfgRows[0] as any)?.ephemeral_user_commands);
 

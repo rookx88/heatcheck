@@ -174,6 +174,21 @@ const commands = [
         description: 'Your personal rank card — rank, points, accuracy, and Skill Rating in this server',
         type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
         // No default_member_permissions - a member command, like /my-results.
+        options: [
+            {
+                name: 'avatar',
+                // Sets the preference AND renders with it, so there's no separate
+                // settings step; bare /me keeps whatever was chosen last. The choice is
+                // person-wide, not per-server (create_discord_user_prefs_table.sql).
+                description: 'Whose picture sits in the card\'s glow circle (remembered)',
+                type: OPTION_TYPE_STRING,
+                required: false,
+                choices: [
+                    { name: 'Server icon', value: 'guild' },
+                    { name: 'My avatar', value: 'user' },
+                ],
+            },
+        ],
     },
     {
         name: 'pvp',
