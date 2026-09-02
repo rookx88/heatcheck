@@ -27,6 +27,16 @@
 // outcome label) and gridiron/footy (league-scoped, market-favored side) - used to
 // backfill those tickers from existing published Tanks after their launch.
 //
+// Batch 3 (2026-09-02): this script no longer mirrors the eligibility rules at all. It
+// used to keep a private copy - a hardcoded ticker list, its own SOCCER_LEAGUES and its
+// own isMarketFavorite - which made it a FIFTH place a new rule type had to be added by
+// hand, and the one place that was missed when the league sub-indexes landed. It now
+// reads the active tickers (key + rule_type) straight from the table and asks the real
+// checkEligibility() from lib/pages-functions/tickers.ts, the same function the API
+// re-validates with. A new ticker is therefore backfillable the moment its row exists,
+// with no edit here, and this script can no longer disagree with the endpoint about
+// what is eligible.
+//
 // Outcome handling per POST: 201 tagged; 409 already_tagged = skip (safe rerun);
 // 502 retriable (CLOB/Gamma hiccup, or empty price history on long-closed markets) =
 // retry twice then park on the hand-tag list - NEVER force-inserted; data-shaped 422s
@@ -35,6 +45,11 @@
 
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
+import {
+    checkEligibility,
+    type EligibilityContext,
+    type TickerConfig,
+} from '../lib/pages-functions/tickers';
 
 dotenv.config();
 
@@ -103,26 +118,23 @@ async function main() {
            AND game_snapshot->'prop'->>'id' IS NOT NULL
          ORDER BY published_at NULLS LAST, created_at`);
     const candidates = rows as CandidateRow[];
-    console.log(`${candidates.length} candidate tank(s); rule: BOTH sides (underdog -> dogs/moonshot, favorite -> chalk/locks, + batch-2 overs/unders/gridiron/footy); thresholds moonshot<${moonshotMax} locks>=${locksMin}\n`);
 
-    // Batch-2 rule mirrors (checkEligibility in lib/pages-functions/tickers.ts) - like
-    // the dogs/chalk plan below, drift-safe because the API re-validates every POST.
-    const SOCCER_LEAGUES = ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
-    const overUnderSide = (labels: string[] | null, side: number): 'over' | 'under' | null => {
-        const label = labels?.[side];
-        if (typeof label !== 'string') return null;
-        const lower = label.trim().toLowerCase();
-        if (lower.startsWith('over')) return 'over';
-        if (lower.startsWith('under')) return 'under';
-        if (lower === 'yes') return side === 0 ? 'over' : null;
-        if (lower === 'no') return side === 1 ? 'under' : null;
-        return null;
-    };
-    const isMarketFavorite = (probs: number[], side: number): boolean =>
-        probs.every((q, i) => i === side || q < probs[side] || (q === probs[side] && i > side));
+    // Every active ticker, in board order. Read from the table rather than listed here,
+    // so a newly-seeded index is backfillable without touching this script.
+    const { rows: tickerRows } = await pool.query(
+        `SELECT key, rule_type FROM tickers WHERE active ORDER BY tab_order`);
+    const activeTickers = tickerRows as Array<{ key: string; rule_type: string }>;
+    console.log(`${candidates.length} candidate tank(s); rule: BOTH sides of every market, `
+        + `against all ${activeTickers.length} active tickers (${activeTickers.map((t) => t.key).join(', ')}); `
+        + `thresholds moonshot<${moonshotMax} locks>=${locksMin}\n`);
+
+    // The config checkEligibility reads. Same row the endpoint loads, so a threshold
+    // change can't make this script and the API disagree.
+    const cfg = cfgRows[0].config as TickerConfig;
 
     // Build the mechanical plan: every side of every market, with that side's eligible
-    // tickers. One plan entry per (tank, side).
+    // tickers. One plan entry per (tank, side). Eligibility is the REAL function, not a
+    // local restatement of it - see the batch-3 note in the header.
     const plans: TagPlan[] = [];
     const skipped: Array<{ slug: string; reason: string }> = [];
     for (const c of candidates) {
@@ -131,18 +143,13 @@ async function main() {
             skipped.push({ slug: c.slug, reason: 'no usable snapshot outcomePrices' });
             continue;
         }
-        const labels = Array.isArray(c.outcome_labels) ? c.outcome_labels.map(String) : null;
-        const isTotals = c.market !== null && ['totals', 'team_totals'].includes(c.market);
+        const outcomes = Array.isArray(c.outcome_labels) ? c.outcome_labels.map(String) : null;
         for (let side = 0; side < probs.length; side++) {
-            const p = probs[side];
-            const tickers = p < 0.5
-                ? ['dogs', ...(p < moonshotMax ? ['moonshot'] : [])]
-                : ['chalk', ...(p >= locksMin ? ['locks'] : [])];
-            if (isTotals && overUnderSide(labels, side) === 'over') tickers.push('overs');
-            if (isTotals && overUnderSide(labels, side) === 'under') tickers.push('unders');
-            if (c.league === 'NFL' && isMarketFavorite(probs, side)) tickers.push('gridiron');
-            if (c.league !== null && SOCCER_LEAGUES.includes(c.league) && isMarketFavorite(probs, side)) tickers.push('footy');
-            plans.push({ slug: c.slug, side, prob: p, tickers });
+            const ctx: EligibilityContext = { side, probs, league: c.league, market: c.market, outcomes };
+            const tickers = activeTickers
+                .filter((t) => checkEligibility(t.rule_type, ctx, cfg).ok)
+                .map((t) => t.key);
+            plans.push({ slug: c.slug, side, prob: probs[side], tickers });
         }
     }
 

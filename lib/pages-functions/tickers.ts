@@ -133,27 +133,34 @@ function overUnderSide(ctx: EligibilityContext): 'over' | 'under' | null {
 }
 
 // The market-favored side: strictly the highest snapshot probability, ties broken by
-// lowest index so exactly ONE side per market ever qualifies (the sweep tags both
-// sides - a rule matching both would have its tag and settle deltas cancel). Also what
-// makes league tickers work on 3-way soccer moneylines, where no side may reach 0.5.
+// the STRICT shortest price, so at most one side per market ever qualifies (the sweep
+// tags both sides - a rule matching both would have its tag and settle deltas cancel).
+// Also what makes league tickers work on 3-way soccer moneylines, where no side may
+// reach 0.5.
+//
+// Strict, not ties-to-lowest-index: on a true pick'em ([0.5, 0.5]) breaking the tie by
+// index made side 0 satisfy BOTH this and isMarketUnderdog, so one article was tagged
+// as its league's favorite AND its underdog, pushing $MLBCHALK and $MLBDOGS the same
+// way instead of opposite ways. A market with no shortest price simply has no favorite,
+// and neither side qualifies - which is also the honest reading of a pick'em.
 function isMarketFavorite(ctx: EligibilityContext): boolean {
     const p = ctx.probs[ctx.side];
     for (let i = 0; i < ctx.probs.length; i++) {
         if (i === ctx.side) continue;
-        if (ctx.probs[i] > p || (ctx.probs[i] === p && i < ctx.side)) return false;
+        if (ctx.probs[i] >= p) return false;
     }
     return true;
 }
 
 // The mirror of the above for league-scoped underdog children ($NBADOGS et al): the
-// LEAST-favored side, ties again broken to the lowest index so exactly one side per
-// market qualifies. On a three-way soccer moneyline this is the longest price, not
-// merely "not the favorite".
+// strict LONGEST price. On a three-way soccer moneyline this is the longest price, not
+// merely "not the favorite"; on a market whose two longest prices are level, no side is
+// the underdog.
 function isMarketUnderdog(ctx: EligibilityContext): boolean {
     const p = ctx.probs[ctx.side];
     for (let i = 0; i < ctx.probs.length; i++) {
         if (i === ctx.side) continue;
-        if (ctx.probs[i] < p || (ctx.probs[i] === p && i < ctx.side)) return false;
+        if (ctx.probs[i] <= p) return false;
     }
     return true;
 }

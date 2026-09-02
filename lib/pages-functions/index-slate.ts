@@ -86,15 +86,20 @@ function overUnderIndex(row: SlateMarketRow, want: 'over' | 'under'): number | n
     return null;
 }
 
-function argmaxIndex(p: number[]): number {
+// Strict: null when no single side is shortest (or longest). A tie used to fall through
+// to index 0, which made the favorite rule and the underdog rule pick the SAME side of
+// a pick'em - so $CHALK and $DOGS held one identical position and moved together, and
+// $MLBCHALK and $MLBDOGS did the same. A market with no shortest price has no favorite,
+// so it qualifies for neither index and is simply skipped.
+function argmaxIndex(p: number[]): number | null {
     let best = 0;
     for (let i = 1; i < p.length; i++) if (p[i] > p[best]) best = i;
-    return best;
+    return p.every((q, i) => i === best || q < p[best]) ? best : null;
 }
-function argminIndex(p: number[]): number {
+function argminIndex(p: number[]): number | null {
     let best = 0;
     for (let i = 1; i < p.length; i++) if (p[i] < p[best]) best = i;
-    return best;
+    return p.every((q, i) => i === best || q > p[best]) ? best : null;
 }
 
 /** Which market type an index's rule draws from, and whether the league qualifies. */
@@ -145,11 +150,11 @@ export function sideForRule(
             return argminIndex(p);
         case 'heavy_favorite': {
             const i = argmaxIndex(p);
-            return p[i] >= cfg.locksMinProb ? i : null;
+            return i !== null && p[i] >= cfg.locksMinProb ? i : null;
         }
         case 'longshot': {
             const i = argminIndex(p);
-            return p[i] < cfg.moonshotMaxProb ? i : null;
+            return i !== null && p[i] < cfg.moonshotMaxProb ? i : null;
         }
         default: {
             // A league child holds the same side its parent would on this game -
