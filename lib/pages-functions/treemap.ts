@@ -51,9 +51,16 @@ function layoutRow(row: Weighted[], rect: Rect, total: number, out: Rect[]): Rec
 }
 
 export function squarify(weights: number[], width: number, height: number): Rect[] {
+    return squarifyInto(weights, { x: 0, y: 0, w: width, h: height });
+}
+
+// Same layout anchored anywhere, so a family can be squarified INSIDE its parent's tile
+// without the caller translating every rect by hand. squarify() is this with the rect
+// pinned at the origin.
+export function squarifyInto(weights: number[], into: Rect): Rect[] {
     const items: Weighted[] = weights.map((weight, index) => ({ weight, index })).sort((a, b) => b.weight - a.weight);
     const out: Rect[] = new Array(weights.length);
-    let rect: Rect = { x: 0, y: 0, w: width, h: height };
+    let rect: Rect = { ...into };
     let total = weights.reduce((s, w) => s + w, 0);
     let row: Weighted[] = [];
     for (const item of items) {
@@ -74,8 +81,111 @@ export function squarify(weights: number[], width: number, height: number): Rect
 // sliver. An all-quiet board degrades to equal tiles.
 export const WEIGHT_FLOOR_RATIO = 0.15;
 
-export function weightsFromDeltas(deltas: number[]): number[] {
+export function weightsFromDeltas(deltas: number[], floorRatio = WEIGHT_FLOOR_RATIO): number[] {
     const biggest = Math.max(...deltas.map((d) => Math.abs(d)), 0);
-    const floor = biggest > 0 ? biggest * WEIGHT_FLOOR_RATIO : 1;
+    const floor = biggest > 0 ? biggest * floorRatio : 1;
     return deltas.map((d) => Math.max(Math.abs(d), floor));
+}
+
+// ---------------------------------------------------------------------------------
+// Nesting: a family drawn inside its parent's tile.
+//
+// Two passes, never one flat one. weightsFromDeltas floors each weight against the
+// LARGEST weight in its own call, so a nested call floors children against the largest
+// child - which is what we want (a quiet child stays visible next to its loud sibling)
+// and is not what a single flat pass would do (it would floor children against the
+// largest ROOT, collapsing every child of a quiet family into the same sliver).
+// ---------------------------------------------------------------------------------
+
+// A container's tile has to hold a header plus N children, but area tracks size of move,
+// so a quiet parent would otherwise get a small tile and slice it into slivers. Each
+// child buys its parent this much additional guaranteed weight, as a share of the
+// biggest tile on the board. Leaves are untouched.
+export const CONTAINER_CHILD_WEIGHT = 0.55;
+
+// Children are floored far more aggressively than roots. A root tile only has to be
+// clickable at its smallest; a child also has to carry a league symbol like $NBACHALK
+// inside a fraction of its parent, and at the roots' 0.15 a quiet sibling lands at ~1:7
+// on area against a loud one, which is a sliver too narrow for any legible type. Within
+// a family you are reading which league moved, not by exactly how much - the delta text
+// and the border carry that - so evening the tiles out buys legibility cheaply.
+export const CHILD_WEIGHT_FLOOR_RATIO = 0.45;
+
+export function floorContainerWeights(weights: number[], childCounts: number[]): number[] {
+    const biggest = Math.max(...weights, 0);
+    if (biggest <= 0) return weights;
+    return weights.map((w, i) => {
+        const n = childCounts[i] ?? 0;
+        if (n === 0) return w;
+        return Math.max(w, biggest * WEIGHT_FLOOR_RATIO * (1 + n * CONTAINER_CHILD_WEIGHT));
+    });
+}
+
+export interface NestedLayout {
+    /** Absolute rect per root, aligned to the input order. */
+    roots: Rect[];
+    /** Absolute rects per child, aligned to childDeltas[i]. Empty for leaves. */
+    children: Rect[][];
+    /**
+     * Height of the strip at the top of each root's rect carrying the parent's own
+     * symbol and value. 0 for leaves, whose whole rect is theirs.
+     */
+    headers: number[];
+}
+
+export interface NestOptions {
+    /** Header strip as a share of the container's height, then clamped. */
+    headerRatio?: number;
+    headerMin?: number;
+    headerMax?: number;
+    /** Inset between a container's inner area and its children, in board units. */
+    padding?: number;
+    /** Weight floor applied within a family (see CHILD_WEIGHT_FLOOR_RATIO). */
+    childFloorRatio?: number;
+}
+
+/**
+ * Lay out roots by their own move, then squarify each family into its parent's rect
+ * minus a header strip. Deltas are signed (direction is the caller's business); area
+ * tracks magnitude.
+ *
+ * A container whose children have no movement at all still lays them out - they render
+ * flat rather than vanishing, which is what a just-seeded index looks like before its
+ * first close, and what an out-of-season league looks like all winter.
+ */
+export function layoutNested(
+    rootDeltas: number[],
+    childDeltas: number[][],
+    width: number,
+    height: number,
+    opts: NestOptions = {}
+): NestedLayout {
+    const {
+        headerRatio = 0.26, headerMin = 0, headerMax = Infinity, padding = 0,
+        childFloorRatio = CHILD_WEIGHT_FLOOR_RATIO,
+    } = opts;
+    const childCounts = rootDeltas.map((_, i) => childDeltas[i]?.length ?? 0);
+    const rootWeights = floorContainerWeights(weightsFromDeltas(rootDeltas), childCounts);
+    const roots = squarifyInto(rootWeights, { x: 0, y: 0, w: width, h: height });
+
+    const children: Rect[][] = [];
+    const headers: number[] = [];
+    roots.forEach((rect, i) => {
+        const kids = childDeltas[i] ?? [];
+        if (kids.length === 0) {
+            children.push([]);
+            headers.push(0);
+            return;
+        }
+        const header = Math.min(Math.max(rect.h * headerRatio, headerMin), headerMax, rect.h);
+        const inner: Rect = {
+            x: rect.x + padding,
+            y: rect.y + header,
+            w: Math.max(rect.w - padding * 2, 0),
+            h: Math.max(rect.h - header - padding, 0),
+        };
+        headers.push(header);
+        children.push(inner.w > 0 && inner.h > 0 ? squarifyInto(weightsFromDeltas(kids, childFloorRatio), inner) : []);
+    });
+    return { roots, children, headers };
 }

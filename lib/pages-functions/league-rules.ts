@@ -18,6 +18,8 @@
 export type RuleSide = 'favorite' | 'underdog';
 
 export interface LeagueRule {
+    /** The rule_type prefix that named the group: 'nba' | 'nfl' | 'mlb' | 'soccer'. */
+    group: string;
     /** The leagues this rule accepts - a single league, or the five soccer ones. */
     leagues: string[];
     side: RuleSide;
@@ -44,7 +46,7 @@ export function parseLeagueRule(ruleType: string): LeagueRule | null {
     const suffix = ruleType.slice(sep + 1);
     if (suffix !== 'favorite' && suffix !== 'underdog') return null;
     const leagues = LEAGUE_GROUPS[prefix];
-    return leagues ? { leagues, side: suffix } : null;
+    return leagues ? { group: prefix, leagues, side: suffix } : null;
 }
 
 export function leagueRuleAccepts(rule: LeagueRule, league: string | null): boolean {
@@ -54,4 +56,13 @@ export function leagueRuleAccepts(rule: LeagueRule, league: string | null): bool
 // A readable name for the league group, for copy and rejection messages.
 export function leagueGroupLabel(rule: LeagueRule): string {
     return rule.leagues.length === 1 ? rule.leagues[0] : "Europe's big five";
+}
+
+/**
+ * Three-letter tag for tight spaces - the board falls back to this when a child's tile
+ * is too narrow for its full symbol. Inside $CHALK's box the slice only has to say
+ * WHICH league, so 'NBA' carries the same meaning as '$NBACHALK' in a third of the room.
+ */
+export function leagueShortCode(rule: LeagueRule): string {
+    return rule.group.slice(0, 3).toUpperCase();
 }

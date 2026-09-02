@@ -20,7 +20,8 @@
 
 import { escapeHtml } from '../../scripts/utils/html-escape';
 import { chooseWindow } from './ticker-window';
-import { squarify, weightsFromDeltas } from './treemap';
+import { layoutNested } from './treemap';
+import { leagueShortCode, parseLeagueRule } from './league-rules';
 import {
     RETROSPECTIVE_NOTE,
     type TickerNewsItem,
@@ -46,6 +47,12 @@ export interface MarketMoverVM {
     valueLabel: string;  // formatSignedPct(value) - the ONE string both tape and card show
     sign: 'pos' | 'neg' | 'zero';
     tabOrder: number;    // marquee/marketing order; the section grid sorts by value instead
+    // Set on a league sub-index, naming the index it slices. The board nests these
+    // inside their parent's tile; the tape and the card grid stay top-level only.
+    parentKey: string | null;
+    // 'NBA' / 'NFL' / 'MLB' / 'SOC' for a league slice, else null. The board's fallback
+    // when a child's tile is too narrow for the full symbol.
+    shortLabel: string | null;
     eventCount: number;
     series: TickerSeriesEvent[]; // capped (SERIES_CAP) tail; cumulative values stay truthful
     seriesTruncated: boolean;
@@ -310,6 +317,8 @@ export function toMarketMovers(
             valueLabel: formatSignedPct(t.value),
             sign: signOf(t.value),
             tabOrder: t.tabOrder,
+            parentKey: t.parentKey,
+            shortLabel: (() => { const r = parseLeagueRule(t.ruleType); return r ? leagueShortCode(r) : null; })(),
             eventCount: t.eventCount,
             series: full.slice(-SERIES_CAP),
             seriesTruncated: full.length > SERIES_CAP,
@@ -413,62 +422,156 @@ export function renderTickerChartSvg(vm: MarketMoverVM): string {
 // -----------------------------------------------------------------------------------
 
 const BOARD_W = 100;
-// Nearly 3:2. Taller than TANKDAQ's 16:10 on purpose: this board sits in a ~540px
-// column rather than full width, and eight tiles in a short box leaves the smallest
-// two unreadable. Extra height is the cheapest way to buy them area.
-const BOARD_H = 70;
+// Nearly 6:5. Taller than the flat board's old 100x70 (and than TANKDAQ's 16:10)
+// because the same box now carries fourteen tiles rather than eight: every league
+// sub-index is drawn inside its parent, so the two family tiles each hold a header
+// plus four children. This board sits in a ~540px column, not full width, and extra
+// height is the cheapest way to buy the smallest child area.
+const BOARD_H = 84;
 const BOARD_GUTTER = 0.7;
+// Children sit inside an already-inset parent, so they get a tighter gutter - the
+// parent's own inset is doing most of the separating work.
+const CHILD_GUTTER = 0.4;
 // Below this (viewBox units, ~1.5% of board width) a label is too small to read at the
 // panel's real width, so the tile drops its delta line and spends all its height on
 // the symbol instead of rendering two illegible rows.
 const MIN_LEGIBLE_SIZE = 2.0;
+// And below THIS the symbol itself goes, leaving a bordered tile that is still linked
+// and still carries its tooltip. Type that doesn't fit is worse than no type: it spills
+// over its own tile and collides with the neighbour's, which is exactly what a forced
+// minimum size used to produce on the smallest league slices.
+const MIN_SYMBOL_SIZE = 1.15;
+// A child never needs to shout louder than the family it belongs to.
+const CHILD_MAX_SIZE = 3.2;
+// Per-character width estimate for Montserrat 900 caps, in ems. Deliberately over the
+// true average - a symbol that fits with room to spare beats one that kisses the border.
+const CHAR_EM = 0.86;
+
+const neonFor = (delta: number): string =>
+    delta > 0 ? '61, 220, 100' : delta < 0 ? '255, 107, 87' : '148, 163, 184';
 
 export function renderIndexBoardSvg(movers: MarketMoverVM[], now = Date.now()): string {
     if (movers.length === 0) return '';
 
     // Same adaptive window as the TANKDAQ board: widen until something actually moved,
-    // so a quiet day reads as quiet rather than as eight identical grey blocks.
+    // so a quiet day reads as quiet rather than as fourteen identical grey blocks. Run
+    // over every index, parents and children alike, so a family's tiles are all sized
+    // against the same window.
     const { deltas, info } = chooseWindow(
         movers.map((m) => ({ key: m.key, value: m.value })),
         Object.fromEntries(movers.map((m) => [m.key, m.series])),
         now,
     );
+    const deltaOf = new Map(movers.map((m, i) => [m.key, deltas[i]]));
     const maxAbs = Math.max(...deltas.map((d) => Math.abs(d)), 0);
-    const rects = squarify(weightsFromDeltas(deltas), BOARD_W, BOARD_H);
 
-    const tiles = movers.map((m, i) => {
-        const r = rects[i];
-        const delta = deltas[i];
+    // A ticker whose parent isn't on this board is drawn as a root rather than dropped -
+    // an index is never silently missing because of a bad parent_key.
+    const present = new Set(movers.map((m) => m.key));
+    const isRoot = (m: MarketMoverVM) => !m.parentKey || !present.has(m.parentKey);
+    const roots = movers.filter(isRoot);
+    const kidsOf = (key: string) => movers.filter((m) => !isRoot(m) && m.parentKey === key);
+    const families = roots.map((r) => kidsOf(r.key));
+
+    const layout = layoutNested(
+        roots.map((m) => deltaOf.get(m.key) ?? 0),
+        families.map((kids) => kids.map((k) => deltaOf.get(k.key) ?? 0)),
+        BOARD_W,
+        BOARD_H,
+        { headerRatio: 0.3, headerMin: 5, headerMax: 11, padding: 0.9 },
+    );
+
+    // One tile body, sized to whatever rect it was given. Roots that have children pass
+    // their header strip as the rect, so the family's symbol and value sit above its
+    // children rather than behind them.
+    const label = (m: MarketMoverVM, delta: number, r: { x: number; y: number; w: number; h: number }, maxSize: number) => {
+        // Fit to BOTH axes. Width was the only constraint while every tile was a root
+        // with height to spare; a parent's header strip is wide and short, so without
+        // the height term the symbol grows until it overflows its own box.
+        const byHeight = (r.h - 0.6) * 0.78;
+        const natural = Math.min(Math.sqrt((r.w * r.h) / 100) * 10 + 1.4, byHeight, maxSize);
+        const sizeFor = (text: string) => Math.min(natural, (r.w - 1.2) / (text.length * CHAR_EM));
+        // Full symbol if it fits; otherwise the league tag, which says the same thing
+        // inside a family box at a third of the width. Only when neither fits does the
+        // tile go bare - still bordered, still linked, still carrying its tooltip.
+        let text = m.displayName;
+        let symSize = sizeFor(text);
+        if (symSize < MIN_SYMBOL_SIZE && m.shortLabel) {
+            text = m.shortLabel;
+            symSize = sizeFor(text);
+        }
+        if (symSize < MIN_SYMBOL_SIZE) return '';
+        const deltaSize = symSize * 0.72;
+        const showDelta = r.h > symSize * 2.2 && symSize >= MIN_LEGIBLE_SIZE;
+        const cx = (r.x + r.w / 2).toFixed(2);
+        const neon = neonFor(delta);
+        return `<text class="hc-mmb-sym" x="${cx}" y="${(r.y + r.h / 2 + (showDelta ? -0.2 : symSize * 0.35)).toFixed(2)}"
+                          text-anchor="middle" font-size="${symSize.toFixed(2)}">${escapeHtml(text)}</text>
+                    ${showDelta ? `<text class="hc-mmb-delta" x="${cx}" y="${(r.y + r.h / 2 + deltaSize * 1.35).toFixed(2)}"
+                          text-anchor="middle" font-size="${deltaSize.toFixed(2)}" fill="rgb(${neon})">${formatSignedPct(delta)}</text>` : ''}`;
+    };
+
+    const titleOf = (m: MarketMoverVM, delta: number, parent?: MarketMoverVM) =>
+        `${m.displayName}${parent ? ` (${parent.displayName} · ${m.indexLabel})` : ''}: `
+        + `${formatSignedPct(delta)} over ${info.label}, ${m.valueLabel} overall`;
+
+    const tiles = roots.map((m, i) => {
+        const r = layout.roots[i];
+        const kids = families[i];
+        const delta = deltaOf.get(m.key) ?? 0;
         const mag = maxAbs > 0 ? Math.abs(delta) / maxAbs : 0;
-        const dir = delta > 0 ? 'pos' : delta < 0 ? 'neg' : 'zero';
-        const neon = dir === 'pos' ? '61, 220, 100' : dir === 'neg' ? '255, 107, 87' : '148, 163, 184';
+        const neon = neonFor(delta);
 
         const x = r.x + BOARD_GUTTER;
         const y = r.y + BOARD_GUTTER;
         const w = Math.max(r.w - 2 * BOARD_GUTTER, 0.1);
         const h = Math.max(r.h - 2 * BOARD_GUTTER, 0.1);
 
-        // Fit the symbol to the tile's inner width, same 0.8-per-char over-estimate of
-        // Montserrat 900 the client board uses - just in viewBox units.
-        const fit = (w - 1.2) / (m.displayName.length * 0.8);
-        const symSize = Math.max(1.3, Math.min(Math.sqrt((w * h) / 100) * 10 + 1.4, fit));
-        const deltaSize = symSize * 0.72;
-        const showDelta = h > symSize * 2.2 && symSize >= MIN_LEGIBLE_SIZE;
+        const title = titleOf(m, delta);
+        // A family's box is tinted in its own direction so the children read as sitting
+        // INSIDE it; a leaf stays pure black against the board, exactly as before.
+        const fill = kids.length > 0 ? `rgba(${neon}, 0.08)` : '#000000';
+        const stroke = kids.length > 0 ? '0.5' : '0.35';
+        // The parent's clickable area is its header strip only. Children are siblings in
+        // the SVG, never nested inside the parent's <a> - one link may not contain
+        // another, and a click on a child has to reach the child.
+        const own = kids.length > 0
+            ? { x, y, w, h: Math.max(layout.headers[i] - BOARD_GUTTER, 0.1) }
+            : { x, y, w, h };
 
-        const title = `${m.displayName}: ${formatSignedPct(delta)} over ${info.label}, ${m.valueLabel} overall`;
         return `
-                <a class="hc-mmb-tile" href="/tankdaq/${escapeHtml(m.key)}/" aria-label="${escapeHtml(title)}">
-                    <title>${escapeHtml(title)}</title>
+                <g class="hc-mmb-family">
                     <rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}"
-                          rx="0.6" fill="#000000" stroke="rgba(${neon}, ${(0.55 + 0.45 * mag).toFixed(2)})" stroke-width="0.35"/>
-                    <text class="hc-mmb-sym" x="${(x + w / 2).toFixed(2)}" y="${(y + h / 2 + (showDelta ? -0.2 : symSize * 0.35)).toFixed(2)}"
-                          text-anchor="middle" font-size="${symSize.toFixed(2)}">${escapeHtml(m.displayName)}</text>
-                    ${showDelta ? `<text class="hc-mmb-delta" x="${(x + w / 2).toFixed(2)}" y="${(y + h / 2 + deltaSize * 1.35).toFixed(2)}"
-                          text-anchor="middle" font-size="${deltaSize.toFixed(2)}" fill="rgb(${neon})">${formatSignedPct(delta)}</text>` : ''}
-                </a>`;
+                          rx="0.6" fill="${fill}" stroke="rgba(${neon}, ${(0.55 + 0.45 * mag).toFixed(2)})" stroke-width="${stroke}"/>
+                    <a class="hc-mmb-tile" href="/tankdaq/${escapeHtml(m.key)}/" aria-label="${escapeHtml(title)}">
+                        <title>${escapeHtml(title)}</title>
+                        <rect x="${own.x.toFixed(2)}" y="${own.y.toFixed(2)}" width="${own.w.toFixed(2)}" height="${own.h.toFixed(2)}" fill="transparent"/>
+                        ${label(m, delta, own, Infinity)}
+                    </a>
+                    ${kids.map((k, j) => {
+                        const kr = layout.children[i][j];
+                        const kd = deltaOf.get(k.key) ?? 0;
+                        const kmag = maxAbs > 0 ? Math.abs(kd) / maxAbs : 0;
+                        const kneon = neonFor(kd);
+                        const kx = kr.x + CHILD_GUTTER;
+                        const ky = kr.y + CHILD_GUTTER;
+                        const kw = Math.max(kr.w - 2 * CHILD_GUTTER, 0.1);
+                        const kh = Math.max(kr.h - 2 * CHILD_GUTTER, 0.1);
+                        const kt = titleOf(k, kd, m);
+                        return `
+                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/${escapeHtml(k.key)}/" aria-label="${escapeHtml(kt)}">
+                        <title>${escapeHtml(kt)}</title>
+                        <rect x="${kx.toFixed(2)}" y="${ky.toFixed(2)}" width="${kw.toFixed(2)}" height="${kh.toFixed(2)}"
+                              rx="0.4" fill="#000000" stroke="rgba(${kneon}, ${(0.45 + 0.45 * kmag).toFixed(2)})" stroke-width="0.22"/>
+                        ${label(k, kd, { x: kx, y: ky, w: kw, h: kh }, CHILD_MAX_SIZE)}
+                    </a>`;
+                    }).join('')}
+                </g>`;
     }).join('');
 
-    const summary = `Index board: ${movers.length} indexes, sized by their move over ${info.label}`;
+    const nested = movers.length - roots.length;
+    const summary = `Index board: ${roots.length} indexes sized by their move over ${info.label}`
+        + (nested > 0 ? `, with ${nested} league sub-indexes drawn inside the index each one slices` : '');
     return `
         <div class="hc-mmb">
             <h4 class="hc-mmb-heading">The Board</h4>
@@ -477,7 +580,7 @@ export function renderIndexBoardSvg(movers: MarketMoverVM[], now = Date.now()): 
                 <rect x="0" y="0" width="${BOARD_W}" height="${BOARD_H}" fill="#000000"/>
                 ${tiles}
             </svg>
-            <p class="hc-mmb-caption">Tile size tracks the move over ${escapeHtml(info.label)}${info.widened ? ' (nothing moved in the last 24 hours)' : ''} &middot; <a href="/tankdaq/indexes/">Open the full board</a></p>
+            <p class="hc-mmb-caption">Tile size tracks the move over ${escapeHtml(info.label)}${info.widened ? ' (nothing moved in the last 24 hours)' : ''}${nested > 0 ? ' &middot; league slices sit inside the index they slice' : ''} &middot; <a href="/tankdaq/indexes/">Open the full board</a></p>
         </div>`;
 }
 
@@ -540,11 +643,16 @@ export function renderMarketMoverCard(vm: MarketMoverVM, role?: 'gainer' | 'lose
 
 export function renderTickerTape(movers: MarketMoverVM[]): string {
     if (movers.length === 0) return '';
+    // Top-level indexes only. The tape is a fixed-duration scroll, so adding the eight
+    // league sub-indexes would nearly double its length and slow every symbol's turn on
+    // screen - and a headline tape wants headlines. The slices are one click away on
+    // the board, which draws them inside their parent.
+    const headline = movers.filter((m) => !m.parentKey);
     // Marquee reads in tab_order (marketing order), not the section's value-desc order -
     // both label strings come from the same VM, so the numbers can't disagree. Each item
     // trails its ticker's newest Recent Results sentence (same VM the cards render), in
     // a deliberately quieter style than the symbol/value.
-    const items = [...movers].sort((a, b) => a.tabOrder - b.tabOrder).map((m) => {
+    const items = [...(headline.length > 0 ? headline : movers)].sort((a, b) => a.tabOrder - b.tabOrder).map((m) => {
         const headline = m.results[0]
             ? ` <span class="hc-tape-headline">${escapeHtml(m.results[0].text)}</span>`
             : '';
@@ -574,8 +682,13 @@ export function renderMarketMoversSection(data: MarketMoversData): string {
     // view is "all" so the no-JS page shows both cards; the island reveals the tab
     // strip and flips the view to "gainers" (the mockup's default) in the same pass -
     // the gainers button ships aria-pressed to match that JS state.
-    const gainer = data.movers[0];
-    const last = data.movers[data.movers.length - 1];
+    // Headline cards go to top-level indexes, same call the tape makes: a league slice
+    // is a subset of its parent, so letting one take the headline would report a move
+    // the parent is already reporting, from the narrower of the two.
+    const headline = data.movers.filter((m) => !m.parentKey);
+    const ranked = headline.length > 0 ? headline : data.movers;
+    const gainer = ranked[0];
+    const last = ranked[ranked.length - 1];
     const loser = last && last !== gainer && last.value < 0 ? last : null;
     const cards = gainer
         ? renderMarketMoverCard(gainer, 'gainer') + (loser ? renderMarketMoverCard(loser, 'loser') : '')
