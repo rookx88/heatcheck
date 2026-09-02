@@ -280,6 +280,32 @@ async function buildWorldMapImages(): Promise<void> {
 }
 
 /**
+ * The site-wide page background (the sports-constellation starfield behind every
+ * non-hub page - see sharedStyles() in waitlist-landing-template.ts). Square on
+ * purpose: `background-size: cover` crops rather than letterboxes, and a 16:9 source
+ * would show only the middle ~26% of its width on a phone, where a square shows ~46%.
+ *
+ * 1280 rather than the full 1600: it renders behind text at cover scale, so the extra
+ * pixels only cost bytes. WebP rather than AVIF despite the usual rule - measured on
+ * this image AVIF came out LARGER (158KB vs 122KB), because a dense starfield is
+ * high-frequency noise, the one case AVIF's smooth-gradient strengths don't help.
+ * q75 is where star points still read as points rather than smudges.
+ */
+async function buildSiteBackground(): Promise<void> {
+    const srcPath = path.join(sourceDir, 'Heatchecks_background.png');
+    if (!fs.existsSync(srcPath)) {
+        console.log('⚠ Heatchecks_background.png not found in assets/new-website, skipping site-background');
+        return;
+    }
+    const outPath = path.join(outDir, 'site-background.webp');
+    const info = await sharp(srcPath).resize({ width: 1280, withoutEnlargement: true }).webp({ quality: 75 }).toFile(outPath);
+    console.log(
+        `✓ Heatchecks_background.png -> site-background.webp ` +
+        `(${(fs.statSync(outPath).size / 1024).toFixed(0)}KB) [${info.width}x${info.height}]`
+    );
+}
+
+/**
  * The two settlement-email hero images (tank-email-correct/incorrect.jpg) - unlike
  * every other job here, these sources aren't SVG-wrapped exports from assets/new-
  * website/, they're plain flat 1080x1080 PNGs (no alpha channel) sitting at the repo
@@ -441,6 +467,7 @@ async function run(): Promise<void> {
     const want = (name: string) => only.length === 0 || only.includes(name);
 
     if (want('world-map')) await buildWorldMapImages();
+    if (want('site-background')) await buildSiteBackground();
     if (want('email')) await buildSettlementEmailImages();
     if (want('explore-logo')) await buildExploreLogo();
     if (want('market-movers-logo')) await buildMarketMoversLogo();

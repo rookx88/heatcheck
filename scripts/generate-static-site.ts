@@ -160,6 +160,7 @@ const NEW_SITE_IMAGES = [
     'world-map.webp',
     'explore-logo.png',
     'explore-logo.webp',
+    'site-background.webp',
     'og-share-world-map.jpg',
     'tank-email-correct.jpg',
     'tank-email-incorrect.jpg',

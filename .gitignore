@@ -62,6 +62,12 @@ assets/images/*
 !assets/images/heatchecks-logo-email.png
 !assets/images/register-banner.webp
 !assets/images/tank-homepage-backdrop.webp
+# The site-wide page background (sharedStyles' body::before). Must be committed for
+# the same reason as the game-screen art below: optimize-landing-images.ts is a manual
+# one-off, NOT part of build:static, so Cloudflare never regenerates it - it only
+# copies assets/images -> public/assets/images. Un-tracked means a 404 background on
+# every deployed page, silently falling back to the base gradient.
+!assets/images/site-background.webp
 # Game-screen backgrounds (components/LandScreen.tsx, TankScreen.tsx,
 # WorldMap.tsx consumers) - imported directly by those TSX files via Vite, so
 # the built file must exist in the repo for Cloudflare's from-source build.

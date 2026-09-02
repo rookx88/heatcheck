@@ -90,6 +90,12 @@ export function renderHead(options: HeadOptions): string {
 
     ${schemaScript}
 
+    <!-- The page background (sharedStyles' body::before). A CSS background isn't
+         discovered until the stylesheet has parsed and layout runs, which for a
+         full-viewport image is late enough to see it arrive; preloading starts it
+         with the rest of the head instead. -->
+    <link rel="preload" as="image" href="/assets/images/site-background.webp" type="image/webp">
+
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&family=Montserrat:wght@800;900&family=Permanent+Marker&display=swap" rel="stylesheet">
@@ -113,10 +119,47 @@ function sharedStyles(): string {
         html, body {
             margin: 0;
             padding: 0;
-            background: linear-gradient(180deg, var(--hc-navy-dark) 0%, var(--hc-navy) 55%, var(--hc-navy-light) 100%);
             color: #ffffff;
             font-family: 'Nunito', 'Helvetica Neue', Arial, sans-serif;
             -webkit-font-smoothing: antialiased;
+        }
+        /* Base colour on the ROOT only, and body left transparent on purpose. In the
+           root stacking context a negative z-index child paints after the root's own
+           background but BEFORE in-flow descendants' backgrounds - so a gradient left
+           on body would paint straight over the starfield layer below and hide it. */
+        html {
+            background: linear-gradient(180deg, var(--hc-navy-dark) 0%, var(--hc-navy) 55%, var(--hc-navy-light) 100%);
+        }
+        body { background: transparent; }
+        /* Site-wide starfield behind every page that uses this head. A fixed layer
+           rather than a background on <body>, for two reasons: cover on body would
+           size the image to the whole DOCUMENT, so a long article would blow it up to
+           several screens tall and show a single corner of it; and the usual fix,
+           background-attachment: fixed, repaints on scroll badly enough to stutter on
+           mobile Safari and Android Chrome. A fixed pseudo-element is sized to the
+           viewport, composites on its own layer, and costs nothing on scroll.
+           The gradient above stays as the base: it paints on first style recalc, so
+           there is no flash before the image arrives and no bare page if it 404s.
+           The landmark hubs (Tank Land, Hatchery, food shops, Tank pages) each cover
+           the viewport with their own position:fixed inset:0 art at stacking level 0,
+           which paints over this z-index:-1 layer - so they keep their own
+           backgrounds without needing to opt out. */
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            /* Scrim over the art, not decoration: the panels on these pages
+               (login card, account rows, the register modal) are deliberately
+               translucent and were drawn against a flat gradient, so an undimmed
+               starfield reads straight through them and puts stars behind body
+               copy. Dimming here keeps the constellations legible in the open
+               areas while making every panel safe, without touching each
+               panel's own alpha. */
+            background:
+                linear-gradient(rgba(11, 7, 19, 0.62), rgba(11, 7, 19, 0.62)),
+                url('/assets/images/site-background.webp') center / cover no-repeat;
+            pointer-events: none;
         }
         /* House scrollbars everywhere: navy track, marquee-orange thumb. Surfaces
            with their own aesthetic (the tank-modal artifacts) override the thumb to
