@@ -62,7 +62,12 @@ export function buildTankCardMessage(baseUrl: string, row: TankCardRow): Discord
         image: { url: `${baseUrl}/assets/og/${row.slug}.jpg` },
         color: 0xffc72c,
         footer: {
-            text: `Connect your account at ${baseUrl.replace(/^https?:\/\//, '')}/account to make your pick count`,
+            // Leads with what a member gets for free - the old line ("connect your
+            // account to make your pick count") read as a paywall on picking at all,
+            // when picking here already earns Community Points with no account. The
+            // link is the upsell to Ember, not the price of entry. baseUrl is the
+            // deployment's own origin, so production says heatchecks.io.
+            text: `Earn Community points, no account needed. Link Discord at ${baseUrl.replace(/^https?:\/\//, '')} to earn Ember!`,
             icon_url: `${baseUrl}/assets/images/mudpuppy-default.png`,
         },
     };
