@@ -123,13 +123,13 @@
   font-size: 0.8rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  /* Same white-on-green-outline treatment as the header mini nav's items, and the
+  /* Same green-on-black-outline treatment as the header mini nav's items, and the
      same green ring the nav's round chip carries - these pills ARE this menu's
      round buttons. 1px outline for 0.8rem type. */
-  color: #ffffff;
+  color: #31e874;
   text-shadow:
-    1px 0 0 #31e874, -1px 0 0 #31e874, 0 1px 0 #31e874, 0 -1px 0 #31e874,
-    1px 1px 0 #31e874, -1px -1px 0 #31e874, 1px -1px 0 #31e874, -1px 1px 0 #31e874;
+    1px 0 0 #000000, -1px 0 0 #000000, 0 1px 0 #000000, 0 -1px 0 #000000,
+    1px 1px 0 #000000, -1px -1px 0 #000000, 1px -1px 0 #000000, -1px 1px 0 #000000;
   background: rgba(7, 5, 11, 0.75);
   border: 2px solid #31e874;
   border-radius: 999px;

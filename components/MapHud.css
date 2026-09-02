@@ -114,14 +114,17 @@
   font-size: 0.85rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  /* White glyphs with a green outline drawn around them - the same 8-direction
-     text-shadow trick the ticker tape uses for its outlined type, since
+  /* Brand-green glyphs with a black outline drawn around them - the same
+     8-direction text-shadow trick the ticker tape uses for its outlined type, since
      -webkit-text-stroke eats into the glyph interior and thins the letterform at
-     this size. 1px rather than the ticker's 1.5px: these are 0.85rem. */
-  color: #ffffff;
+     this size. 1px rather than the ticker's 1.5px: these are 0.85rem. The outline
+     barely registers against the menu's own near-black fill; it earns its keep when
+     the translucent panel sits over bright page content, where it keeps the green
+     legible instead of letting it wash out. */
+  color: #31e874;
   text-shadow:
-    1px 0 0 #31e874, -1px 0 0 #31e874, 0 1px 0 #31e874, 0 -1px 0 #31e874,
-    1px 1px 0 #31e874, -1px -1px 0 #31e874, 1px -1px 0 #31e874, -1px 1px 0 #31e874;
+    1px 0 0 #000000, -1px 0 0 #000000, 0 1px 0 #000000, 0 -1px 0 #000000,
+    1px 1px 0 #000000, -1px -1px 0 #000000, 1px -1px 0 #000000, -1px 1px 0 #000000;
   text-decoration: none;
   padding: 0.6rem 0.9rem;
 }
