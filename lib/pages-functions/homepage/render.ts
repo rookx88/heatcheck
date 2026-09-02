@@ -113,7 +113,18 @@ function renderSportRow(slots: SportSlot[]): string {
             <h2 id="hc-tanks-heading">Sports Tanks Available</h2>
             <p class="hc-section-sub hc-section-sub--tanks">Tanks are Heatcheck&rsquo;s most important invention. With the wisdom of the user, it unlocks embers, the currency of the world that allows you to grow your mud puppy. Make your pick on a tank. Get it right. Earn Ember.</p>
             <div class="hc-tanks-layout">
-                <div id="hc-showcase-root" aria-hidden="true"></div>
+                <!-- Tank artifact + the Ember Dash teaser stacked in one column, so the
+                     banner sits directly under the tank and takes its EXACT width: the
+                     stack owns the flex sizing the artifact used to carry, and both
+                     children are width:100% of it. Derived asset - the source art is
+                     Ember_Run_banner.png (1600x900, 2.2MB); this is the same image at
+                     2x its rendered size, 129KB. -->
+                <div class="hc-tank-stack">
+                    <div id="hc-showcase-root" aria-hidden="true"></div>
+                    <img class="hc-ember-dash" src="/assets/images/ember-dash-banner.webp"
+                         alt="Ember Dash, coming soon. While AXO Corp has their system to mine ember, others are taking riskier approaches."
+                         width="1120" height="630" loading="lazy" decoding="async">
+                </div>
                 <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
                     ${buttons}
                 </div>
@@ -241,14 +252,23 @@ function homepageStyles(): string {
         /* position:relative (z-index left 'auto') so this paints above
            .hc-tanks-backdrop - see that rule's comment for why. */
         .hc-tanks-layout { position: relative; display: flex; flex-direction: row; align-items: center; gap: 0.75rem; }
-        .hc-tanks-layout #hc-showcase-root { flex: 1 1 auto; margin: 0; min-width: 0; }
+        /* The stack now carries the flex sizing the artifact used to, so the Ember
+           Dash banner beneath it inherits exactly the tank's width at every breakpoint
+           instead of needing its own matching numbers. */
+        .hc-tank-stack { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 0.75rem; }
+        .hc-tanks-layout #hc-showcase-root { flex: 0 0 auto; margin: 0; min-width: 0; width: 100%; }
+        .hc-ember-dash {
+            display: block; width: 100%; height: auto;
+            border-radius: 12px;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(47, 230, 217, 0.25);
+        }
         .hc-sport-row {
             margin: 0; padding: 0; flex: 0 0 auto;
             display: flex; flex-direction: column; gap: 0.6rem; align-items: center;
         }
         @media (min-width: 760px) {
             .hc-tanks-layout { gap: 1.5rem; }
-            .hc-tanks-layout #hc-showcase-root { flex: 0 1 560px; }
+            .hc-tank-stack { flex: 0 1 560px; }
         }
         /* Round navy-glass symbol buttons in the house teal grammar (selected =
            committed glow). Sport name is on aria-label/title, not visible text. */
