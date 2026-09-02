@@ -835,15 +835,25 @@ export function marketMoversStyles(): string {
                grid-row top offset. */
             #market-movers {
                 margin-top: 1.5rem;
-                /* A pale wash of the house blue (#5ec1ee) rather than white. Light
-                   enough that everything tuned for a light ground still reads: dark
-                   headings, the maroon news links, the sign-coloured card rails. */
-                background: #e4f3fc;
+                /* Black, so the light-blue cards sit ON it rather than being a tint
+                   inside a light panel - the same figure/ground the black header band
+                   and the #5ec1ee frame already set up. Everything tuned for a light
+                   ground (dark headings, maroon news links, sign-coloured rails) lives
+                   INSIDE the cards, which stay light blue, so none of it is affected;
+                   the only things that sat directly on the old light panel were the
+                   board heading and caption, whose light-panel overrides are dropped
+                   below. */
+                background: #000000;
                 padding: 0 1rem 1.25rem;
             }
             .hc-mm-band {
                 display: flex; align-items: center; gap: 1rem;
                 background: #000000;
+                /* The band and the panel are both black now, so the header would run
+                   straight into the tabs with no edge. This line is that edge - same
+                   #5ec1ee as the panel frame, bled to the panel's inner width by the
+                   negative side margins below. */
+                border-bottom: 3px solid #5ec1ee;
                 margin: 0 -1rem 0.25rem; padding: 0.6rem 1rem;
             }
             .hc-mm-logo { width: clamp(140px, 14vw, 190px); margin: 0; flex-shrink: 0; }
@@ -853,28 +863,22 @@ export function marketMoversStyles(): string {
                 border-radius: 8px; padding: 0.45rem 0.7rem;
             }
             .hc-mm-tabs { margin-top: 0.5rem; }
-            /* A fully transparent card read as flat/boring on the old white panel - a
-               tint plus a sign-colored left rail gives the card its own presence. The
-               tint is deeper now that the panel is itself blue: at the old 0.22 the
-               card and the panel were nearly the same colour and the card stopped
-               reading as a card. */
+            /* No background override any more: the card keeps the base solid #5ec1ee.
+               The old translucent tints existed only to separate a blue card from a
+               light panel; over black a 0.42 blue would render dark and muddy, and the
+               point of the black panel is that the light blue reads as light blue. */
             .hc-mm-card {
-                background: rgba(94, 193, 238, 0.42);
                 padding: 1rem 1.15rem 1.2rem; border-radius: 10px;
                 border-left: 5px solid #94a3b8;
-                box-shadow: 0 2px 10px rgba(11, 21, 38, 0.1);
             }
             .hc-mm-card[data-sign="pos"] { border-left-color: #2f9e1e; }
             .hc-mm-card[data-sign="neg"] { border-left-color: #e33a24; }
-            /* The chip went pale blue back when the panel was white and a white chip
-               vanished into it. With a blue panel and a deeper blue card, white is the
-               colour that separates it from the card again. */
-            .hc-mm-desc { background: rgba(255, 255, 255, 0.8); }
-            /* The panel is white here, so the board's caption (white at 55% on the dark
-               page) would be invisible. Everything inside the SVG stays as-is - it
-               carries its own black ground. */
-            .hc-mmb-caption { color: #47566b; }
-            .hc-mmb-heading { color: #0b1526; }
+            /* .hc-mm-desc, .hc-mmb-caption and .hc-mmb-heading all had light-panel
+               overrides here. The desc chip sits on the card, which is solid #5ec1ee
+               again, so the base 0.92 white is the tuned value once more; the board
+               heading and caption sit directly on the panel, which is now black - the
+               same ground they have on mobile - so the base teal/white-at-55% read
+               correctly and the dark overrides would have made them invisible. */
         }
 
         @media (prefers-reduced-motion: reduce) {
