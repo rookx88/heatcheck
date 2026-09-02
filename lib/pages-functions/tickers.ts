@@ -19,6 +19,7 @@ import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { fetchMarket, safeJsonParse } from './gamma';
 import { fetchMarket as fetchKalshiMarket, fetchKalshiTradesPage } from './kalshi';
 import { getGameConfig } from './pets';
+import { leagueGroupLabel, leagueRuleAccepts, parseLeagueRule } from './league-rules';
 
 // Spec'd framing constraint: ticker values/charts are never presented as predictive.
 // Every API response that carries a value or chart includes this note verbatim.
@@ -112,7 +113,8 @@ export interface EligibilityContext {
 
 // League/market sets are definitional, like DOGS_CHALK_PIVOT - not tunables. The soccer
 // set mirrors the full soccer slate the sync ingests (lib/pages-functions/polymarket.ts).
-const SOCCER_LEAGUES = new Set(['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1']);
+// Soccer's league set now lives in league-rules.ts, which owns every league-scoped
+// rule; only the totals set is still local to this module.
 const TOTALS_MARKETS = new Set(['totals', 'team_totals']);
 
 // Over/Under side detection: Polymarket totals label their outcomes Over/Under; Kalshi
@@ -139,6 +141,19 @@ function isMarketFavorite(ctx: EligibilityContext): boolean {
     for (let i = 0; i < ctx.probs.length; i++) {
         if (i === ctx.side) continue;
         if (ctx.probs[i] > p || (ctx.probs[i] === p && i < ctx.side)) return false;
+    }
+    return true;
+}
+
+// The mirror of the above for league-scoped underdog children ($NBADOGS et al): the
+// LEAST-favored side, ties again broken to the lowest index so exactly one side per
+// market qualifies. On a three-way soccer moneyline this is the longest price, not
+// merely "not the favorite".
+function isMarketUnderdog(ctx: EligibilityContext): boolean {
+    const p = ctx.probs[ctx.side];
+    for (let i = 0; i < ctx.probs.length; i++) {
+        if (i === ctx.side) continue;
+        if (ctx.probs[i] < p || (ctx.probs[i] === p && i < ctx.side)) return false;
     }
     return true;
 }
@@ -185,24 +200,28 @@ export function checkEligibility(ruleType: string, ctx: EligibilityContext, cfg:
                 ? { ok: true }
                 : { ok: false, reason: 'requires the Under side of the total' };
         }
-        case 'nfl_favorite': {
-            if (ctx.league !== 'NFL') {
-                return { ok: false, reason: `requires an NFL market; this Tank's league is "${ctx.league ?? 'unknown'}"` };
+        default: {
+            // League-scoped children ($NBACHALK, $MLBDOGS, and the pre-existing
+            // nfl_favorite/soccer_favorite): the parent's measure, one league only.
+            // They take the market-favored / least-favored side rather than the global
+            // pair's 0.5 pivot - which is exactly what nfl_favorite and soccer_favorite
+            // already did, so nothing live changes. The two rules agree on every
+            // two-way market; they can only differ on a 3-way soccer moneyline, where
+            // the favored side may sit under 0.5.
+            const rule = parseLeagueRule(ruleType);
+            if (!rule) return { ok: false, reason: `unknown rule_type "${ruleType}"` };
+            if (!leagueRuleAccepts(rule, ctx.league)) {
+                return { ok: false, reason: `requires a ${leagueGroupLabel(rule)} market; this Tank's league is "${ctx.league ?? 'unknown'}"` };
             }
-            return isMarketFavorite(ctx)
-                ? { ok: true }
-                : { ok: false, reason: `requires the market-favored side; tagged side is ${pct}` };
-        }
-        case 'soccer_favorite': {
-            if (!ctx.league || !SOCCER_LEAGUES.has(ctx.league)) {
-                return { ok: false, reason: `requires a soccer-league market; this Tank's league is "${ctx.league ?? 'unknown'}"` };
+            const wantFavorite = rule.side === 'favorite';
+            const isFav = isMarketFavorite(ctx);
+            if (wantFavorite) {
+                return isFav ? { ok: true } : { ok: false, reason: `requires the market-favored side; tagged side is ${pct}` };
             }
-            return isMarketFavorite(ctx)
+            return isMarketUnderdog(ctx)
                 ? { ok: true }
-                : { ok: false, reason: `requires the market-favored side; tagged side is ${pct}` };
+                : { ok: false, reason: `requires the least-favored side; tagged side is ${pct}` };
         }
-        default:
-            return { ok: false, reason: `unknown rule_type "${ruleType}"` };
     }
 }
 
@@ -449,6 +468,9 @@ export interface TickerValue {
     description: string;
     ruleType: string;
     tabOrder: number;
+    // The index this one is a league slice of, or null for a top-level index. Both
+    // boards nest on this; the tape filters to the top level with it.
+    parentKey: string | null;
     value: number;      // live SUM(delta): a cumulative percentage starting at 0, NOT an indexed price
     eventCount: number;
     settleWinPct: number;
@@ -465,6 +487,7 @@ export interface TickerValue {
 export async function getTickerValues(sql: SqlReader): Promise<TickerValue[]> {
     const rows = await sql`
         SELECT tk.key, tk.display_name, tk.description, tk.rule_type, tk.tab_order,
+               tk.parent_key,
                tk.settle_win_pct::float8 AS settle_win_pct,
                tk.settle_loss_pct::float8 AS settle_loss_pct,
                COALESCE(SUM(e.delta) FILTER (WHERE e.source = 'slate' OR t.visibility = 'app'), 0)::float8 AS value,
@@ -474,7 +497,7 @@ export async function getTickerValues(sql: SqlReader): Promise<TickerValue[]> {
         LEFT JOIN tank_pages t ON t.id = e.tank_id
         WHERE tk.active
         GROUP BY tk.key, tk.display_name, tk.description, tk.rule_type, tk.tab_order,
-                 tk.settle_win_pct, tk.settle_loss_pct
+                 tk.parent_key, tk.settle_win_pct, tk.settle_loss_pct
         ORDER BY tk.tab_order, tk.key
     `;
     return rows.map((r) => ({
@@ -483,6 +506,7 @@ export async function getTickerValues(sql: SqlReader): Promise<TickerValue[]> {
         description: r.description as string,
         ruleType: r.rule_type as string,
         tabOrder: r.tab_order as number,
+        parentKey: (r.parent_key as string | null) ?? null,
         value: r.value as number,
         eventCount: r.event_count as number,
         settleWinPct: r.settle_win_pct as number,

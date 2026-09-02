@@ -19,6 +19,8 @@
 // rather than guessed at. Volume is present for 100% of games within 24h of kickoff
 // and only 35% beyond three days, which is why locking runs late (see index-lock.ts).
 
+import { leagueRuleAccepts, parseLeagueRule } from './league-rules';
+
 export interface SlateMarketRow {
     event_id: string;
     league: string;
@@ -58,7 +60,6 @@ export const MIN_SELECTION_VOLUME = 100;
 export const MIN_ENTRY_PROB = 0.05;
 export const MAX_ENTRY_PROB = 0.95;
 
-const SOCCER_LEAGUES = new Set(['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1']);
 const TOTALS_MARKET_TYPE = 'totals';
 const MONEYLINE_MARKET_TYPE = 'moneyline';
 
@@ -106,18 +107,16 @@ export function marketTypeForRule(ruleType: string): string | null {
         case 'favorite':
         case 'heavy_favorite':
         case 'longshot':
-        case 'nfl_favorite':
-        case 'soccer_favorite':
             return MONEYLINE_MARKET_TYPE;
         default:
-            return null; // unknown strategy: no slate positions, tags still work
+            // League-scoped children read the same moneyline their parent does.
+            return parseLeagueRule(ruleType) ? MONEYLINE_MARKET_TYPE : null;
     }
 }
 
 export function leagueQualifies(ruleType: string, league: string): boolean {
-    if (ruleType === 'nfl_favorite') return league === 'NFL';
-    if (ruleType === 'soccer_favorite') return SOCCER_LEAGUES.has(league);
-    return true;
+    const rule = parseLeagueRule(ruleType);
+    return rule ? leagueRuleAccepts(rule, league) : true;
 }
 
 /**
@@ -141,8 +140,6 @@ export function sideForRule(
         case 'total_under':
             return overUnderIndex(row, 'under');
         case 'favorite':
-        case 'nfl_favorite':
-        case 'soccer_favorite':
             return argmaxIndex(p);
         case 'underdog':
             return argminIndex(p);
@@ -154,8 +151,16 @@ export function sideForRule(
             const i = argminIndex(p);
             return p[i] < cfg.moonshotMaxProb ? i : null;
         }
-        default:
-            return null;
+        default: {
+            // A league child holds the same side its parent would on this game -
+            // favorites take the argmax, underdogs the argmin - so a child's position
+            // is literally a filtered view of the parent's, which is what makes the
+            // family partition the parent exactly. leagueQualifies has already
+            // screened the league by the time we get here.
+            const rule = parseLeagueRule(ruleType);
+            if (!rule) return null;
+            return rule.side === 'favorite' ? argmaxIndex(p) : argminIndex(p);
+        }
     }
 }
 

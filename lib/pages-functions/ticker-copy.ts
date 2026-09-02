@@ -59,6 +59,33 @@ const COPY: Record<string, TickerCopy> = {
         leagues: SOCCER_LEAGUES,
         blurb: "Tracks the favored side across Europe's big five. It climbs when the pecking order holds, and falls when a giant slips - draws included.",
     },
+    // League slices of the two big indexes. Same measure as their parent, one league
+    // only - together they cover every league on the board, so a family adds up to the
+    // parent it sits inside.
+    nba_favorite: {
+        leagues: ['NBA'],
+        blurb: 'The NBA slice of the favorites. It climbs on nights the better team simply wins, and falls when the league does what the NBA does.',
+    },
+    nba_underdog: {
+        leagues: ['NBA'],
+        blurb: "The NBA slice of the underdogs. Rides whoever the market wrote off that night - and the NBA writes off plenty of teams that go on to win.",
+    },
+    mlb_favorite: {
+        leagues: ['MLB'],
+        blurb: 'The baseball slice of the favorites. The best team loses constantly in this sport, so it takes more punishment than the others.',
+    },
+    mlb_underdog: {
+        leagues: ['MLB'],
+        blurb: 'The baseball slice of the underdogs. A long season of bullpen games and short-priced favorites getting beaten keeps this one interesting.',
+    },
+    nfl_underdog: {
+        leagues: ['NFL'],
+        blurb: 'The NFL slice of the underdogs. One Sunday of upsets moves it more than a quiet month does.',
+    },
+    soccer_underdog: {
+        leagues: SOCCER_LEAGUES,
+        blurb: "The soccer slice of the underdogs, across Europe's big five. Rides the longest price in each match, so a single giant-killing carries it.",
+    },
 };
 
 // null for an unknown rule_type: every caller falls back to the ticker's own

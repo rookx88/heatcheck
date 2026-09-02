@@ -39,6 +39,7 @@ import {
     SUPPORTED_LEAGUES,
 } from './polymarket';
 import { getPropProvider } from './tank-providers';
+import { leagueRuleAccepts, parseLeagueRule } from './lib/pages-functions/league-rules';
 import {
     ensureKalshiTable,
     startKalshiScheduler,
@@ -216,7 +217,6 @@ async function tagPublishedTankOnTickers(slug: string, gameSnapshot: any): Promi
     const outcomes: string[] | null = Array.isArray(gameSnapshot?.prop?.odds?.outcomes)
         ? gameSnapshot.prop.odds.outcomes.map(String)
         : null;
-    const SOCCER_LEAGUES = ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
     const overUnderSide = (side: number): 'over' | 'under' | null => {
         const label = outcomes?.[side];
         if (typeof label !== 'string') return null;
@@ -229,6 +229,8 @@ async function tagPublishedTankOnTickers(slug: string, gameSnapshot: any): Promi
     };
     const isMarketFavorite = (side: number): boolean =>
         probs.every((q, i) => i === side || q < probs[side] || (q === probs[side] && i > side));
+    const isMarketUnderdog = (side: number): boolean =>
+        probs.every((q, i) => i === side || q > probs[side] || (q === probs[side] && i > side));
     const sideEligible = (ruleType: string, side: number): boolean => {
         const p = probs[side];
         if (ruleType === 'underdog') return p < 0.5;
@@ -237,8 +239,16 @@ async function tagPublishedTankOnTickers(slug: string, gameSnapshot: any): Promi
         if (ruleType === 'longshot') return p < moonshotMax;
         if (ruleType === 'total_over') return market !== null && ['totals', 'team_totals'].includes(market) && overUnderSide(side) === 'over';
         if (ruleType === 'total_under') return market !== null && ['totals', 'team_totals'].includes(market) && overUnderSide(side) === 'under';
-        if (ruleType === 'nfl_favorite') return league === 'NFL' && isMarketFavorite(side);
-        if (ruleType === 'soccer_favorite') return league !== null && SOCCER_LEAGUES.includes(league) && isMarketFavorite(side);
+        // League-scoped children (nba_favorite, mlb_underdog, and the older
+        // nfl_favorite/soccer_favorite) all parse through one shared rule, so adding a
+        // league needs no edit here. Still an acknowledged mirror of checkEligibility -
+        // the deployed endpoint re-validates, so drift costs a logged 422, never a
+        // wrong tag.
+        const leagueRule = parseLeagueRule(ruleType);
+        if (leagueRule) {
+            if (!leagueRuleAccepts(leagueRule, league)) return false;
+            return leagueRule.side === 'favorite' ? isMarketFavorite(side) : isMarketUnderdog(side);
+        }
         return false;
     };
 

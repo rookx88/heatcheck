@@ -47,9 +47,18 @@ async function run() {
     const list = await api('GET', '/api/tickers');
     check('GET /api/tickers returns 200 with note', list.status === 200 && typeof list.json?.note === 'string');
     const keys = (list.json?.tickers ?? []).map((t: any) => t.key);
-    const EXPECTED_KEYS = ['dogs', 'chalk', 'locks', 'moonshot', 'overs', 'unders', 'gridiron', 'footy'];
-    check('all eight tickers present, ordered by tab_order (add_tickers_batch2.sql is a deploy prerequisite)',
+    const EXPECTED_KEYS = ['dogs', 'chalk', 'locks', 'moonshot', 'overs', 'unders', 'gridiron', 'footy',
+        'nbachalk', 'mlbchalk', 'nbadogs', 'mlbdogs', 'nfldogs', 'socdogs'];
+    check('all fourteen tickers present, ordered by tab_order (add_tickers_batch2/3.sql are deploy prerequisites)',
         JSON.stringify(keys.filter((k: string) => EXPECTED_KEYS.includes(k))) === JSON.stringify(EXPECTED_KEYS));
+    // Each family partitions its parent by league, so a child must name a parent that
+    // is itself top-level - a child of a child would double-count on the nested board.
+    const EXPECTED_FAMILIES: Record<string, string> = {
+        gridiron: 'chalk', footy: 'chalk', nbachalk: 'chalk', mlbchalk: 'chalk',
+        nbadogs: 'dogs', mlbdogs: 'dogs', nfldogs: 'dogs', socdogs: 'dogs',
+    };
+    check('the eight league sub-indexes point at chalk/dogs, and no other ticker has a parent',
+        (list.json?.tickers ?? []).every((t: any) => (t.parentKey ?? null) === (EXPECTED_FAMILIES[t.key] ?? null)));
     check('values are numeric (not NUMERIC strings)', (list.json?.tickers ?? []).every((t: any) => typeof t.value === 'number'));
     check('fallback pcts seeded: dogs/chalk symmetric 5/5, locks 5/15, moonshot 20/5, batch-2 all 5/5',
         ['dogs:5:5', 'chalk:5:5', 'locks:5:15', 'moonshot:20:5', 'overs:5:5', 'unders:5:5', 'gridiron:5:5', 'footy:5:5'].every((spec) => {
