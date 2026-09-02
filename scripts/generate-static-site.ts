@@ -256,8 +256,15 @@ function copyNewSiteImages(): void {
     for (const file of NEW_SITE_IMAGES) {
         const src = path.join(assetsImagesDir, file);
         if (!fs.existsSync(src)) {
-            console.warn(`⚠ Expected new-site image not found: assets/images/${file}`);
-            continue;
+            // Hard failure, not a warning: this used to warn-and-continue, and the one
+            // line scrolled past in a build log thousands of lines long. An allowlisted
+            // file that isn't there means someone deleted or renamed art that a page
+            // still points at, which should stop the build rather than ship a gap.
+            throw new Error(
+                `Allowlisted image missing: assets/images/${file}. It is listed in ` +
+                `NEW_SITE_IMAGES but not on disk - restore it, or drop the entry if the ` +
+                `art is genuinely retired.`
+            );
         }
         const distDest = path.join(distImagesDir, file);
         const publicDest = path.join(publicImagesDir, file);
@@ -269,6 +276,77 @@ function copyNewSiteImages(): void {
         copied++;
     }
     console.log(`✓ Copied ${copied} new-site image(s) to dist/assets/images and public/assets/images`);
+}
+
+/**
+ * Fail the build if anything it just produced points at an image that is not in the
+ * output.
+ *
+ * This is the check that catches the failure copyNewSiteImages() cannot. That one
+ * verifies "on the allowlist, present on disk". The bug this exists for is the exact
+ * inverse: an image committed, referenced from real markup, sitting happily in
+ * assets/images - and simply never added to NEW_SITE_IMAGES, so the build never
+ * copies it. Nothing is missing from the allowlist's point of view, so it stays
+ * quiet, and the page ships with a broken image. That is how mudpuppy-auth.webp,
+ * world-map-auth.webp and ember-dash-banner.webp all 404'd on a preview deploy while
+ * every local check looked fine.
+ *
+ * Scans JS as well as HTML/CSS deliberately: those three were referenced from
+ * AuthForm.tsx and only ever appear in the compiled bundle, never in generated HTML.
+ */
+export function verifyReferencedImages(rootDir: string = distDir): number {
+    const IMAGE_REF = /\/assets\/images\/[A-Za-z0-9._/-]+\.(?:webp|png|jpe?g|svg|gif|avif)/g;
+    // Strings that look like image paths but aren't. Kept as an explicit list rather
+    // than by loosening the scan or skipping JS - scanning the bundles is precisely
+    // what catches the real failure, since AuthForm's art is referenced from TSX and
+    // never appears in generated HTML.
+    // Genuinely dynamic paths (`/assets/images/${name}`) don't need listing here: the
+    // `${` breaks the character class, so they never match in the first place.
+    const NOT_REFERENCES = new Set([
+        // Example text in the legacy admin's "image URL" input placeholder (index.tsx).
+        '/assets/images/filename.png',
+    ]);
+    const referrers = new Map<string, Set<string>>();
+
+    const walk = (dir: string): void => {
+        if (!fs.existsSync(dir)) return;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                if (entry.name === 'images') continue; // the art itself, not a referrer
+                walk(full);
+            } else if (/\.(html|css|js)$/.test(entry.name)) {
+                for (const ref of fs.readFileSync(full, 'utf-8').match(IMAGE_REF) ?? []) {
+                    if (NOT_REFERENCES.has(ref)) continue;
+                    if (!referrers.has(ref)) referrers.set(ref, new Set());
+                    referrers.get(ref)!.add(path.relative(rootDir, full));
+                }
+            }
+        }
+    };
+    walk(rootDir);
+
+    const missing = [...referrers.keys()]
+        .filter(ref => !fs.existsSync(path.join(rootDir, ref.replace(/^\//, ''))))
+        .sort();
+
+    if (missing.length > 0) {
+        const detail = missing
+            .map(ref => {
+                const from = [...referrers.get(ref)!].slice(0, 3).join(', ');
+                const name = ref.replace('/assets/images/', '');
+                const onDisk = fs.existsSync(path.join(assetsImagesDir, name));
+                return `  ${ref}\n      referenced by: ${from}\n      ${onDisk
+                    ? `assets/images/${name} EXISTS - add '${name}' to NEW_SITE_IMAGES so the build copies it`
+                    : `not in assets/images/ either - the art is missing, or the path is wrong`}`;
+            })
+            .join('\n');
+        throw new Error(
+            `${missing.length} referenced image(s) are missing from the build output:\n${detail}`
+        );
+    }
+    console.log(`✓ Verified ${referrers.size} referenced image path(s) resolve in ${path.basename(rootDir)}/`);
+    return referrers.size;
 }
 
 /**
@@ -1614,7 +1692,13 @@ Disallow: /api/
         fs.mkdirSync(path.dirname(publicRobotsPath), { recursive: true });
         fs.writeFileSync(publicRobotsPath, robotsTxt, 'utf-8');
         console.log('✓ Generated robots.txt\n');
-        
+
+        // Last, once every page and bundle is on disk - it reads the finished output
+        // rather than trusting what the build meant to write.
+        console.log('Verifying referenced images...');
+        verifyReferencedImages();
+        console.log('');
+
         console.log('Static site generation complete!');
         
     } catch (error) {
