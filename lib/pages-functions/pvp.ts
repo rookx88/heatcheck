@@ -2,7 +2,7 @@
 // and every component screen live here; the tables are in create_pvp_tables.sql and
 // settlement is functions/api/pvp-settlement-sweep.ts.
 //
-// The shape: /pvp user:@X creates a pending battle and posts ONE public line pinging
+// The shape: /pvp challenge user:@X creates a pending battle and posts ONE public line pinging
 // only the opponent. Everything after that is ephemeral - accepting, searching,
 // picking, and each player's own selections - until the battle settles and the recap
 // posts. Each player picks up to 3 props on games kicking off in the next 72h;
@@ -254,8 +254,14 @@ export async function handlePvpCommand(context: RequestContext, interaction: any
     const me: string | undefined = interaction.member?.user?.id;
     if (!guildId || !me) return ephemeral('Run this in a server, not a DM.');
 
-    const targetId: string | undefined = interaction.data?.options?.find((o: any) => o.name === 'user')?.value;
-    if (targetId) return createChallenge(context, interaction, guildId, me, targetId);
+    // The dispatcher hands us the SUBCOMMAND's own options on data.options (the same
+    // shim the /heatchecks hub uses), so this only has to pick a branch.
+    const sub: string = interaction.data?.options?.[0]?.name ?? 'battles';
+    if (sub === 'challenge') {
+        const targetId: string | undefined = interaction.data?.options?.find((o: any) => o.name === 'user')?.value;
+        if (!targetId) return ephemeral('Pick someone to challenge.');
+        return createChallenge(context, interaction, guildId, me, targetId);
+    }
     return deferredEphemeral(context, interaction, hubData(context, guildId, me));
 }
 
@@ -289,7 +295,7 @@ async function createChallenge(context: RequestContext, interaction: any, guildI
           AND ((challenger_id = ${me} AND opponent_id = ${targetId}) OR (challenger_id = ${targetId} AND opponent_id = ${me}))
         LIMIT 1
     `;
-    if (live.length > 0) return ephemeral('You already have a battle going with them — run `/pvp` to see it.');
+    if (live.length > 0) return ephemeral('You already have a battle going with them — run `/pvp battles` to see it.');
 
     // Both caps are checked BEFORE the public post, which is the whole point of them.
     const counts = (await sql`
@@ -318,7 +324,7 @@ async function createChallenge(context: RequestContext, interaction: any, guildI
     } catch (err: any) {
         // The partial unique index is the real guard; the pre-check above just gets a
         // friendlier message in the common case.
-        if (err?.code === '23505') return ephemeral('You already have a battle going with them — run `/pvp` to see it.');
+        if (err?.code === '23505') return ephemeral('You already have a battle going with them — run `/pvp battles` to see it.');
         throw err;
     }
 
@@ -326,7 +332,7 @@ async function createChallenge(context: RequestContext, interaction: any, guildI
     // discoverable only by running /pvp - so say that plainly rather than implying
     // they'll be pinged.
     if (!cfg.pvp_announce_challenges) {
-        return screen(`Challenge sent to <@${targetId}>. Challenge announcements are off in this server, so tell them to run \`/pvp\` — they have 24h to accept.`);
+        return screen(`Challenge sent to <@${targetId}>. Challenge announcements are off in this server, so tell them to run \`/pvp battles\` — they have 24h to accept.`);
     }
 
     const challengerName = interaction.member?.nick || interaction.member?.user?.global_name || interaction.member?.user?.username || 'Someone';
@@ -335,10 +341,10 @@ async function createChallenge(context: RequestContext, interaction: any, guildI
         await sql`UPDATE pvp_battles SET challenge_message_id = ${messageId} WHERE id = ${battleId}`;
     } catch (err) {
         console.error('[pvp] Challenge ping failed:', err);
-        return screen(`Challenge sent to <@${targetId}> — but I couldn't post the notice in <#${pvpChannelId}>, so tell them to run \`/pvp\`. They have 24h to accept.`);
+        return screen(`Challenge sent to <@${targetId}> — but I couldn't post the notice in <#${pvpChannelId}>, so tell them to run \`/pvp battles\`. They have 24h to accept.`);
     }
 
-    return screen(`Challenge sent to <@${targetId}>. They have 24h to accept — you'll see it under \`/pvp\` either way.`);
+    return screen(`Challenge sent to <@${targetId}>. They have 24h to accept — you'll see it under \`/pvp battles\` either way.`);
 }
 
 // ===================================================================================
@@ -349,7 +355,13 @@ interface HubBattleRow extends BattleRow {
     created_at: string;
 }
 
-async function hubData(context: RequestContext, guildId: string, me: string): Promise<DeferredMessageData> {
+/**
+ * The hub. `selected` is a battle or challenge the user just picked from one of the
+ * dropdowns: a select never navigates on its own (people read that as the screen
+ * jumping, or as nothing having happened), so picking one re-renders THIS screen with
+ * the choice marked on the widget and the action revealed underneath.
+ */
+async function hubData(context: RequestContext, guildId: string, me: string, selected?: string): Promise<DeferredMessageData> {
     const sql = getSql(context.env);
     const [battles, records] = await Promise.all([
         sql`
@@ -402,12 +414,11 @@ async function hubData(context: RequestContext, guildId: string, me: string): Pr
             const exp = unixOf(b.expires_at);
             lines.push(`• <@${b.challenger_id}> challenged you${exp ? ` — expires <t:${exp}:R>` : ''}`);
         }
-        if (incoming.length === 1) {
-            rows.push(buttonRow([
-                { label: `Accept — ${nameOf(incoming[0].challenger_id)}`, customId: `pv:acc:${incoming[0].id}`, style: STYLE_SUCCESS },
-                { label: 'Decline', customId: `pv:dec:${incoming[0].id}`, style: STYLE_DANGER },
-            ]));
-        } else {
+        // One challenge: its buttons are already unambiguous, so show them directly.
+        // Several: a select to choose which, and picking one reveals ITS buttons here
+        // rather than replacing the screen.
+        const chosenIncoming = incoming.find((b) => b.id === selected) ?? (incoming.length === 1 ? incoming[0] : undefined);
+        if (incoming.length > 1) {
             rows.push({
                 type: ACTION_ROW,
                 components: [{
@@ -420,10 +431,19 @@ async function hubData(context: RequestContext, guildId: string, me: string): Pr
                             label: `${nameOf(b.challenger_id)} challenged you`.slice(0, 100),
                             value: b.id,
                             description: (exp ? `Expires ${new Date(exp * 1000).toUTCString().slice(5, 22)} UTC` : 'Accept or decline').slice(0, 100),
+                            // Keeps the widget showing what was picked - without this it
+                            // snaps back to the placeholder and looks like nothing happened.
+                            default: b.id === chosenIncoming?.id,
                         };
                     }),
                 }],
             });
+        }
+        if (chosenIncoming) {
+            rows.push(buttonRow([
+                { label: `Accept — ${nameOf(chosenIncoming.challenger_id)}`, customId: `pv:acc:${chosenIncoming.id}`, style: STYLE_SUCCESS },
+                { label: 'Decline', customId: `pv:dec:${chosenIncoming.id}`, style: STYLE_DANGER },
+            ]));
         }
     }
 
@@ -444,15 +464,23 @@ async function hubData(context: RequestContext, guildId: string, me: string): Pr
                 description: `They have ${countOf(b.id, them)}/${PICKS_PER_PLAYER}${close ? ` · picks lock ${relativeFromNow(close)}` : ''}`.slice(0, 100),
             };
         });
+        const chosenActive = active.find((b) => b.id === selected);
         rows.push({
             type: ACTION_ROW,
             components: [{
                 type: STRING_SELECT,
                 custom_id: 'pv:go',
                 placeholder: active.length === 1 ? 'Open your battle' : 'Choose a battle',
-                options,
+                options: options.map((o) => ({ ...o, default: o.value === chosenActive?.id })),
             }],
         });
+        // The pick screen is a whole screen of its own, so this one reveals a button
+        // rather than inlining - but it still doesn't move until you press it.
+        if (chosenActive) {
+            rows.push(buttonRow([
+                { label: `Open battle vs ${nameOf(otherPlayer(chosenActive, me))}`, customId: `pv:open:${chosenActive.id}`, style: STYLE_PRIMARY },
+            ]));
+        }
     }
 
     if (outgoing.length > 0) {
@@ -475,7 +503,7 @@ async function hubData(context: RequestContext, guildId: string, me: string): Pr
     }
 
     if (battles.length === 0) {
-        lines.push('', 'No battles going. Challenge someone with `/pvp user:@them` — you each pick 3 props on games starting in the next 72h, and the higher score wins.');
+        lines.push('', 'No battles going. Challenge someone with `/pvp challenge user:@them` — you each pick 3 props on games starting in the next 72h, and the higher score wins.');
     }
 
     rows.push(buttonRow([{ label: 'Refresh', customId: 'pv:hub' }]));
@@ -498,11 +526,6 @@ export async function handlePvpComponent(context: RequestContext, interaction: a
     if (step === 'hub') {
         return deferredUpdate(context, interaction, hubData(context, guildId, me));
     }
-
-    // The two hub selects carry their battle in the VALUE rather than the custom_id
-    // (one component, many battles). Everything downstream is identical - the id is
-    // re-validated against the loaded row either way, so a forged value fails exactly
-    // like a forged custom_id.
     const selectedBattleId: string | undefined = (step === 'go' || step === 'inc')
         ? interaction.data?.values?.[0]
         : undefined;
@@ -565,44 +588,51 @@ export async function handlePvpComponent(context: RequestContext, interaction: a
                 WHERE id = ${battle.id} AND status = 'pending' AND challenger_id = ${me}
                 RETURNING challenge_message_id
             `;
-            if (cancelled.length === 0) return updateScreen('That challenge was already answered or expired — run `/pvp` to see where it stands.');
+            if (cancelled.length === 0) return updateScreen('That challenge was already answered or expired — run `/pvp battles` to see where it stands.');
             // Take the public ping down with it, so nobody answers a dead challenge.
             const messageId = (cancelled[0] as unknown as { challenge_message_id: string | null }).challenge_message_id;
             if (messageId) context.waitUntil(deleteChannelMessage(context.env, battle.channel_id, messageId));
             return deferredUpdate(context, interaction, hubData(context, guildId, me));
         }
 
+        // The two hub selects HOLD: they re-render the hub with the choice marked and
+        // the matching action revealed, instead of navigating on a dropdown touch.
         case 'go':
+            if (battle.challenger_id !== me && battle.opponent_id !== me) return updateScreen("That battle isn't yours.");
+            return deferredUpdate(context, interaction, hubData(context, guildId, me, battle.id));
+
+        case 'inc':
+            if (battle.opponent_id !== me) return updateScreen("That challenge isn't yours to answer.");
+            if (battle.status !== 'pending') return updateScreen('That challenge was already answered or expired.');
+            return deferredUpdate(context, interaction, hubData(context, guildId, me, battle.id));
+
+        case 'open':
         case 'pick':
         case 'back':
             if (battle.challenger_id !== me && battle.opponent_id !== me) return updateScreen("That battle isn't yours.");
             return pickScreen(context, sql, battle, me);
 
-        // One challenge answered from the multi-challenge select: a confirm screen that
-        // names who it is, since the select row is gone once it's been used.
-        case 'inc': {
-            if (battle.opponent_id !== me) return updateScreen("That challenge isn't yours to answer.");
-            if (battle.status !== 'pending') return updateScreen('That challenge was already answered or expired.');
-            const exp = unixOf(battle.expires_at);
-            return updateScreen(
-                `<@${battle.challenger_id}> challenged you to a PvP battle${exp ? ` — expires <t:${exp}:R>` : ''}.\n\nAccept and you'll each have 24h to lock 3 picks on games starting in the next ${SEARCH_WINDOW_HOURS} hours.`,
-                [buttonRow([
-                    { label: 'Accept', customId: `pv:acc:${battle.id}`, style: STYLE_SUCCESS },
-                    { label: 'Decline', customId: `pv:dec:${battle.id}`, style: STYLE_DANGER },
-                    { label: 'Back to /pvp', customId: 'pv:hub' },
-                ])]
-            );
-        }
-
+        // Choosing a sport doesn't run the search - the search is the slow step (a
+        // Gamma request per league) and firing it on a dropdown touch is what read as
+        // "it jumped". The pick screen re-renders with the sport held and a Search
+        // button; pv:srch is what actually goes.
         case 'sport': {
             if (battle.challenger_id !== me && battle.opponent_id !== me) return updateScreen("That battle isn't yours.");
             const sport: string | undefined = interaction.data?.values?.[0];
             if (!sport) return updateScreen("Couldn't read that sport.");
-            return sport === ANY_SPORT
-                ? deferredUpdate(context, interaction, searchAnyData(context, battle, me))
-                : deferredUpdate(context, interaction, searchData(context, battle, me, sport));
+            return pickScreen(context, sql, battle, me, sport);
         }
 
+        case 'srch': {
+            if (battle.challenger_id !== me && battle.opponent_id !== me) return updateScreen("That battle isn't yours.");
+            const sport = parts.slice(3).join(':');
+            if (!sport) return updateScreen("Couldn't read that sport.");
+            return deferredUpdate(context, interaction, searchScreen(context, battle, me, sport));
+        }
+
+        // Choosing a market holds too - but here the next step INLINES: the same screen
+        // keeps the menu (choice marked) and reveals that market's two side buttons, so
+        // it costs no extra click than before while never moving on its own.
         case 'mkt': {
             if (battle.challenger_id !== me && battle.opponent_id !== me) return updateScreen("That battle isn't yours.");
             const value: string | undefined = interaction.data?.values?.[0];
@@ -611,9 +641,8 @@ export async function handlePvpComponent(context: RequestContext, interaction: a
             // league started riding the value) falls back to the sport in this menu's
             // own custom_id, which is exactly the old behaviour.
             const bar = value.indexOf('|');
-            const marketId = bar === -1 ? value : value.slice(0, bar);
             const sport = bar === -1 ? (parts[3] ?? '') : value.slice(bar + 1);
-            return sideScreen(battle, me, sport, marketId);
+            return deferredUpdate(context, interaction, searchScreen(context, battle, me, sport, value));
         }
 
         case 'lock': {
@@ -644,7 +673,9 @@ function describePick(p: OwnPickRow): string {
     return `${p.slot}. ${p.question_text} → **${chosen}** (${p.points_if_correct} pts)`;
 }
 
-async function pickScreen(context: RequestContext, sql: ReturnType<typeof getSql>, battle: BattleRow, me: string): Promise<Response> {
+/** `heldSport` is a sport just chosen from the dropdown but NOT yet searched - the
+ *  search is the slow step, so it waits for an explicit press. */
+async function pickScreen(context: RequestContext, sql: ReturnType<typeof getSql>, battle: BattleRow, me: string, heldSport?: string): Promise<Response> {
     const them = otherPlayer(battle, me);
     const [mine, theirCount, sportRows] = await Promise.all([
         getOwnPicks(sql, battle.id, me),
@@ -680,19 +711,25 @@ async function pickScreen(context: RequestContext, sql: ReturnType<typeof getSql
                 : []),
             ...sports.map((s) => ({ label: s, value: s })),
         ].slice(0, MAX_SELECT_OPTIONS);
+        const held = options.find((o) => o.value === heldSport);
         rows.push({
             type: ACTION_ROW,
             components: [{
                 type: STRING_SELECT,
                 custom_id: `pv:sport:${battle.id}`,
                 placeholder: `Pick ${mine.length + 1} of ${PICKS_PER_PLAYER} — choose a sport`,
-                options,
+                options: options.map((o) => ({ ...o, default: o.value === held?.value })),
             }],
         });
+        if (held) {
+            rows.push(buttonRow([
+                { label: `Search ${held.label}`.slice(0, 80), customId: `pv:srch:${battle.id}:${held.value}`, style: STYLE_PRIMARY },
+            ]));
+        }
     } else if (closed) {
         lines.push('', 'The pick window has closed — this battle scores whatever was submitted.');
     }
-    rows.push(buttonRow([{ label: 'Back to /pvp', customId: 'pv:hub' }]));
+    rows.push(buttonRow([{ label: 'Back to my battles', customId: 'pv:hub' }]));
     return updateScreen(lines.join('\n'), rows);
 }
 
@@ -717,6 +754,62 @@ async function fetchSlate(sport: string): Promise<Awaited<ReturnType<typeof fetc
     const games = await fetchLiveGames([sport], SEARCH_WINDOW_HOURS, { soonestFirst: true });
     slateCache.set(key, { at: Date.now(), games });
     return games;
+}
+
+/**
+ * The market menu, and - once a row is chosen - that market's two side buttons inlined
+ * underneath it. Choosing from the dropdown re-renders THIS screen with the choice
+ * marked rather than navigating to a separate confirm, so a select touch never moves
+ * you and the pick still costs the same number of presses it always did.
+ *
+ * `selectedValue` is the option value (`<marketId>|<league>`) the user just picked.
+ */
+async function searchScreen(
+    context: RequestContext, battle: BattleRow, me: string, sport: string, selectedValue?: string
+): Promise<DeferredMessageData> {
+    const data = sport === ANY_SPORT
+        ? await searchAnyData(context, battle, me)
+        : await searchData(context, battle, me, sport);
+    if (!selectedValue) return data;
+
+    // Mark the chosen row so the widget reflects it - without this Discord snaps the
+    // menu back to its placeholder and it reads as though nothing registered.
+    const rows = (data.components ?? []).map((row: any) => {
+        const select = row?.components?.[0];
+        if (select?.type !== STRING_SELECT) return row;
+        return {
+            ...row,
+            components: [{ ...select, options: (select.options ?? []).map((o: any) => ({ ...o, default: o.value === selectedValue })) }],
+        };
+    });
+
+    const bar = selectedValue.indexOf('|');
+    const marketId = bar === -1 ? selectedValue : selectedValue.slice(0, bar);
+    const marketSport = bar === -1 ? sport : selectedValue.slice(bar + 1);
+    const market = await fetchMarket(marketId);
+    const parsed = parseMarketOutcomes(market);
+    const split = parsed ? computePointsSplit(parsed.outcomePrices) : null;
+    if (!parsed || !split) {
+        return { ...data, components: rows, content: data.content, embeds: [brandEmbed({ kind: 'settlement', plate: 'PVP', body: `${vs(battle, me)} — those odds aren't usable for scoring right now, pick another.` })] };
+    }
+
+    const body = [
+        vs(battle, me),
+        '',
+        `**${parsed.question}**`,
+        `${parsed.outcomes[0]} → **${split.sideAPoints} pts** · ${parsed.outcomes[1]} → **${split.sideBPoints} pts**`,
+        '',
+        "Longer odds pay more. Pick your side below - that locks the points and can't be changed.",
+    ].join('\n');
+
+    return screenData(body, [
+        ...rows.filter((r: any) => r?.components?.[0]?.type === STRING_SELECT),
+        buttonRow([
+            { label: `${parsed.outcomes[0]} (${split.sideAPoints} pts)`, customId: lockId(battle.id, 0, marketSport, marketId), style: STYLE_PRIMARY },
+            { label: `${parsed.outcomes[1]} (${split.sideBPoints} pts)`, customId: lockId(battle.id, 1, marketSport, marketId), style: STYLE_PRIMARY },
+        ]),
+        buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }]),
+    ]);
 }
 
 async function searchData(context: RequestContext, battle: BattleRow, me: string, sport: string): Promise<DeferredMessageData> {
@@ -866,32 +959,6 @@ async function searchAnyData(context: RequestContext, battle: BattleRow, me: str
 function lockId(battleId: string, side: number, sport: string, marketId: string): string {
     const withSport = `pv:lock:${battleId}:${side}:${sport}:${marketId}`;
     return withSport.length <= 100 ? withSport : `pv:lock:${battleId}:${side}:${marketId}`;
-}
-
-async function sideScreen(battle: BattleRow, me: string, sport: string, marketId: string): Promise<Response> {
-    const market = await fetchMarket(marketId);
-    const parsed = parseMarketOutcomes(market);
-    if (!parsed) return updateScreen(`${vs(battle, me)} — couldn't read that market's odds, pick another.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
-    const split = computePointsSplit(parsed.outcomePrices);
-    if (!split) return updateScreen(`${vs(battle, me)} — those odds aren't usable for scoring right now, pick another.`, [buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }])]);
-
-    const body = [
-        vs(battle, me),
-        '',
-        `**${parsed.question}**`,
-        '',
-        `${parsed.outcomes[0]} → **${split.sideAPoints} pts** · ${parsed.outcomes[1]} → **${split.sideBPoints} pts**`,
-        '',
-        'Longer odds pay more. Pick your side — this locks the points and can\'t be changed.',
-    ].join('\n');
-
-    return updateScreen(body, [
-        buttonRow([
-            { label: `${parsed.outcomes[0]} (${split.sideAPoints} pts)`, customId: lockId(battle.id, 0, sport, marketId), style: STYLE_PRIMARY },
-            { label: `${parsed.outcomes[1]} (${split.sideBPoints} pts)`, customId: lockId(battle.id, 1, sport, marketId), style: STYLE_PRIMARY },
-        ]),
-        buttonRow([{ label: 'Back', customId: `pv:back:${battle.id}` }]),
-    ]);
 }
 
 async function lockPick(

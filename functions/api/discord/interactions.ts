@@ -48,6 +48,7 @@ import {
     handleCommunityGiveawaySelect,
     handleCommunityVote,
     handleDrawSelect,
+    handleDrawConfirm,
     handleDrawButton,
     handleLeagueCommand,
     handleMyResultsCommand,
@@ -219,7 +220,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
         if (commandName === 'heatchecks-draw') return handleDrawCommand(context, interaction);
         if (commandName === 'heatchecks-league') return handleLeagueCommand(context, interaction);
-        if (commandName === 'pvp') return handlePvpCommand(context, interaction);
+        if (commandName === 'pvp') {
+            // /pvp challenge user:@x | /pvp battles - same subcommand shim the admin hub
+            // above uses, so handlePvpCommand reads the subcommand's own options straight
+            // off data.options.
+            const sub = interaction.data?.options?.[0];
+            const shim = { ...interaction, data: { ...interaction.data, options: [{ name: sub?.name ?? 'battles' }, ...(sub?.options ?? [])] } };
+            return handlePvpCommand(context, shim);
+        }
         if (commandName === 'my-results') return handleMyResultsCommand(context, interaction);
         if (commandName === 'me') return handleMeCommand(context, interaction);
         if (commandName === 'leaderboard') return handleLeaderboardCommand(context, interaction);
@@ -249,6 +257,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         if (customId === 'cpcancel') return updateMessageResponse('Cancelled.');
         if (customId.startsWith('cpvote:')) return handleCommunityVote(context, interaction, customId);
         if (customId === 'dwselect') return handleDrawSelect(context, interaction);
+        if (customId.startsWith('dwdraw:')) return handleDrawConfirm(context, interaction, customId);
         return ephemeral("Couldn't process that.");
     }
 

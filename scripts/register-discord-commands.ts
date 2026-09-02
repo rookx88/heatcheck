@@ -177,19 +177,36 @@ const commands = [
     },
     {
         name: 'pvp',
-        description: 'Challenge someone to a 3-pick head-to-head battle',
+        description: 'Head-to-head 3-pick battles against another member',
         type: APPLICATION_COMMAND_TYPE_CHAT_INPUT,
         // No default_member_permissions - a member command, like /me and /my-results.
-        // Bare opens the hub (incoming challenges, active battles, your W-D-L); with a
-        // user it issues a challenge. Deliberately NOT subcommands: a command that
-        // declares subcommands can't be invoked bare, and the public challenge ping
-        // tells a cold member to type exactly "/pvp".
+        //
+        // Subcommands, deliberately, after live confusion with the previous shape (a bare
+        // command with one optional `user` option): members saw the option picker, assumed
+        // /pvp user: was the only form, and never discovered that submitting nothing
+        // opened their battles. Naming both actions makes the whole feature legible from
+        // the picker - the cost is that "/pvp" alone is no longer runnable, so every
+        // string that told someone to run it now says "/pvp battles".
         options: [
             {
-                name: 'user',
-                description: 'Who to challenge (leave empty to see your battles)',
-                type: OPTION_TYPE_USER,
-                required: false,
+                name: 'challenge',
+                description: 'Challenge someone to a 3-pick head-to-head battle',
+                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
+                options: [
+                    {
+                        name: 'user',
+                        description: 'Who to challenge',
+                        type: OPTION_TYPE_USER,
+                        // Required now: with an explicit verb, an empty invocation is a
+                        // mistake rather than a second mode.
+                        required: true,
+                    },
+                ],
+            },
+            {
+                name: 'battles',
+                description: 'Your battles, challenges and record',
+                type: APPLICATION_COMMAND_TYPE_SUB_COMMAND,
             },
         ],
     },

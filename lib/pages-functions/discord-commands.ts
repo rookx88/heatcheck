@@ -51,6 +51,7 @@ const EPHEMERAL_FLAG = 64;
 const ACTION_ROW_TYPE = 1;
 const SELECT_MENU_TYPE = 3;
 const BUTTON_TYPE = 2;
+const BUTTON_STYLE_PRIMARY = 1;
 const BUTTON_STYLE_SECONDARY = 2;
 const BUTTON_STYLE_DANGER = 4;
 const MAX_SELECT_OPTIONS = 25;
@@ -413,7 +414,13 @@ export async function handleTankPostSelect(context: RequestContext, interaction:
         ]);
     }
 
-    return postTankAndRespond(context, guildId, slug, false);
+    // Selecting used to post to the channel immediately - a dropdown touch with a
+    // public, irreversible effect and no confirm. Now every path through this menu ends
+    // on the same explicit button; tprepost: already existed for the reposting case.
+    return updateMessageResponse(`Post this Tank to the channel?\n**${slug}**`, [
+        { label: 'Post it', customId: `tprepost:${slug}`, style: BUTTON_STYLE_PRIMARY },
+        { label: 'Cancel', customId: 'tpcancel' },
+    ]);
 }
 
 export async function handleTankRepostConfirm(context: RequestContext, interaction: any, customId: string): Promise<Response> {
@@ -540,11 +547,14 @@ function communityPickConfirmScreen(
                         type: ACTION_ROW_TYPE,
                         components: [{
                             type: SELECT_MENU_TYPE, custom_id: `cpgw:${stateSuffix}`, placeholder: 'Giveaway for correct calls? (optional)',
+                            // default marks what's already chosen: this screen re-renders itself
+                            // on every giveaway pick, and without it the widget snaps back to
+                            // the placeholder and looks like the choice didn't register.
                             options: [
-                                { label: 'No giveaway', value: '0' },
-                                { label: '1 winner', value: '1' },
-                                { label: '3 winners', value: '3' },
-                                { label: '5 winners', value: '5' },
+                                { label: 'No giveaway', value: '0', default: gwCount === 0 },
+                                { label: '1 winner', value: '1', default: gwCount === 1 },
+                                { label: '3 winners', value: '3', default: gwCount === 3 },
+                                { label: '5 winners', value: '5', default: gwCount === 5 },
                             ],
                         }],
                     },
@@ -791,6 +801,24 @@ export async function handleDrawSelect(context: RequestContext, interaction: any
     if (!value || !guildId) return updateMessageResponse("Couldn't read your selection.");
     const [sourceType, sourceId] = value.split(':') as [GiveawaySourceType, string];
     if (sourceType !== 'tank' && sourceType !== 'community_pick') return updateMessageResponse("Couldn't read your selection.");
+
+    // Selecting used to draw and write the winner row on the spot. A draw is a public,
+    // one-shot decision, so the menu now only holds the choice - dwdraw: does it.
+    return updateMessageResponse('Draw a random winner from this one?', [
+        { label: 'Draw a winner', customId: `dwdraw:${sourceType}:${sourceId}`, style: BUTTON_STYLE_PRIMARY },
+        { label: 'Cancel', customId: 'tpcancel' },
+    ]);
+}
+
+// The confirmed half of the draw menu above.
+export async function handleDrawConfirm(context: RequestContext, interaction: any, customId: string): Promise<Response> {
+    const denied = denyIfNotAdmin(interaction);
+    if (denied) return denied;
+    const guildId: string | undefined = interaction.guild_id;
+    const [, sourceType, sourceId] = customId.split(':') as [string, GiveawaySourceType, string];
+    if (!guildId || !sourceId || (sourceType !== 'tank' && sourceType !== 'community_pick')) {
+        return updateMessageResponse("Couldn't read your selection.");
+    }
 
     const sql = getSql(context.env);
     const drawnBy: string | undefined = interaction.member?.user?.id;

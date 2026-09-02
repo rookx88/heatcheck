@@ -120,6 +120,7 @@ export function buildWelcomeCardMessage(): { embeds: unknown[] } {
                 '',
                 '**Try it**',
                 '`/leaderboard` — this server\'s standings · `/my-results` — your recent calls (only you see it)',
+                '`/pvp challenge` — put 3 picks up against another member, head to head',
             ].join('\n'),
             color: 0xffc72c,
             footer: { text: 'Entertainment only — no real-money wagering. Heatchecks never supplies or distributes prizes.' },
@@ -442,6 +443,8 @@ function doneScreen(): Response {
             '• `/heatchecks post leaderboard` — post the standings publicly, any time',
             '• `/heatchecks draw` — draw a giveaway winner from any settled pick',
             '• `/heatchecks settings` — see or change any of these settings, anytime',
+            '',
+            'Your members can also run `/pvp challenge` to battle each other head-to-head, and `/pvp battles` to track it.',
             '',
             'Only admins with **Manage Server** can run any of that; everyone else can vote, pick, and check their own stats. `/heatchecks settings` → **Access & privacy** has the full breakdown and how to narrow it further.',
         ].join('\n'),
@@ -808,11 +811,11 @@ export async function handleSettingsComponent(context: RequestContext, interacti
             return settingScreen(
                 [
                     '**PvP battles**',
-                    '`/pvp` lets any two members challenge each other to a 3-pick head-to-head on games starting in the next 72 hours. Picks stay private until the battle settles.',
+                    '`/pvp challenge` lets any two members challenge each other to a 3-pick head-to-head on games starting in the next 72 hours. Picks stay private until the battle settles; both players track them with `/pvp battles`.',
                     '',
                     `**Posts to:** ${pvpCfg?.pvp_channel_id ? `<#${pvpCfg.pvp_channel_id}>` : `the main channel (<#${pvpCfg?.channel_id}>)`} — pick a channel below to give PvP its own home.`,
                     '',
-                    'A challenge posts ONE line pinging only the person challenged; the result recap posts when the battle settles. Each is switched separately below, and both are independent of your settlement results setting — so you can keep Tank and Community Pick recaps private and still announce battles. With challenge announcements off, the person challenged finds it by running `/pvp`.',
+                    'A challenge posts ONE line pinging only the person challenged; the result recap posts when the battle settles. Each is switched separately below, and both are independent of your settlement results setting — so you can keep Tank and Community Pick recaps private and still announce battles. With challenge announcements off, the person challenged finds it by running `/pvp battles`.',
                 ].join('\n'),
                 [
                     { type: ACTION_ROW, components: [{ type: CHANNEL_SELECT, custom_id: 'st:setpvpchan', channel_types: [GUILD_TEXT], placeholder: 'PvP channel' }] },

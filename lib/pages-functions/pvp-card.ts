@@ -32,7 +32,7 @@ function escapeMarkdown(text: string): string {
  */
 export function buildPvpChallengeMessage(challengerName: string, opponentId: string): PvpMessageBody {
     return {
-        content: `⚔ <@${opponentId}> — **${escapeMarkdown(challengerName)}** challenged you to a PvP battle. Run \`/pvp\` to respond.`,
+        content: `⚔ <@${opponentId}> — **${escapeMarkdown(challengerName)}** challenged you to a PvP battle. Run \`/pvp battles\` to respond.`,
         allowed_mentions: { parse: [], users: [opponentId] },
     };
 }
