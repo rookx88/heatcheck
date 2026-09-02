@@ -753,7 +753,11 @@ export function marketMoversStyles(): string {
         }
         @keyframes hc-tape { to { transform: translateX(-50%); } }
 
-        .hc-mm-logo { display: block; width: clamp(180px, 42vw, 300px); height: auto; margin: 0 0 0.25rem -0.4rem; }
+        /* Centered below 1024px, where .hc-mm-band is a plain block and the logo sits
+           on its own line above the note. The desktop rule inside the min-width:1024px
+           block resets this margin - there the band is a flex row and the logo is its
+           left-hand item, so it stays put. */
+        .hc-mm-logo { display: block; width: clamp(180px, 42vw, 300px); height: auto; margin: 0 auto 0.25rem; }
         /* The TANKDAQ link inside the note - gold reads on the dark page background
            (mobile) and the black band (desktop) alike. */
         .hc-mm-note a { color: var(--hc-gold); font-weight: 700; }
