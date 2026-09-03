@@ -52,10 +52,20 @@ function renderMobileRegisterBanner(user: HomepageUser | null): string {
 }
 
 function renderHeader(user: HomepageUser | null): string {
+    // The SAME markup + classes MapHud emits (components/MapHud.tsx), so
+    // MapHud.css - already in this page's bundle stylesheet via
+    // homepage-client's import - styles this chip identically to every other
+    // page's, with no mirrored style block to drift. Only the DELIVERY differs:
+    // rendered here on the server (identity is known at render time; no
+    // hydration flash), where the other pages hydrate it from /api/toolbar-state.
+    // homepage-client's mountHeaderMenu wires the click and hangs the dropdown.
     const authArea = user
-        ? `<div class="hc-auth" data-testid="hc-auth-in">
-                <span class="hc-auth-name">${escapeHtml(user.username)}</span>
-                <span class="hc-ember-chip" aria-label="${user.balance} Embers">${EMBER_SVG}${user.balance}</span>
+        ? `<div class="map-hud hc-auth" data-testid="hc-auth-in">
+                <button type="button" class="map-hud__chip" aria-haspopup="menu" aria-expanded="false"
+                        aria-label="${escapeHtml(user.username)} - ${user.balance} Ember. Open menu">
+                    <span class="map-hud__name">${escapeHtml(user.username)}</span>
+                    <span class="map-hud__ember">${EMBER_SVG}${user.balance}</span>
+                </button>
             </div>`
         : `<a class="hc-cta-button hc-login-cta" href="/login/">Log in</a>`;
 
@@ -158,26 +168,12 @@ function homepageStyles(): string {
            the wrapper, not the individual pieces, so it works whichever is first. */
         .hc-header-right { display: flex; flex-wrap: wrap; align-items: center; gap: 0.9rem; margin-left: auto; }
         .hc-login-cta { font-size: 0.95rem; padding: 0.5rem 1.4rem; flex-shrink: 0; }
-        /* The SAME chip treatment as every other page's identity chip
-           (components/MapHud.css .map-hud__chip - values mirrored, not shared code,
-           since this header is server-rendered): dark pill, brand-green #31e874
-           ring, brighter green + glow on hover/open. If MapHud's chip changes,
-           change this to match. */
-        .hc-auth {
-            display: flex; align-items: center; gap: 0.55rem; flex-shrink: 0;
-            background: rgba(7, 5, 11, 0.7);
-            border: 2px solid #31e874;
-            border-radius: 999px;
-            padding: 0.35rem 0.75rem;
-            box-shadow: 0 0 18px rgba(49, 232, 116, 0.25);
-            backdrop-filter: blur(4px);
-            transition: border-color 0.2s ease, box-shadow 0.2s ease;
-        }
-        .hc-auth--clickable:hover,
-        .hc-auth--clickable[aria-expanded="true"] {
-            border-color: #5cff9b;
-            box-shadow: 0 0 24px rgba(49, 232, 116, 0.5);
-        }
+        /* The chip's look comes ENTIRELY from MapHud.css (.map-hud__chip etc.),
+           which this page's bundle stylesheet already carries - the markup above
+           emits MapHud's own classes. The only homepage-specific rule: MapHud.css
+           pins .map-hud absolutely (it floats over the map pages), but here the
+           chip lives IN the header's flex row, so it goes back into flow. */
+        .hc-auth { position: relative; top: auto; right: auto; flex-shrink: 0; }
         /* Register banner: same rendered height as the logo (logo's own clamp
            divided by its 500:241 aspect ratio), width follows the banner's native
            4:1 shape. */
@@ -228,24 +224,11 @@ function homepageStyles(): string {
             .hc-header-right .hc-register-cta { display: none; }
             .hc-mobile-register-row { display: block; margin: 0.9rem 0; }
         }
-        /* The island turns the chip into the same mini-nav trigger the map pages'
-           MapHud has; the dropdown (MapHud.css classes) hangs off its right edge. */
-        .hc-auth--clickable { position: relative; cursor: pointer; -webkit-tap-highlight-color: transparent; }
-        /* Keyboard focus gets the same green ring the pointer hover gets - not the
-           old teal outline, which no longer matches the chip's grammar. */
-        .hc-auth--clickable:focus-visible {
-            outline: none;
-            border-color: #5cff9b;
-            box-shadow: 0 0 24px rgba(49, 232, 116, 0.5);
-        }
+        /* The dropdown mountHeaderMenu appends: overlay the page from the chip's
+           right edge rather than sit in flow (in MapHud's own absolutely-pinned
+           wrapper the in-flow menu is harmless; inside the header's flex row it
+           would grow the header). */
         .hc-auth .hc-auth-menu { position: absolute; top: calc(100% + 6px); right: 0; z-index: 600; }
-        .hc-auth-name { font-weight: 800; font-size: 0.9rem; }
-        .hc-ember-chip {
-            display: inline-flex; align-items: center; gap: 0.3rem;
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 0.9rem;
-            color: var(--hc-gold); background: rgba(255, 199, 44, 0.12);
-            border: 1px solid rgba(255, 199, 44, 0.4); border-radius: 999px; padding: 0.15rem 0.6rem;
-        }
         .hc-section { margin-top: 2.25rem; }
         .hc-section h2 {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900;

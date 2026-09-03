@@ -123,18 +123,15 @@ function mountRegisterCta() {
 
 // Header identity chip -> the same mini nav the map pages' MapHud has, built from
 // the shared HEADER_MENU_ITEMS list so the two renderers can't drift apart again.
-// The chip itself is server-rendered (.hc-auth, logged-in only); this just makes it
-// clickable and hangs the dropdown off it. Vanilla, like the other header/row
-// enhancements.
+// The chip is server-rendered as MapHud's OWN markup (a real .map-hud__chip
+// <button> - see renderHeader in homepage/render.ts), so this only wires the
+// click and hangs the dropdown off it: no fake-button role/tabindex/keydown
+// theatre, the native button handles Enter/Space itself, and MapHud.css's
+// [aria-expanded] selector lights the open state.
 function mountHeaderMenu() {
     const auth = document.querySelector<HTMLElement>('.hc-auth');
-    if (!auth) return; // logged out - the header shows the Log in button instead
-
-    auth.setAttribute('role', 'button');
-    auth.setAttribute('tabindex', '0');
-    auth.setAttribute('aria-haspopup', 'menu');
-    auth.setAttribute('aria-expanded', 'false');
-    auth.classList.add('hc-auth--clickable');
+    const chip = auth?.querySelector<HTMLButtonElement>('.map-hud__chip');
+    if (!auth || !chip) return; // logged out - the header shows the Log in button instead
 
     const menu = document.createElement('div');
     menu.className = 'map-hud__menu hc-auth-menu';
@@ -149,17 +146,10 @@ function mountHeaderMenu() {
 
     const setOpen = (open: boolean) => {
         menu.hidden = !open;
-        auth.setAttribute('aria-expanded', String(open));
+        chip.setAttribute('aria-expanded', String(open));
     };
-    auth.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).closest('.hc-auth-menu')) return; // menu clicks act, not toggle
-        setOpen(menu.hidden);
-    });
+    chip.addEventListener('click', () => setOpen(menu.hidden));
     auth.addEventListener('keydown', (e) => {
-        if ((e.key === 'Enter' || e.key === ' ') && !(e.target as HTMLElement).closest('.hc-auth-menu')) {
-            e.preventDefault();
-            setOpen(menu.hidden);
-        }
         if (e.key === 'Escape') setOpen(false);
     });
     document.addEventListener('pointerdown', (e) => {
