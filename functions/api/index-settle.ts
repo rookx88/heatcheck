@@ -12,9 +12,10 @@
 //      an index's movement.
 //
 // BUDGET: resolution is one Gamma call per distinct market, and a Pages Function has a
-// hard ~50 subrequest ceiling that Neon's HTTP driver also draws on. MAX_POSITIONS caps
-// a run well inside it; the remainder is deferred to the next run and reported. That is
-// safe because settlement is catch-up tolerant - unlike locking, a resolved market stays
+// hard ~50 subrequest ceiling that Neon's HTTP driver also draws on. MAX_MARKETS caps a
+// run on the quantity that actually spends the budget; the remainder is deferred to the
+// next run and reported. That is safe because settlement is catch-up tolerant - unlike
+// locking, a resolved market stays
 // resolved, so nothing is lost by settling late. (Locking is the step that can't wait -
 // see index-lock.ts.)
 //
@@ -30,7 +31,17 @@ import { fetchMarket, resolveMarket } from '../../lib/pages-functions/gamma';
 import { getTickerConfig } from '../../lib/pages-functions/tickers';
 import { closeDelta, contributionFor } from '../../lib/pages-functions/index-slate';
 
-const MAX_POSITIONS = 25;
+// A run's cost is driven by DISTINCT MARKETS, not positions: resolution is one Gamma
+// call per market, and every index holding the same game shares that one call. Capping
+// positions instead was throttling the run against the wrong quantity - after the league
+// sub-indexes landed, 2.6 positions share each market, so a 25-position cap spent only
+// ~11 Gamma calls and stopped less than a quarter of the way into the budget while the
+// backlog grew ~30 a day. Paging by market also means a market is never half-settled.
+//
+// Budget: 6 fixed Neon calls (config, pending, bulk settle, open positions, close
+// upsert, close backfill) + one Gamma call per market, against the ~50 subrequest
+// ceiling that Neon's HTTP driver also draws on. 30 leaves real headroom.
+const MAX_MARKETS = 30;
 // Give the market time to actually resolve before asking about it.
 const SETTLE_GRACE_HOURS = 3;
 
@@ -50,14 +61,28 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(context.env);
 
+    // The oldest MAX_MARKETS due markets, and then EVERY pending position on them - so
+    // one Gamma call always settles all the indexes holding that game, and no market is
+    // left half-settled across runs.
     const pending = (await sql`
-        SELECT id, ticker_key, market_id, side_index, entry_prob::float8 AS entry_prob
-        FROM index_positions
-        WHERE settled_at IS NULL
-          AND kickoff < NOW() - (INTERVAL '1 hour' * ${SETTLE_GRACE_HOURS})
-        ORDER BY kickoff
-        LIMIT ${MAX_POSITIONS}
+        WITH due AS (
+            SELECT id, ticker_key, market_id, side_index, entry_prob::float8 AS entry_prob, kickoff
+            FROM index_positions
+            WHERE settled_at IS NULL
+              AND kickoff < NOW() - (INTERVAL '1 hour' * ${SETTLE_GRACE_HOURS})
+        ),
+        markets AS (
+            SELECT market_id FROM due
+            GROUP BY market_id
+            ORDER BY MIN(kickoff)
+            LIMIT ${MAX_MARKETS}
+        )
+        SELECT d.id, d.ticker_key, d.market_id, d.side_index, d.entry_prob
+        FROM due d
+        JOIN markets m ON m.market_id = d.market_id
+        ORDER BY d.kickoff
     `) as unknown as PendingRow[];
+    const marketsConsidered = new Set(pending.map((p) => p.market_id)).size;
 
     // One fetch per distinct market: $OVERS and $UNDERS share a market, as do
     // $CHALK/$DOGS, so this typically halves the call count.
@@ -129,39 +154,73 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             byTicker.set(key, list);
         }
 
+        // Build every index's close first, then write them all in TWO queries. Doing it
+        // per ticker cost 2 Neon calls each, so the write phase grew with the number of
+        // indexes - at 14 that was 28 subrequests before a single Gamma call, and it
+        // would have kept growing with every index added.
+        const planned: Array<{ tickerKey: string; delta: number; counted: number; won: number; ids: string[] }> = [];
         for (const [tickerKey, rows] of byTicker) {
             const delta = closeDelta(rows.map((r) => r.contrib), { smoothing, scalePct });
             if (delta === null) continue; // no positions -> no event, never a 0.0% close
-            const won = rows.filter((r) => r.won).length;
+            planned.push({
+                tickerKey,
+                delta,
+                counted: rows.length,
+                won: rows.filter((r) => r.won).length,
+                ids: rows.map((r) => r.id),
+            });
+        }
 
-            // Idempotent by the (ticker_key, close_date) unique index: a second run the
-            // same day updates the existing close in place rather than appending a
+        if (planned.length > 0) {
+            // Still idempotent by the (ticker_key, close_date) unique index: a second run
+            // the same day updates each existing close in place rather than appending a
             // second one, so re-running settlement can never double-count a day.
             const closeRows = await sql`
                 INSERT INTO ticker_events (ticker_key, event_type, source, close_date, delta, metadata)
-                VALUES (${tickerKey}, 'close', 'slate', CURRENT_DATE, ${delta}, ${JSON.stringify({
-                    positionsCounted: rows.length,
-                    positionsWon: won,
-                    scalePct,
-                    smoothing,
-                })}::jsonb)
+                SELECT k, 'close', 'slate', CURRENT_DATE, d, m::jsonb
+                FROM unnest(
+                    ${planned.map((p) => p.tickerKey)}::text[],
+                    ${planned.map((p) => p.delta)}::numeric[],
+                    ${planned.map((p) => JSON.stringify({
+                        positionsCounted: p.counted,
+                        positionsWon: p.won,
+                        scalePct,
+                        smoothing,
+                    }))}::text[]
+                ) AS t(k, d, m)
                 ON CONFLICT (ticker_key, close_date) WHERE source = 'slate'
                 DO UPDATE SET delta = EXCLUDED.delta, metadata = EXCLUDED.metadata
-                RETURNING id
+                RETURNING id, ticker_key
             `;
-            const closeId = closeRows[0]?.id as string | undefined;
-            if (closeId) {
-                await sql`UPDATE index_positions SET close_id = ${closeId} WHERE id = ANY(${rows.map((r) => r.id)}::uuid[])`;
-                closes.push({ tickerKey, delta, counted: rows.length, won });
+            const closeIdOf = new Map(closeRows.map((r) => [r.ticker_key as string, r.id as string]));
+
+            // Stamp every counted position with its index's close id, in one pass.
+            const posIds: string[] = [];
+            const closeIds: string[] = [];
+            for (const p of planned) {
+                const closeId = closeIdOf.get(p.tickerKey);
+                if (!closeId) continue;
+                for (const id of p.ids) { posIds.push(id); closeIds.push(closeId); }
+                closes.push({ tickerKey: p.tickerKey, delta: p.delta, counted: p.counted, won: p.won });
+            }
+            if (posIds.length > 0) {
+                await sql`
+                    UPDATE index_positions AS ip
+                    SET close_id = t.close_id
+                    FROM unnest(${posIds}::uuid[], ${closeIds}::uuid[]) AS t(id, close_id)
+                    WHERE ip.id = t.id
+                `;
             }
         }
     }
 
     return jsonResponse({
         pendingConsidered: pending.length,
+        marketsConsidered,
         settled: settled.length,
         skipped,
-        deferred: pending.length === MAX_POSITIONS ? 'more may remain; next run continues' : 'none',
+        // The run is capped on markets now, so that is what signals a remainder.
+        deferred: marketsConsidered === MAX_MARKETS ? 'more may remain; next run continues' : 'none',
         closes,
     });
 };
