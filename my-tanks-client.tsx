@@ -8,6 +8,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ContentChrome } from './components/ContentChrome';
 import { formatGameTime, formatSettleDate, hasKickoffPassed } from './tank-deck-format';
 
 interface PendingPick {
@@ -207,7 +208,11 @@ function MyTanksPage() {
 function mount() {
     const root = document.getElementById('my-tanks-root');
     if (!root) return;
-    createRoot(root).render(<MyTanksPage />);
+    // Sibling of the page, not a child: MyTanksPage returns early on its loading and
+    // empty states, and the topbar chip should not blink out with them. ContentChrome
+    // portals the chip into the topbar's [data-hc-hud-slot] (topbar(null) in
+    // my-tanks-template.ts).
+    createRoot(root).render(<><ContentChrome /><MyTanksPage /></>);
 }
 
 if (document.readyState === 'loading') {

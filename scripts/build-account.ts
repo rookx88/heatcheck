@@ -6,7 +6,7 @@ import * as esbuild from 'esbuild';
 import path from 'path';
 import fs from 'fs';
 
-const ARTIFACTS = ['account.js'];
+const ARTIFACTS = ['account.js', 'account.css'];
 
 export async function buildAccount(): Promise<void> {
     const outdir = path.join(process.cwd(), 'public', 'assets');

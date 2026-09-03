@@ -222,6 +222,19 @@ function sharedStyles(): string {
             color: var(--hc-teal);
             text-transform: uppercase;
         }
+        /* The signed-in chrome's slot, in "Learn more"'s place (topbar(null)).
+           MapHud pins .map-hud absolutely to its containing block, so this slot IS
+           that block: the chip's right edge lands on the topbar's right edge and the
+           dropdown overlays the page instead of growing the topbar. Centred against
+           the much taller logo so the chip reads as being on the logo's line. */
+        .hc-topbar-hud {
+            position: relative;
+            flex-shrink: 0;
+            align-self: center;
+            min-height: 2.4rem;
+            min-width: 2.4rem;
+        }
+        .hc-topbar-hud .map-hud { top: 0; right: 0; }
         .hc-hero {
             margin-top: 0.15rem;
             margin-left: -1.25rem;
@@ -355,18 +368,32 @@ function sharedStyles(): string {
     `;
 }
 
-export function topbar(learnMoreHref: string): string {
+/**
+ * The shared page topbar: logo left, one slot right.
+ *
+ * Pass a href for the marketing "Learn more" link (the logged-out funnel pages -
+ * landing, /beta/, claim-your-spot, login, newsletter, 404 - where it still belongs).
+ *
+ * Pass null on pages that carry the signed-in chrome. Those get an empty HUD slot
+ * instead, which ContentChrome fills with the identity chip (username + Ember, with
+ * the mini nav) - so the chip lands on the logo's line rather than "Learn more"
+ * sitting next to a second nav the page already has.
+ */
+export function topbar(learnMoreHref: string | null): string {
+    const right = learnMoreHref === null
+        ? '<div class="hc-topbar-hud" data-hc-hud-slot></div>'
+        : `<a class="hc-learn-more" href="${learnMoreHref}">
+                <span class="hc-check-box">
+                    <img src="/assets/images/checknav.webp" alt="" width="140" height="200">
+                </span>
+                <span>Learn more</span>
+            </a>`;
     return `
         <div class="hc-topbar">
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
                 <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
             </a>
-            <a class="hc-learn-more" href="${learnMoreHref}">
-                <span class="hc-check-box">
-                    <img src="/assets/images/checknav.webp" alt="" width="140" height="200">
-                </span>
-                <span>Learn more</span>
-            </a>
+            ${right}
         </div>`;
 }
 

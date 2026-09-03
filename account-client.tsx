@@ -6,6 +6,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import { ContentChrome } from './components/ContentChrome';
 
 interface SessionData {
     email: string;
@@ -108,7 +109,11 @@ function AccountPage() {
 function mount() {
     const root = document.getElementById('account-root');
     if (!root) return;
-    createRoot(root).render(<AccountPage />);
+    // ContentChrome is a sibling of the page, not a child of it: AccountPage returns
+    // early while loading and on failure, and the identity chip in the topbar should
+    // not blink out with those states. It portals itself into the topbar's
+    // [data-hc-hud-slot] (topbar(null) in account-template.ts).
+    createRoot(root).render(<><ContentChrome /><AccountPage /></>);
 }
 
 if (document.readyState === 'loading') {

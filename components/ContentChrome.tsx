@@ -17,20 +17,35 @@
 // ancestor around it (that would trap PetWidget's fixed modal overlays); a plain
 // .hc-page column is fine.
 
-import React from 'react';
+import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MapHud } from './MapHud';
 import { PetWidget } from './PetWidget';
 import { NotificationsHost } from './NotificationsHost';
 import './ContentChrome.css';
 
-export const ContentChrome: React.FC = () => (
-    <>
-        <div className="hc-chrome-hud">
-            <MapHud />
-        </div>
-        <PetWidget variant="fixed" />
-        <NotificationsHost />
-    </>
-);
+export const ContentChrome: React.FC = () => {
+    // Pages whose topbar was built with topbar(null) (waitlist-landing-template)
+    // carry an empty [data-hc-hud-slot] on the logo's line, in place of the old
+    // "Learn more" link. When one exists the chip belongs THERE, so it reads as part
+    // of the header rather than a second row under it - hence a portal, since the
+    // slot is server-rendered markup outside this component's own React root.
+    // Resolved once, lazily: the slot is in the HTML before this bundle runs, so
+    // there is no first-paint miss, and pages without one keep the .hc-chrome-hud
+    // row exactly as before.
+    const [topbarSlot] = useState<Element | null>(
+        () => (typeof document === 'undefined' ? null : document.querySelector('[data-hc-hud-slot]'))
+    );
+
+    return (
+        <>
+            {topbarSlot
+                ? createPortal(<MapHud />, topbarSlot)
+                : <div className="hc-chrome-hud"><MapHud /></div>}
+            <PetWidget variant="fixed" />
+            <NotificationsHost />
+        </>
+    );
+};
 
 export default ContentChrome;

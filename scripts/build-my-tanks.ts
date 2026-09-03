@@ -6,7 +6,7 @@ import * as esbuild from 'esbuild';
 import path from 'path';
 import fs from 'fs';
 
-const ARTIFACTS = ['my-tanks.js'];
+const ARTIFACTS = ['my-tanks.js', 'my-tanks.css'];
 
 export async function buildMyTanks(): Promise<void> {
     const outdir = path.join(process.cwd(), 'public', 'assets');

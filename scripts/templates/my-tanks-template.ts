@@ -17,6 +17,7 @@ export function generateMyTanksPageHtml(baseUrl: string): string {
 <head>
     ${head}
     <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/assets/my-tanks.css">
     <style>
         .hc-mytanks-loading {
             max-width: 640px; margin: 3rem auto; padding: 0 1.5rem; text-align: center;
@@ -79,7 +80,7 @@ export function generateMyTanksPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page">
-        ${topbar('/')}
+        ${topbar(null)}
         <div id="my-tanks-root"></div>
         ${footer()}
     </main>

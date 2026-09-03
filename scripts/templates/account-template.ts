@@ -17,6 +17,7 @@ export function generateAccountPageHtml(baseUrl: string): string {
 <head>
     ${head}
     <meta name="robots" content="noindex">
+    <link rel="stylesheet" href="/assets/account.css">
     <style>
         .hc-account-loading {
             max-width: 560px; margin: 3rem auto; padding: 0 1.5rem; text-align: center;
@@ -55,7 +56,7 @@ export function generateAccountPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page">
-        ${topbar('/')}
+        ${topbar(null)}
         <div id="account-root"></div>
         ${footer()}
     </main>

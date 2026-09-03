@@ -51,7 +51,7 @@ export function generateTankdaqTickerPageHtml(baseUrl: string, ticker: TankdaqTi
 </head>
 <body>
     <main class="hc-page hc-tq-page">
-        ${topbar('/the-tank/')}
+        ${topbar(null)}
         <div id="tankdaq-ticker-root" data-ticker-key="${ticker.key}">
             <!-- Crawlable fallback, replaced when the island mounts. -->
             <section class="hc-tq-fallback">

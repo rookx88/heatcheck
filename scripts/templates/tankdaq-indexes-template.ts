@@ -48,7 +48,7 @@ export function generateTankdaqIndexesPageHtml(
 </head>
 <body>
     <main class="hc-page hc-tqb-page">
-        ${topbar('/the-tank/')}
+        ${topbar(null)}
         <div id="tankdaq-indexes-root">
             <!-- Crawlable fallback, replaced when the island mounts. -->
             <section class="hc-tqb-fallback">
