@@ -28,7 +28,9 @@
   align-items: center;
   gap: 0.55rem;
   background: rgba(7, 5, 11, 0.7);
-  /* Green ring on the round trigger, matching the menu's outlines. */
+  /* Green ring on the round trigger, matching the menu's outlines. The homepage
+     header's server-rendered chip (.hc-auth, homepage/render.ts) MIRRORS these
+     values - change them together. */
   border: 2px solid #31e874;
   border-radius: 999px;
   padding: 0.35rem 0.75rem;
