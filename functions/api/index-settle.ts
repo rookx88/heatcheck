@@ -1,6 +1,7 @@
-// POST /api/index-settle - protected, machine-to-machine only (fired by worker-settle
-// right after /api/settle). Shares X-Settle-Secret with it: same caller, same trust
-// domain.
+// POST /api/index-settle - protected, machine-to-machine only. Fired by worker-settle
+// right after /api/settle (X-Settle-Secret), and by worker-curate's sweep chain
+// (X-Curate-Secret) - four passes a day between them. Safe to run repeatedly: a pass
+// with nothing due costs two queries and writes nothing, and the closes upsert.
 //
 // Two steps, in order:
 //   1. SETTLE - resolve locked index_positions whose game has finished, scoring each
@@ -54,8 +55,19 @@ interface PendingRow {
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
-    const secret = context.request.headers.get('X-Settle-Secret');
-    if (!secret || secret !== context.env.SETTLE_SECRET) {
+    // Two callers, one endpoint. worker-settle fires this after /api/settle with
+    // X-Settle-Secret; worker-curate fires it from its sweep chain with X-Curate-Secret,
+    // which is how settlement gets four passes a day out of a single cron trigger (the
+    // Workers Free plan's five are all spent). Same trust domain either way - both are
+    // this account's own cron Workers, and /api/index-lock, which WRITES the positions
+    // this endpoint scores, already authenticates on X-Curate-Secret alone. Accepting
+    // either avoids provisioning a second secret onto worker-curate for no added safety.
+    const settleSecret = context.request.headers.get('X-Settle-Secret');
+    const curateSecret = context.request.headers.get('X-Curate-Secret');
+    const authorized =
+        (settleSecret && settleSecret === context.env.SETTLE_SECRET) ||
+        (curateSecret && curateSecret === context.env.CURATE_SECRET);
+    if (!authorized) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 

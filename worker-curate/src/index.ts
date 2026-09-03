@@ -51,7 +51,7 @@ async function runCurate(env: Env): Promise<string> {
 // The three free, idempotent housekeeping sweeps - none call Anthropic, all are safe to
 // re-run any number of times in a day (see each endpoint's own header comment). Split
 // out so the more-frequent cron slots can fire these without ever touching /api/curate.
-async function runSweeps(env: Env): Promise<{ indexLock: string; tickerSweep: string; notifySweep: string; discordSweep: string }> {
+async function runSweeps(env: Env): Promise<{ indexLock: string; indexSettle: string; tickerSweep: string; notifySweep: string; discordSweep: string }> {
     // Exchange index slate lock - FIRST in the chain, because it is the only step here
     // whose window can close permanently. It records each index's position on games
     // kicking off in the next ~9 hours at the price they're trading at right now;
@@ -59,6 +59,20 @@ async function runSweeps(env: Env): Promise<{ indexLock: string; tickerSweep: st
     // kickoff can never be scored later. The other sweeps are all catch-up tolerant and
     // lose nothing by running after it. Own request, own budget, same secret.
     const indexLock = await postSibling(env, '/api/index-lock');
+
+    // Exchange slate settlement - scores finished games and writes each index's daily
+    // close. It has no cron slot of its own (the Free plan's five triggers are all
+    // spent), and worker-settle's single 09:00 slot could not keep up: one pass a day
+    // settles fewer games than locking creates, so the backlog compounded until it was
+    // days deep and the newest indexes, last in the kickoff-ordered queue, never settled
+    // at all. Riding the sweep slots too gives it four passes a day against a peak of
+    // ~36 markets, with room for the NFL and NBA seasons.
+    //
+    // Free to over-call: settlement is idempotent (closes upsert on
+    // (ticker_key, close_date)) and a pass with nothing due costs two queries. Runs
+    // after the lock for the usual reason - the lock is the only step whose window can
+    // close permanently.
+    const indexSettle = await postSibling(env, '/api/index-settle');
 
     // Exchange ticker tag sweep - a SEPARATE request on purpose: each Pages Function
     // invocation has its own subrequest budget, and curation's traffic already runs
@@ -75,7 +89,7 @@ async function runSweeps(env: Env): Promise<{ indexLock: string; tickerSweep: st
     // budget, runs regardless of the earlier steps' outcomes.
     const discordSweep = await postSibling(env, '/api/discord-sweep');
 
-    return { indexLock, tickerSweep, notifySweep, discordSweep };
+    return { indexLock, indexSettle, tickerSweep, notifySweep, discordSweep };
 }
 
 // Weekly NFL season-league auto-slate: creates a Community Pick per live NFL
