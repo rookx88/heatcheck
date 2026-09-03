@@ -98,7 +98,11 @@ export function renderHead(options: HeadOptions): string {
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&family=Montserrat:wght@800;900&family=Permanent+Marker&display=swap" rel="stylesheet">
+    <!-- Mochiy Pop One is the pet speech bubble's face (components/PetWidget.css) -
+         the web link's ONLY consumer; the Permanent Marker it replaced lives on
+         solely as a bundled TTF inside the server-rendered cards (me-card.ts,
+         pvp-hub-image.ts), which never touch web fonts. -->
+    <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;700;800&family=Nunito:wght@400;600;800&family=Montserrat:wght@800;900&family=Mochiy+Pop+One&display=swap" rel="stylesheet">
 
     <style>${sharedStyles()}</style>
     <script type="module" src="/assets/analytics-beacon.js" defer></script>`;
