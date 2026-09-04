@@ -15,6 +15,7 @@ import {
     getTickerValues,
 } from '../../../lib/pages-functions/tickers';
 import { indexLabelOf, toResultSentences } from '../../../lib/pages-functions/market-movers';
+import { PRICE_NOTE } from '../../../lib/pages-functions/ticker-price';
 
 const NEWS_LIMIT = 4;
 const RESULTS_LIMIT = 6;
@@ -27,8 +28,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     }
     const sql = getSql(context.env);
 
-    const values = await getTickerValues(sql);
-    const ticker = values.find((t) => t.key === key);
+    // Narrowed to the one ticker by the shared query itself - same statement, one row.
+    const [ticker] = await getTickerValues(sql, key);
     if (!ticker) {
         return jsonResponse({ message: `No active ticker "${key}".` }, { status: 404 });
     }
@@ -41,6 +42,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     return jsonResponse({
         note: RETROSPECTIVE_NOTE,
+        priceNote: PRICE_NOTE,
         ticker: {
             key: ticker.key,
             displayName: ticker.displayName,
@@ -49,6 +51,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             ruleType: ticker.ruleType,
             value: ticker.value,
             eventCount: ticker.eventCount,
+            // The Ember price and its inputs. The client maps each series point through
+            // the same priceFromValue(cumulative, {baseline, scale}) to draw the price
+            // chart, so there is one price function and one data path.
+            price: ticker.price,
+            priceBaseline: ticker.priceBaseline,
+            priceScale: ticker.priceScale,
         },
         series: series[key] ?? [],
         news: (newsMap[key] ?? []).map((n) => ({

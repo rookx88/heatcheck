@@ -12,9 +12,12 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { RETROSPECTIVE_NOTE, getTickerValues } from '../../lib/pages-functions/tickers';
+import { PRICE_NOTE } from '../../lib/pages-functions/ticker-price';
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
     const sql = getSql(context.env);
     const tickers = await getTickerValues(sql);
-    return jsonResponse({ note: RETROSPECTIVE_NOTE, tickers });
+    // Each ticker now also carries its Ember price (price, priceBaseline, priceScale);
+    // priceNote is the price's own framing line, shipped wherever a price is.
+    return jsonResponse({ note: RETROSPECTIVE_NOTE, priceNote: PRICE_NOTE, tickers });
 };

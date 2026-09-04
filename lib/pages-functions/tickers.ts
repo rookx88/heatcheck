@@ -20,6 +20,7 @@ import { fetchMarket, safeJsonParse } from './gamma';
 import { fetchMarket as fetchKalshiMarket, fetchKalshiTradesPage } from './kalshi';
 import { getGameConfig } from './pets';
 import { leagueGroupLabel, leagueRuleAccepts, parseLeagueRule } from './league-rules';
+import { priceFromValue } from './ticker-price';
 
 // Spec'd framing constraint: ticker values/charts are never presented as predictive.
 // Every API response that carries a value or chart includes this note verbatim.
@@ -482,6 +483,14 @@ export interface TickerValue {
     eventCount: number;
     settleWinPct: number;
     settleLossPct: number;
+    // The tradeable Ember price and the two per-ticker inputs that produce it:
+    // price = priceBaseline * exp(value / priceScale), computed by ticker-price.ts from the
+    // `value` on this same row - a second READ of the sum, never a second computation.
+    // The inputs ride along so a client can map chart points through the identical
+    // function instead of fetching a second price series.
+    priceBaseline: number;
+    priceScale: number;
+    price: number;
 }
 
 // All active tickers with their current values, summed across BOTH legs:
@@ -491,34 +500,51 @@ export interface TickerValue {
 //                    Tank's events exist but never count.
 // The LEFT JOIN matters: an inner join would silently drop every slate event, since
 // slate rows carry a NULL tank_id by construction.
-export async function getTickerValues(sql: SqlReader): Promise<TickerValue[]> {
+//
+// `key` narrows to one ticker (a trade pricing exactly the index being bought) through
+// the SAME statement every board and page reads - the `${key}::text IS NULL OR` idiom
+// getTickerSeries already uses - so a single-ticker price can never be computed by a
+// second, drifting copy of this query.
+export async function getTickerValues(sql: SqlReader, key: string | null = null): Promise<TickerValue[]> {
     const rows = await sql`
         SELECT tk.key, tk.display_name, tk.description, tk.rule_type, tk.tab_order,
                tk.parent_key,
                tk.settle_win_pct::float8 AS settle_win_pct,
                tk.settle_loss_pct::float8 AS settle_loss_pct,
+               tk.price_baseline::float8 AS price_baseline,
+               tk.price_scale::float8 AS price_scale,
                COALESCE(SUM(e.delta) FILTER (WHERE e.source = 'slate' OR t.visibility = 'app'), 0)::float8 AS value,
                COUNT(e.id) FILTER (WHERE e.source = 'slate' OR t.visibility = 'app')::int AS event_count
         FROM tickers tk
         LEFT JOIN ticker_events e ON e.ticker_key = tk.key
         LEFT JOIN tank_pages t ON t.id = e.tank_id
         WHERE tk.active
+          AND (${key}::text IS NULL OR tk.key = ${key})
         GROUP BY tk.key, tk.display_name, tk.description, tk.rule_type, tk.tab_order,
-                 tk.parent_key, tk.settle_win_pct, tk.settle_loss_pct
+                 tk.parent_key, tk.settle_win_pct, tk.settle_loss_pct,
+                 tk.price_baseline, tk.price_scale
         ORDER BY tk.tab_order, tk.key
     `;
-    return rows.map((r) => ({
-        key: r.key as string,
-        displayName: r.display_name as string,
-        description: r.description as string,
-        ruleType: r.rule_type as string,
-        tabOrder: r.tab_order as number,
-        parentKey: (r.parent_key as string | null) ?? null,
-        value: r.value as number,
-        eventCount: r.event_count as number,
-        settleWinPct: r.settle_win_pct as number,
-        settleLossPct: r.settle_loss_pct as number,
-    }));
+    return rows.map((r) => {
+        const value = r.value as number;
+        const priceBaseline = r.price_baseline as number;
+        const priceScale = r.price_scale as number;
+        return {
+            key: r.key as string,
+            displayName: r.display_name as string,
+            description: r.description as string,
+            ruleType: r.rule_type as string,
+            tabOrder: r.tab_order as number,
+            parentKey: (r.parent_key as string | null) ?? null,
+            value,
+            eventCount: r.event_count as number,
+            settleWinPct: r.settle_win_pct as number,
+            settleLossPct: r.settle_loss_pct as number,
+            priceBaseline,
+            priceScale,
+            price: priceFromValue(value, { baseline: priceBaseline, scale: priceScale }),
+        };
+    });
 }
 
 export interface TickerSeriesEvent {
