@@ -1,6 +1,6 @@
 // GET /api/picks/mine - the picks this account has made, split into pending
 // (result IS NULL) and settled, joined to each Tank's display fields. Powers the
-// /my-tanks/ page. Same session/auth conventions as ./today.ts: identity comes only
+// /my-portfolio/ page (Tanks tab). Same session/auth conventions as ./today.ts: identity comes only
 // from the validated hc_session cookie; 401 = logged out (client redirects to
 // /login/), 403 = not onboarded.
 //

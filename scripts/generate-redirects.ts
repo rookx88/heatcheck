@@ -34,6 +34,12 @@ export async function generateRedirectsFile(
         '# that 404.html exists, which is the honest answer for content that is gone.',
         '/the-tank/articles/mike-vrabel-patriots-head-coach-out-by-2026/*  /the-tank/articles/mike-vrabel-patriots-hot-seat-fired-2026/  301',
         '/the-tank/articles/mike-vrabel-patriots-head-coach-out-by-2026    /the-tank/articles/mike-vrabel-patriots-hot-seat-fired-2026/  301',
+        '',
+        '# My Tanks became My Portfolio (Tank picks + TANKDAQ index holdings) - the page',
+        '# moved so its URL matches its name. noindex, so no search equity to preserve;',
+        '# this only catches bookmarks and any stale in-app link.',
+        '/my-tanks/*  /my-portfolio/  301',
+        '/my-tanks    /my-portfolio/  301',
     ];
 
     const redirectsContent = redirects.join('\n') + '\n';

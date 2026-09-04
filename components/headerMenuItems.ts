@@ -15,7 +15,9 @@ export interface HeaderMenuItem {
 
 export const HEADER_MENU_ITEMS: readonly HeaderMenuItem[] = [
     { label: 'Home', href: '/' },
-    { label: 'My Tanks', href: '/my-tanks/' },
+    // Tank picks AND TANKDAQ index holdings, in two tabs. Was "My Tanks" at /my-tanks/,
+    // which 301s here (scripts/generate-redirects.ts).
+    { label: 'My Portfolio', href: '/my-portfolio/' },
     { label: 'Account', href: '/account/' },
     // Inbox only DISPATCHES the open event - both renderers rely on a
     // NotificationsHost elsewhere on the page to actually render the modal, since it
