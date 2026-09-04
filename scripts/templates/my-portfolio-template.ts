@@ -20,6 +20,9 @@ export function generateMyPortfolioPageHtml(baseUrl: string): string {
     <meta name="robots" content="noindex">
     <link rel="stylesheet" href="/assets/my-portfolio.css">
     <style>
+        /* The shared .hc-page column is sized for prose; the holdings table needs the
+           room the ticker pages already claim (same override as .hc-tq-page). */
+        .hc-page.hc-portfolio-page { max-width: 860px; }
         .hc-portfolio-loading {
             margin: 1.5rem 0; text-align: center; color: rgba(255,255,255,0.8);
         }
@@ -92,7 +95,7 @@ export function generateMyPortfolioPageHtml(baseUrl: string): string {
         /* Index holdings table. Scrolls inside its own wrapper on a narrow screen so
            the page never scrolls sideways. */
         .hc-portfolio-tablewrap { overflow-x: auto; }
-        .hc-portfolio-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 560px; }
+        .hc-portfolio-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; min-width: 520px; }
         .hc-portfolio-table th {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.64rem;
             letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.55);
@@ -118,7 +121,7 @@ export function generateMyPortfolioPageHtml(baseUrl: string): string {
     </style>
 </head>
 <body>
-    <main class="hc-page">
+    <main class="hc-page hc-portfolio-page">
         ${topbar(null)}
         <div id="my-portfolio-root"></div>
         ${footer()}
