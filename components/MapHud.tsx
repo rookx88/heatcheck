@@ -7,7 +7,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { logout } from '../tank-pick-client';
-import { getToolbarState } from '../toolbar-state-client';
+import { getToolbarState, BALANCE_UPDATED_EVENT } from '../toolbar-state-client';
 import { dispatchInboxOpen } from '../notifications-client';
 import { HEADER_MENU_ITEMS } from './headerMenuItems';
 import './MapHud.css';
@@ -57,6 +57,14 @@ export const MapHud: React.FC = () => {
         };
         window.addEventListener('pageshow', onPageShow);
         return () => window.removeEventListener('pageshow', onPageShow);
+    }, [hydrate]);
+
+    // Same-page Ember changes (a TANKDAQ trade, a shop purchase) announce themselves so
+    // the chip's total never sits stale next to the surface that just changed it.
+    useEffect(() => {
+        const onBalance = () => hydrate();
+        window.addEventListener(BALANCE_UPDATED_EVENT, onBalance);
+        return () => window.removeEventListener(BALANCE_UPDATED_EVENT, onBalance);
     }, [hydrate]);
 
     // Click-away + Escape close the mini nav.

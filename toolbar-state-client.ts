@@ -23,6 +23,16 @@ export interface ToolbarState {
     notifications: NotificationItem[] | null;
 }
 
+// Announces an Ember balance change made on the SAME page - a TANKDAQ trade, a shop
+// purchase - so the header chrome (MapHud) re-hydrates without a reload. Same idiom as
+// PET_UPDATED_EVENT / NOTIFICATIONS_UPDATED_EVENT. Before this existed nothing told the
+// HUD about a spend: the egg shop refreshed its own modal-local number while the chip
+// above it kept the pre-purchase total until Back or a reload.
+export const BALANCE_UPDATED_EVENT = 'hc:balance-updated';
+export function dispatchBalanceUpdated(): void {
+    window.dispatchEvent(new CustomEvent(BALANCE_UPDATED_EVENT));
+}
+
 async function parseJsonSafe(res: Response): Promise<any> {
     try {
         return await res.json();

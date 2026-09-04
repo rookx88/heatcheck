@@ -12,6 +12,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Egg3D, { colorwayFromCatalog } from './Egg3D';
 import { trackEvent } from '../tank-analytics-client';
+import { dispatchBalanceUpdated } from '../toolbar-state-client';
 import {
     getShopEggs,
     getOwnedEggs,
@@ -156,6 +157,8 @@ export const EggShopModal: React.FC<EggShopModalProps> = ({ onClose }) => {
             const [eggs, bal] = await Promise.all([getOwnedEggs(), getEmberBalance()]);
             if (eggs !== null) setOwnedEggs(eggs);
             if (bal !== null) setBalance(bal);
+            // The HUD chip above this modal shows the same balance - tell it.
+            dispatchBalanceUpdated();
         } catch (err: any) {
             if (err instanceof InsufficientEmberError) {
                 setBalance(err.balance);

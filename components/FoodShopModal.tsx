@@ -10,6 +10,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { trackEvent } from '../tank-analytics-client';
+import { dispatchBalanceUpdated } from '../toolbar-state-client';
 import {
     getShopFood,
     getOwnedFood,
@@ -112,6 +113,8 @@ export const FoodShopModal: React.FC<FoodShopModalProps> = ({ title, vendor, onC
             setNotice('Added to your pantry!');
             const bal = await getEmberBalance();
             if (bal !== null) setBalance(bal);
+            // The HUD chip above this modal shows the same balance - tell it.
+            dispatchBalanceUpdated();
         } catch (err: any) {
             if (err instanceof InsufficientEmberError) {
                 setBalance(err.balance);
