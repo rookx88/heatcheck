@@ -14,8 +14,9 @@
 // underlying atomicity guarantee documented in the production code's own comments does
 // not actually hold.
 
-import { pool, check, section, type Suite } from '../harness';
+import { pool, api, check, section, type Suite } from '../harness';
 import { fireParallel, tally, countStatus } from '../concurrency';
+import { buyCost } from '../../../lib/pages-functions/ticker-price';
 import {
     createUser,
     createSessionUser,
@@ -482,6 +483,68 @@ async function run(): Promise<void> {
     } else {
         check('exactly one session row created for this user (COUNT(*) FROM sessions)', sessions10[0].n === 1, JSON.stringify(sessions10[0]));
     }
+
+    // =================================================================================
+    // 11. TANKDAQ share buy, DISTINCT tradeTokens, balance for exactly ONE share - the
+    //     spendLock re-proof for trades (functions/api/tankdaq/buy.ts ->
+    //     ledger.buyShares). Same shape as section 4: eight racing distinct-token buys
+    //     against a balance that covers one, so exactly one may debit. buyShares takes
+    //     the SAME 'ember_spend' advisory lock the shop does; a trade path that skipped
+    //     it would double-debit here exactly as the shop did before the lock existed.
+    //     The price is read live from the public detail endpoint - never hardcoded.
+    // =================================================================================
+    section('11. Share buy - N=8 DISTINCT tradeTokens, balance for exactly one share');
+    const u11 = await createSessionUser(`${EMAIL_PREFIX}shares-distinct@example.com`);
+    const det11 = await api('GET', '/api/tickers/detail?key=dogs');
+    const price11 = det11.json?.ticker?.price as number;
+    const oneShare = buyCost(1, price11);
+    await setBalance(u11.userId, oneShare);
+    const results11 = await fireParallel({
+        method: 'POST',
+        path: '/api/tankdaq/buy',
+        build: () => ({ body: { tickerKey: 'dogs', shares: 1, tradeToken: crypto.randomUUID() }, headers: { Cookie: u11.cookie } }),
+        n: 8,
+    });
+    check('exactly one 200', countStatus(results11, 200) === 1, JSON.stringify(tally(results11)));
+    check('the other 7 are 402 (insufficient Ember)', results11.filter((r) => r.status !== 200).every((r) => r.status === 402), JSON.stringify(tally(results11)));
+    const { rows: ledger11 } = await pool.query(`SELECT COUNT(*)::int AS n FROM ember_ledger WHERE user_id = $1 AND rule_key = 'shares_buy'`, [u11.userId]);
+    check('exactly one shares_buy ledger row (spendLock serialized the 8 attempts)', ledger11[0].n === 1, JSON.stringify(ledger11[0]));
+    const { rows: bal11 } = await pool.query(`SELECT balance FROM ember_balances WHERE user_id = $1`, [u11.userId]);
+    check('balance never went negative (lands at exactly 0)', bal11[0]?.balance === 0, `balance=${bal11[0]?.balance}`);
+    const { rows: held11 } = await pool.query(`SELECT shares::int AS shares FROM share_holdings WHERE user_id = $1 AND ticker_key = 'dogs'`, [u11.userId]);
+    check('exactly one share held (one holdings mutation, not eight)', held11.length === 1 && held11[0].shares === 1, JSON.stringify(held11));
+    const { rows: trades11 } = await pool.query(`SELECT COUNT(*)::int AS n FROM share_trades WHERE user_id = $1`, [u11.userId]);
+    check('exactly one trade row', trades11[0].n === 1, JSON.stringify(trades11[0]));
+
+    // =================================================================================
+    // 12. TANKDAQ share buy, SAME tradeToken, N=8 - idempotent replay. Like section 3:
+    //     every request returns 200 (a replayed token is a success that wrote nothing),
+    //     exactly one carries replay:false, and the DB shows one debit, one share, one
+    //     trade. The precheck/bal pair is what spendLock protects; this is the race
+    //     that proves it.
+    // =================================================================================
+    section('12. Share buy - N=8 simultaneous, SAME tradeToken (idempotent replay)');
+    const u12 = await createSessionUser(`${EMAIL_PREFIX}shares-same@example.com`);
+    await setBalance(u12.userId, oneShare * 10);
+    const token12 = crypto.randomUUID();
+    const results12 = await fireParallel({
+        method: 'POST',
+        path: '/api/tankdaq/buy',
+        build: () => ({ body: { tickerKey: 'dogs', shares: 1, tradeToken: token12 }, headers: { Cookie: u12.cookie } }),
+        n: 8,
+    });
+    check('all 8 return 200 (idempotent replay of the same token, not 402/409)', results12.every((r) => r.status === 200), JSON.stringify(tally(results12)));
+    check('exactly one response is the real trade (replay:false), the rest replay:true',
+        results12.filter((r) => r.json?.replay === false).length === 1 && results12.filter((r) => r.json?.replay === true).length === 7,
+        JSON.stringify(results12.map((r) => r.json?.replay)));
+    const { rows: ledger12 } = await pool.query(`SELECT COUNT(*)::int AS n FROM ember_ledger WHERE user_id = $1 AND rule_key = 'shares_buy'`, [u12.userId]);
+    check('exactly one shares_buy ledger row for that token', ledger12[0].n === 1, JSON.stringify(ledger12[0]));
+    const { rows: bal12 } = await pool.query(`SELECT balance FROM ember_balances WHERE user_id = $1`, [u12.userId]);
+    check('balance debited exactly once', bal12[0]?.balance === oneShare * 9, `balance=${bal12[0]?.balance} expected=${oneShare * 9}`);
+    const { rows: held12 } = await pool.query(`SELECT shares::int AS shares FROM share_holdings WHERE user_id = $1 AND ticker_key = 'dogs'`, [u12.userId]);
+    check('exactly one share held', held12.length === 1 && held12[0].shares === 1, JSON.stringify(held12));
+    const { rows: trades12 } = await pool.query(`SELECT COUNT(*)::int AS n FROM share_trades WHERE user_id = $1`, [u12.userId]);
+    check('exactly one trade row', trades12[0].n === 1, JSON.stringify(trades12[0]));
 
     await cleanup();
 }

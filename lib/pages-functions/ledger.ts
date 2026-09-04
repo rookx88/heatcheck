@@ -242,6 +242,224 @@ export async function purchaseConsumable(
         : { ok: false, reason: 'insufficient', grantedInventoryId: null };
 }
 
+// -----------------------------------------------------------------------------------
+// TANKDAQ share trades. A user buys or sells whole shares of an index at its live Ember
+// price (lib/pages-functions/ticker-price.ts). Both functions live HERE because they
+// write ember_ledger and ember_balances, and this file is the one sanctioned path for
+// that. They take integer Ember amounts the endpoint already computed (ceil on a buy,
+// floor on a sell) so the ledger stays formula-agnostic: it records what happened and
+// why, it does not price anything.
+//
+// Both run behind spendLock() in the SAME 'ember_spend' namespace the shop uses. A sell
+// takes it too, even though it credits rather than debits: it mutates share_holdings,
+// which a concurrent buy also mutates, and its precheck/decrement pair has exactly the
+// same same-token double-apply hazard spendLock's comment describes for the balance.
+//
+// Unlike every earlier rule, 'shares_buy'/'shares_sell' carry no {amount} in config -
+// the amount is per trade. Every ledger row still stamps rule_key + rule_version and
+// records {tickerKey, shares, price, tradeToken, pricingVersion} in metadata, so it
+// stays explainable: this many shares, at this quote, under this pricing formula.
+//
+// The paired share_trades row shares the ledger row's idempotency_key, so a replayed
+// trade token can no more write a second trade than a second debit. Trading never
+// writes ticker_events: prices move stories and results; a trade only consumes them.
+// -----------------------------------------------------------------------------------
+
+export interface TradeInput {
+    userId: string;
+    tickerKey: string;
+    shares: number;       // whole shares, >= 1 (validated by the endpoint via isWholeShares)
+    price: number;        // the server's 4-dp quote at the moment of the trade
+    emberAmount: number;  // integer Ember: buyCost(...) on a buy, sellCredit(...) on a sell
+    tradeToken: string;   // client-minted UUID; reused verbatim on retry
+}
+
+export interface BuySharesResult {
+    ok: boolean;          // false ONLY means insufficient Ember - nothing written
+    replay: boolean;      // true when this token was already recorded (idempotent no-op)
+    // The position after this buy. null on a replay (the CTE has nothing to return) -
+    // the endpoint re-reads it - and null when !ok.
+    position: { shares: number; avgBuyPrice: number } | null;
+}
+
+export interface SellSharesResult {
+    ok: boolean;          // false ONLY means insufficient shares - nothing written
+    replay: boolean;
+    remaining: number | null;     // shares left after the sale; 0 means the row was removed
+    realizedPnl: number | null;   // credit - shares * avg_buy_price, at the moment of sale
+}
+
+function tradeMetadata(input: TradeInput, pricingVersion: number): string {
+    return JSON.stringify({
+        tickerKey: input.tickerKey,
+        shares: input.shares,
+        price: input.price,
+        tradeToken: input.tradeToken,
+        pricingVersion,
+    });
+}
+
+// One statement: debit, ledger row, holdings upsert, trade row - all or nothing.
+// Same skeleton as purchaseConsumable with the `granted` leg replaced by `held`:
+//   precheck  - has this token already been recorded?
+//   bal       - conditional debit; the balance check IS the write (`balance >= cost`)
+//   led       - the ledger row, only when bal actually debited
+//   held      - the position, only when led actually wrote: a fresh row, or a weighted
+//               average against the EXISTING row. avg_buy_price is Ember actually paid
+//               divided by shares (so it includes the ceil), which is what lets
+//               unrealized P/L reconcile to real ledger flows.
+//   trade     - the diary row, only when led wrote
+// Every parameter that takes part in arithmetic carries an explicit cast: Neon's HTTP
+// driver binds params as untyped unknowns, and `param + param` with no column to anchor
+// the type is an ambiguous-operator error (see pets.ts's feed for the same rule).
+export async function buyShares(sql: NeonQueryFunction<false, false>, input: TradeInput): Promise<BuySharesResult> {
+    const rule = await getActiveRule(sql, 'shares_buy');
+    const idempotencyKey = buildIdempotencyKey('shares_buy', input.userId, input.tradeToken);
+    const meta = tradeMetadata(input, rule.config.pricingVersion ?? 1);
+    const holdingId = crypto.randomUUID();
+    const tradeId = crypto.randomUUID();
+    const cost = input.emberAmount;
+
+    const [, rows] = await sql.transaction([
+        spendLock(sql, input.userId),
+        sql`
+        WITH precheck AS (
+            SELECT 1 FROM ember_ledger WHERE idempotency_key = ${idempotencyKey}
+        ), bal AS (
+            UPDATE ember_balances
+            SET balance = balance - ${cost}::int, updated_at = NOW()
+            WHERE user_id = ${input.userId}
+              AND balance >= ${cost}::int
+              AND NOT EXISTS (SELECT 1 FROM precheck)
+            RETURNING user_id
+        ), led AS (
+            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
+            SELECT ${input.userId}, ${-cost}::int, 'spend', 'shares_buy', ${rule.version},
+                   ${idempotencyKey}, ${meta}::jsonb
+            FROM bal
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING id
+        ), held AS (
+            INSERT INTO share_holdings (id, user_id, ticker_key, shares, avg_buy_price, updated_at)
+            SELECT ${holdingId}::uuid, ${input.userId}::uuid, ${input.tickerKey},
+                   ${input.shares}::numeric, ${cost}::numeric / ${input.shares}::numeric, NOW()
+            FROM led
+            ON CONFLICT (user_id, ticker_key) DO UPDATE SET
+                -- Every share_holdings.* reference on the right is the PRE-update row, so
+                -- these two assignments are order-independent.
+                avg_buy_price = (share_holdings.shares * share_holdings.avg_buy_price + ${cost}::numeric)
+                                / (share_holdings.shares + EXCLUDED.shares),
+                shares = share_holdings.shares + EXCLUDED.shares,
+                updated_at = NOW()
+            RETURNING shares, avg_buy_price
+        ), trade AS (
+            INSERT INTO share_trades (id, user_id, ticker_key, side, shares, price, ember_amount,
+                                      realized_pnl, trade_token, idempotency_key, ledger_id)
+            SELECT ${tradeId}::uuid, ${input.userId}::uuid, ${input.tickerKey}, 'buy',
+                   ${input.shares}::numeric, ${input.price}::numeric, ${cost}::int,
+                   NULL, ${input.tradeToken}::uuid, ${idempotencyKey}, led.id
+            FROM led
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING id
+        )
+        SELECT EXISTS (SELECT 1 FROM precheck) AS already_recorded,
+               EXISTS (SELECT 1 FROM led)      AS newly_spent,
+               (SELECT shares::float8 FROM held)        AS shares,
+               (SELECT avg_buy_price::float8 FROM held) AS avg_buy_price
+        `,
+    ]);
+    const row = rows[0] as unknown as {
+        already_recorded: boolean; newly_spent: boolean; shares: number | null; avg_buy_price: number | null;
+    };
+    const ok = row.already_recorded || row.newly_spent;
+    return {
+        ok,
+        replay: row.already_recorded,
+        position: row.newly_spent && row.shares !== null && row.avg_buy_price !== null
+            ? { shares: row.shares, avgBuyPrice: row.avg_buy_price }
+            : null,
+    };
+}
+
+// Two statements behind the lock. The first is the mirror of buyShares with the guard
+// moved from the balance to the position:
+//   precheck  - token already recorded?
+//   held      - conditional decrement; `shares >= n` IS the check, so a sell can never
+//               drive a position negative
+//   led       - the credit row, only when held actually decremented ('earn' - the
+//               nearest of the ledger's four entry types)
+//   bal       - post()'s balance fold, only when led wrote
+//   trade     - the diary row, with realized P/L against the average the row held
+// The second removes the row if the sale emptied it. A separate statement on purpose:
+// Postgres does not permit an UPDATE and a DELETE of the same row inside one WITH (the
+// sub-statements share a snapshot and the result is documented as unpredictable). It is
+// idempotent and lock-protected, so nothing is lost by splitting it. A later buy then
+// takes the upsert's INSERT branch and starts a fresh average.
+export async function sellShares(sql: NeonQueryFunction<false, false>, input: TradeInput): Promise<SellSharesResult> {
+    const rule = await getActiveRule(sql, 'shares_sell');
+    const idempotencyKey = buildIdempotencyKey('shares_sell', input.userId, input.tradeToken);
+    const meta = tradeMetadata(input, rule.config.pricingVersion ?? 1);
+    const tradeId = crypto.randomUUID();
+    const credit = input.emberAmount;
+
+    const [, rows] = await sql.transaction([
+        spendLock(sql, input.userId),
+        sql`
+        WITH precheck AS (
+            SELECT 1 FROM ember_ledger WHERE idempotency_key = ${idempotencyKey}
+        ), held AS (
+            UPDATE share_holdings
+            SET shares = shares - ${input.shares}::numeric, updated_at = NOW()
+            WHERE user_id = ${input.userId}
+              AND ticker_key = ${input.tickerKey}
+              AND shares >= ${input.shares}::numeric
+              AND NOT EXISTS (SELECT 1 FROM precheck)
+            RETURNING shares AS remaining, avg_buy_price
+        ), led AS (
+            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
+            SELECT ${input.userId}, ${credit}::int, 'earn', 'shares_sell', ${rule.version},
+                   ${idempotencyKey}, ${meta}::jsonb
+            FROM held
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING id, amount
+        ), bal AS (
+            INSERT INTO ember_balances (user_id, balance, updated_at)
+            SELECT ${input.userId}, amount, NOW() FROM led
+            ON CONFLICT (user_id) DO UPDATE
+                SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
+            RETURNING user_id
+        ), trade AS (
+            INSERT INTO share_trades (id, user_id, ticker_key, side, shares, price, ember_amount,
+                                      realized_pnl, trade_token, idempotency_key, ledger_id)
+            SELECT ${tradeId}::uuid, ${input.userId}::uuid, ${input.tickerKey}, 'sell',
+                   ${input.shares}::numeric, ${input.price}::numeric, ${credit}::int,
+                   ${credit}::numeric - ${input.shares}::numeric * held.avg_buy_price,
+                   ${input.tradeToken}::uuid, ${idempotencyKey}, led.id
+            FROM held, led
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING realized_pnl
+        )
+        SELECT EXISTS (SELECT 1 FROM precheck) AS already_recorded,
+               EXISTS (SELECT 1 FROM led)      AS newly_sold,
+               (SELECT remaining::float8 FROM held)      AS remaining,
+               (SELECT realized_pnl::float8 FROM trade)  AS realized_pnl
+        `,
+        sql`
+        DELETE FROM share_holdings
+        WHERE user_id = ${input.userId} AND ticker_key = ${input.tickerKey} AND shares = 0
+        `,
+    ]);
+    const row = rows[0] as unknown as {
+        already_recorded: boolean; newly_sold: boolean; remaining: number | null; realized_pnl: number | null;
+    };
+    return {
+        ok: row.already_recorded || row.newly_sold,
+        replay: row.already_recorded,
+        remaining: row.newly_sold ? row.remaining : null,
+        realizedPnl: row.newly_sold ? row.realized_pnl : null,
+    };
+}
+
 export type CallResult = 'correct' | 'incorrect';
 
 export interface SettleCallInput {

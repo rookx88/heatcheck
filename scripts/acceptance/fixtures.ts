@@ -218,6 +218,10 @@ export async function cleanupUsersByEmailPrefix(prefix: string): Promise<void> {
     const { rows: users } = await pool.query(`SELECT id FROM waitlist WHERE email LIKE $1`, [`${prefix}%@example.com`]);
     for (const u of users) {
         await pool.query(`DELETE FROM notifications WHERE user_id = $1`, [u.id]);
+        // TANKDAQ share trading: trades FK the ledger row that paid for them, so they go
+        // before ember_ledger; holdings only FK the user.
+        await pool.query(`DELETE FROM share_trades WHERE user_id = $1`, [u.id]);
+        await pool.query(`DELETE FROM share_holdings WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM ember_ledger WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM ember_balances WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM inventory_items WHERE user_id = $1`, [u.id]);
