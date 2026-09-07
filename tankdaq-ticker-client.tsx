@@ -32,13 +32,12 @@ import {
     type PriceParams,
 } from './lib/pages-functions/ticker-price';
 import { ContentChrome } from './components/ContentChrome';
-import { getToolbarState } from './toolbar-state-client';
 import { InsufficientEmberError } from './egg-shop-client';
 import {
     InsufficientSharesError,
     TickerUnavailableError,
     buyShares,
-    getHoldings,
+    getHoldingsWithStatus,
     sellShares,
     type Position,
 } from './tankdaq-shares-client';
@@ -229,10 +228,14 @@ const TickerChart: React.FC<{ series: SeriesEvent[]; windowId: WindowId; display
 };
 
 // ---------------------------------------------------------------------------------
-// Trade panel: whole shares, priced server-side. Login state is hydrated here because
-// ContentChrome keeps it private (see header). A tradeToken is minted per INTENT - a
-// new one whenever side or quantity changes and after every completed attempt - and
-// kept across a network failure so a retry is idempotent.
+// Trade panel: whole shares, priced server-side. Login state comes from the holdings
+// read itself (getHoldingsWithStatus: 401 = out, 403 = not onboarded, else the
+// balance and positions) - ContentChrome keeps its own toolbar-state private (see
+// header), and this panel mounts only after the detail fetch resolves, so a
+// toolbar-state call from here could never share the chrome's in-flight request and
+// was a third full server round-trip per page load. A tradeToken is minted per
+// INTENT - a new one whenever side or quantity changes and after every completed
+// attempt - and kept across a network failure so a retry is idempotent.
 // ---------------------------------------------------------------------------------
 
 type Auth = 'loading' | 'out' | 'unonboarded' | 'in';
@@ -251,15 +254,14 @@ const TradePanel: React.FC<{ tickerKey: string; displayName: string; price: numb
 
     const hydrate = useCallback(async () => {
         try {
-            const state = await getToolbarState();
-            if (!state) { setAuth('out'); return; }
-            if (state.balance === null) { setAuth('unonboarded'); return; }
-            setBalance(state.balance);
+            const probe = await getHoldingsWithStatus();
+            if (probe.status === 'out') { setAuth('out'); return; }
+            if (probe.status === 'unonboarded') { setAuth('unonboarded'); return; }
+            const h = probe.holdings;
+            setBalance(h.balance);
             setAuth('in');
-            const h = await getHoldings();
-            const mine = h?.positions.find((p) => p.tickerKey === tickerKey) ?? null;
+            const mine = h.positions.find((p) => p.tickerKey === tickerKey) ?? null;
             setPosition(mine ? { shares: mine.shares, avgBuyPrice: mine.avgBuyPrice } : null);
-            if (h) setBalance(h.balance);
         } catch {
             setAuth((a) => (a === 'loading' ? 'out' : a));
         }
@@ -433,9 +435,14 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
     }, [data, windowId]);
 
     // Identity chrome renders in every phase - it hydrates from its own endpoint and
-    // must not wait on (or disappear with) this page's data.
-    if (phase === 'loading') return <><ContentChrome /><p className="hc-tq-loading">Loading index&hellip;</p></>;
-    if (phase === 'error' || !data) return <><ContentChrome /><p className="hc-tq-error">Couldn&rsquo;t load this index right now &mdash; refresh to retry.</p></>;
+    // must not wait on (or disappear with) this page's data. Every phase returns the
+    // SAME root <div> with ContentChrome as its first child on purpose: the loading and
+    // error branches used to return a fragment, and swapping a fragment root for the
+    // ready tree's <div> made React unmount and remount the chrome when the detail
+    // fetch resolved - a second, later /api/toolbar-state request per page load that
+    // no in-flight sharing could collapse. A stable root keeps the chrome mounted.
+    if (phase === 'loading') return <div><ContentChrome /><p className="hc-tq-loading">Loading index&hellip;</p></div>;
+    if (phase === 'error' || !data) return <div><ContentChrome /><p className="hc-tq-error">Couldn&rsquo;t load this index right now &mdash; refresh to retry.</p></div>;
 
     const { ticker } = data;
     const priceParams: PriceParams = { baseline: ticker.priceBaseline, scale: ticker.priceScale };

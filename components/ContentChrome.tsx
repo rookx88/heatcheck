@@ -1,6 +1,8 @@
 // Identity chrome for SCROLLING content pages - the analogue of what LandScreen gives
-// the full-screen map pages. Same three pieces, same components, same single
-// /api/toolbar-state hydration:
+// the full-screen map pages. Same three pieces, same components, and one shared
+// /api/toolbar-state request per page load: MapHud and PetWidget each call
+// getToolbarState() in their own mount effect, and toolbar-state-client.ts shares the
+// in-flight promise between them (it used to be two requests):
 //   MapHud            - username + Ember chip with the mini nav, or a Log in pill when
 //                       logged out (it self-gates; nothing renders while hydrating).
 //   PetWidget(fixed)  - the captain, bottom-right, riding the scroll. Self-gating too:

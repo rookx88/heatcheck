@@ -98,14 +98,30 @@ async function parseJsonSafe(res: Response): Promise<any> {
     }
 }
 
+// The holdings read doubles as the auth probe for surfaces that need to tell "logged
+// out" from "logged in but not onboarded" (the ticker page's trade panel): the
+// endpoint's own gates answer that - 401 = no session, 403 = requireOnboarded - so
+// the panel never needs a second /api/toolbar-state request on top of the one the
+// page chrome already makes. Neither status is an error here.
+export type HoldingsProbe =
+    | { status: 'out' }
+    | { status: 'unonboarded' }
+    | { status: 'ok'; holdings: HoldingsResponse };
+
+export async function getHoldingsWithStatus(): Promise<HoldingsProbe> {
+    const res = await fetch('/api/tankdaq/holdings');
+    if (res.status === 401) return { status: 'out' };
+    if (res.status === 403) return { status: 'unonboarded' };
+    const data = await parseJsonSafe(res);
+    if (!res.ok) throw new Error(data.message || `GET /api/tankdaq/holdings failed: ${res.status}`);
+    return { status: 'ok', holdings: data as HoldingsResponse };
+}
+
 // 401 = logged out, 403 = not onboarded - both "not in a state to see this" rather
 // than errors; returned as null so callers render the logged-out prompt.
 export async function getHoldings(): Promise<HoldingsResponse | null> {
-    const res = await fetch('/api/tankdaq/holdings');
-    if (res.status === 401 || res.status === 403) return null;
-    const data = await parseJsonSafe(res);
-    if (!res.ok) throw new Error(data.message || `GET /api/tankdaq/holdings failed: ${res.status}`);
-    return data as HoldingsResponse;
+    const probe = await getHoldingsWithStatus();
+    return probe.status === 'ok' ? probe.holdings : null;
 }
 
 async function trade(path: string, tickerKey: string, shares: number, tradeToken: string): Promise<TradeResponse> {

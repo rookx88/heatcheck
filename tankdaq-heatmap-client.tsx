@@ -249,9 +249,12 @@ const TankdaqBoard: React.FC = () => {
     };
 
     // Identity chrome renders in every phase - it hydrates from its own endpoint and
-    // must not wait on (or disappear with) the board's data.
-    if (phase === 'loading') return <><ContentChrome /><p className="hc-tqb-loading">Loading the board&hellip;</p></>;
-    if (phase === 'error') return <><ContentChrome /><p className="hc-tqb-error">Couldn&rsquo;t load the board right now &mdash; refresh to retry.</p></>;
+    // must not wait on (or disappear with) the board's data. Same root <div> in every
+    // phase, ContentChrome first: a fragment root here and a <div> root below made
+    // React remount the chrome when the board data landed, costing a second
+    // /api/toolbar-state request per page load (see tankdaq-ticker-client.tsx).
+    if (phase === 'loading') return <div><ContentChrome /><p className="hc-tqb-loading">Loading the board&hellip;</p></div>;
+    if (phase === 'error') return <div><ContentChrome /><p className="hc-tqb-error">Couldn&rsquo;t load the board right now &mdash; refresh to retry.</p></div>;
 
     return (
         <div>
