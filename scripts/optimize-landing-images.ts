@@ -420,7 +420,7 @@ async function buildMarketMoversLogo(): Promise<void> {
         console.log('⚠ market_movers.png not found at repo root, skipping market-movers-logo');
         return;
     }
-    let pngBuffer = await sharp(srcPath).png().toBuffer();
+    let pngBuffer: Buffer = await sharp(srcPath).png().toBuffer();
     pngBuffer = await clearEdgeConnectedWhite(pngBuffer);
     pngBuffer = await sharp(pngBuffer).trim().toBuffer();
 

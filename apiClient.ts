@@ -125,7 +125,22 @@ const apiRequest = async (endpoint: string, options: RequestInit = {}): Promise<
         });
         throw new Error(`API Error (${response.status}): ${errorText || response.statusText}`);
     }
-    
+
+    // A 200 that isn't JSON means something other than backend.ts answered - usually another
+    // project's dev server squatting port 3001, which serves its SPA index.html for every path.
+    // Every caller below does response.json(), so catch it here with a message that names the
+    // cause instead of letting the parse fail on "Unexpected token '<'".
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('json')) {
+        const body = await response.text();
+        console.error('Non-JSON API Response:', { url, contentType, bodyPreview: body.slice(0, 200) });
+        throw new Error(
+            `Expected JSON from ${url} but got "${contentType || 'no content-type'}". ` +
+            `Something other than the backend is answering on ${API_URL} - check that backend.ts ` +
+            `is the process listening on port 3001 (npm run dev:api).`
+        );
+    }
+
     return response;
 };
 
