@@ -2,49 +2,145 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
     <loc>https://heatchecks.io/</loc>
-    <lastmod>2026-08-28</lastmod>
+    <lastmod>2026-09-04</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/claim-your-spot/</loc>
-    <lastmod>2026-08-28</lastmod>
+    <lastmod>2026-09-04</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/the-tank/</loc>
-    <lastmod>2026-08-28</lastmod>
+    <lastmod>2026-09-04</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.7</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/the-tank-hq/</loc>
-    <lastmod>2026-08-28</lastmod>
+    <lastmod>2026-09-04</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/the-hatchery/</loc>
-    <lastmod>2026-08-28</lastmod>
+    <lastmod>2026-09-04</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/champions-terrace/</loc>
-    <lastmod>2026-08-28</lastmod>
+    <lastmod>2026-09-04</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
     <loc>https://heatchecks.io/quickboost-delicacies/</loc>
-    <lastmod>2026-08-28</lastmod>
+    <lastmod>2026-09-04</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.4</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/tankdaq/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/indexes/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/dogs/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/chalk/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/locks/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/moonshot/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/overs/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/unders/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/gridiron/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/footy/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/nbachalk/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/mlbchalk/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/nbadogs/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/mlbdogs/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/nfldogs/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/tankdaq/socdogs/</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.4</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/beta/</loc>
-    <lastmod>2026-08-28</lastmod>
+    <lastmod>2026-09-04</lastmod>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -69,6 +165,18 @@
   <url>
     <loc>https://heatchecks.io/the-tank/articles/devers-fenway-return-giants-red-sox/</loc>
     <lastmod>2026-08-22</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/mets-vs-rays-moneyline-call/</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/atletico-madrid-athletic-club-julian-alvarez/</loc>
+    <lastmod>2026-09-02</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -129,6 +237,18 @@
   <url>
     <loc>https://heatchecks.io/the-tank/articles/chelsea-fulham-xabi-alonso-premier-league-debut/</loc>
     <lastmod>2026-08-23</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/barcelona-rayo-vallecano-over-under-goals-raphinha/</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/dylan-crews-home-runs-nationals-marlins/</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -205,6 +325,12 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/the-tank/articles/mariners-red-sox-moneyline-seattle-stumble/</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/the-tank/articles/mike-vrabel-patriots-hot-seat-fired-2026/</loc>
     <lastmod>2026-08-13</lastmod>
     <changefreq>weekly</changefreq>
@@ -213,6 +339,12 @@
   <url>
     <loc>https://heatchecks.io/the-tank/articles/red-sox-yankees-wild-card-race-without-judge/</loc>
     <lastmod>2026-08-27</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/phillies-diamondbacks-ketel-marte-wild-card/</loc>
+    <lastmod>2026-08-31</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -277,6 +409,18 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/the-tank/articles/liverpool-ipswich-town-barcola-gakpo-deadline-day/</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/everton-vs-manchester-united-deadline-day-fallout/</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/the-tank/articles/nottingham-forest-liverpool-isak-moneyline/</loc>
     <lastmod>2026-08-26</lastmod>
     <changefreq>weekly</changefreq>
@@ -291,6 +435,18 @@
   <url>
     <loc>https://heatchecks.io/the-tank/articles/skubal-returns-dodgers-tigers-moneyline/</loc>
     <lastmod>2026-08-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/red-sox-yankees-total-8-5-wild-card-injuries/</loc>
+    <lastmod>2026-08-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/blue-jays-guardians-vladimir-guerrero-rematch/</loc>
+    <lastmod>2026-09-03</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -319,8 +475,56 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/the-tank/articles/giants-braves-moneyline-rotation-elbow-injuries/</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/the-tank/articles/diamondbacks-giants-rotation-crisis-moneyline/</loc>
     <lastmod>2026-08-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/giants-pirates-devers-run-line/</loc>
+    <lastmod>2026-09-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/white-sox-astros-over-under-8-5-runs/</loc>
+    <lastmod>2026-09-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/real-madrid-real-betis-total-goals-la-liga/</loc>
+    <lastmod>2026-09-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/braves-phillies-nl-east-showdown-citizens-bank-park/</loc>
+    <lastmod>2026-09-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/padres-reds-casey-mize-robbie-ray-rotation/</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/cubs-brewers-pete-crow-armstrong-nl-central/</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/chelsea-arsenal-over-under-2-5-deadline-day/</loc>
+    <lastmod>2026-09-02</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
@@ -349,14 +553,116 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/the-tank/articles/ipswich-town-manchester-united-bounce-back/</loc>
+    <lastmod>2026-08-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/the-tank/articles/steelers-bills-ed-oliver-moneyline/</loc>
     <lastmod>2026-08-27</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://heatchecks.io/the-tank/articles/real-madrid-malaga-over-under-3-5-goals/</loc>
+    <lastmod>2026-08-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/white-sox-twins-tristan-peters-homer-streak-moneyline/</loc>
+    <lastmod>2026-08-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/cardinals-dodgers-ohtani-return-watch/</loc>
+    <lastmod>2026-09-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/yankees-angels-stanton-calf-moneyline/</loc>
+    <lastmod>2026-09-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/yankees-angels-stanton-injury-moneyline/</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/cardinals-dodgers-ohtani-mound-return-watch/</loc>
+    <lastmod>2026-09-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/rayo-vallecano-vs-barcelona-moneyline/</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
     <loc>https://heatchecks.io/the-tank/articles/red-sox-yankees-over-under-judge-injury-al-east/</loc>
     <lastmod>2026-08-28</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/blue-jays-guardians-cleveland-win-streak/</loc>
+    <lastmod>2026-09-01</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/bears-titans-preseason-finale-total-37-5/</loc>
+    <lastmod>2026-08-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/tigers-twins-al-central-chase/</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/brighton-chelsea-deadline-week-moneyline/</loc>
+    <lastmod>2026-08-29</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/white-sox-astros-wesneski-velazquez-moneyline/</loc>
+    <lastmod>2026-09-03</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/white-sox-astros-moneyline-turnaround/</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/arsenal-vs-aston-villa-over-3-5-goals-deadline-day/</loc>
+    <lastmod>2026-08-30</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/white-sox-astros-al-central-race/</loc>
+    <lastmod>2026-08-31</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://heatchecks.io/the-tank/articles/athletics-rangers-al-west-wild-card/</loc>
+    <lastmod>2026-09-01</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.6</priority>
   </url>
