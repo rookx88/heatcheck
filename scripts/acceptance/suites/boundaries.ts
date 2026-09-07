@@ -282,6 +282,14 @@ async function run(): Promise<void> {
     section("7. Ticker tag movement cap (default +/-10%, game_config['tickers'].tag_delta_cap_pct) - strict `>`, not `>=` (fetchTagDelta: `capped = Math.abs(rawDelta) > capPct`)");
     // =====================================================================================
     {
+        // Since slate indexes phase 2, the stored delta is the RAW 3-day move times
+        // game_config['tickers'].tag_scale_pct (the news leg's weight next to the slate's
+        // results leg), then clamped to +/-cap: `delta = clamp(rawDelta * scale, cap)`.
+        // The `capped` flag is still decided on the RAW move (`|rawDelta| > cap`), so at
+        // scale < 1 a tag can report capped:true while its scaled delta sits inside the
+        // cap. Both assertions below are written against exactly that contract.
+        const tagScale = Number((await activeConfig('tickers')).tag_scale_pct ?? 1);
+        console.log(`  [boundaries] Active tickers.tag_scale_pct = ${tagScale}`);
         try {
             await flipConfig('tickers', { tag_delta_cap_pct: 100 });
             const tankRaw = boundSlug('cap-raw');
@@ -301,8 +309,8 @@ async function run(): Promise<void> {
                 await insertTank({ slug: tankAt, marketId: markets.live.id, outcomes: markets.live.outcomes, outcomePrices: [0.3, 0.7] });
                 const atRes = await tagPost({ slug: tankAt, tickerKey: 'dogs', relevantSide: 0 });
                 check(
-                    `AT cap (cap == |rawDelta| == ${capAbs.toFixed(3)}) -> NOT capped (capped:false, delta==rawDelta) - documented side is not-capped-at-the-line`,
-                    atRes.status === 201 && atRes.json?.capped === false && near(Number(atRes.json?.delta), rawDelta, 0.002),
+                    `AT cap (cap == |rawDelta| == ${capAbs.toFixed(3)}) -> NOT capped (capped:false, delta == rawDelta * scale) - documented side is not-capped-at-the-line`,
+                    atRes.status === 201 && atRes.json?.capped === false && near(Number(atRes.json?.delta), rawDelta * tagScale, 0.002),
                     JSON.stringify(atRes.json),
                 );
 
@@ -312,9 +320,10 @@ async function run(): Promise<void> {
                 const tankOver = boundSlug('cap-above');
                 await insertTank({ slug: tankOver, marketId: markets.live.id, outcomes: markets.live.outcomes, outcomePrices: [0.3, 0.7] });
                 const overRes = await tagPost({ slug: tankOver, tickerKey: 'dogs', relevantSide: 0 });
+                const expectedAbove = Math.min(capBelow, Math.abs(rawDelta * tagScale));
                 check(
-                    `ABOVE cap (cap == |rawDelta| - 0.001 == ${capBelow.toFixed(3)}) -> capped:true, |delta| == cap`,
-                    overRes.status === 201 && overRes.json?.capped === true && near(Math.abs(Number(overRes.json?.delta)), capBelow, 0.002),
+                    `ABOVE cap (cap == |rawDelta| - 0.001 == ${capBelow.toFixed(3)}) -> capped:true (raw exceeds cap), |delta| == min(cap, |rawDelta * scale|) == ${expectedAbove.toFixed(3)}`,
+                    overRes.status === 201 && overRes.json?.capped === true && near(Math.abs(Number(overRes.json?.delta)), expectedAbove, 0.002),
                     JSON.stringify(overRes.json),
                 );
             }

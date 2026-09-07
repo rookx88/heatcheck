@@ -32,12 +32,6 @@ export interface SubmitPickInput {
     source: string;
 }
 
-interface PickRow {
-    side: string;
-    tank_slug: string;
-    created_at: string;
-}
-
 export type SubmitPickResult =
     | { status: 'not_found' }
     | { status: 'not_settleable' }
@@ -84,32 +78,52 @@ export async function submitPick(
     const impliedProbAtLock = odds.outcomePrices[sideIndex];
     if (typeof impliedProbAtLock !== 'number' || Number.isNaN(impliedProbAtLock)) return { status: 'malformed_odds' };
 
-    // Same count-then-insert posture as the original inline version: not a hard
-    // guarantee under a race, but picks pay out nothing by themselves, so the blast
-    // radius of one extra slipped-through pick is negligible at this scale.
-    const capRows = await sql`
-        SELECT
-            (SELECT COUNT(*)::int FROM picks WHERE waitlist_id = ${waitlistId} AND created_at >= CURRENT_DATE AND source = 'app') AS count,
-            (SELECT email_verified FROM waitlist WHERE id = ${waitlistId}) AS email_verified
+    // Atomic cap check-and-insert. The original count-then-insert was accepted as a
+    // race on the premise that "picks pay out nothing by themselves" - no longer true:
+    // every settled pick pays at least the `participation` floor (ledger.ts settleCall),
+    // so two simultaneous submits both passing a stale COUNT(*) minted real Ember past
+    // the cap. Same discipline as ledger.ts's debits: the guard IS the write (the
+    // INSERT selects FROM the count and only fires when it is under the cap), and the
+    // per-account advisory lock is the transaction's FIRST statement so the count's
+    // snapshot is taken only after any concurrent winner has committed - a plain
+    // guarded INSERT alone would not serialize under READ COMMITTED, since no existing
+    // row is locked. Own 'pick_cap' namespace, deliberately not 'ember_spend': a pick
+    // never debits, and sharing the lock would serialize picks behind shop traffic.
+    //
+    // One row always comes back (the LEFT JOIN ON true keeps the count row when the
+    // insert didn't fire): NULL pick columns mean the cap was hit, nothing written.
+    const capLock = sql`SELECT pg_advisory_xact_lock(hashtext('pick_cap'), hashtext(${waitlistId}))`;
+    const guardedInsert = sql`
+        WITH today AS (
+            SELECT COUNT(*)::int AS n FROM picks
+            WHERE waitlist_id = ${waitlistId} AND created_at >= CURRENT_DATE AND source = 'app'
+        ), ins AS (
+            INSERT INTO picks (waitlist_id, tank_page_id, tank_slug, side, outcome_index, implied_prob_at_lock, source)
+            SELECT ${waitlistId}, ${tankPageId}, ${slug}, ${side}, ${sideIndex}, ${impliedProbAtLock}, ${source}
+            FROM today
+            WHERE today.n < ${DAILY_PICK_CAP}::int
+            RETURNING side, tank_slug, created_at
+        )
+        SELECT today.n AS picks_before,
+               (SELECT email_verified FROM waitlist WHERE id = ${waitlistId}) AS email_verified,
+               ins.side, ins.tank_slug, ins.created_at
+        FROM today LEFT JOIN ins ON true
     `;
-    const capRow = capRows[0] as unknown as { count: number; email_verified: boolean };
-    const picksToday = capRow.count;
-    const verified = Boolean(capRow.email_verified);
-    if (picksToday >= DAILY_PICK_CAP) {
-        return { status: 'cap_reached', picksToday, dailyCap: DAILY_PICK_CAP, verified };
-    }
 
     try {
-        const inserted = await sql`
-            INSERT INTO picks (waitlist_id, tank_page_id, tank_slug, side, outcome_index, implied_prob_at_lock, source)
-            VALUES (${waitlistId}, ${tankPageId}, ${slug}, ${side}, ${sideIndex}, ${impliedProbAtLock}, ${source})
-            RETURNING side, tank_slug, created_at
-        `;
-        const row = inserted[0] as unknown as PickRow;
+        const [, rows] = await sql.transaction([capLock, guardedInsert]);
+        const row = rows[0] as unknown as {
+            picks_before: number; email_verified: boolean;
+            side: string | null; tank_slug: string | null; created_at: string | null;
+        };
+        const verified = Boolean(row.email_verified);
+        if (row.tank_slug === null) {
+            return { status: 'cap_reached', picksToday: row.picks_before, dailyCap: DAILY_PICK_CAP, verified };
+        }
         return {
             status: 'ok',
-            pick: { slug: row.tank_slug, side: row.side, createdAt: row.created_at },
-            picksToday: picksToday + 1,
+            pick: { slug: row.tank_slug, side: row.side as string, createdAt: row.created_at as string },
+            picksToday: row.picks_before + 1,
             dailyCap: DAILY_PICK_CAP,
             verified,
         };

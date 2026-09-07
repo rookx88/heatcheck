@@ -21,7 +21,7 @@
 
 import { pool, api, check, section, near, registerTeardown, warn, type Suite } from '../harness';
 import { createSessionUser, cleanupUsersByEmailPrefix, ledgerTotals } from '../fixtures';
-import { priceFromValue, buyCost, sellCredit } from '../../../lib/pages-functions/ticker-price';
+import { priceFromValue, buyCost, sellCredit, PRICE_DECIMALS } from '../../../lib/pages-functions/ticker-price';
 
 const EMAIL_PREFIX = 'acceptance-shares-';
 // The index the buy/sell sections trade. Chosen because its cumulative is deeply
@@ -282,8 +282,16 @@ async function run(): Promise<void> {
     if (overs && unders) {
         check('mirror pair shares identical baseline and scale', overs.priceBaseline === unders.priceBaseline && overs.priceScale === unders.priceScale);
         check('cumulative values are exact negatives', near(overs.value + unders.value, 0, 1e-3), `${overs.value} + ${unders.value}`);
-        check('ln(p_overs) + ln(p_unders) = 2 ln(baseline) - inverse moves in log space',
-            near(Math.log(overs.price) + Math.log(unders.price), 2 * Math.log(overs.priceBaseline), 1e-6));
+        // The API's prices are ROUNDED to PRICE_DECIMALS (priceFromValue), so each log
+        // carries up to (0.5 * 10^-PRICE_DECIMALS) / p of rounding error and the sum
+        // up to 10^-PRICE_DECIMALS / min(p). At p ~ 58 that is ~1.7e-6 - a fixed 1e-6
+        // tolerance passed only while the pair sat near baseline and failed the night
+        // a slate close moved them. The bound below is exactly the rounding budget;
+        // anything beyond it is a real drift in the mirror.
+        const logDriftBound = (10 ** -PRICE_DECIMALS) / Math.min(overs.price, unders.price) + 1e-9;
+        const logDrift = Math.abs((Math.log(overs.price) + Math.log(unders.price)) - 2 * Math.log(overs.priceBaseline));
+        check(`ln(p_overs) + ln(p_unders) = 2 ln(baseline) within the 4-dp rounding budget (${logDriftBound.toExponential(2)}) - inverse moves in log space`,
+            logDrift <= logDriftBound, `drift=${logDrift.toExponential(3)} p_overs=${overs.price} p_unders=${unders.price}`);
     } else {
         warn('overs/unders not both active - mirror check skipped');
     }

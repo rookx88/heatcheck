@@ -17,10 +17,11 @@ interface RuleRow {
     version: number;
     kind: 'source' | 'sink';
     // correct_call's config is {base, cap} (difficulty-scaled formula); every other
-    // rule (participation, and whatever post()/spend() get used for later) is a flat
-    // {amount}. Left as a loose record rather than a union so post()/spend() - which
-    // only ever handle the flat shape - don't need to know about the formula shape at
-    // all; settleCall() is the only caller that narrows per rule key.
+    // rule (participation, the shop's price rules, and whatever post() gets used for
+    // later) is a flat {amount}. Left as a loose record rather than a union so post()
+    // and purchaseConsumable() - which only ever handle the flat shape - don't need to
+    // know about the formula shape at all; settleCall() is the only caller that narrows
+    // per rule key.
     config: Record<string, number>;
 }
 
@@ -72,17 +73,6 @@ export async function post(sql: NeonQueryFunction<false, false>, input: PostInpu
     `;
 }
 
-export interface SpendInput {
-    userId: string;
-    ruleKey: string;
-    idempotencyKey: string;
-    metadata?: unknown;
-}
-
-export interface SpendResult {
-    ok: boolean; // false = insufficient balance, nothing written. true covers both a fresh spend and a retried-but-already-recorded one.
-}
-
 // Serializes all Ember spends for one user inside the calling transaction. Without it,
 // two truly-simultaneous spends with the SAME idempotency key double-debit the balance
 // cache: in READ COMMITTED the loser's `precheck` CTE is materialized against its
@@ -98,41 +88,13 @@ function spendLock(sql: NeonQueryFunction<false, false>, userId: string) {
     return sql`SELECT pg_advisory_xact_lock(hashtext('ember_spend'), hashtext(${userId}))`;
 }
 
-// Atomic conditional decrement — the balance check and the write happen in the same
-// statement (`WHERE balance >= amount`), never read-then-write in app code, which would
-// race under concurrent spends. `precheck` makes a retried call see its own prior
-// success as ok:true without re-decrementing; the spendLock() serializes simultaneous
-// same-key retries so precheck can't be raced past (see its comment).
-export async function spend(sql: NeonQueryFunction<false, false>, input: SpendInput): Promise<SpendResult> {
-    const rule = await getActiveRule(sql, input.ruleKey);
-    const amount = rule.config.amount;
-    const [, rows] = await sql.transaction([
-        spendLock(sql, input.userId),
-        sql`
-        WITH precheck AS (
-            SELECT 1 FROM ember_ledger WHERE idempotency_key = ${input.idempotencyKey}
-        ), bal AS (
-            UPDATE ember_balances
-            SET balance = balance - ${amount}, updated_at = NOW()
-            WHERE user_id = ${input.userId}
-              AND balance >= ${amount}
-              AND NOT EXISTS (SELECT 1 FROM precheck)
-            RETURNING user_id
-        ), ins AS (
-            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
-            SELECT ${input.userId}, ${-amount}, 'spend', ${input.ruleKey}, ${rule.version},
-                   ${input.idempotencyKey}, ${JSON.stringify(input.metadata ?? {})}
-            FROM bal
-            ON CONFLICT (idempotency_key) DO NOTHING
-            RETURNING 1
-        )
-        SELECT EXISTS (SELECT 1 FROM precheck) AS already_recorded,
-               EXISTS (SELECT 1 FROM ins) AS newly_spent
-    `,
-    ]);
-    const row = rows[0] as unknown as { already_recorded: boolean; newly_spent: boolean };
-    return { ok: row.already_recorded || row.newly_spent };
-}
+// The debit discipline every spend below follows: the balance check and the write happen
+// in the same statement (`WHERE balance >= amount`), never read-then-write in app code,
+// which would race under concurrent spends. `precheck` makes a retried call see its own
+// prior success as ok:true without re-decrementing; spendLock() serializes simultaneous
+// same-key retries so precheck can't be raced past (see its comment). There is no
+// generic bare-debit function: a spend that grants nothing had no production caller,
+// and a dead entry point into the ledger reads as load-bearing when it isn't.
 
 export interface PurchaseConsumableInput {
     userId: string;
@@ -157,8 +119,8 @@ export interface PurchaseResult {
 // lock's comment). Lives here, not in a shop module, because it INSERTs ember_ledger
 // and this file is the one sanctioned Ember write path.
 //
-// Extends spend()'s CTE with a `granted` leg that selects FROM `led` (the ledger insert),
-// so the grant fires ONLY on a fresh spend: a retried purchaseToken hits the idempotency
+// The debit CTE (precheck -> bal -> led) gains a `granted` leg that selects FROM `led`
+// (the ledger insert), so the grant fires ONLY on a fresh spend: a retried purchaseToken hits the idempotency
 // key, `led` is empty, and neither the ledger nor the inventory moves again. Insufficient
 // balance fails the `bal` guard, so `led` and `granted` both no-op and nothing is written.
 //
@@ -506,7 +468,7 @@ function correctCallPayout(config: Record<string, number>, impliedProbAtLock: nu
 // participation (loss — losses still pay, never zero, per the ledger's non-negotiables).
 // Idempotent: the picks UPDATE is guarded by `result IS NULL`, and the payout is guarded
 // by its own idempotency key, independently — so calling this twice for the same pick
-// (e.g. a retried settle run) is a safe no-op, not an error. Unlike post()/spend(), this
+// (e.g. a retried settle run) is a safe no-op, not an error. Unlike post() and the debits, this
 // genuinely is two independently-idempotent statements, so Neon's sql.transaction([...])
 // array form is the right (and safe) tool here.
 export async function settleCall(sql: NeonQueryFunction<false, false>, input: SettleCallInput): Promise<SettleCallResult> {

@@ -159,34 +159,47 @@ async function run() {
         `SELECT COUNT(*)::int AS n FROM ticker_events e JOIN tank_pages t ON t.id = e.tank_id WHERE t.slug = $1`, [tankA]);
     check('duplicate did not append an event', evCount[0].n === 1);
 
-    // --- Kalshi: same tag-creation path, real trade-history delta instead of CLOB ---
-    section('Kalshi provider - tag creation success path (parallel to the polymarket path above)');
-    const kalshiMarkets = await findKalshiMarkets();
-    console.log(`Kalshi live market: ${kalshiMarkets.live.id}; resolved market: ${kalshiMarkets.resolved.id}`);
-    const tankK = `${SLUG_PREFIX}kalshi-live`;
-    await insertTank({
-        slug: tankK, provider: 'kalshi', marketId: kalshiMarkets.live.id,
-        outcomes: kalshiMarkets.live.outcomes, outcomePrices: [0.5, 0.5],
-    });
-    const kalshiTagOk = await tagPost({ slug: tankK, tickerKey: 'dogs', relevantSide: 1 });
-    check('eligible kalshi dogs tag -> 201', kalshiTagOk.status === 201, JSON.stringify(kalshiTagOk.json));
-    const kalshiDelta = kalshiTagOk.json?.delta;
-    check('kalshi delta is numeric, non-fabricated (historyPoints > 0 implied by success)', typeof kalshiDelta === 'number');
-    const kalshiDup = await tagPost({ slug: tankK, tickerKey: 'dogs', relevantSide: 1 });
-    check('duplicate kalshi (tank,ticker) -> 409', kalshiDup.status === 409);
+    // --- Kalshi: OPT-IN ONLY (ACCEPTANCE_KALSHI=1). Sammy confirmed 2026-09-04 that
+    // Kalshi is not being used going forward; the provider code stays in the tree but
+    // these live-market checks depend on Kalshi's public trade history, which for a
+    // freshly listed prop is empty (three runs failed on `empty_price_history` the week
+    // the NFL props listed) - a data condition, never a code regression. Kept behind
+    // the flag rather than deleted so the path can be re-proven if Kalshi returns.
+    if (process.env.ACCEPTANCE_KALSHI === '1') {
+        section('Kalshi provider - tag creation success path (parallel to the polymarket path above)');
+        const kalshiMarkets = await findKalshiMarkets();
+        console.log(`Kalshi live market: ${kalshiMarkets.live.id}; resolved market: ${kalshiMarkets.resolved.id}`);
+        // Side 1 frozen at 0.40: $DOGS requires a strict underdog (< 0.5), so a 0.5/0.5
+        // coin-flip snapshot is ineligible by rule, not by data.
+        const tankK = `${SLUG_PREFIX}kalshi-live`;
+        await insertTank({
+            slug: tankK, provider: 'kalshi', marketId: kalshiMarkets.live.id,
+            outcomes: kalshiMarkets.live.outcomes, outcomePrices: [0.6, 0.4],
+        });
+        const kalshiTagOk = await tagPost({ slug: tankK, tickerKey: 'dogs', relevantSide: 1 });
+        check('eligible kalshi dogs tag -> 201', kalshiTagOk.status === 201, JSON.stringify(kalshiTagOk.json));
+        const kalshiDelta = kalshiTagOk.json?.delta;
+        check('kalshi delta is numeric, non-fabricated (historyPoints > 0 implied by success)', typeof kalshiDelta === 'number');
+        const kalshiDup = await tagPost({ slug: tankK, tickerKey: 'dogs', relevantSide: 1 });
+        check('duplicate kalshi (tank,ticker) -> 409', kalshiDup.status === 409);
 
-    // --- Kalshi settlement: hand-inserted tag on a real resolved Kalshi market ---
-    section('Kalshi provider - settlement (proves the settle.ts provider dispatch)');
-    const kW = kalshiMarkets.resolved.winningIndex;
-    // The tagged (winning) side frozen at 0.40 - odds-aware settle pays +(1-0.4)*10 = +6.
-    const tankKRes = await insertTank({
-        slug: `${SLUG_PREFIX}kalshi-res`, provider: 'kalshi', marketId: kalshiMarkets.resolved.id,
-        outcomes: kalshiMarkets.resolved.outcomes, outcomePrices: kW === 0 ? [0.4, 0.6] : [0.6, 0.4],
-    });
-    const kDogsWin = await insertTagDirect(tankKRes, 'dogs', kW, 1.5);
-    const kalshiSettle = await settlePost();
-    const kTrFor = (tagId: string) => kalshiSettle.json?.tickerResults?.find((r: any) => r.tagId === tagId);
-    check('kalshi zero-pick dogs(win at p=0.40) settled odds-aware +6', kTrFor(kDogsWin)?.status === 'settled_win' && near(await settleEventDelta(kDogsWin) ?? NaN, 6), JSON.stringify(kTrFor(kDogsWin)));
+        // Tank-tag settlement is RETIRED (slate indexes phase 2, functions/api/settle.ts's
+        // SETTLE_TANK_TAGS = false): a ticker's results leg is now scored by
+        // /api/index-settle from index_positions, never from tags. A tag on a resolved
+        // Kalshi market therefore stays pending forever - no settle event, no calculated_at.
+        section('Kalshi provider - a tag on a resolved market is NOT settled by /api/settle (tag settlement retired)');
+        const kW = kalshiMarkets.resolved.winningIndex;
+        const tankKRes = await insertTank({
+            slug: `${SLUG_PREFIX}kalshi-res`, provider: 'kalshi', marketId: kalshiMarkets.resolved.id,
+            outcomes: kalshiMarkets.resolved.outcomes, outcomePrices: kW === 0 ? [0.4, 0.6] : [0.6, 0.4],
+        });
+        const kDogsWin = await insertTagDirect(tankKRes, 'dogs', kW, 1.5);
+        const kalshiSettle = await settlePost();
+        check('settle -> 200 with tickerTagsChecked: 0 (no tag scan at all)', kalshiSettle.status === 200 && kalshiSettle.json?.tickerTagsChecked === 0, JSON.stringify(kalshiSettle.json)?.slice(0, 200));
+        check('kalshi tag on a resolved market: no settle event written', (await settleEventDelta(kDogsWin)) === null);
+    } else {
+        warn('Kalshi tag-creation checks skipped (provider not in use; set ACCEPTANCE_KALSHI=1 to run them against live Kalshi markets)');
+    }
 
     // --- Config-driven behavior (no code change) ---
     section('Config tunables - version-flip changes behavior with no code change');
@@ -213,7 +226,10 @@ async function run() {
     }
 
     // --- Settlement fixtures: hand-inserted tags on a real resolved market ---
-    section('Settlement - zero-pick tags, odds-aware payouts, fallback, hardening');
+    // Tags are inserted exactly as the retrotag path would, but /api/settle must not
+    // touch any of them (tag settlement retired - see the Kalshi section above). The
+    // pick path on the same run is still exercised for real: mismatch skip + payout.
+    section('Settlement - tags on a resolved market stay pending; picks still settle');
     const ro = markets.resolved.outcomes;
     const roRev = [...ro].reverse();
     const rid = markets.resolved.id;
@@ -242,55 +258,45 @@ async function run() {
     const hPick = await insertUserWithPick(`${SLUG_PREFIX}h@example.com`, tankH, `${SLUG_PREFIX}res-h`, W, 0.5);
 
     const settle1 = await settlePost();
-    check('POST /api/settle -> 200 with tickerResults', settle1.status === 200 && Array.isArray(settle1.json?.tickerResults));
-    const trFor = (tagId: string) => settle1.json?.tickerResults?.find((r: any) => r.tagId === tagId);
+    check('POST /api/settle -> 200 with an (empty) tickerResults array', settle1.status === 200 && Array.isArray(settle1.json?.tickerResults));
     const prFor = (pickId: string) => settle1.json?.results?.find((r: any) => r.pickId === pickId);
 
-    // Odds-aware payouts: +(1-p)*10 on a win, -p*10 on a loss, p = frozen snapshot prob
-    // of the tagged side. The expected-vs-surprising character the old per-ticker
-    // asymmetry hand-tuned now comes from p itself.
-    check('locks(win at p=0.85) barely moves: +1.5', trFor(cLocksWin)?.status === 'settled_win' && near(await settleEventDelta(cLocksWin) ?? NaN, 1.5));
-    check('moonshot(loss at p=0.15) barely moves: -1.5', trFor(cMoonLoss)?.status === 'settled_loss' && near(await settleEventDelta(cMoonLoss) ?? NaN, -1.5));
-    check('locks(loss at p=0.85) is the surprise: -8.5', trFor(dLocksLoss)?.status === 'settled_loss' && near(await settleEventDelta(dLocksLoss) ?? NaN, -8.5));
-    check('moonshot(win at p=0.15) is the surprise: +8.5', trFor(dMoonWin)?.status === 'settled_win' && near(await settleEventDelta(dMoonWin) ?? NaN, 8.5));
-    const eDogsDelta = await settleEventDelta(eDogs);
-    const eChalkDelta = await settleEventDelta(eChalk);
-    check('dogs/chalk inverse on the same real outcome (dogs loss -4, chalk win +4)',
-        eDogsDelta !== null && eChalkDelta !== null && ((eDogsDelta > 0) !== (eChalkDelta > 0)) && near(Math.abs(eDogsDelta), 4) && near(Math.abs(eChalkDelta), 4));
-    check('newsletter_only tag still settles', (await settleEventDelta(fDogs)) !== null);
-    check('no snapshot prob -> flat fallback: dogs(win) +5', trFor(fbDogs)?.status === 'settled_win' && near(await settleEventDelta(fbDogs) ?? NaN, 5), JSON.stringify(trFor(fbDogs)));
-    const { rows: fbMeta } = await pool.query(
-        `SELECT metadata FROM ticker_events WHERE ticker_tag_id = $1 AND event_type = 'settle'`, [fbDogs]);
-    check('fallback settle flagged oddsAware=false in metadata', fbMeta[0]?.metadata?.oddsAware === false);
+    const allTagIds = [cLocksWin, cMoonLoss, dLocksLoss, dMoonWin, eDogs, eChalk, fDogs, fbDogs, gDogs];
+    check('tickerTagsChecked is 0 and tickerResults is empty - settle never scans tags', settle1.json?.tickerTagsChecked === 0 && (settle1.json?.tickerResults ?? []).length === 0, JSON.stringify(settle1.json?.tickerResults));
+    const { rows: settleEvRows } = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM ticker_events WHERE ticker_tag_id = ANY($1) AND event_type = 'settle'`, [allTagIds]);
+    check('zero settle events written for any of the 9 tags (locks/moonshot/dogs/chalk/newsletter/no-odds/reversed)', settleEvRows[0].n === 0, JSON.stringify(settleEvRows[0]));
     const { rows: calcRows } = await pool.query(
-        `SELECT COUNT(*)::int AS n FROM ticker_tags WHERE id = ANY($1) AND calculated_at IS NOT NULL`,
-        [[cLocksWin, cMoonLoss, dLocksLoss, dMoonWin, eDogs, eChalk, fDogs, fbDogs]]);
-    check('calculated_at stamped on all settled tags', calcRows[0].n === 8);
+        `SELECT COUNT(*)::int AS n FROM ticker_tags WHERE id = ANY($1) AND calculated_at IS NOT NULL`, [allTagIds]);
+    check('calculated_at stays NULL on every tag (the settle idempotency marker is never faked)', calcRows[0].n === 0, JSON.stringify(calcRows[0]));
+    const { rows: tagEvRows } = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM ticker_events WHERE ticker_tag_id = ANY($1) AND event_type = 'tag'`, [allTagIds]);
+    check('each tag still carries exactly its one tag-time event (the news leg is untouched)', tagEvRows[0].n === allTagIds.length, JSON.stringify(tagEvRows[0]));
 
-    check('reversed-outcome tag skipped: outcome_order_mismatch', trFor(gDogs)?.status === 'outcome_order_mismatch' && (await settleEventDelta(gDogs)) === null);
     check('reversed-outcome pick skipped: outcome_order_mismatch', prFor(gPick.pickId)?.status === 'outcome_order_mismatch');
     const hResult = prFor(hPick.pickId);
     check('pick path regression: correct pick settles with formula payout (20 * min(1/0.5, 2.5) = 40)',
         hResult?.status === 'settled_correct' && hResult?.payoutAmount === 40, JSON.stringify(hResult));
 
     // --- Idempotency ---
-    section('Idempotency - re-running settlement is a no-op');
+    section('Idempotency - re-running settlement is a no-op for the event log');
     const { rows: pre } = await pool.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(delta), 0)::float8 AS s FROM ticker_events`);
     const settle2 = await settlePost();
-    const ourTagIds = new Set([cLocksWin, cMoonLoss, dLocksLoss, dMoonWin, eDogs, eChalk, fDogs, fbDogs]);
-    const resettled = (settle2.json?.tickerResults ?? []).filter((r: any) => ourTagIds.has(r.tagId));
-    check('settled tags absent from the second run\'s pending scan', resettled.length === 0, JSON.stringify(resettled));
+    check('second run still reports tickerTagsChecked: 0', settle2.json?.tickerTagsChecked === 0, JSON.stringify(settle2.json?.tickerResults));
     const { rows: post } = await pool.query(`SELECT COUNT(*)::int AS n, COALESCE(SUM(delta), 0)::float8 AS s FROM ticker_events`);
     check('no new events, SUM(delta) unchanged', pre[0].n === post[0].n && near(pre[0].s, post[0].s));
 
     // --- Read-side visibility + chart consistency ---
     section('Read side - newsletter exclusion, chart = cumulative event log');
+    // Mirrors getTickerValues' filter exactly: slate events (source='slate', tank_id
+    // NULL, hence the LEFT JOIN) always count; tank events only when the Tank is
+    // app-visible.
     const { rows: sqlDogs } = await pool.query(
-        `SELECT COALESCE(SUM(e.delta) FILTER (WHERE t.visibility = 'app'), 0)::float8 AS app_only,
+        `SELECT COALESCE(SUM(e.delta) FILTER (WHERE e.source = 'slate' OR t.visibility = 'app'), 0)::float8 AS app_only,
                 COALESCE(SUM(e.delta), 0)::float8 AS all_events
-         FROM ticker_events e JOIN tank_pages t ON t.id = e.tank_id WHERE e.ticker_key = 'dogs'`);
+         FROM ticker_events e LEFT JOIN tank_pages t ON t.id = e.tank_id WHERE e.ticker_key = 'dogs'`);
     const apiDogs = await tickerValue('dogs');
-    check('API dogs value == app-visible SUM(delta) from the log', near(apiDogs, sqlDogs[0].app_only));
+    check('API dogs value == app-visible SUM(delta) from the log (slate events always in)', near(apiDogs, sqlDogs[0].app_only), `api=${apiDogs} sql=${sqlDogs[0].app_only}`);
     check('newsletter_only events exist but are excluded (sums differ)', !near(sqlDogs[0].app_only, sqlDogs[0].all_events));
     const chart = await api('GET', '/api/tickers/chart?key=dogs');
     const dogsSeries: any[] = chart.json?.series?.dogs ?? [];
@@ -307,10 +313,13 @@ async function run() {
     const lastCum = dogsSeries.length ? dogsSeries[dogsSeries.length - 1].cumulative : NaN;
     check('chart final cumulative == ticker current value (same log, same filter)', near(lastCum, apiDogs));
     const tankView = await api('GET', `/api/tickers/tank?slug=${SLUG_PREFIX}res-c`);
-    check('tank endpoint lists its tags with event ids for highlighting',
+    // One event id per tag now: the tag-time event only (no settle event is ever
+    // written for a tag since tag settlement was retired).
+    check('tank endpoint lists its tags with their (single, tag-time) event ids for highlighting',
         tankView.status === 200
         && (tankView.json?.tags ?? []).length === 2
-        && (tankView.json?.tags ?? []).every((t: any) => Array.isArray(t.eventIds) && t.eventIds.length === 2));
+        && (tankView.json?.tags ?? []).every((t: any) => Array.isArray(t.eventIds) && t.eventIds.length === 1 && t.settledAt === null),
+        JSON.stringify(tankView.json?.tags));
 
     await cleanup();
 }

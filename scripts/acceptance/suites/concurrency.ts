@@ -26,6 +26,7 @@ import {
     insertTagDirect,
     insertUserWithPick,
     ledgerTotals,
+    seedBalance,
     cleanupUsersByEmailPrefix,
     cleanupTanksBySlugPrefix,
     cheapestActiveSku,
@@ -38,8 +39,10 @@ const TICKER_SECRET = process.env.TICKER_SECRET || '';
 
 // ---------------------------------------------------------------------------------
 // Local fixture helpers - mirror the direct-pool-insert style suites/discovery.ts
-// already uses for a bare pet row; extended here for eggs/food/balance/notifications
-// since this suite needs to seed preconditions no shared fixture currently covers.
+// already uses for a bare pet row; extended here for eggs/food/notifications since
+// this suite needs to seed preconditions no shared fixture currently covers. Balance
+// seeding goes through fixtures.ts's seedBalance (ledger row + cache fold in one
+// statement) - never a direct ember_balances write.
 // ---------------------------------------------------------------------------------
 
 async function insertPet(userId: string): Promise<string> {
@@ -60,14 +63,6 @@ async function insertFood(userId: string, catalogKey: string, quantity: number):
     await pool.query(
         `INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity) VALUES ($1, $2, 'food', $3)`,
         [userId, catalogKey, quantity],
-    );
-}
-
-async function setBalance(userId: string, amount: number): Promise<void> {
-    await pool.query(
-        `INSERT INTO ember_balances (user_id, balance, updated_at) VALUES ($1, $2, NOW())
-         ON CONFLICT (user_id) DO UPDATE SET balance = $2, updated_at = NOW()`,
-        [userId, amount],
     );
 }
 
@@ -101,11 +96,12 @@ async function run(): Promise<void> {
     // 1. Pick submit - one session, one Tank, N=8 identical submissions.
     //    functions/api/picks.ts's idempotency guard is the DB unique index
     //    idx_picks_waitlist_tank (waitlist_id, tank_page_id): a 23505 there maps to a
-    //    409 "You already made this call." The daily-cap check is documented in the
-    //    source itself as a count-then-insert race (not closed by a lock) - so under
-    //    real simultaneity a loser can plausibly land on the cap's 429 instead of the
-    //    unique-index's 409 depending on exactly when its count read lands relative to
-    //    the winner's commit. Either way, the DB is unambiguous: at most one row.
+    //    409 "You already made this call." The daily cap is now an atomic guarded
+    //    INSERT behind a per-account advisory lock (lib/pages-functions/picks.ts), so
+    //    the losers serialize behind the winner: with the cap >= 2 every loser sees the
+    //    winner's committed row and lands on the unique index's 409; only a cap of
+    //    exactly 1 can route a loser to the cap's 429 instead. Either way, the DB is
+    //    unambiguous: at most one row.
     // =================================================================================
     section('1. Pick submit - N=8 identical submissions, exactly one row survives');
     const u1 = await createSessionUser(`${EMAIL_PREFIX}picks@example.com`);
@@ -128,6 +124,52 @@ async function run(): Promise<void> {
         [u1.userId, tankId1],
     );
     check('exactly one row in picks for (waitlist_id, tank_page_id)', pickRows1[0].n === 1, JSON.stringify(pickRows1[0]));
+
+    // =================================================================================
+    // 1b. Daily pick cap under REAL parallelism - N=8 simultaneous submissions from one
+    //     account, each on a DIFFERENT Tank (so the unique index can't save anything),
+    //     against a cap observed live from /api/picks/today. Before the atomic guard,
+    //     every one of the 8 could read the same stale COUNT(*) before any INSERT
+    //     landed and all pass - minting a guaranteed participation payout per extra
+    //     pick at settlement. With lib/pages-functions/picks.ts's lock + guarded
+    //     INSERT, exactly `cap` requests may succeed and the DB must hold exactly `cap`
+    //     rows; a sequential repeat of this scenario (boundaries suite section 3) could
+    //     never have caught the race and does not prove the fix - only this does.
+    // =================================================================================
+    section('1b. Daily pick cap - N=8 simultaneous picks on DISTINCT Tanks, exactly `cap` land');
+    const u1b = await createSessionUser(`${EMAIL_PREFIX}pick-cap@example.com`);
+    const capProbe = await api('GET', '/api/picks/today', { cookie: u1b.cookie });
+    const cap1b = Number(capProbe.json?.remaining);
+    check('observed DAILY_PICK_CAP is a positive integer below N=8 (the race needs headroom on both sides)', Number.isInteger(cap1b) && cap1b > 0 && cap1b < 8, `cap=${cap1b}`);
+    const capTanks: string[] = [];
+    for (let i = 0; i < 8; i++) {
+        const slug = `${SLUG_PREFIX}pick-cap-${i}`;
+        await insertTank({ slug, marketId: `acceptance-conc-cap-market-${i}`, outcomes: ['Yes', 'No'], outcomePrices: [0.5, 0.5] });
+        capTanks.push(slug);
+    }
+    const results1b = await fireParallel({
+        method: 'POST',
+        path: '/api/picks',
+        build: (i) => ({ body: { slug: capTanks[i], side: 'Yes', sideIndex: 0 }, headers: { Cookie: u1b.cookie } }),
+        n: 8,
+    });
+    check(`exactly ${cap1b} x 201 (the cap, no more) under genuine simultaneity`, countStatus(results1b, 201) === cap1b, JSON.stringify(tally(results1b)));
+    check(
+        `the other ${8 - cap1b} are 429 cap_reached with remaining:0 (never 409 - every Tank is distinct)`,
+        results1b.filter((r) => r.status !== 201).every((r) => r.status === 429 && r.json?.remaining === 0),
+        JSON.stringify(results1b.map((r) => [r.status, r.json?.remaining])),
+    );
+    const { rows: capRows1b } = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM picks WHERE waitlist_id = $1 AND created_at >= CURRENT_DATE AND source = 'app'`,
+        [u1b.userId],
+    );
+    check(`exactly ${cap1b} pick rows in the DB for this account today - the (cap+1)th and beyond were never inserted`, capRows1b[0].n === cap1b, JSON.stringify(capRows1b[0]));
+    const picksTodayValues = results1b.filter((r) => r.status === 201).map((r) => Number(r.json?.picksToday)).sort((a, b) => a - b);
+    check(
+        'the winners report distinct, serialized picksToday values 1..cap (each saw the previous winner\'s committed row)',
+        JSON.stringify(picksTodayValues) === JSON.stringify(Array.from({ length: cap1b }, (_, i) => i + 1)),
+        JSON.stringify(picksTodayValues),
+    );
 
     // =================================================================================
     // 2. Feed at ceiling - pet already at satisfaction 100, N=8 requests with DISTINCT
@@ -209,7 +251,7 @@ async function run(): Promise<void> {
     // =================================================================================
     section('3. Egg buy, SAME purchaseToken - idempotent replay, single spend + single grant');
     const u3 = await createSessionUser(`${EMAIL_PREFIX}buy-same@example.com`);
-    await setBalance(u3.userId, eggSku.price); // exactly the live egg SKU's price
+    await seedBalance(u3.userId, eggSku.price); // exactly the live egg SKU's price
     const token3 = crypto.randomUUID();
     const results3 = await fireParallel({
         method: 'POST',
@@ -243,7 +285,7 @@ async function run(): Promise<void> {
     // =================================================================================
     section('4. Egg buy, DISTINCT purchaseTokens, balance for exactly one - spendLock re-proof');
     const u4 = await createSessionUser(`${EMAIL_PREFIX}buy-distinct@example.com`);
-    await setBalance(u4.userId, eggSku.price);
+    await seedBalance(u4.userId, eggSku.price);
     const results4 = await fireParallel({
         method: 'POST',
         path: '/api/shop/buy',
@@ -380,11 +422,14 @@ async function run(): Promise<void> {
     const { rows: notes7 } = await pool.query(`SELECT COUNT(*)::int AS n FROM notifications WHERE idempotency_key = $1`, [`settle:call:${pick7Id}`]);
     check('exactly one settle:call:<pickId> notification', notes7[0].n === 1, JSON.stringify(notes7[0]));
 
-    // Belt-and-suspenders on the pending tag riding along in the same concurrent runs.
+    // The tag riding along in the same concurrent runs must be left alone by all three:
+    // tag settlement is retired (settle.ts SETTLE_TANK_TAGS = false; the results leg is
+    // scored by /api/index-settle from index_positions), so a resolved-market tag stays
+    // pending and never gains a settle event, no matter how many runs race over it.
     const { rows: tagRow7 } = await pool.query(`SELECT calculated_at FROM ticker_tags WHERE id = $1`, [tag7Id]);
-    check('the pending tag also settled exactly once (calculated_at stamped)', tagRow7[0]?.calculated_at != null);
+    check('the tag stays pending (calculated_at NULL) - tag settlement is retired', tagRow7[0]?.calculated_at == null, JSON.stringify(tagRow7[0]));
     const { rows: tagEvents7 } = await pool.query(`SELECT COUNT(*)::int AS n FROM ticker_events WHERE ticker_tag_id = $1 AND event_type = 'settle'`, [tag7Id]);
-    check('exactly one settle event for the tag', tagEvents7[0].n === 1, JSON.stringify(tagEvents7[0]));
+    check('zero settle events for the tag across the 3 concurrent runs', tagEvents7[0].n === 0, JSON.stringify(tagEvents7[0]));
 
     // =================================================================================
     // 8. Ticker tag - one Tank, N=4 simultaneous tag requests for the same
@@ -498,7 +543,7 @@ async function run(): Promise<void> {
     const det11 = await api('GET', '/api/tickers/detail?key=dogs');
     const price11 = det11.json?.ticker?.price as number;
     const oneShare = buyCost(1, price11);
-    await setBalance(u11.userId, oneShare);
+    await seedBalance(u11.userId, oneShare);
     const results11 = await fireParallel({
         method: 'POST',
         path: '/api/tankdaq/buy',
@@ -525,7 +570,7 @@ async function run(): Promise<void> {
     // =================================================================================
     section('12. Share buy - N=8 simultaneous, SAME tradeToken (idempotent replay)');
     const u12 = await createSessionUser(`${EMAIL_PREFIX}shares-same@example.com`);
-    await setBalance(u12.userId, oneShare * 10);
+    await seedBalance(u12.userId, oneShare * 10);
     const token12 = crypto.randomUUID();
     const results12 = await fireParallel({
         method: 'POST',

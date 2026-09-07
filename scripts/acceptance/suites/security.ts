@@ -29,6 +29,7 @@ import {
     findMarkets,
     deactivateConfig,
     restoreConfig,
+    seedBalance,
     cleanupUsersByEmailPrefix,
     cleanupTanksBySlugPrefix,
     cheapestActiveSku,
@@ -216,7 +217,10 @@ async function runInjectionSection(markets: { live: { id: string; outcomes: stri
     // --- shop/buy: hostile price/amount/quantity/userId ---
     const buyer = await createSessionUser(`${PREFIX}inject-buyer@example.com`);
     const otherUser = await createSessionUser(`${PREFIX}inject-other@example.com`);
-    await pool.query(`INSERT INTO ember_balances (user_id, balance) VALUES ($1, 500) ON CONFLICT (user_id) DO UPDATE SET balance = 500`, [buyer.userId]);
+    // Through the ledger (fixtures.ts seedBalance), never a bare ember_balances write: a
+    // fresh fixture account starts at 0, so +500 seeded == a 500 balance, with the
+    // cache == SUM(ledger) invariant intact for every assertion that follows.
+    await seedBalance(buyer.userId, 500, 'security injection buyer');
 
     const buyRes = await api('POST', '/api/shop/buy', {
         cookie: buyer.cookie,
@@ -385,9 +389,11 @@ async function runOutcomeOrderMismatchSection(markets: { resolved: { id: string;
     const settle1 = await settlePost();
     check('POST /api/settle -> 200', settle1.status === 200, JSON.stringify(settle1.json)?.slice(0, 500));
     const pr1 = settle1.json?.results?.find((r: any) => r.pickId === mismatchPickId);
-    const tr1 = settle1.json?.tickerResults?.find((r: any) => r.tagId === mismatchTagId);
     check("pick result status is 'outcome_order_mismatch'", pr1?.status === 'outcome_order_mismatch', JSON.stringify(pr1));
-    check("tag result status is 'outcome_order_mismatch'", tr1?.status === 'outcome_order_mismatch', JSON.stringify(tr1));
+    // Tag settlement is retired (settle.ts SETTLE_TANK_TAGS = false): the tag is never
+    // scanned, so it must not appear in tickerResults at all - and its calculated_at
+    // stays NULL (asserted below) for the same reason.
+    check('tag is not scanned by settle at all (tickerTagsChecked: 0)', settle1.json?.tickerTagsChecked === 0, JSON.stringify(settle1.json?.tickerResults));
 
     const { rows: pickRow1 } = await pool.query(`SELECT result, settled_at FROM picks WHERE id = $1`, [mismatchPickId]);
     check(
@@ -408,9 +414,9 @@ async function runOutcomeOrderMismatchSection(markets: { resolved: { id: string;
     // --- Stability: a second run must skip it again, not settle it the second time ---
     const settle2 = await settlePost();
     const pr2 = settle2.json?.results?.find((r: any) => r.pickId === mismatchPickId);
-    const tr2 = settle2.json?.tickerResults?.find((r: any) => r.tagId === mismatchTagId);
     check("second settle run: pick still 'outcome_order_mismatch' (the skip is stable)", pr2?.status === 'outcome_order_mismatch', JSON.stringify(pr2));
-    check("second settle run: tag still 'outcome_order_mismatch'", tr2?.status === 'outcome_order_mismatch', JSON.stringify(tr2));
+    const { rows: tagRow2 } = await pool.query(`SELECT calculated_at FROM ticker_tags WHERE id = $1`, [mismatchTagId]);
+    check('second settle run: tag still untouched (calculated_at NULL)', tagRow2[0].calculated_at === null);
     const { rows: ledgerRows2 } = await pool.query(`SELECT COUNT(*)::int AS n FROM ember_ledger WHERE metadata->>'pickId' = $1`, [mismatchPickId]);
     check('second run: still ZERO ember_ledger rows for this pick', ledgerRows2[0].n === 0);
 }

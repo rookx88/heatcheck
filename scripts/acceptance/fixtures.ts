@@ -98,6 +98,29 @@ export async function mintVerificationCode(userId: string, code: string, ttlSeco
 // ---------------------------------------------------------------------------------
 
 export interface LedgerTotals { balanceCache: number | null; ledgerSum: number; ledgerRows: number }
+// Gives a fixture account Ember THROUGH the ledger: one 'adjustment' ember_ledger row
+// whose amount folds into ember_balances in the same statement - the exact CTE shape
+// lib/pages-functions/ledger.ts uses. Never write ember_balances directly from a suite:
+// a cache row with no ledger row breaks the `balance == SUM(ledger)` invariant that
+// suites/ledger-trace.ts exists to enforce, and turns every later balance assertion into
+// a test of the fixture rather than of the product. rule_key='participation' version 1
+// is an existing (inactive) ember_rules row referenced only to satisfy the FK;
+// entry_type is what marks this as a test-only adjustment.
+export async function seedBalance(userId: string, amount: number, note = 'fixture seed'): Promise<void> {
+    const idempotencyKey = `acceptance-seed:${userId}:${crypto.randomUUID()}`;
+    await pool.query(
+        `WITH ins AS (
+            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
+            VALUES ($1, $2, 'adjustment', 'participation', 1, $3, $4::jsonb)
+            RETURNING amount
+        )
+        INSERT INTO ember_balances (user_id, balance, updated_at)
+        SELECT $1, amount, NOW() FROM ins
+        ON CONFLICT (user_id) DO UPDATE SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()`,
+        [userId, amount, idempotencyKey, JSON.stringify({ acceptance: note })],
+    );
+}
+
 export async function ledgerTotals(userId: string): Promise<LedgerTotals> {
     const { rows } = await pool.query(
         `SELECT
@@ -228,6 +251,11 @@ export async function cleanupUsersByEmailPrefix(prefix: string): Promise<void> {
         await pool.query(`DELETE FROM pets WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM sessions WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM picks WHERE waitlist_id = $1`, [u.id]);
+        // Community tables link an account opportunistically (linked_heatchecks_user_id,
+        // no ON DELETE clause) - a leftover row here was blocking every later run's
+        // cleanup with an FK violation on the waitlist delete.
+        await pool.query(`DELETE FROM community_picks_votes WHERE linked_heatchecks_user_id = $1`, [u.id]);
+        await pool.query(`DELETE FROM community_points WHERE linked_heatchecks_user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM waitlist WHERE id = $1`, [u.id]);
     }
 }
@@ -311,6 +339,7 @@ interface KalshiMarketRaw {
     result: string | null;
     yes_bid_dollars?: string;
     yes_ask_dollars?: string;
+    volume?: number; // contracts traded, lifetime - the trade-history source fetchKalshiTagDelta pages
 }
 
 function kalshiOutcomesFor(ticker: string): string[] {
@@ -329,13 +358,23 @@ export async function findKalshiMarkets(): Promise<{ resolved: ResolvedMarket; l
     let resolved: KalshiMarketRaw | undefined;
     for (const seriesTicker of seriesTickers) {
         if (!live) {
-            const res = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${seriesTicker}&status=open&limit=20`, { headers: { Accept: 'application/json' } });
+            const res = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${seriesTicker}&status=open&limit=100`, { headers: { Accept: 'application/json' } });
             const body = (await res.json()) as { markets?: KalshiMarketRaw[] };
-            live = (body.markets ?? []).find((m) => {
+            const quoted = (body.markets ?? []).filter((m) => {
                 const bid = Number(m.yes_bid_dollars);
                 const ask = Number(m.yes_ask_dollars);
                 return Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask < 1;
             });
+            // A quoted market can still have ZERO trades (a freshly listed prop with a
+            // market-maker spread and nobody through it yet) - and the tag path's
+            // delta comes from Kalshi's /trades history, so such a market fails the
+            // suite with empty_price_history through no fault of the code (seen on
+            // three runs the week the NFL props listed). Prefer the most-traded quoted
+            // market; fall back to any quoted one only if nothing has traded.
+            live = quoted
+                .filter((m) => Number(m.volume) > 0)
+                .sort((a, b) => Number(b.volume) - Number(a.volume))[0]
+                ?? quoted[0];
         }
         if (!resolved) {
             const res = await fetch(`https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=${seriesTicker}&status=settled&limit=100`, { headers: { Accept: 'application/json' } });
