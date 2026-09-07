@@ -27,8 +27,20 @@ public/dfs/
 public/heat-picks/
 public/*/index.html
 !public/preview.html
+# Nested generator output (2026-09-07). The rule above only matches one directory
+# deep, so these accumulated as a partial, always-stale snapshot: 57 article pages
+# and 52 OG cards from the 2026-08-28 build tracked, the ~35 articles, ~190 cards and
+# every /tankdaq/<key>/ page since then not. scripts/generate-static-site.ts writes,
+# prunes and regenerates all of it on every build (Cloudflare runs that build on
+# deploy), so nothing here needs to be in git for the site to work - and the OG
+# cards alone are ~80MB of binaries that would only ever churn.
+public/the-tank/articles/
+public/assets/og/
+public/tankdaq/
+public/404.html
 # public/robots.txt - Generated during build, but we commit it for Cloudflare Pages
 # public/sitemap.xml - Generated during build, but we commit it for Cloudflare Pages
+# public/index.html - Generated during build (the logged-out homepage fallback); committed
 public/assets/images/
 
 # Legacy prediction-app source images (copied into public/assets/images only when
