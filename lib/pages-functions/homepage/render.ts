@@ -580,6 +580,9 @@ export function renderHomepage(options: RenderHomepageOptions): string {
         // Session is server-known per request (the page is private/no-store), so the
         // showcase island can pick its 4th wall without a client-side session fetch:
         // logged out -> promo/signup wall, logged in -> the full interactive deck.
+        // Only the logged-OUT render is ever reused (functions/index.ts serves it from
+        // its own cache to cookie-less requests only), and that render always carries
+        // loggedIn:false - so a cached page can never claim a session it doesn't have.
         loggedIn: Boolean(user),
         sports: data.sportSlots.map(slot => ({
             sport: slot.sport,

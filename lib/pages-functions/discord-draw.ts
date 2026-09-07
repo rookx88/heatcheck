@@ -11,7 +11,7 @@
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import type { Env } from './db';
-import { fetchGuildMembers } from './discord-api';
+import { fetchGuildMembers, type DiscordGuildMember } from './discord-api';
 
 export type GiveawaySourceType = 'tank' | 'community_pick';
 
@@ -20,6 +20,10 @@ export interface DrawGiveawayInput {
     sourceType: GiveawaySourceType;
     sourceId: string;
     drawnBy: string | null; // null when auto-triggered rather than run by an admin
+    // The guild's live roster, when the caller already holds it (the settlement sweep
+    // fetches it per guild and draws for several Tanks in the same guild in one run).
+    // Only the 'tank' pool needs a roster; omitted = fetch it here, as before.
+    guildMembers?: DiscordGuildMember[];
 }
 
 export type DrawGiveawayResult =
@@ -35,8 +39,8 @@ async function buildEligiblePool(
     if (input.sourceType === 'tank') {
         // Guild scope isn't inherent for a real Tank (it can post to many guilds), so
         // the pool has to be cross-referenced against THIS guild's live membership -
-        // same fetchGuildMembers call /leaderboard already uses.
-        const members = await fetchGuildMembers(env, input.guildId);
+        // same fetchGuildMembers call /leaderboard already uses (or the caller's copy).
+        const members = input.guildMembers ?? await fetchGuildMembers(env, input.guildId);
         const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
         if (memberIds.length === 0) return [];
         const rows = await sql`

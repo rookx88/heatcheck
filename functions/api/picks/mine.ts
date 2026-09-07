@@ -12,10 +12,19 @@
 //
 // Ember earned per settled pick is NOT stored on the picks row - settleCall()
 // (lib/pages-functions/ledger.ts) writes it to ember_ledger with metadata.pickId, so
-// it's read back via a correlated SUM (SUM rather than a bare subselect so a
-// hypothetical duplicate ledger row can never make the query error). Displayed only,
-// never recomputed. The record's emberTotal aggregates the same subquery over ALL
-// settled picks, so it never changes as pages load.
+// it's read back from the ledger. Displayed only, never recomputed. The record's
+// emberTotal aggregates the same rows over ALL settled picks, so it never changes as
+// pages load.
+//
+// The read is ONE pass over this account's ledger (the `awards` CTE below: every row
+// carrying a pickId, grouped by pick), joined to the picks - not a correlated
+// per-pick subquery. The correlated form re-walked the whole user ledger once per
+// returned pick and once per settled pick inside the record aggregate, O(picks x
+// ledger rows) per request with no index on the JSONB path (efficiency audit 3.1.7);
+// the CTE walks it once via idx_ember_ledger_user_created and groups in memory. SUM,
+// not a bare value, so a hypothetical duplicate ledger row can never break the query.
+// Matching is on the stored text (metadata->>'pickId' = p.id::text), never a uuid
+// cast, so an unexpected non-uuid value in metadata can't 500 the page.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, UUID_RE, type Env } from '../../../lib/pages-functions/db';
@@ -87,24 +96,38 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const sql = getSql(context.env);
 
     // One page of settled picks, newest settle first. The +1 row is the hasMore probe.
+    // `awards` is the single ledger pass described in the header; the LEFT JOIN keeps a
+    // settled pick whose payout row is somehow missing (ember_awarded NULL -> 0 below).
     const settledRows = (await (cursor
         ? sql`
+            WITH awards AS (
+                SELECT metadata->>'pickId' AS pick_id, SUM(amount)::int AS ember
+                FROM ember_ledger
+                WHERE user_id = ${session.userId} AND metadata ? 'pickId'
+                GROUP BY metadata->>'pickId'
+            )
             SELECT p.id, p.side, p.tank_slug, p.created_at, p.result, p.settled_at, t.model_output,
-                   (SELECT COALESCE(SUM(el.amount), 0)::int FROM ember_ledger el
-                     WHERE el.user_id = p.waitlist_id AND el.metadata->>'pickId' = p.id::text) AS ember_awarded
+                   COALESCE(a.ember, 0) AS ember_awarded
             FROM picks p
             JOIN tank_pages t ON t.id = p.tank_page_id
+            LEFT JOIN awards a ON a.pick_id = p.id::text
             WHERE p.waitlist_id = ${session.userId} AND p.result IS NOT NULL
               AND (p.settled_at, p.id) < (${cursor.settledAt}::timestamptz, ${cursor.id}::uuid)
             ORDER BY p.settled_at DESC, p.id DESC
             LIMIT ${PAGE_SIZE + 1}
         `
         : sql`
+            WITH awards AS (
+                SELECT metadata->>'pickId' AS pick_id, SUM(amount)::int AS ember
+                FROM ember_ledger
+                WHERE user_id = ${session.userId} AND metadata ? 'pickId'
+                GROUP BY metadata->>'pickId'
+            )
             SELECT p.id, p.side, p.tank_slug, p.created_at, p.result, p.settled_at, t.model_output,
-                   (SELECT COALESCE(SUM(el.amount), 0)::int FROM ember_ledger el
-                     WHERE el.user_id = p.waitlist_id AND el.metadata->>'pickId' = p.id::text) AS ember_awarded
+                   COALESCE(a.ember, 0) AS ember_awarded
             FROM picks p
             JOIN tank_pages t ON t.id = p.tank_page_id
+            LEFT JOIN awards a ON a.pick_id = p.id::text
             WHERE p.waitlist_id = ${session.userId} AND p.result IS NOT NULL
             ORDER BY p.settled_at DESC, p.id DESC
             LIMIT ${PAGE_SIZE + 1}
@@ -144,11 +167,17 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             ORDER BY (t.game_snapshot->'game'->>'kickoff') ASC NULLS LAST, p.created_at DESC
         `,
         sql`
+            WITH awards AS (
+                SELECT metadata->>'pickId' AS pick_id, SUM(amount)::int AS ember
+                FROM ember_ledger
+                WHERE user_id = ${session.userId} AND metadata ? 'pickId'
+                GROUP BY metadata->>'pickId'
+            )
             SELECT COUNT(*) FILTER (WHERE p.result = 'correct')::int AS correct,
                    COUNT(*) FILTER (WHERE p.result = 'incorrect')::int AS incorrect,
-                   COALESCE(SUM((SELECT COALESCE(SUM(el.amount), 0) FROM ember_ledger el
-                     WHERE el.user_id = p.waitlist_id AND el.metadata->>'pickId' = p.id::text)), 0)::int AS ember_total
+                   COALESCE(SUM(a.ember), 0)::int AS ember_total
             FROM picks p
+            LEFT JOIN awards a ON a.pick_id = p.id::text
             WHERE p.waitlist_id = ${session.userId} AND p.result IS NOT NULL
         `,
     ]);

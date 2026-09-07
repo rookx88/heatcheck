@@ -22,7 +22,8 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { fetchLiveGames } from '../../tank-gamma-live';
-import { createAndPostCommunityPick } from '../../lib/pages-functions/community-pick-creation';
+import { createAndPostCommunityPick, communityPickCardInput } from '../../lib/pages-functions/community-pick-creation';
+import { renderCommunityPickImage } from '../../lib/pages-functions/community-pick-image';
 import { computePointsSplit } from '../../lib/pages-functions/community-points-formula';
 
 const LEAGUE_SPORT = 'NFL';
@@ -82,22 +83,35 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             ? new Date(kickoffMs + 24 * 60 * 60 * 1000).toISOString()
             : (prop.settleDate || game.settleDate || game.kickoff);
 
+        // Everything the card is drawn from is game-scoped, not guild-scoped, so the
+        // PNG is byte-identical for every guild receiving this game. Render it ONCE
+        // here and hand it to each guild's post: before this, every (game, guild) pair
+        // paid a full 720x420 resvg rasterization inside one Pages Function invocation -
+        // 16 games x G guilds renders, the first thing to hit the Workers CPU budget as
+        // guilds grow. A failed render (null) still flows through: each guild then
+        // falls back to the branded embed without re-attempting the render.
+        const pickFields = {
+            createdBy: null,
+            sport: LEAGUE_SPORT,
+            marketId: prop.id,
+            question,
+            sideALabel: prop.odds.outcomes[0],
+            sideBLabel: prop.odds.outcomes[1],
+            sourceOutcomes: prop.odds.outcomes,
+            sideAPoints: split.sideAPoints,
+            sideBPoints: split.sideBPoints,
+            resolveDate,
+            kickoffAt: game.kickoff ?? null,
+        };
+        const card = await renderCommunityPickImage(communityPickCardInput(pickFields));
+
         for (const guild of guildRows) {
             try {
                 const result = await createAndPostCommunityPick(sql, context.env, {
+                    ...pickFields,
                     guildId: guild.guild_id,
                     channelId: guild.channel_id,
-                    createdBy: null,
-                    sport: LEAGUE_SPORT,
-                    marketId: prop.id,
-                    question,
-                    sideALabel: prop.odds.outcomes[0],
-                    sideBLabel: prop.odds.outcomes[1],
-                    sourceOutcomes: prop.odds.outcomes,
-                    sideAPoints: split.sideAPoints,
-                    sideBPoints: split.sideBPoints,
-                    resolveDate,
-                    kickoffAt: game.kickoff ?? null,
+                    card,
                 });
                 if (result.status === 'duplicate') duplicate++;
                 else created++;

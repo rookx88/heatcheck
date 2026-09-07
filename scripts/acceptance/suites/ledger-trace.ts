@@ -261,6 +261,35 @@ async function run(): Promise<void> {
     await assertLedgerConsistent(loss.userId, loss.cookie, '3b: loss settled');
 
     // =================================================================================
+    section('3c: /api/picks/mine reports the ledger\'s own numbers (per-pick award + all-time record)');
+    // =================================================================================
+    // The portfolio endpoint reads each settled pick's Ember from ember_ledger
+    // (metadata.pickId) in one grouped pass joined to the picks - it must agree exactly
+    // with an independent per-pick SUM straight from the table, for a win and a loss,
+    // and the record's emberTotal must equal the sum of those awards.
+    for (const [label, u, pickId, expected] of [
+        ['win', win, winPickId, expectedWinPayout],
+        ['loss', loss, lossPickId, participationAmount],
+    ] as const) {
+        const mine = await api('GET', '/api/picks/mine', { cookie: u.cookie });
+        check(`3c (${label}): GET /api/picks/mine -> 200 with settled + record`, mine.status === 200 && Array.isArray(mine.json?.settled) && mine.json?.record, JSON.stringify(mine.json)?.slice(0, 200));
+        const { rows: direct } = await pool.query(
+            `SELECT COALESCE(SUM(amount), 0)::int AS ember FROM ember_ledger WHERE user_id = $1 AND metadata->>'pickId' = $2`, [u.userId, pickId]);
+        const settledRow = (mine.json?.settled ?? []).find((s: any) => s.slug === tankSlug);
+        check(`3c (${label}): the settled pick's emberAwarded == direct ledger SUM for that pickId (${direct[0].ember}) == the settle payout (${expected})`,
+            settledRow?.emberAwarded === direct[0].ember && direct[0].ember === expected, JSON.stringify({ settledRow, direct: direct[0] }));
+        check(`3c (${label}): pending is empty, settled has exactly this one pick`,
+            (mine.json?.pending ?? []).length === 0 && (mine.json?.settled ?? []).length === 1, JSON.stringify({ pending: mine.json?.pending?.length, settled: mine.json?.settled?.length }));
+        const { rows: recordDirect } = await pool.query(
+            `SELECT COUNT(*) FILTER (WHERE result = 'correct')::int AS correct, COUNT(*) FILTER (WHERE result = 'incorrect')::int AS incorrect FROM picks WHERE waitlist_id = $1 AND result IS NOT NULL`, [u.userId]);
+        check(`3c (${label}): record {correct, incorrect, emberTotal} == direct counts + the same award sum`,
+            mine.json?.record?.correct === recordDirect[0].correct
+            && mine.json?.record?.incorrect === recordDirect[0].incorrect
+            && mine.json?.record?.emberTotal === direct[0].ember,
+            JSON.stringify({ record: mine.json?.record, recordDirect: recordDirect[0], award: direct[0].ember }));
+    }
+
+    // =================================================================================
     section('4: Top-up (test-only adjustment) - bridge win balance up to afford the shop');
     // =================================================================================
     const egg = await cheapestActiveSku('egg');
@@ -395,26 +424,35 @@ async function run(): Promise<void> {
     }
 
     // =================================================================================
-    section('9: Ticker isolation - settlement of a tagged Tank must never touch the Ember ledger');
+    section('9: Ticker isolation - a settle run over a tagged Tank must never touch the Ember ledger');
     // =================================================================================
+    // Tag settlement itself is retired (settle.ts SETTLE_TANK_TAGS = false), so the tag
+    // must come out of this run untouched too - the isolation claim below is then
+    // proven against a run that had every chance to write and wrote nothing.
     const tagId = await insertTagDirect(tankId, 'dogs', L, 1.5);
     const { rows: phaseStartRows } = await pool.query(`SELECT NOW() AS ts`);
     const phaseStart = phaseStartRows[0].ts;
     const settle4 = await settlePost();
-    check('9: settle (tag pass) -> 200', settle4.status === 200, JSON.stringify(settle4.json)?.slice(0, 300));
+    check('9: settle (tag present) -> 200', settle4.status === 200, JSON.stringify(settle4.json)?.slice(0, 300));
     const tagDelta = await settleEventDelta(tagId);
-    check('9: ticker_events gained a row for the tag', tagDelta !== null, `delta=${tagDelta}`);
+    check('9: ticker_events gained NO settle row for the tag (tag settlement retired)', tagDelta === null, `delta=${tagDelta}`);
     const { rows: ledgerSinceRows } = await pool.query(
         `SELECT COUNT(*)::int AS n FROM ember_ledger WHERE user_id = $1 AND created_at > $2`, [win.userId, phaseStart]);
     check('9: zero new ember_ledger rows for this user from ticker settlement', ledgerSinceRows[0].n === 0, JSON.stringify(ledgerSinceRows[0]));
     await assertLedgerConsistent(win.userId, win.cookie, '9: ticker tag settled (isolation)');
 
     // System-wide isolation proof, not just this one account: no ember_ledger row
-    // anywhere should ever carry a ticker-shaped rule_key or a tickerKey metadata field -
-    // the ticker layer and the Ember ledger are structurally disjoint write paths.
+    // anywhere should carry a ticker-shaped rule_key or a tickerKey metadata field
+    // EXCEPT the two TANKDAQ trade rules - ledger.ts's buyShares/sellShares stamp
+    // {tickerKey, shares, price, ...} on 'shares_buy'/'shares_sell' rows by design (a
+    // trade consumes an index's price; it is the one sanctioned Ember<->ticker touch
+    // point, and it never writes ticker_events). Everything else in the ticker layer
+    // (tags, settle, slate closes) stays structurally disjoint from the ledger.
     const { rows: tickerLeakRows } = await pool.query(
-        `SELECT COUNT(*)::int AS n FROM ember_ledger WHERE rule_key ILIKE '%ticker%' OR metadata ? 'tickerKey'`);
-    check('9: (system-wide) no ember_ledger row anywhere is ticker-tainted', tickerLeakRows[0].n === 0, JSON.stringify(tickerLeakRows[0]));
+        `SELECT COUNT(*)::int AS n FROM ember_ledger
+         WHERE (rule_key ILIKE '%ticker%' OR metadata ? 'tickerKey')
+           AND rule_key NOT IN ('shares_buy', 'shares_sell')`);
+    check('9: (system-wide) no non-trade ember_ledger row anywhere is ticker-tainted', tickerLeakRows[0].n === 0, JSON.stringify(tickerLeakRows[0]));
 
     // =================================================================================
     section('Final: full ember_ledger trace for the win account, cache vs. independent recompute');

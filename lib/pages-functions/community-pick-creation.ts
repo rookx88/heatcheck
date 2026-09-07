@@ -10,7 +10,7 @@ import type { NeonQueryFunction } from '@neondatabase/serverless';
 import type { Env } from './db';
 import { postDiscordChannelMessage } from './discord-api';
 import { buildCommunityPickCardMessage, buildCommunityVoteButtons } from './discord-community-card';
-import { renderCommunityPickImage } from './community-pick-image';
+import { renderCommunityPickImage, type CommunityPickImageInput } from './community-pick-image';
 import { postImageToChannel } from './leaderboard-image';
 
 export interface CreateCommunityPickInput {
@@ -35,6 +35,32 @@ export interface CreateCommunityPickInput {
     // Per-pick giveaway: how many winners to draw from CORRECT voters at settlement.
     // 0/omitted = none. Winners are only ever named - no prize handling anywhere.
     giveawayWinnerCount?: number;
+    // An already-rendered card PNG to post, for callers that create the SAME pick in
+    // many guilds (the weekly league slate): the image depends only on the fields
+    // above, none of which are guild-specific, so rendering it once per game and
+    // handing it in here replaces one full resvg rasterization per guild. `undefined`
+    // = render here (the admin flow); `null` = the caller's render already failed, go
+    // straight to the embed fallback rather than paying for a second failing render.
+    card?: Uint8Array | null;
+}
+
+// The exact render input a pick's card is drawn from - exported so a caller that
+// pre-renders (see `card` above) builds it from the same fields this function would.
+// Takes only the card-relevant fields, so a caller can pass its game-scoped fields
+// before it knows which guild they're for.
+export type CommunityPickCardFields = Pick<
+    CreateCommunityPickInput,
+    'question' | 'sideALabel' | 'sideBLabel' | 'sideAPoints' | 'sideBPoints' | 'resolveDate'
+>;
+export function communityPickCardInput(input: CommunityPickCardFields): CommunityPickImageInput {
+    return {
+        questionText: input.question,
+        sideALabel: input.sideALabel,
+        sideBLabel: input.sideBLabel,
+        sideAPoints: input.sideAPoints,
+        sideBPoints: input.sideBPoints,
+        resolveDate: input.resolveDate,
+    };
 }
 
 export type CreateCommunityPickResult =
@@ -89,14 +115,9 @@ export async function createAndPostCommunityPick(
     });
 
     try {
-        const png = await renderCommunityPickImage({
-            questionText: input.question,
-            sideALabel: input.sideALabel,
-            sideBLabel: input.sideBLabel,
-            sideAPoints: input.sideAPoints,
-            sideBPoints: input.sideBPoints,
-            resolveDate: input.resolveDate,
-        });
+        const png = input.card !== undefined
+            ? input.card
+            : await renderCommunityPickImage(communityPickCardInput(input));
         if (png) {
             await postImageToChannel(env, input.channelId, png, 'community-pick.png', voteButtons);
         } else {

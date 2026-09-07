@@ -107,9 +107,29 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     let skippedNoPickers = 0;
     const errors: string[] = [];
 
+    // One roster read per GUILD per run, not per candidate. Candidates are ordered by
+    // posted_at, not grouped by guild, so a guild with several newly-settled Tanks
+    // used to page its entire membership (up to 10 Discord requests) once per Tank -
+    // up to 20 x 10 = 200 serial requests in one invocation against the ~50
+    // subrequest ceiling. Memoized as the promise so a failure isn't cached: a guild
+    // whose fetch throws (bot removed, intent revoked) is retried by its next
+    // candidate exactly as before, and each such candidate still lands in `errors`.
+    const rosterByGuild = new Map<string, Promise<Awaited<ReturnType<typeof fetchGuildMembers>>>>();
+    const guildRoster = (guildId: string) => {
+        let pending = rosterByGuild.get(guildId);
+        if (!pending) {
+            pending = fetchGuildMembers(context.env, guildId).catch((err) => {
+                rosterByGuild.delete(guildId);
+                throw err;
+            });
+            rosterByGuild.set(guildId, pending);
+        }
+        return pending;
+    };
+
     for (const row of candidates) {
         try {
-            const members = await fetchGuildMembers(context.env, row.guild_id);
+            const members = await guildRoster(row.guild_id);
             const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
 
             const pickers = memberIds.length === 0 ? [] : ((await sql`
@@ -201,8 +221,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             posted++;
 
             if (row.auto_draw_enabled) {
+                // Same roster this candidate already fetched - the draw's tank pool
+                // would otherwise page the guild a second time.
                 const draw = await drawGiveawayWinner(sql, context.env, {
                     guildId: row.guild_id, sourceType: 'tank', sourceId: row.tank_page_id, drawnBy: null,
+                    guildMembers: members,
                 });
                 const drawMessage = draw.status === 'no_pool'
                     ? buildNoEligiblePoolMessage(tagline)

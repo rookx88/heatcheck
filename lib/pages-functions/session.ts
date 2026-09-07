@@ -23,7 +23,9 @@ import type { SessionTokenPayload } from '../auth-token-payloads';
 // name is used there. getSession/logout read the name matching the request's scheme,
 // so in production only the un-spoofable __Host- cookie is ever trusted.
 export const SESSION_COOKIE = 'hc_session';
-const HOST_SESSION_COOKIE = '__Host-hc_session';
+// Exported for the homepage's cache gate (functions/index.ts), which must treat a
+// request carrying EITHER name as "has a session" before any token is verified.
+export const HOST_SESSION_COOKIE = '__Host-hc_session';
 function sessionCookieName(secure: boolean): string {
     return secure ? HOST_SESSION_COOKIE : SESSION_COOKIE;
 }

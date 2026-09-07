@@ -28,9 +28,25 @@ async function run() {
         anonRes.headers.get('content-type') ?? '(none)');
     check('cache-control is private, no-store (session-dependent HTML)',
         (anonRes.headers.get('cache-control') ?? '').includes('no-store'));
-    check('renders the tanks panel heading', anonBody.includes('id="hc-tanks-heading"') && anonBody.includes('Newest Tanks Available'));
+    check('renders the tanks panel heading', anonBody.includes('id="hc-tanks-heading"') && anonBody.includes('Sports Tanks Available'));
     check('renders the sport switcher row', anonBody.includes('class="hc-sport-row"'));
     check('logged-out header shows the login CTA, not an auth chip', anonBody.includes('hc-login-cta') && !anonBody.includes('hc-auth-in'));
+
+    // --- Anonymous cache (functions/index.ts): cookie-less requests may be served the
+    // whole page from the function's own Cache API entry. The contract under test:
+    // a second anonymous request is a HIT with a byte-identical body, and every
+    // response - hit or miss - still says private, no-store to the outside world.
+    section('Anonymous cache - MISS/HIT on cookie-less requests, still private/no-store');
+    const anonCache1 = anonRes.headers.get('x-homepage-cache') ?? '';
+    check('first anonymous response is MISS (or HIT if a run within the last 60s primed it)', anonCache1 === 'MISS' || anonCache1 === 'HIT', anonCache1);
+    const anon2 = await fetch(`${BASE_URL}/`);
+    const anon2Body = await anon2.text();
+    check('second anonymous response is served from the cache (X-Homepage-Cache: HIT)', anon2.headers.get('x-homepage-cache') === 'HIT', anon2.headers.get('x-homepage-cache') ?? '(none)');
+    check('HIT body is byte-identical to the rendered body', anon2Body === anonBody, `lengths ${anon2Body.length} vs ${anonBody.length}`);
+    check('HIT still carries Cache-Control: private, no-store (the edge/browser never cache this page)',
+        (anon2.headers.get('cache-control') ?? '').includes('no-store') && (anon2.headers.get('cache-control') ?? '').includes('private'),
+        anon2.headers.get('cache-control') ?? '(none)');
+    check('HIT carries no Set-Cookie', anon2.headers.get('set-cookie') === null);
 
     // --- Un-onboarded session ---
     // VERIFIED against functions/index.ts: before any content/DB work, a session
@@ -60,12 +76,40 @@ async function run() {
     check('auth area renders (not the logged-out login CTA)',
         homeBody.includes('data-testid="hc-auth-in"') && !homeBody.includes('class="hc-cta-button hc-login-cta"'));
     check('renders the username', homeBody.includes('>acceptancehome<'));
-    // renderHeader() renders the Ember balance inside an aria-label="N Embers" chip
-    // and again as the chip's visible text - a brand-new account has balance 0.
-    check('renders an Embers balance chip', /aria-label="\d+ Embers"/.test(homeBody));
+    // The identity chip emits MapHud's own markup (lib/pages-functions/homepage/render.ts
+    // mirrors components/MapHud.tsx): aria-label="<username> - <balance> Ember. Open menu".
+    // A brand-new account has balance 0.
+    check('renders the identity chip with the Ember balance', /aria-label="acceptancehome - 0 Ember\. Open menu"/.test(homeBody));
     // The island hydration payload also carries loggedIn:true for this session -
     // confirms the server, not just the header markup, knows the session is real.
     check('hydration payload marks loggedIn: true', homeBody.includes('"loggedIn":true'));
+
+    // --- Cache isolation: a cookie-bearing request never touches the anonymous cache
+    // in either direction, and the content memo never carries identity.
+    section('Cache isolation - logged-in is BYPASS, anonymous stays anonymous, memo is content-only');
+    check('logged-in response is X-Homepage-Cache: BYPASS (never read from, never written to the anonymous cache)',
+        homeRes.headers.get('x-homepage-cache') === 'BYPASS', homeRes.headers.get('x-homepage-cache') ?? '(none)');
+    check('logged-in response is private, no-store', (homeRes.headers.get('cache-control') ?? '').includes('no-store'));
+    // The anonymous requests above primed the 30s content memo seconds ago, so this
+    // logged-in render's CONTENT came from the memo - while its identity chip and
+    // balance (asserted above) were read live. That is the whole point of the split.
+    check('logged-in render used the content memo (X-Homepage-Content: memo) yet rendered live identity',
+        homeRes.headers.get('x-homepage-content') === 'memo', homeRes.headers.get('x-homepage-content') ?? '(none)');
+    const anon3 = await fetch(`${BASE_URL}/`);
+    const anon3Body = await anon3.text();
+    check('anonymous request right after a logged-in one: still HIT, still the logged-out render (no username, login CTA present, loggedIn:false)',
+        anon3.headers.get('x-homepage-cache') === 'HIT'
+        && !anon3Body.includes('acceptancehome')
+        && anon3Body.includes('hc-login-cta')
+        && anon3Body.includes('"loggedIn":false'),
+        `cache=${anon3.headers.get('x-homepage-cache')} hasUsername=${anon3Body.includes('acceptancehome')}`);
+    // A cookie that names a session which no longer verifies (garbage token) must
+    // bypass the cache too - it renders logged-out, live, and is never stored.
+    const junkRes = await fetch(`${BASE_URL}/`, { headers: { Cookie: 'hc_session=not-a-real-token' } });
+    const junkBody = await junkRes.text();
+    check('a request with an unverifiable session cookie is BYPASS (rendered live, logged-out), never a cache HIT',
+        junkRes.status === 200 && junkRes.headers.get('x-homepage-cache') === 'BYPASS' && junkBody.includes('hc-login-cta'),
+        `status=${junkRes.status} cache=${junkRes.headers.get('x-homepage-cache')}`);
 
     // --- Sport coverage: every SPORT_ORDER entry gets a rendered slot ---
     section('Sport coverage - every SPORT_ORDER sport gets a slot (live or placeholder), never a 500');
