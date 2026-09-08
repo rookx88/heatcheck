@@ -13,7 +13,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { motion, useMotionValue, useSpring, AnimatePresence, useReducedMotion } from 'motion/react';
-import { Flame, Zap, Swords, Sparkles } from 'lucide-react';
+import { Flame, Zap, Swords, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
     getCachedAccount,
     setCachedAccount,
@@ -528,7 +528,9 @@ const picksTodayLineStyle: React.CSSProperties = {
 // which of today's (up to 3) picks/tanks the reader is currently looking at - reachable
 // from every branch below where an account is known, not just the "locked on this tank"
 // one, so a not-yet-verified account can never end up stranded on a fully-picked tank
-// with no way back to the code form.
+// with no way back to the code form. Once verified it renders nothing at all: a
+// confirmed account needs no status line on the wall (and the wall must never show
+// the account's email - the artifact renders in shared/visible contexts).
 const VerifyBlock: React.FC<{
     verifyState: VerifyState;
     verifyCode: string;
@@ -538,14 +540,7 @@ const VerifyBlock: React.FC<{
     onVerify: (e: React.FormEvent) => void;
     onResend: () => void;
 }> = ({ verifyState, verifyCode, setVerifyCode, verifyError, resendState, onVerify, onResend }) =>
-    verifyState === 'verified' ? (
-        // Deliberately no email address here: the artifact renders in shared/visible
-        // contexts (homepage showcase, Tank HQ modal, article pages), so the wall
-        // must never display the account's email.
-        <p style={{ color: '#2fe6d9', fontSize: '0.75rem', marginTop: '0.5rem' }}>
-            &#10003; Email confirmed
-        </p>
-    ) : (
+    verifyState === 'verified' ? null : (
         <form onSubmit={onVerify} style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px dashed rgba(255,255,255,0.15)' }}>
             <p style={{ color: 'rgba(255,255,255,0.7)', fontSize: '0.75rem', margin: '0 0 0.5rem 0' }}>
                 Confirm your email — check your inbox for a code.
@@ -1107,6 +1102,54 @@ const PromoWallContent: React.FC<{ promoWall: PromoWall }> = ({ promoWall }) => 
     </div>
 );
 
+// Left/right "turn to the next side" buttons. They live outside the pan surface (a
+// click never starts a drag) and above the preserve-3d tree (a wall painting past
+// the stage can't cover them). Anchored to the wrapper's horizontal CENTER, never its
+// edges: the wrapper's width is whatever the mount gives it (0px on an article page,
+// where the cube simply paints around that point), but its center is always the
+// cube's center. `offset` is the measured distance from that center (see the
+// arrowOffsets effect in Fishtank). Same teal ring as Tank HQ's .tank-modal-arrow,
+// written inline because the artifact ships in bundles that don't share that
+// page's CSS.
+const ARROW_SIZE = 40;
+// Half the button plus an 8px breathing gap from the viewport edge.
+const ARROW_EDGE_GAP = ARROW_SIZE / 2 + 8;
+// Just past the painted cube's widest pose at this scale.
+const arrowReach = (scale: number) => Math.round(200 * scale + 18);
+
+const TurnArrow: React.FC<{ direction: 1 | -1; offset: number; onTurn: (direction: 1 | -1) => void }> = ({ direction, offset, onTurn }) => {
+    const Icon = direction === 1 ? ChevronRight : ChevronLeft;
+    return (
+        <button
+            type="button"
+            aria-label={direction === 1 ? 'Turn to the next side' : 'Turn to the previous side'}
+            onClick={(e) => { e.stopPropagation(); onTurn(direction); }}
+            style={{
+                position: 'absolute',
+                top: '50%',
+                left: `calc(50% ${direction === 1 ? '+' : '-'} ${offset}px)`,
+                transform: 'translate(-50%, -50%)',
+                zIndex: 5,
+                width: ARROW_SIZE,
+                height: ARROW_SIZE,
+                padding: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderRadius: 999,
+                border: '1.5px solid rgba(47,230,217,0.6)',
+                background: 'rgba(7,5,11,0.75)',
+                color: '#2fe6d9',
+                boxShadow: '0 0 14px rgba(47,230,217,0.25), 0 4px 12px rgba(0,0,0,0.45)',
+                cursor: 'pointer',
+                touchAction: 'manipulation',
+            }}
+        >
+            <Icon size={22} />
+        </button>
+    );
+};
+
 // `scale` shrinks the painted cube WITHOUT shrinking the 420px stage box: preserve-3d
 // content ignores layout clipping, so the fix for the cube painting over neighboring
 // UI is a smaller cube inside the same reserved space (a proportionally smaller box
@@ -1151,17 +1194,66 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
 
     // Fires once per newly-reached wall (not continuously while dragging) - a genuine
     // "rotated to read X" signal, deduped by wall index so Take 1 -> Take 2 still
-    // counts as a change even though both share wall_kind='card'.
+    // counts as a change even though both share wall_kind='card'. Shared by the drag
+    // settle and the arrow buttons: both are "the reader turned to wall X".
     const lastLoggedWallIndexRef = useRef<number | null>(null);
-    const handlePanEnd = () => {
-        const wallIndex = nearestWallIndex(walls, rotateY.get());
+    const logWallViewed = (wallIndex: number) => {
         if (lastLoggedWallIndexRef.current === wallIndex) return;
         lastLoggedWallIndexRef.current = wallIndex;
         trackEvent('wall_viewed', { tankSlug: slug, wallKind: walls[wallIndex].kind, metadata: { wallIndex } });
     };
+    const handlePanEnd = () => logWallViewed(nearestWallIndex(walls, rotateY.get()));
+
+    // Arrow buttons: step one wall over from whichever wall is currently nearest the
+    // camera, landing square on it (plus the usual open tilt). The target angle is
+    // picked as the equivalent closest to the current one, so the cube always takes
+    // the short way round - never a 270° spin to reach the neighbor.
+    const turnWall = (direction: 1 | -1) => {
+        const current = rotateY.get();
+        const target = (nearestWallIndex(walls, current) + direction + walls.length) % walls.length;
+        const square = OPEN_TILT_DEG - walls[target].rotateY;
+        const delta = ((((square - current) % 360) + 540) % 360) - 180;
+        rotateY.set(current + delta);
+        logWallViewed(target);
+    };
+
+    // How far each arrow sits from the cube's center: the painted cube's reach, pulled
+    // in wherever that would leave the viewport (the homepage showcase sits left of
+    // center on a phone, so its two arrows get different offsets). Measured from the
+    // wrapper's center rather than its edges - see TurnArrow. Re-measured on resize
+    // and whenever the wrapper's box changes (a column reflow, the modal opening).
+    const wrapperRef = useRef<HTMLDivElement>(null);
+    const [arrowOffsets, setArrowOffsets] = useState<[number, number]>(() => [arrowReach(scale), arrowReach(scale)]);
+    useEffect(() => {
+        const el = wrapperRef.current;
+        if (!el) return;
+        const measure = () => {
+            const rect = el.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const viewportW = document.documentElement.clientWidth;
+            const reach = arrowReach(scale);
+            const next: [number, number] = [
+                Math.max(ARROW_EDGE_GAP, Math.min(reach, centerX - ARROW_EDGE_GAP)),
+                Math.max(ARROW_EDGE_GAP, Math.min(reach, viewportW - centerX - ARROW_EDGE_GAP)),
+            ];
+            setArrowOffsets((prev) => (prev[0] === next[0] && prev[1] === next[1] ? prev : next));
+        };
+        measure();
+        window.addEventListener('resize', measure);
+        window.addEventListener('orientationchange', measure);
+        const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+        observer?.observe(el);
+        return () => {
+            window.removeEventListener('resize', measure);
+            window.removeEventListener('orientationchange', measure);
+            observer?.disconnect();
+        };
+    }, [scale]);
 
     return (
-        <div style={{ width: '100%', maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+        <div ref={wrapperRef} style={{ position: 'relative', width: '100%', maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+            <TurnArrow direction={-1} offset={arrowOffsets[0]} onTurn={turnWall} />
+            <TurnArrow direction={1} offset={arrowOffsets[1]} onTurn={turnWall} />
             <motion.div
                 onPan={handlePan}
                 onPanEnd={handlePanEnd}

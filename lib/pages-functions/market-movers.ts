@@ -719,14 +719,15 @@ export function renderMarketMoversSection(data: MarketMoversData): string {
         </section>`;
 }
 
-// Appended into homepageStyles() output (render.ts). Mockup palette: orange marquee
-// band with outlined sign-colored text (market green up / red down), folder-style
-// green/salmon tab buttons, light-blue index cards and maroon serif news entries -
-// with the plot itself restyled to the site's navy/teal (top-right of the card,
-// visible date ticks below the panel). The page background itself stays untouched.
+// Appended into homepageStyles() output (render.ts). Mockup palette: yellow marquee
+// band (site gold, black rules top and bottom) with outlined sign-colored text
+// (market green up / red down), folder-style green/salmon tab buttons, light-blue
+// index cards and maroon serif news entries - with the plot itself restyled to the
+// site's navy/teal (top-right of the card, visible date ticks below the panel). The
+// page background itself stays untouched.
 export function marketMoversStyles(): string {
     return `
-        .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: #a36114; border-top: 2px solid #000000; border-bottom: 2px solid #000000; }
+        .hc-ticker-tape { overflow: hidden; margin: 0.9rem -1.25rem 0; background: var(--hc-gold, #ffc72c); border-top: 3px solid #000000; border-bottom: 3px solid #000000; }
         .hc-tape-track { display: flex; width: max-content; animation: hc-tape 60s linear infinite; }
         .hc-tape-group {
             list-style: none; display: flex; gap: 2.25rem; margin: 0; padding: 0.5rem 1.5rem 0.55rem;
@@ -745,10 +746,12 @@ export function marketMoversStyles(): string {
                 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff,
                 3px 3px 4px rgba(0,0,0,0.35);
         }
+        /* Dark ink for the headline sentence - the old cream vanished against the
+           yellow band. */
         .hc-tape-item .hc-tape-headline {
             font-size: 0.95rem; font-weight: 600; letter-spacing: 0.01em;
-            color: #fdf3e0;
-            text-shadow: 1px 1px 2px rgba(0,0,0,0.45);
+            color: #1a1200;
+            text-shadow: none;
             margin-left: 0.35rem;
         }
         @keyframes hc-tape { to { transform: translateX(-50%); } }
