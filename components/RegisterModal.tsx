@@ -49,23 +49,21 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, variant =
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="tank-modal-header">
-                    {isLogin ? (
-                        <span>Log in</span>
-                    ) : (
-                        // The wordmark stands in for the word: "Join" + the same logo
-                        // the page header carries. alt keeps the title readable.
-                        <span className="register-modal__title">
-                            Join
-                            <img
-                                className="register-modal__logo"
-                                src="/assets/images/heatchecks-logo.webp"
-                                alt="HeatChecks"
-                                width="500"
-                                height="241"
-                                decoding="async"
-                            />
-                        </span>
-                    )}
+                    {/* The wordmark stands in for the name in both variants - "Join"
+                        / "Log in to" plus the same logo the page header carries. One
+                        element for both so they can't drift; alt carries the name so
+                        the title still reads as a sentence. */}
+                    <span className="register-modal__title">
+                        {isLogin ? 'Log in to' : 'Join'}
+                        <img
+                            className="register-modal__logo"
+                            src="/assets/images/heatchecks-logo.webp"
+                            alt="HeatChecks"
+                            width="500"
+                            height="241"
+                            decoding="async"
+                        />
+                    </span>
                     <button ref={closeButtonRef} className="tank-modal-close" onClick={onClose} aria-label="Close">
                         &times;
                     </button>
