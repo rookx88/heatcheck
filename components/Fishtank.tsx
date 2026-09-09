@@ -54,6 +54,10 @@ export interface PromoWall {
     body: string;
     ctaHref: string;
     ctaLabel: string;
+    // When set, a plain left-click on the CTA runs this instead of following
+    // ctaHref (the homepage opens its register modal in place). The href stays
+    // for no-JS, middle-click, and "open in new tab".
+    onCtaClick?: () => void;
 }
 
 const TANK_W = 260;
@@ -1084,6 +1088,12 @@ const PromoWallContent: React.FC<{ promoWall: PromoWall }> = ({ promoWall }) => 
         <p style={{ margin: 0, fontWeight: 700, fontSize: '0.9rem', color: '#f1f5f9', lineHeight: 1.5 }}>{promoWall.body}</p>
         <a
             href={promoWall.ctaHref}
+            onClick={(e) => {
+                if (!promoWall.onCtaClick) return;
+                if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                e.preventDefault();
+                promoWall.onCtaClick();
+            }}
             style={{
                 display: 'inline-block',
                 background: 'var(--hc-gold, #ffc72c)',

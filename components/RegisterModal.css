@@ -53,3 +53,18 @@
 .register-modal .tank-modal-body {
   padding: 1.1rem 1.35rem 1.5rem;
 }
+
+/* "Join" + the wordmark, sitting on one baseline. The logo is sized off the
+   header's type so it scales with the title text rather than the panel. */
+.register-modal__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.register-modal__logo {
+  display: block;
+  height: 2.1em;
+  width: auto;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55));
+}

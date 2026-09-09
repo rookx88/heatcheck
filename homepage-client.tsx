@@ -12,7 +12,7 @@ import { MotionConfig } from 'motion/react';
 import { Fishtank, formatTimeUntilReset, type DeckPayload } from './components/Fishtank';
 import { PetWidget } from './components/PetWidget';
 import { MudPuppyPromo } from './components/MudPuppyPromo';
-import { RegisterModal } from './components/RegisterModal';
+import { RegisterModal, type AuthModalVariant } from './components/RegisterModal';
 import { NotificationsHost } from './components/NotificationsHost';
 import { dispatchInboxOpen } from './notifications-client';
 import { getTodayStatus, logout, PICKS_UPDATED_EVENT } from './tank-pick-client';
@@ -84,40 +84,47 @@ function mountMarketMoversToggle() {
     });
 }
 
-// Register CTA (logged-out only; the server renders the card only then). Click
-// plays the pop jiggle, then mounts the RegisterModal into a lazily-created body
-// root - body-level so the modal's fixed overlay isn't trapped by any ancestor.
-// The server renders TWO copies on the homepage (header for desktop, its own
-// row between the ticker and Tanks panel for mobile - see renderHomepage()),
-// CSS shows exactly one per breakpoint, so every match gets wired; only the
-// visible one is ever actually clickable, and both share one modal host.
-function mountRegisterCta() {
-    const ctas = document.querySelectorAll<HTMLElement>('[data-hc-register]');
-    if (!ctas.length) return;
-    let modalHost: ReturnType<typeof createRoot> | null = null;
-    let hostEl: HTMLDivElement | null = null;
+// The one auth modal host for the page: a lazily-created body root - body-level so
+// the modal's fixed overlay isn't trapped by any ancestor - shared by the register
+// banner, the header's Log in pill, and the showcase cube's Sign Up wall, so two
+// triggers can never stack two modals.
+let authModalHost: ReturnType<typeof createRoot> | null = null;
+const closeAuthModal = () => authModalHost?.render(null);
+function openAuthModal(variant: AuthModalVariant) {
+    if (!authModalHost) {
+        const hostEl = document.createElement('div');
+        document.body.appendChild(hostEl);
+        authModalHost = createRoot(hostEl);
+    }
+    authModalHost.render(<RegisterModal variant={variant} onClose={closeAuthModal} />);
+}
 
-    const closeModal = () => {
-        modalHost?.render(null);
-    };
-    const openModal = () => {
-        if (!hostEl) {
-            hostEl = document.createElement('div');
-            document.body.appendChild(hostEl);
-            modalHost = createRoot(hostEl);
-        }
-        modalHost!.render(<RegisterModal onClose={closeModal} />);
-    };
-
-    ctas.forEach((cta) => {
+// Register CTA + Log in pill (logged-out only; the server renders both only then).
+// Register: click plays the pop jiggle, then opens the modal mid-jiggle. The server
+// renders TWO copies of the banner (header for desktop, its own row between the
+// ticker and Tanks panel for mobile - see renderHomepage()), CSS shows exactly one
+// per breakpoint, so every match gets wired; only the visible one is ever actually
+// clickable. Log in: the pill is a real <a href="/login/"> so no-JS and middle-click
+// still reach the page; with JS the click opens the login modal in place instead.
+function mountAuthCtas() {
+    document.querySelectorAll<HTMLElement>('[data-hc-register]').forEach((cta) => {
         cta.addEventListener('click', () => {
             cta.classList.remove('is-popping');
             // Force a reflow so re-adding the class replays the animation.
             void cta.offsetWidth;
             cta.classList.add('is-popping');
-            window.setTimeout(openModal, 200); // mid-jiggle, so the movement reads
+            window.setTimeout(() => openAuthModal('register'), 200); // mid-jiggle, so the movement reads
         });
         cta.addEventListener('animationend', () => cta.classList.remove('is-popping'));
+    });
+    document.querySelectorAll<HTMLAnchorElement>('[data-hc-login]').forEach((pill) => {
+        pill.addEventListener('click', (e) => {
+            // Plain left-click only - a modifier/middle click keeps the browser's
+            // own open-in-new-tab behavior on the real /login/ href.
+            if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+            e.preventDefault();
+            openAuthModal('login');
+        });
     });
 }
 
@@ -220,7 +227,7 @@ function mount() {
     mountNotificationsHost();
     mountPicksStatus();
     mountHeaderMenu();
-    mountRegisterCta();
+    mountAuthCtas();
 
     const payload = readPayload();
     if (!payload) return;
@@ -327,6 +334,9 @@ function mount() {
                                 body: 'Experience a new way to enjoy the sports content you love. Make your picks, grow your Mud Puppy, and compete in a new sports world.',
                                 ctaHref: '/login/',
                                 ctaLabel: 'Sign Up',
+                                // Same register modal the header banner opens, so
+                                // signing up never leaves the page.
+                                onCtaClick: () => openAuthModal('register'),
                             }}
                             openWall="promo"
                             scale={showcaseScale}

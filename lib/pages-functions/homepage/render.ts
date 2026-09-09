@@ -67,7 +67,9 @@ function renderHeader(user: HomepageUser | null): string {
                     <span class="map-hud__ember">${EMBER_SVG}${user.balance}</span>
                 </button>
             </div>`
-        : `<a class="hc-cta-button hc-login-cta" href="/login/">Log in</a>`;
+        // A real link (no-JS fallback, middle-click); homepage-client's
+        // mountAuthCtas turns a plain click into the in-page login modal.
+        : `<a class="hc-cta-button hc-login-cta" href="/login/" data-hc-login aria-haspopup="dialog">Log in</a>`;
 
     return `
         <header class="hc-home-header">

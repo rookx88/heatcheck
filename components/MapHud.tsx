@@ -10,6 +10,7 @@ import { logout } from '../tank-pick-client';
 import { getToolbarState, BALANCE_UPDATED_EVENT } from '../toolbar-state-client';
 import { dispatchInboxOpen } from '../notifications-client';
 import { HEADER_MENU_ITEMS } from './headerMenuItems';
+import { LoginModal } from './RegisterModal';
 import './MapHud.css';
 
 // Same flame glyph the homepage's ember chip uses.
@@ -25,6 +26,7 @@ export const MapHud: React.FC = () => {
     const [loggedIn, setLoggedIn] = useState<boolean | null>(null); // null = still hydrating
     const [menuOpen, setMenuOpen] = useState(false);
     const [loggingOut, setLoggingOut] = useState(false);
+    const [loginOpen, setLoginOpen] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
 
     const hydrate = useCallback(async () => {
@@ -100,7 +102,21 @@ export const MapHud: React.FC = () => {
     if (!loggedIn) {
         return (
             <div className="map-hud">
-                <a className="map-hud__login" href="/login/">Log in</a>
+                {/* A real link for no-JS / middle-click; a plain click opens the
+                    login modal in place, same as the homepage header's pill. */}
+                <a
+                    className="map-hud__login"
+                    href="/login/"
+                    aria-haspopup="dialog"
+                    onClick={(e) => {
+                        if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                        e.preventDefault();
+                        setLoginOpen(true);
+                    }}
+                >
+                    Log in
+                </a>
+                {loginOpen && <LoginModal onClose={() => setLoginOpen(false)} />}
             </div>
         );
     }
