@@ -1232,6 +1232,12 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
     // center on a phone, so its two arrows get different offsets). Measured from the
     // wrapper's center rather than its edges - see TurnArrow. Re-measured on resize
     // and whenever the wrapper's box changes (a column reflow, the modal opening).
+    //
+    // The VIEWPORT is deliberately the bound, not the artifact's container: the cube
+    // is a fixed-pixel 3D scene that paints outside its container by design (that is
+    // what `scale` exists for), so on a narrow surface - the homepage showcase, whose
+    // container stops short of the sport-button column - clamping to the container
+    // walks the arrows in on top of the wall text they are meant to sit beside.
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [arrowOffsets, setArrowOffsets] = useState<[number, number]>(() => [arrowReach(scale), arrowReach(scale)]);
     useEffect(() => {
@@ -1251,8 +1257,12 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
         measure();
         window.addEventListener('resize', measure);
         window.addEventListener('orientationchange', measure);
+        // Observes the parent too: the wrapper is 0px wide on surfaces that center it
+        // in a flex box, so it never fires a resize of its own - the parent changing
+        // shape is the only signal that the wrapper's center just moved.
         const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
         observer?.observe(el);
+        if (el.parentElement) observer?.observe(el.parentElement);
         return () => {
             window.removeEventListener('resize', measure);
             window.removeEventListener('orientationchange', measure);

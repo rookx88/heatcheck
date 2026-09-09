@@ -4,6 +4,15 @@ import { repairTruncatedTitle } from '../utils/seo-title';
 import type { Prop, Game, TankArticle } from '../../tank-types';
 import { formatMarketLabel, formatOddsLabel, formatSettleDate, formatGameTime, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../../tank-deck-format';
 
+export interface TankResolution {
+    status: 'resolved' | 'abandoned';
+    blurb?: string;
+    winning_index?: number;
+    winning_side?: string;
+    resolved_at?: string;
+    reason?: string;
+}
+
 export interface TankPageRecord {
     id: string;
     slug: string;
@@ -14,6 +23,11 @@ export interface TankPageRecord {
     created_at: string;
     updated_at?: string | null;
     published_at: string | null;
+    // Stage 3 (functions/api/tank-resolution-sweep.ts). Null for every Tank whose market
+    // hasn't settled yet, for pre-v2 Tanks, and against a database that hasn't had
+    // add_curation_and_resolution_to_tank_pages.sql run - all of which simply render no
+    // resolution section.
+    resolution?: TankResolution | null;
 }
 
 /**
@@ -125,6 +139,26 @@ export function generateTankArticlePage(
 
     const cardsHtml = cards.map(card => `<li>${escapeHtml(card)}</li>`).join('\n                    ');
 
+    // How the story ended. Rendered ONLY for a resolution that actually produced a blurb -
+    // an 'abandoned' row (a market that never resolved) deliberately renders nothing at
+    // all rather than admitting to the reader that we stopped checking.
+    //
+    // Server-rendered, not hydrated: this is the one piece of the page a crawler most
+    // wants and an AI answer engine is most likely to quote, and it costs nothing to bake
+    // in - the sweep writes the column, the next build (any publish rebuilds every
+    // article) picks it up. Sits directly under the body so it reads as the last beat of
+    // the story rather than a footnote below the deck.
+    const resolutionHtml = page.resolution?.status === 'resolved' && page.resolution.blurb?.trim()
+        ? `
+                <aside class="tank-article-resolution">
+                    <h2>How it ended</h2>
+                    <p>${escapeHtml(page.resolution.blurb.trim())}</p>
+                    ${page.resolution.winning_side
+                        ? `<p class="tank-article-resolution-side">Resolved: <strong>${escapeHtml(page.resolution.winning_side)}</strong></p>`
+                        : ''}
+                </aside>`
+        : '';
+
     const deckPayload = JSON.stringify({
         hook, cards, slug: page.slug,
         call: { ...call, sidesImpliedProb: deriveSidesImpliedProb(prop.odds, call.sides.length) },
@@ -215,6 +249,39 @@ export function generateTankArticlePage(
         .tank-article-body p:last-child {
             margin-bottom: 0;
         }
+        /* "How it ended" - the settled callback. Gold rather than the page's teal, and
+           set apart from the body's left rule, because it is the one block on the page
+           written after the fact: it should read as a later addition to the story, not
+           as part of the original piece. */
+        .tank-article-resolution {
+            margin-top: 1.75rem;
+            padding: 1rem 1.15rem;
+            border: 1px solid rgba(255,255,255,0.12);
+            border-left: 3px solid var(--hc-gold);
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+        }
+        .tank-article-resolution h2 {
+            font-family: 'Montserrat', 'Nunito', sans-serif;
+            font-weight: 800;
+            font-size: 0.72rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--hc-gold);
+            margin: 0 0 0.55rem;
+        }
+        .tank-article-resolution p {
+            margin: 0;
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: rgba(255,255,255,0.85);
+        }
+        .tank-article-resolution-side {
+            margin-top: 0.6rem !important;
+            font-size: 0.82rem !important;
+            color: rgba(255,255,255,0.55) !important;
+        }
+        .tank-article-resolution-side strong { color: rgba(255,255,255,0.85); }
         .tank-article-cards {
             list-style: none;
             margin: 1.75rem 0 0;
@@ -342,6 +409,60 @@ export function generateTankArticlePage(
            the homepage header's logged-out pairing. */
         .tank-article:has(.map-hud__chip) .tank-article-register-banner { display: none; }
 
+        /* Each column rides its own panel, at every width: the story on deep blue,
+           the interactive rail on black - the same black the TANKDAQ tiles inside it
+           already use, so the rail reads as one instrument panel rather than tiles
+           floating loose on the page background.
+
+           Both are painted here rather than in the desktop block below because the
+           split is editorial, not a layout artifact: stacked on a phone the two
+           panels still say "story" and "controls". */
+        .tank-article-main-col,
+        .tank-article-side-col {
+            box-sizing: border-box;
+            border-radius: 18px;
+            padding: 1.35rem 1.4rem 1.75rem;
+        }
+        .tank-article-main-col {
+            background: linear-gradient(180deg, #101d38 0%, #0b1526 100%);
+            border: 1px solid rgba(125, 170, 255, 0.16);
+            box-shadow: 0 18px 44px rgba(0, 0, 0, 0.42);
+        }
+        .tank-article-side-col {
+            display: block;
+            background: #000000;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55);
+        }
+        /* Stacked (phone) gap between the two panels; the desktop grid's column-gap
+           replaces it below. */
+        .tank-article-side-col { margin-top: 1.25rem; }
+        /* The panels' own padding is the top inset now. These blocks carried a
+           stacking margin for the old flat layout, and padding stops it collapsing
+           away, so it would otherwise show as a gap inside the panel. Matched by
+           class, not by :first-child, because the indexes island replaces its
+           section's children after hydration. */
+        .tank-article-main-col > .tank-article-header { margin-top: 0; }
+        .tank-article-side-col .tank-article-cards,
+        .tank-article-side-col .hc-tai-heading { margin-top: 0; }
+        /* The deck alone spans the panel's full inner width - the index tiles above it
+           keep the inset. The cube is a fixed-pixel 3D scene that paints past its
+           container rather than shrinking into it, so giving the section the padding
+           back is what keeps it centred on the panel instead of on a narrower box. */
+        .tank-article-side-col .tank-article-artifact-section {
+            margin-left: -1.4rem;
+            margin-right: -1.4rem;
+        }
+
+        /* Phones: bring the page's side padding in so the panels reach within 8px of
+           the screen edge - which is exactly where the deck's turn arrows stop, since
+           Fishtank pins them clear of the viewport by half a button plus 8px. Any
+           wider an inset and the arrows straddle the black panel's edge instead of
+           sitting inside it. The roomier measure is a welcome side effect. */
+        @media (max-width: 1179px) {
+            .tank-article { padding-left: 0.5rem; padding-right: 0.5rem; }
+        }
+
         /* Desktop: story on the left, indexes and the Call deck stacked on the right.
            Everything above this line is the phone layout and stays untouched - the
            column wrappers carry no styles until this breakpoint, so narrow viewports
@@ -366,9 +487,14 @@ export function generateTankArticlePage(
                    story, and stretching would leave the deck floating mid-column. */
                 align-items: start;
             }
+            /* The grid's column-gap is the gutter between the panels here, so the
+               stacked layout's margin comes back off. */
+            .tank-article-side-col { margin-top: 0; }
             /* The prose keeps its own comfortable measure inside the wider page -
-               the extra width goes to the rail, not to 1100px-long lines of text. */
-            .tank-article-main-col { max-width: 680px; }
+               the extra width goes to the rail, not to 1100px-long lines of text.
+               Widened by the panel's own horizontal padding (border-box) so the
+               measure inside the panel is the one this number was chosen for. */
+            .tank-article-main-col { max-width: 724px; }
             /* The header is centred on phones, where it spans the full width. Beside
                a rail it reads as a column, so left-align it with the prose under it. */
             .tank-article-main-col .tank-article-header { text-align: left; }
@@ -420,6 +546,7 @@ ${articleImageUrl ? `
                 <div class="tank-article-body">
                     ${bodyHtml}
                 </div>
+${resolutionHtml}
             </div>
 
             <aside class="tank-article-side-col">
