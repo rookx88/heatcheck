@@ -48,6 +48,17 @@ export interface Env {
     CURATE_MAX_MATCHES_PER_RUN?: string;
     CURATE_WEB_SEARCH_MAX_USES?: string;
     CURATE_MATCH_MAX_TOKENS?: string;
+    // v2 curation (functions/api/curate.ts). The verify call is small and schema-bound,
+    // so its token cap is a fraction of the match call's.
+    CURATE_VERIFY_MAX_TOKENS?: string;
+    // How many times a match call whose search loop returned stop_reason 'pause_turn' is
+    // resumed before giving up on that sport for the run.
+    CURATE_MAX_CONTINUATIONS?: string;
+    // Bounds the Stage 3 resolution sweep (functions/api/tank-resolution-sweep.ts): how
+    // many Tanks it will process per run, and how far back it looks for unresolved ones.
+    // Same "bound the daily retries" posture as CURATE_TAG_SWEEP_DAYS above.
+    TANK_RESOLUTION_MAX_PER_RUN?: string;
+    TANK_RESOLUTION_LOOKBACK_DAYS?: string;
     // How far back (days) the curate run's ticker tag sweep looks for published,
     // untagged Tanks - bounds daily retries for markets whose CLOB history is gone.
     CURATE_TAG_SWEEP_DAYS?: string;

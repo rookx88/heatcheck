@@ -24,3 +24,12 @@ PREVIEW_SETTLE_URL = "https://auth-sessions.heatcheck.pages.dev/api/settle"
 #   npx wrangler secret put SETTLE_SECRET --config worker-settle/wrangler.toml
 # using the same value configured as SETTLE_SECRET for the Pages project. The same
 # secret authenticates both SETTLE_URL and PREVIEW_SETTLE_URL (confirmed 2026-08-22).
+
+# Workers Logs retention - same reasoning as worker-curate/wrangler.toml's block: this
+# Worker's sibling sweeps report their outcome in a response body only it ever sees, so
+# without retention a failed sweep is indistinguishable from a quiet night. That applies
+# doubly to /api/tank-resolution-sweep, which spends Anthropic credits and reports what
+# it wrote (or skipped, or abandoned) purely through the body logged here.
+[observability]
+enabled = true
+head_sampling_rate = 1

@@ -14325,6 +14325,82 @@ const draftKickoff = (page: TankPageRow): string | undefined => {
   return snapshot?.game?.kickoff;
 };
 
+// What the v2 curator actually found, and what the independent verifier made of it.
+//
+// This panel is the point of the whole v2 pass. The gates run automatically and rejected
+// matches never become rows, so this is the only place a human ever sees WHY a prop was
+// picked - the claim, the page it came from, how old the story is, and the verifier's
+// reasoning. Before this existed the draft review showed only the finished article, which
+// meant publishing on the strength of prose with no way to check what it rested on.
+// (`angle` was never displayed at all.)
+//
+// Everything is optional: pre-v2 drafts, anything from the manual TankCurator flow, and
+// any run against a database without add_curation_and_resolution_to_tank_pages.sql all
+// render the angle alone, or nothing.
+const RECENCY_COLORS: Record<string, string> = {
+  fresh: '#2e7d32',
+  aging: '#ef6c00',
+  stale: '#c62828',
+  unknown: '#6a1b9a',
+};
+
+const CurationEvidence: React.FC<{ page: TankPageRow }> = ({ page }) => {
+  const c = page.curation;
+  if (!c && !page.angle) return null;
+
+  return (
+    <div style={{ margin: '0 0 0.85rem', padding: '0.65rem 0.8rem', background: '#fafafa', border: '1px solid #e0e0e0', borderRadius: '6px', fontSize: '0.82rem' }}>
+      <p style={{ margin: 0 }}>
+        <strong>Angle:</strong> {page.angle}
+        {c?.angle_rewritten && (
+          <span style={{ marginLeft: '0.4rem', color: '#ef6c00', fontSize: '0.75rem' }}>(rewritten by verifier)</span>
+        )}
+      </p>
+
+      {c && (
+        <>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', margin: '0.5rem 0' }}>
+            <span style={{ padding: '0.12rem 0.45rem', borderRadius: '4px', background: RECENCY_COLORS[c.recency_window] ?? '#666', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold', textTransform: 'uppercase' }}>
+              {c.recency_window}
+            </span>
+            {c.stale_fallback && (
+              <span style={{ padding: '0.12rem 0.45rem', borderRadius: '4px', background: '#c62828', color: '#fff', fontSize: '0.7rem', fontWeight: 'bold' }}>
+                STALE FALLBACK — nothing fresher for this sport
+              </span>
+            )}
+            <span style={{ padding: '0.12rem 0.45rem', borderRadius: '4px', background: '#eee', color: '#444', fontSize: '0.7rem' }}>
+              {c.category}
+            </span>
+            {/* Where the date came from matters more than the date: 'model' means we're
+                trusting a self-reported timestamp because the page carried no age. */}
+            <span style={{ padding: '0.12rem 0.45rem', borderRadius: '4px', background: '#eee', color: '#444', fontSize: '0.7rem' }}>
+              dated via {c.source_timestamp_origin}
+            </span>
+          </div>
+
+          <p style={{ margin: '0 0 0.35rem' }}><strong>Claim:</strong> {c.trend_claim}</p>
+          <blockquote style={{ margin: '0 0 0.35rem', paddingLeft: '0.6rem', borderLeft: '3px solid #ccc', color: '#555', fontStyle: 'italic' }}>
+            {c.source_snippet}
+          </blockquote>
+          <p style={{ margin: '0 0 0.35rem' }}>
+            <a href={c.source_url} target="_blank" rel="noopener noreferrer">{c.source_title || c.source_url}</a>
+            {c.source_timestamp && <span style={{ color: '#777' }}> · {new Date(c.source_timestamp).toLocaleDateString()}</span>}
+          </p>
+          <p style={{ margin: '0 0 0.35rem', color: '#555' }}><strong>Verifier:</strong> {c.supports_reason}</p>
+          {c.verified_stat ? (
+            <p style={{ margin: 0, color: '#2e7d32' }}>
+              <strong>Stat (verified):</strong> {c.verified_stat.value}{' '}
+              <a href={c.verified_stat.source_url} target="_blank" rel="noopener noreferrer">source</a>
+            </p>
+          ) : c.stat_reason ? (
+            <p style={{ margin: 0, color: '#c62828' }}><strong>Stat rejected:</strong> {c.stat_reason}</p>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+};
+
 const TankDrafts: React.FC = () => {
   const [draftPages, setDraftPages] = useState<TankPageRow[]>([]);
   const [isLoadingPages, setIsLoadingPages] = useState(false);
@@ -14401,6 +14477,7 @@ const TankDrafts: React.FC = () => {
             <p style={{ margin: '0 0 0.5rem', fontSize: '0.8rem', fontWeight: 'bold', color: '#666', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               {page.league}{gameTimeLabel ? ` · ${gameTimeLabel}` : ''} · Settles: {settleLabel}
             </p>
+            <CurationEvidence page={page} />
             {page.model_output ? (
               <>
                 <h4 style={{ marginTop: 0 }}>{page.model_output.seo.title}</h4>

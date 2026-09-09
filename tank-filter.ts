@@ -8,6 +8,16 @@
 import type { Game, FilterParams } from './tank-types';
 import { effectiveSettleDate } from './tank-deck-format';
 
+// The whole-game market keys Polymarket produces, and the only markets The Tank curates
+// (2026-09-09). Everything else is excluded - player props ("<sport>_player_<stat>") and
+// season_futures, which resolve months out and give a reader nothing to follow.
+//
+// Lives here rather than in functions/api/curate.ts so it can be shared without dragging
+// a Cloudflare Pages Function into a build that excludes them (tsconfig.json excludes
+// `functions`, and importing across that line breaks the main project's typecheck).
+// curate.ts's DEFAULT_MARKET_WHITELIST is built from this.
+export const GAME_LINE_MARKETS = ['moneyline', 'spreads', 'totals'] as const;
+
 // Order of operations: whitelist -> lead-time floor -> prominence floor -> sort desc by
 // prominence -> slice to cap.
 export function filterProps(games: Game[], params: FilterParams): Game[] {

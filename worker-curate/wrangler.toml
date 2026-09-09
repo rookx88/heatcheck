@@ -39,3 +39,20 @@ CURATE_URL = "https://auth-sessions.heatcheck.pages.dev/api/curate"
 # CURATE_SECRET is a real secret, not a plaintext var - set it with:
 #   npx wrangler secret put CURATE_SECRET --config worker-curate/wrangler.toml
 # using the same value configured as CURATE_SECRET for the Pages project.
+
+# Workers Logs retention (2026-09-09). Added after a full day of curation was lost
+# silently: the 10:00 UTC run reported status=success in Cloudflare's invocation metrics
+# and created zero drafts, because the deployed ANTHROPIC_API_KEY had no credit.
+#
+# Nothing surfaced it, and that is structural rather than bad luck. This Worker only
+# fires HTTP and logs the response; /api/curate's per-group try/catch converts even a
+# hard Anthropic 400 into a "group_error" entry INSIDE an HTTP 200 body. So the request
+# succeeds, the invocation metric is green, and the only record of the actual failure is
+# the console line below - which, without this block, was never retained.
+#
+# The v2 curator's per-run counters (verify_error, rejected_bad_url, rejected_stale,
+# rejected_generic, ...) ride in that same logged body. They are the intended way to tune
+# the gates, and they are worth nothing unless this is on.
+[observability]
+enabled = true
+head_sampling_rate = 1

@@ -1,6 +1,39 @@
 import type { HeatcheckPost } from './index';
 import type { Game, SelectedProp, TankArticle } from './tank-types';
 
+// The v2 curator's evidence for one Tank (tank-curation.ts's CurationRecord). Null on
+// pre-v2 rows, on anything the manual TankCurator flow generated, and against a database
+// that hasn't had add_curation_and_resolution_to_tank_pages.sql run.
+export interface TankCurationRow {
+    category: string;
+    trend_claim: string;
+    source_snippet: string;
+    source_url: string;
+    source_title: string | null;
+    source_timestamp: string | null;
+    source_timestamp_origin: 'page_age' | 'model' | 'none';
+    recency_window: 'fresh' | 'aging' | 'stale' | 'unknown';
+    stale_fallback: boolean;
+    supports_claim: boolean;
+    supports_reason: string;
+    generic_filler: boolean;
+    filler_reason: string;
+    angle_rewritten: boolean;
+    verified_stat: { value: string; source_url: string } | null;
+    stat_reason: string | null;
+    prompt_version: string;
+    curated_at: string;
+}
+
+export interface TankResolutionRow {
+    status: 'resolved' | 'abandoned';
+    blurb?: string;
+    winning_index?: number;
+    winning_side?: string;
+    resolved_at?: string;
+    reason?: string;
+}
+
 export interface TankPageRow {
     id: string;
     slug: string | null;
@@ -16,6 +49,8 @@ export interface TankPageRow {
     created_at: string;
     updated_at: string;
     published_at: string | null;
+    curation?: TankCurationRow | null;
+    resolution?: TankResolutionRow | null;
 }
 
 export interface NewsletterIssueRow {

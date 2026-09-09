@@ -11,6 +11,9 @@
 // calls are independent (one failing/erroring never blocks or masks the other), same
 // posture as worker-curate's sibling sweep calls.
 //
+// Preview also fires /api/tank-resolution-sweep last in its chain - the Stage 3 Tank
+// resolution callback, which is the only sibling here that spends Anthropic credits.
+//
 // Also fires the Discord settlement-announcement sweep (/api/discord-settlement-sweep)
 // and the Community Pick resolution sweep (/api/community-pick-settlement-sweep) as
 // sibling calls right after each settle call, same "own request, own budget, runs
@@ -66,6 +69,7 @@ async function runSettle(env: Env): Promise<string> {
     let previewCommunityPicks = '';
     let previewPvp = '';
     let previewIndexSlate = '';
+    let previewTankResolution = '';
     if (env.PREVIEW_SETTLE_URL) {
         preview = await callSettle('preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
         previewDiscord = await callSiblingSweep('discord-settlement-sweep', '/api/discord-settlement-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
@@ -75,6 +79,17 @@ async function runSettle(env: Env): Promise<string> {
         // real results and writes the day's close per index. Preview-only for the same
         // reason as the rest of this block - only preview carries the slate code.
         previewIndexSlate = await callSiblingSweep('index-settle', '/api/index-settle', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
+        // Tank resolution callbacks (Stage 3): writes "what was claimed vs. what
+        // happened" onto settled Tanks, which the next static build renders at the foot
+        // of the article. Preview-only for the same reason as index-settle above - only
+        // preview carries the v2 curation code, and only v2-curated Tanks have the
+        // verified trend_claim this stage calls back to. Moves alongside the production
+        // calls below at promotion.
+        //
+        // Runs LAST in the preview chain: it is the only step here that spends Anthropic
+        // credits, and nothing else depends on it, so if the invocation is going to run
+        // out of room it should be the thing that misses a day - never settlement itself.
+        previewTankResolution = await callSiblingSweep('tank-resolution-sweep', '/api/tank-resolution-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
     }
 
     const live = await callSettle('production', env.SETTLE_URL, env.SETTLE_SECRET);
@@ -87,6 +102,7 @@ async function runSettle(env: Env): Promise<string> {
     return JSON.stringify({
         production: live, productionDiscordSweep: liveDiscord, productionCommunityPickSweep: liveCommunityPicks, productionPvpSweep: livePvp,
         preview, previewDiscordSweep: previewDiscord, previewCommunityPickSweep: previewCommunityPicks, previewPvpSweep: previewPvp, previewIndexSlate,
+        previewTankResolution,
     });
 }
 
@@ -95,11 +111,17 @@ export default {
         ctx.waitUntil(runSettle(env));
     },
 
-    // Manual-trigger shortcut for testing without waiting for the cron, e.g.
-    // `curl https://<worker>.workers.dev/`. Guarded only by whatever the target
-    // /api/settle endpoint itself enforces (X-Settle-Secret) - this Worker holds no
-    // separate auth of its own.
-    async fetch(_req: Request, env: Env): Promise<Response> {
+    // Manual-trigger shortcut for testing without waiting for the cron:
+    //   curl -H "X-Trigger-Secret: $SETTLE_SECRET" https://<worker>.workers.dev/
+    // Requires the same secret this Worker already holds. Before this it was open to
+    // anyone with the workers.dev URL (launch audit, 2026-09-07): every target endpoint
+    // is idempotent, but a stranger could still burn the whole chain's subrequests,
+    // Resend sends and Neon time on demand.
+    async fetch(req: Request, env: Env): Promise<Response> {
+        const provided = req.headers.get('X-Trigger-Secret');
+        if (!env.SETTLE_SECRET || provided !== env.SETTLE_SECRET) {
+            return new Response(null, { status: 401 });
+        }
         const text = await runSettle(env);
         return new Response(text, { headers: { 'Content-Type': 'application/json' } });
     },

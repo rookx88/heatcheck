@@ -13,6 +13,7 @@
 import type { Pool } from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
 import type { Prop, Game, TankArticle } from './tank-types';
+import type { TimeContext } from './tank-curation';
 import { TANK_NARRATIVE_PROMPT } from './scripts/prompts/tank-narrative-prompt';
 
 export interface GenerationConfig {
@@ -124,18 +125,28 @@ async function callAnthropicOnce(systemPrompt: string, userPayload: object, conf
 // Generates one TankArticle from a single selected prop. Never throws on a malformed
 // model response - retries once, then returns the failure for the caller to surface
 // rather than letting bad JSON render.
+//
+// `timeContext` is OPTIONAL and trailing on purpose: only the v2 curation path
+// (functions/api/curate.ts) can compute it, while backend.ts's manual curator route and
+// scripts/seed-tank-starter-pages.ts call this with no notion of when the storyline
+// broke. The narrative prompt's time-anchor rule is written to fire only when this is
+// present - the model has no clock of its own, so requiring an anchor without supplying
+// these numbers would be instructing it to invent one, which is precisely what the
+// "never invent" rule exists to stop.
 export async function generateTankArticle(
     prop: Prop,
     angle: string,
     game: Game,
     facts: string[] = [],
-    config: GenerationConfig
+    config: GenerationConfig,
+    timeContext?: TimeContext
 ): Promise<GenerationResult> {
     const userPayload = {
         prop,
         angle,
         game_context: { league: game.league, away: game.away, home: game.home, kickoff: game.kickoff },
         facts,
+        ...(timeContext ? { time_context: timeContext } : {}),
     };
 
     for (let attempt = 0; attempt < 2; attempt++) {
@@ -161,6 +172,16 @@ export async function generateTankArticle(
 
 // --- DB setup -------------------------------------------------------------------------
 
+// CREATE IF NOT EXISTS *plus* the ALTERs, deliberately. This used to be a bare CREATE
+// mirroring create_tank_pages_table.sql, which meant it silently drifted every time a
+// column was added by a hand-run migration: a DB bootstrapped only through this function
+// was missing `visibility` (which ~15 queries filter on) and `discord_posted_at`, and
+// nothing surfaced that until a query failed. The ALTERs are all IF NOT EXISTS, so this
+// stays idempotent and is a no-op against a database the .sql files already migrated -
+// it just means a fresh dev/acceptance DB is correct on the first run.
+//
+// Adding a column to tank_pages? Add it BOTH here and in its own add_*.sql file. The
+// .sql file is what gets run against production; this is what a fresh local DB gets.
 export async function ensureTankPagesTable(pool: Pool): Promise<void> {
     await pool.query(`
         CREATE TABLE IF NOT EXISTS tank_pages (
@@ -178,9 +199,24 @@ export async function ensureTankPagesTable(pool: Pool): Promise<void> {
             updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
             published_at TIMESTAMP WITH TIME ZONE
         );
+
+        -- add_visibility_to_tank_pages.sql
+        ALTER TABLE tank_pages ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'app';
+        -- add_discord_posted_at_to_tank_pages.sql
+        ALTER TABLE tank_pages ADD COLUMN IF NOT EXISTS discord_posted_at TIMESTAMP WITH TIME ZONE;
+        -- add_curation_and_resolution_to_tank_pages.sql
+        ALTER TABLE tank_pages ADD COLUMN IF NOT EXISTS curation JSONB;
+        ALTER TABLE tank_pages ADD COLUMN IF NOT EXISTS resolution JSONB;
+        ALTER TABLE tank_pages ADD COLUMN IF NOT EXISTS resolution_attempts INT NOT NULL DEFAULT 0;
+        ALTER TABLE tank_pages ADD COLUMN IF NOT EXISTS resolution_checked_at TIMESTAMP WITH TIME ZONE;
+
         CREATE UNIQUE INDEX IF NOT EXISTS idx_tank_pages_slug ON tank_pages(slug) WHERE slug IS NOT NULL;
         CREATE INDEX IF NOT EXISTS idx_tank_pages_status ON tank_pages(status);
         CREATE INDEX IF NOT EXISTS idx_tank_pages_league ON tank_pages(league);
         CREATE INDEX IF NOT EXISTS idx_tank_pages_created_at ON tank_pages(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_tank_pages_visibility ON tank_pages(visibility);
+        CREATE INDEX IF NOT EXISTS idx_tank_pages_resolution_pending
+            ON tank_pages (resolution_attempts, published_at DESC)
+            WHERE status = 'published' AND resolution IS NULL;
     `);
 }

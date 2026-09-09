@@ -1,8 +1,13 @@
 // Minimal cron trigger for the automated Tank trend-curator. Mirrors worker-settle/'s
 // shape exactly: this Worker exists purely to fire on a schedule and call the deployed
-// /api/curate endpoint over HTTP. All curation logic lives there
+// curation endpoints over HTTP. All curation logic lives there
 // (functions/api/curate.ts), not here - this file has no DB or Anthropic dependency at
 // all.
+//
+// As of the v2 curation pass this fires /api/curate-sport once per sport group rather
+// than /api/curate once for all four - see runCurate() below for why (subrequest budget,
+// and why the calls must stay sequential). /api/curate still exists and still runs every
+// group in one request; it's just no longer what the cron uses.
 //
 // Three cadences (2026-08-26, see wrangler.toml's [triggers] comment for the full
 // rationale): the original once-daily slot ("0 10 * * *") runs the FULL chain below,
@@ -32,20 +37,60 @@ const LEAGUE_SLATE_CRON = '0 12 * * 2';
 const NIGHTLY_SWEEP_CRON = '0 2 * * *';
 const WEEKLY_LEADERBOARD_UTC_DAY = 1; // Monday
 
+// The sport groups curated per run, one HTTP request each. Must match the keys of
+// SPORT_GROUPS in functions/api/curate.ts - an unknown name is a 400 from
+// /api/curate-sport, deliberately, rather than silently curating nothing.
+const SPORT_GROUPS = ['Soccer', 'Basketball', 'Baseball', 'Football'] as const;
+
+// One request PER SPORT against /api/curate-sport, not one combined /api/curate call.
+// Each Pages Function invocation gets its own 50-subrequest budget (Cloudflare Free),
+// and v2 curation - seven search categories, a verification call per match, then
+// generation - does not fit four sports into one. Splitting also means one sport's
+// failure costs only that sport.
+//
+// SEQUENTIAL, NOT Promise.all - two concrete hazards, both silent if you parallelize:
+//   1. Slug races. Each request builds its own `existingSlugs` set from its own snapshot
+//      of tank_pages, so two concurrent runs can mint the same slug and the second INSERT
+//      dies on idx_tank_pages_slug - inside a try/catch, reported only as 'error'.
+//   2. The Gamma throttle in polymarket.ts is a module-level `lastRequestAt`, which is
+//      per-isolate and does not coordinate across concurrent invocations. Parallel sports
+//      would burst Gamma and spend the budget on 429 retries.
+//
+// NO RETRIES on failure, deliberately: a timeout means "unknown", not "didn't happen" -
+// the request may well have created drafts before the caller gave up, and re-running
+// would duplicate them. The 7-day dedupe covers most of it, but "most" isn't a guarantee.
+// A missed sport waits for tomorrow.
 async function runCurate(env: Env): Promise<string> {
-    const res = await fetch(env.CURATE_URL, {
-        method: 'POST',
-        headers: { 'X-Curate-Secret': env.CURATE_SECRET },
-    });
-    const text = await res.text();
-    if (!res.ok) {
-        console.error(`[worker-curate] /api/curate returned ${res.status}: ${text}`);
-    } else {
-        console.log(`[worker-curate] curate run complete: ${text}`);
+    const perSport: Record<string, string> = {};
+
+    for (const sport of SPORT_GROUPS) {
+        const startedAt = Date.now();
+        try {
+            const url = new URL(`/api/curate-sport?sport=${encodeURIComponent(sport)}`, env.CURATE_URL).toString();
+            const res = await fetch(url, {
+                method: 'POST',
+                headers: { 'X-Curate-Secret': env.CURATE_SECRET },
+            });
+            const text = await res.text();
+            const elapsed = Date.now() - startedAt;
+            if (!res.ok) {
+                console.error(`[worker-curate] curate ${sport} returned ${res.status} after ${elapsed}ms: ${text}`);
+            } else {
+                // Wall-clock per sport is logged because the edge cuts a request off at
+                // roughly 100s without response headers, and a search-heavy sport plus a
+                // verify call per match is the run most likely to approach it. Watching
+                // this number is how that gets caught before it starts truncating runs.
+                console.log(`[worker-curate] curate ${sport} complete in ${elapsed}ms: ${text}`);
+            }
+            perSport[sport] = text;
+        } catch (err) {
+            console.error(`[worker-curate] curate ${sport} call failed:`, err);
+            perSport[sport] = '';
+        }
     }
 
     const sweeps = await runSweeps(env);
-    return JSON.stringify({ curate: text, ...sweeps });
+    return JSON.stringify({ curate: perSport, ...sweeps });
 }
 
 // The three free, idempotent housekeeping sweeps - none call Anthropic, all are safe to
@@ -146,7 +191,15 @@ export default {
     // `curl https://<worker>.workers.dev/`. Guarded only by whatever the target
     // /api/curate endpoint itself enforces (X-Curate-Secret) - this Worker holds no
     // separate auth of its own.
-    async fetch(_req: Request, env: Env): Promise<Response> {
+    // Requires the same secret this Worker already holds (launch audit, 2026-09-07):
+    //   curl -H "X-Trigger-Secret: $CURATE_SECRET" https://<worker>.workers.dev/
+    // Before this it was open to anyone with the workers.dev URL - and unlike the
+    // sweeps, runCurate() spends real Anthropic credits every time it fires.
+    async fetch(req: Request, env: Env): Promise<Response> {
+        const provided = req.headers.get('X-Trigger-Secret');
+        if (!env.CURATE_SECRET || provided !== env.CURATE_SECRET) {
+            return new Response(null, { status: 401 });
+        }
         const text = await runCurate(env);
         return new Response(text, { headers: { 'Content-Type': 'application/json' } });
     },

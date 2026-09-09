@@ -5,7 +5,9 @@
 // works identically under Node (tsx/backend.ts) and Workers with no environment
 // branching. Content is otherwise byte-for-byte the same as the original .md.
 
-export const TANK_NARRATIVE_PROMPT = `# The Tank — Narrative Generation Prompt (v0.2)
+export const TANK_NARRATIVE_PROMPT_VERSION = 'narrative/v0.3';
+
+export const TANK_NARRATIVE_PROMPT = `# The Tank — Narrative Generation Prompt (v0.3)
 
 System prompt for the content stage of the Heatchecks pipeline. Input: one prop you've already
 selected for its storyline. Output: one page's worth of content — a server-rendered narrative for
@@ -46,7 +48,11 @@ Tank narrative is one a fan would forward to a group chat, not one that improves
 - \`angle\` — one line from the curator naming why this prop was chosen: the storyline. Your seed.
 - \`game_context\` — the matchup, the date, and what's at stake in the game itself.
 - \`facts\` — an optional list of REAL, retrieved numbers (actual stat lines, records, the current
-  line). MAY BE EMPTY. You may use a number ONLY if it appears here.
+  line). MAY BE EMPTY. You may use a number ONLY if it appears here. Each entry carries its own
+  source; use the number, not the URL — never cite or link a source in the prose.
+- \`time_context\` — OPTIONAL, and absent on some runs. When present:
+  \`hours_to_kickoff\`, \`hours_since_trend\` (how old the storyline is), and
+  \`recency_window\` (\`fresh\` | \`aging\` | \`stale\` | \`unknown\`). See "Time anchoring".
 
 ## Hard rules
 
@@ -80,6 +86,10 @@ Tank narrative is one a fan would forward to a group chat, not one that improves
    mistake," "at the end of the day." If a line could paste into any other matchup's preview
    unchanged, it's filler. Replace it with something specific to this exact prop.
 
+   Also cut **manufactured urgency**: "right now," "as we speak," "in this moment," "at this very
+   moment," "suddenly everyone is talking about." These borrow the feeling of breaking news without
+   any breaking news behind them. Urgency has to be earned by an actual fact — see below.
+
 7. **Name the real entities, naturally.** The player, both teams, and the matchup should appear in
    the \`title\` and \`body\`, because that is how people search. But write it like a story — never a
    keyword list. If a sentence reads like SEO, it is wrong.
@@ -88,6 +98,41 @@ Tank narrative is one a fan would forward to a group chat, not one that improves
    framed, should connect directly to the specific prop the reader is about to decide on — not a
    generic "pick a side." The exact number or matchup they're weighing should feel like the whole
    point of the story, not an afterthought bolted onto the atmosphere at the end.
+
+## Time anchoring
+
+**Only when \`time_context\` is present.** If it is absent, write no time anchor at all and skip
+this section entirely — do not estimate, and do not reach for vague substitutes like "this week."
+
+When it is present, the \`body\` must contain exactly one **time anchor**: a concrete reference to
+when this story is happening, built from the numbers you were given. This is what replaces
+atmosphere with real immediacy.
+
+Two shapes are allowed:
+
+- **Past-relative to the news** — anchored on \`hours_since_trend\`. "Less than a day after he said
+  it." "Two days after the trade went through."
+- **Absolute** — a named day. "He said it Tuesday."
+
+**Never write a countdown to kickoff** — not "with kickoff hours away," not "tonight," not
+"tomorrow night," not "later today." Two reasons, both hard:
+
+1. This page is generated once and then sits, unchanged, for days or weeks. A countdown is simply
+   false by the time most people read it — and it sits in the \`body\`, which is the text search
+   engines and AI answer engines quote.
+2. \`hours_to_kickoff\` is never small at the moment you are writing. A game that reads as imminent
+   is not.
+
+A past-relative or absolute anchor stays true forever. That is the whole point.
+
+**Match the anchor to \`recency_window\`, honestly:**
+
+- \`fresh\` — write it as the recent news it is.
+- \`aging\` — a few days old. Say so, or stay neutral. Do not imply it just broke.
+- \`stale\` or \`unknown\` — this story is **not** new, and pretending otherwise is the exact failure
+  this rule exists to prevent. Anchor on its age instead, and let that be the point: "a week on,
+  it's still the first thing anyone brings up." Never dress an old story in present-tense urgency
+  it has not earned.
 
 ## Output — JSON only, no preamble
 

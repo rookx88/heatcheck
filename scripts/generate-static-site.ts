@@ -1419,10 +1419,19 @@ async function generateAllPages(): Promise<void> {
         // satisfy the public predicate: published + visibility='app' + slug + output).
         let homepageRows: HomepageTankRow[] = [];
         try {
+            // `to_jsonb(t) -> 'resolution'` rather than a bare `resolution` column, so
+            // this build still works against a database where
+            // add_curation_and_resolution_to_tank_pages.sql hasn't been run yet: a
+            // missing key yields NULL instead of "column does not exist". That matters
+            // because the catch below leaves tankEntries empty on any query failure,
+            // which would silently drop EVERY article from the build - a missing
+            // resolution callback must never cost the whole corpus.
             const tankPagesResult = await pool.query(
-                `SELECT id, slug, league, angle, game_snapshot, model_output, created_at, updated_at, published_at
-                 FROM tank_pages
-                 WHERE status = 'published' AND visibility = 'app' AND slug IS NOT NULL AND model_output IS NOT NULL`
+                `SELECT t.id, t.slug, t.league, t.angle, t.game_snapshot, t.model_output,
+                        t.created_at, t.updated_at, t.published_at,
+                        to_jsonb(t) -> 'resolution' AS resolution
+                 FROM tank_pages t
+                 WHERE t.status = 'published' AND t.visibility = 'app' AND t.slug IS NOT NULL AND t.model_output IS NOT NULL`
             );
             // Map every row up front - the canonical clustering below needs to see the
             // whole set before any page can be rendered.
@@ -1436,6 +1445,7 @@ async function generateAllPages(): Promise<void> {
                 created_at: row.created_at,
                 updated_at: row.updated_at,
                 published_at: row.published_at,
+                resolution: row.resolution ?? null,
             }));
 
             const canonicalBySlug = buildCanonicalClusters(tankPages);
