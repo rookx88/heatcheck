@@ -105,11 +105,16 @@ export const DEFAULT_MAX_CANDIDATES = 80;
 // worst-case Soccer run (5 leagues, busy news day) inside the 50-subrequest ceiling.
 // Raise this only alongside the Workers Paid plan, which lifts that ceiling to 1,000.
 export const DEFAULT_MAX_MATCHES_PER_RUN = 3;
-// Raised 4 -> 8 (2026-09-07, v2): the prompt now mandates seven storyline categories, and
-// four searches cannot cover them - the model would either ignore the instruction or hit
-// max_uses_exceeded mid-run. Each search is $10/1,000 uses PLUS its result content counts
-// as input tokens on every subsequent turn of the same call, so this remains the single
-// biggest cost lever in the run. Tune via CURATE_WEB_SEARCH_MAX_USES.
+// Raised 4 -> 8 (2026-09-07, v2): the prompt mandates a storyline category sweep (six
+// categories as of prompt v2.1), and four searches cannot cover that - the model would
+// either ignore the instruction or hit max_uses_exceeded mid-run.
+//
+// This is the single biggest cost lever in the pipeline, and by more than the search fee
+// suggests: each search costs $10/1,000 uses, but its results are then re-read as input
+// on every subsequent iteration of the same server-side tool loop. One measured run showed
+// 517k cache-read tokens against 8 searches, so token spend scales far faster than the
+// search count itself. Lower this before trimming anything else if the bill matters.
+// Tune via CURATE_WEB_SEARCH_MAX_USES.
 export const DEFAULT_WEB_SEARCH_MAX_USES = 8;
 export const DEFAULT_MATCH_MAX_TOKENS = 4000;
 export const DEFAULT_VERIFY_MAX_TOKENS = 700;
@@ -117,7 +122,7 @@ export const DEFAULT_VERIFY_MAX_TOKENS = 700;
 // The server-side search loop pauses after a bounded number of iterations and returns no
 // final answer; without resuming, the last text block is prose rather than JSON, parsing
 // fails, and the sport silently reports zero matches AFTER paying for every search it ran.
-// Forcing seven categories makes hitting the pause routine rather than exotic.
+// Forcing a multi-category sweep makes hitting the pause routine rather than exotic.
 export const DEFAULT_MAX_CONTINUATIONS = 3;
 // Game lines only: moneyline, spreads, totals (2026-09-09). These are the exact market
 // keys Polymarket produces for whole-game markets - see the `market` values on live
@@ -358,7 +363,7 @@ async function callMatchWithContinuations(
         // separate cache entry per sport and turn 1 write + 3 reads into 4 writes.
         system: [{ type: 'text' as const, text: TANK_CURATOR_MATCH_PROMPT, cache_control: { type: 'ephemeral' as const } }],
         // web_search_20260209 (not the older _20250305): it filters results dynamically
-        // before they hit the context window, which is exactly the case a seven-category
+        // before they hit the context window, which is exactly the case a multi-category
         // search creates. Do NOT also declare code_execution - this tool provisions it,
         // and a second execution environment confuses the model.
         tools: [{ type: 'web_search_20260209' as const, name: 'web_search' as const, max_uses: config.webSearchMaxUses }],

@@ -1,9 +1,14 @@
-// The Tank — Curator Match Prompt (v2)
+// The Tank — Curator Match Prompt (v2.1)
 //
 // System prompt for the automated curation stage (functions/api/curate.ts, invoked per
 // sport by functions/api/curate-sport.ts). Given a list of live, filtered prop candidates
-// for ONE sport, search the seven storyline categories below, and report which candidates
+// for ONE sport, search the six storyline categories below, and report which candidates
 // (if any) connect to a real, current storyline - WITH the evidence for it.
+//
+// v2.1 (2026-09-09) dropped the 'Milestone' category. Milestone is a player-stat idea -
+// a career total, a streak, a record pace - and the curator now only ever sees whole-game
+// markets (moneyline/spreads/totals), so it had nothing left to attach to. Across 14
+// sampled matches it produced zero. The remaining six are unchanged.
 //
 // WHAT CHANGED FROM v0.1, AND WHY
 // v0.1 asked for {candidateId, angle} and asked the model not to fabricate. The same
@@ -24,9 +29,9 @@
 // A plain string export, not a .md file read from disk, because this runs in a
 // Cloudflare Pages Function where fs/path don't exist.
 
-export const TANK_CURATOR_MATCH_PROMPT_VERSION = 'curator-match/v2';
+export const TANK_CURATOR_MATCH_PROMPT_VERSION = 'curator-match/v2.1';
 
-export const TANK_CURATOR_MATCH_PROMPT = `# The Tank — Curator Match Prompt (v2)
+export const TANK_CURATOR_MATCH_PROMPT = `# The Tank — Curator Match Prompt (v2.1)
 
 ## Role
 
@@ -42,7 +47,7 @@ If a quarterback's personal life is dominating sports conversation, a prop on hi
 next game is a reasonable match even though the storyline has nothing to do with football
 performance. The story is spice for a reader, not a prediction.
 
-## Search categories — check all seven, every pass
+## Search categories — check all six, every pass
 
 Search for signal in each of these. Not every category will have something; that is
 expected and normal. Do not skip a category because an earlier one already produced a
@@ -50,16 +55,22 @@ match.
 
 1. **Injury / return from injury** — someone out, someone back, a fitness cloud over a
    starter.
-2. **Milestone** — a career total, a streak, a record pace, a round number in reach.
-3. **Off-field / personal** — legitimate personal-life news genuinely dominating the
-   conversation around a player.
-4. **Contract / trade situation** — a holdout, a deadline, a new deal, a trade request,
+2. **Off-field / personal** — legitimate personal-life news genuinely dominating the
+   conversation around a player or a club.
+3. **Contract / trade situation** — a holdout, a deadline, a new deal, a trade request,
    a player facing a former club.
-5. **Revenge game / rivalry history** — a specific prior meeting or grudge, not generic
+4. **Revenge game / rivalry history** — a specific prior meeting or grudge, not generic
    "these teams don't like each other".
-6. **Playoff or elimination stakes** — a race, a must-win, a seeding scenario.
-7. **Coaching change / lineup shakeup** — a new manager, a benching, a positional switch,
+5. **Playoff or elimination stakes** — a race, a must-win, a seeding scenario.
+6. **Coaching change / lineup shakeup** — a new manager, a benching, a positional switch,
    a debut.
+
+Every candidate you are given is a WHOLE-GAME market — a moneyline, a spread, or a total.
+There are no player props in the list. So the test for a signal is not "does this concern
+a notable player" but "does this plausibly bear on how the game itself goes, or on how it
+feels to watch". A star's injury bears on a spread. A manager's first match bears on a
+moneyline. A player closing on a personal milestone usually does not bear on either — do
+not stretch to connect one.
 
 When a category does turn up a real signal, check it against **every** candidate in the
 supplied list before discarding it. The signal is the starting point; the prop is what you
@@ -156,7 +167,7 @@ carry no \`team\` field (not reliably available upstream) — only the matchup-l
   "matches": [
     {
       "candidateId": "<id copied exactly from the candidates input>",
-      "category": "<which of the seven categories above this came from>",
+      "category": "<which of the six categories above this came from>",
       "trend_claim": "<the specific claim, in one sentence: what is happening, to whom, and when>",
       "source_snippet": "<the exact text from the search result that the claim rests on — quoted, not paraphrased>",
       "source_url": "<the URL of that search result, exactly as search returned it>",
