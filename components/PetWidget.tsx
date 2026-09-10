@@ -61,6 +61,7 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
         hydrateAll();
     }, [hydrateAll]);
 
+
     // bfcache: Back restores the page without remounting React.
     useEffect(() => {
         const onPageShow = (e: PageTransitionEvent) => {
@@ -140,6 +141,22 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                         </button>
                     </div>
                 )}
+                {/* Warms the speech bubble's face. Mochiy Pop One is the only thing on
+                    the site set in it, and a browser doesn't fetch a webfont until
+                    something needing it actually renders - so without this the download
+                    starts when the bubble opens, and Google Fonts' display=swap paints
+                    the message in the Baloo 2 fallback until the file lands: the face
+                    visibly changes a beat after the bubble appears.
+
+                    A rendered-but-invisible probe rather than document.fonts.load(),
+                    deliberately. Mochiy Pop One is a Japanese face Google serves as
+                    ~120 unicode-range subsets, several of which also carry latin
+                    glyphs; load() fetches EVERY subset matching its sample text, so it
+                    drags a CJK chunk down beside the latin one. Painting two letters
+                    makes the browser resolve the subset exactly as the real bubble
+                    will, and fetch only that one. PetWidget.css declares the face for
+                    this probe and the bubble in one rule, so they cannot drift. */}
+                <span className="pet-widget__font-warm" aria-hidden="true">Aa</span>
                 <button
                     className="pet-widget__pet"
                     onClick={() => setExpanded((e) => !e)}

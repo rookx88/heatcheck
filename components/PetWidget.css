@@ -323,18 +323,43 @@ button.pet-widget__name--prompt:focus-visible {
   border-top-color: #ffffff;
 }
 
-.pet-widget__bubble-text {
-  /* Mochiy Pop One: Japanese pop/anime lettering with clean mixed-case Latin
-     glyphs - keeps the manga voice Permanent Marker was going for, but stays
-     legible at a glance (the marker face's scratchy small-caps did not). Loaded
-     by the shared head's Google Fonts link (waitlist-landing-template renderHead);
-     single 400 weight. Baloo 2 is the closest already-loaded rounded fallback. */
+/* Mochiy Pop One: Japanese pop/anime lettering with clean mixed-case Latin
+   glyphs - keeps the manga voice Permanent Marker was going for, but stays
+   legible at a glance (the marker face's scratchy small-caps did not). Loaded
+   by the shared head's Google Fonts link (waitlist-landing-template renderHead);
+   single 400 weight. Baloo 2 is the closest already-loaded rounded fallback.
+
+   Declared once for the bubble and its warming probe together: the probe exists
+   to make the browser fetch precisely the face the bubble will paint in, so the
+   two asking for different fonts would defeat it silently. */
+.pet-widget__bubble-text,
+.pet-widget__font-warm {
   font-family: 'Mochiy Pop One', 'Baloo 2', 'Nunito', sans-serif;
   font-weight: 400;
   font-size: 1.15rem;
+}
+
+.pet-widget__bubble-text {
   line-height: 1.5;
   color: #000000;
   text-align: left;
+}
+
+/* The font-warming probe (see PetWidget.tsx). It must genuinely render for the
+   browser to fetch the face, so it cannot use display:none or visibility:hidden -
+   both skip the download, which is the whole point. Zero opacity in a 1px clipped
+   box instead: laid out and painted, but invisible and untouchable, and small
+   enough that it cannot disturb the widget's layout. */
+.pet-widget__font-warm {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
 }
 
 .pet-widget__bubble-close {
