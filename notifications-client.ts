@@ -16,6 +16,8 @@ export interface NotificationItem {
     readAt: string | null;
     claimedAt: string | null;
     createdAt: string;
+    // The face the pet pulls while the widget bubble speaks this row (null = normal).
+    mood: 'happy' | 'sad' | null;
 }
 
 // Window events, mirroring PetNameForm's PET_UPDATED_EVENT idiom:

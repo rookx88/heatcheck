@@ -14,6 +14,9 @@ export interface InsertNotificationInput {
     refType: string | null;
     refId: string | null;
     idempotencyKey: string;
+    // The face the pet pulls while the widget bubble speaks this row; omit/null for
+    // the normal face (see add_mood_to_notifications.sql).
+    mood?: 'happy' | 'sad' | null;
 }
 
 export async function insertNotificationIdempotent(
@@ -21,8 +24,9 @@ export async function insertNotificationIdempotent(
     input: InsertNotificationInput,
 ): Promise<void> {
     await sql`
-        INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key)
-        VALUES (${input.userId}, ${input.type}, ${input.message}, ${input.refType}, ${input.refId}, ${input.idempotencyKey})
+        INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
+        VALUES (${input.userId}, ${input.type}, ${input.message}, ${input.refType}, ${input.refId}, ${input.idempotencyKey},
+                ${input.mood ?? null})
         ON CONFLICT (idempotency_key) DO NOTHING
     `;
 }

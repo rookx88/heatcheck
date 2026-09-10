@@ -81,6 +81,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 refType: 'onboarding',
                 refId: null,
                 idempotencyKey: `welcome:${session.userId}`,
+                mood: 'happy',
             });
         } catch (notifErr) {
             console.error('[POST /api/onboarding/complete] Failed to insert welcome notification:', notifErr);

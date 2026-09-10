@@ -188,8 +188,8 @@ export async function maybeDiscover(
                 FROM minted m
                 RETURNING id
             ), note AS (
-                INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key)
-                SELECT ${userId}, 'claimable', ${msgPre} || m.serial::text || ${msgPost}, 'pet', ${pet.id}::text, ${notificationKey}
+                INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
+                SELECT ${userId}, 'claimable', ${msgPre} || m.serial::text || ${msgPost}, 'pet', ${pet.id}::text, ${notificationKey}, 'happy'
                 FROM minted m
                 ON CONFLICT (idempotency_key) DO NOTHING
             )
@@ -254,8 +254,8 @@ export async function maybeDiscover(
                         DO UPDATE SET quantity = inventory_items.quantity + 1
                     RETURNING id
                 ), note AS (
-                    INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key)
-                    SELECT ${userId}, 'claimable', ${message}, 'pet', ${pet.id}::text, ${notificationKey}
+                    INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
+                    SELECT ${userId}, 'claimable', ${message}, 'pet', ${pet.id}::text, ${notificationKey}, 'happy'
                     FROM claimed
                     ON CONFLICT (idempotency_key) DO NOTHING
                 )

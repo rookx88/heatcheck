@@ -35,13 +35,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // 1. Pet hungry. The satisfaction expression mirrors pets.ts's computeSatisfaction
     // (decay per hour since last feed, floored at 0 - the floor can't matter for a
     // below-threshold comparison). Message is in the pet's voice - the widget bubble
-    // speaks it.
+    // speaks it, with the sad face (mood).
     const hungryRows = await sql`
-        INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key)
+        INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
         SELECT p.user_id, 'informational',
                'My tummy''s rumbling — I haven''t eaten in a while. Got a snack for me?',
                'pet', p.id::text,
-               'hungry:' || p.id || ':' || FLOOR(EXTRACT(EPOCH FROM p.last_fed_at))::bigint
+               'hungry:' || p.id || ':' || FLOOR(EXTRACT(EPOCH FROM p.last_fed_at))::bigint,
+               'sad'
         FROM pets p,
              (SELECT config FROM game_config WHERE key = 'feeding' AND active LIMIT 1) cfg
         WHERE p.satisfaction_at_last_feed

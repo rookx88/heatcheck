@@ -527,8 +527,9 @@ export async function settleCall(sql: NeonQueryFunction<false, false>, input: Se
                 SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
         `,
         sql`
-            INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key)
-            VALUES (${input.userId}, 'claimable', ${notificationMessage}, 'pick', ${input.pickId}, ${notificationKey})
+            INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
+            VALUES (${input.userId}, 'claimable', ${notificationMessage}, 'pick', ${input.pickId}, ${notificationKey},
+                    ${input.result === 'correct' ? 'happy' : 'sad'})
             ON CONFLICT (idempotency_key) DO NOTHING
         `,
     ]);
@@ -593,8 +594,8 @@ export async function discoveryFindEmber(
                 SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
             RETURNING user_id
         ), note AS (
-            INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key)
-            SELECT ${input.userId}, 'claimable', ${message}, 'pet', ${input.petId}::text, ${notificationKey}
+            INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
+            SELECT ${input.userId}, 'claimable', ${message}, 'pet', ${input.petId}::text, ${notificationKey}, 'happy'
             FROM led
             ON CONFLICT (idempotency_key) DO NOTHING
         )

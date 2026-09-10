@@ -189,6 +189,11 @@ const NEW_SITE_IMAGES = [
     // Satiated aura, layered behind the pet while state === 'satisfied'
     // (components/PetPortrait.tsx).
     'pets/aura-satiated.svg',
+    // Expression sprites (same body, happy/sad head) swapped in while the widget
+    // bubble speaks a notification with a mood. Built from the base + the
+    // expression-*-src.png heads by scripts/make-pet-expressions.ts.
+    'pets/mud_puppy_happy.png',
+    'pets/mud_puppy_sad.png',
     // Food-shop item art, one per items_catalog food key (FoodShopModal/FeedModal/
     // PetInventoryModal build the URL as /assets/images/food/<catalog_key>.png).
     'food/food_banana_shake.png',
@@ -1468,7 +1473,7 @@ async function generateAllPages(): Promise<void> {
                     tagline: truncateHeaderLabel(tankPage.model_output.tagline || deriveTaglineFallback(tankPage.model_output.hook)),
                     hook: tankPage.model_output.hook,
                     sides: tankPage.model_output.call.sides,
-                    oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
+                    oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds, prop.book) ?? formatMarketLabel(prop.market)),
                     settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
                 };
 
@@ -1552,11 +1557,11 @@ async function generateAllPages(): Promise<void> {
                         cards: p.model_output.cards,
                         call: {
                             ...p.model_output.call,
-                            sidesImpliedProb: deriveSidesImpliedProb(prop.odds, p.model_output.call.sides.length),
+                            sidesImpliedProb: deriveSidesImpliedProb(prop.odds, p.model_output.call.sides.length, prop.book),
                         },
                         tagline: truncateHeaderLabel(p.model_output.tagline || deriveTaglineFallback(p.model_output.hook)),
                         contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
-                        oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
+                        oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds, prop.book) ?? formatMarketLabel(prop.market)),
                         settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
                         gameTimeLabel: truncateHeaderLabel(formatGameTime(game.kickoff)),
                         kickoff: game.kickoff,

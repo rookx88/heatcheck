@@ -87,11 +87,16 @@ async function run() {
     const afterFirst = await grantTotals(roller.userId);
     check('exactly one grant (ember row or food unit)', afterFirst.total === 1, JSON.stringify(afterFirst));
     const { rows: noteRows } = await pool.query(
-        `SELECT id, type, ref_type, read_at, claimed_at FROM notifications WHERE user_id = $1`, [roller.userId]);
+        `SELECT id, type, ref_type, read_at, claimed_at, mood FROM notifications WHERE user_id = $1`, [roller.userId]);
     check("exactly one 'claimable' notification, ref_type 'pet'",
         noteRows.length === 1 && noteRows[0].type === 'claimable' && noteRows[0].ref_type === 'pet');
+    // Every find is good news: the widget pulls the happy face while it speaks it
+    // (add_mood_to_notifications.sql), and the wire shape carries the mood through.
+    check("find notification is mood 'happy' in the DB", noteRows[0]?.mood === 'happy', `got ${noteRows[0]?.mood}`);
+    const wireNote = (rollRes.json?.notifications ?? []).find((n: any) => n.id === noteRows[0]?.id);
     check('the find is already in this response (notification + non-null balance)',
-        (rollRes.json?.notifications ?? []).some((n: any) => n.id === noteRows[0]?.id) && typeof rollRes.json?.balance === 'number');
+        Boolean(wireNote) && typeof rollRes.json?.balance === 'number');
+    check("toolbar-state serialises mood: 'happy' on the find", wireNote?.mood === 'happy', `got ${wireNote?.mood}`);
     if (afterFirst.ledgerRows === 1) {
         check('ember amount within configured 1-5', afterFirst.ledgerSum >= 1 && afterFirst.ledgerSum <= 5, `got ${afterFirst.ledgerSum}`);
     }

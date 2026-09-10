@@ -31,6 +31,7 @@ interface NotificationRow {
     read_at: string | null;
     claimed_at: string | null;
     created_at: string;
+    mood: 'happy' | 'sad' | null;
 }
 
 // Same wire mapping as functions/api/notifications.ts.
@@ -44,6 +45,7 @@ function mapNotifications(rows: NotificationRow[]) {
         readAt: r.read_at,
         claimedAt: r.claimed_at,
         createdAt: r.created_at,
+        mood: r.mood,
     }));
 }
 
@@ -70,7 +72,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const balanceStatement = () =>
         sql`SELECT balance FROM ember_balances WHERE user_id = ${session.userId} LIMIT 1`;
     const notificationsStatement = () => sql`
-        SELECT id, type, message, ref_type, ref_id, read_at, claimed_at, created_at
+        SELECT id, type, message, ref_type, ref_id, read_at, claimed_at, created_at, mood
         FROM notifications WHERE user_id = ${session.userId}
         ORDER BY created_at DESC
         LIMIT 100

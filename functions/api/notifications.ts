@@ -15,6 +15,7 @@ interface NotificationRow {
     read_at: string | null;
     claimed_at: string | null;
     created_at: string;
+    mood: 'happy' | 'sad' | null;
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
@@ -26,7 +27,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(context.env);
     const rows = await sql`
-        SELECT id, type, message, ref_type, ref_id, read_at, claimed_at, created_at
+        SELECT id, type, message, ref_type, ref_id, read_at, claimed_at, created_at, mood
         FROM notifications WHERE user_id = ${session.userId}
         ORDER BY created_at DESC
         LIMIT 100
@@ -40,6 +41,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         readAt: r.read_at,
         claimedAt: r.claimed_at,
         createdAt: r.created_at,
+        mood: r.mood,
     }));
     return jsonResponse({ notifications }, { headers: authHeaders });
 };

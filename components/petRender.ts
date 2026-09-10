@@ -10,6 +10,19 @@
 
 export const PET_IMAGE_SRC = '/assets/images/pets/mud_puppy_base_axol.png';
 
+// Expression sprites: the same body with a different head, built from the base by
+// scripts/make-pet-expressions.ts. Same canvas, same green, so the hue-rotate
+// filter above tints them identically - PetPortrait just swaps the img src while
+// the PetWidget bubble speaks a notification carrying a mood. Full literal paths
+// (not template strings): generate-static-site's reference guard scans bundles
+// for /assets/images/... literals.
+export type PetMood = 'happy' | 'sad';
+
+export const PET_MOOD_IMAGE_SRC: Record<PetMood, string> = {
+    happy: '/assets/images/pets/mud_puppy_happy.png',
+    sad: '/assets/images/pets/mud_puppy_sad.png',
+};
+
 const BASE_ART_HUE = 93;
 
 export function petImageFilter(renderMode: string | null | undefined, renderConfig: Record<string, unknown> | null | undefined): string | undefined {

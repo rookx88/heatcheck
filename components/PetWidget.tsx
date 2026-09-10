@@ -7,7 +7,7 @@
 // one line; click again (or Escape) collapses. Feed and Inventory open their modals.
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { petDisplayName } from './petRender';
+import { petDisplayName, PET_MOOD_IMAGE_SRC } from './petRender';
 import { PetPortrait } from './PetPortrait';
 import { FeedModal } from './FeedModal';
 import { PetInventoryModal } from './PetInventoryModal';
@@ -115,6 +115,17 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
             .finally(() => dispatchNotificationsUpdated());
     };
 
+    // Warm the expression sprite the next "!" click will reveal, so the face swaps
+    // the instant the bubble opens instead of a beat later when the PNG lands
+    // (same idea as the font-warm probe below). Keyed on the mood, not the
+    // notification, so a run of same-mood rows costs one fetch.
+    const nextMood = unread[unread.length - 1]?.mood ?? null;
+    useEffect(() => {
+        if (!nextMood) return;
+        const img = new Image();
+        img.src = PET_MOOD_IMAGE_SRC[nextMood];
+    }, [nextMood]);
+
     if (!pet) return null;
 
     const name = petDisplayName(pet.name, pet.color);
@@ -164,8 +175,9 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                     aria-label={`${name} - pet actions`}
                 >
                     {/* No size prop: PetWidget.css's responsive .pet-portrait__img
-                        rules own the body's dimensions here. */}
-                    <PetPortrait pet={pet} />
+                        rules own the body's dimensions here. The face follows the
+                        bubble: happy/sad while it speaks a mood, normal otherwise. */}
+                    <PetPortrait pet={pet} mood={bubble?.mood ?? null} />
                 </button>
                 {unread.length > 0 && !bubble && (
                     // The alert sits over the pet but is its own button (sibling, not

@@ -5,7 +5,7 @@
 // so "is my pet okay?" is answerable at a glance without ever exposing the number.
 
 import React from 'react';
-import { PET_IMAGE_SRC, petImageFilter } from './petRender';
+import { PET_IMAGE_SRC, PET_MOOD_IMAGE_SRC, petImageFilter, type PetMood } from './petRender';
 import './PetPortrait.css';
 
 export const AURA_IMAGE_SRC = '/assets/images/pets/aura-satiated.svg';
@@ -27,14 +27,18 @@ export const PetPortrait: React.FC<{
     size?: number;
     className?: string;
     alt?: string;
-}> = ({ pet, size, className, alt = '' }) => (
+    // Momentary expression (the PetWidget passes the spoken notification's mood);
+    // omitted/null draws the normal face. Same <img>, different src, so the tint
+    // filter, the widget's drop-shadow rule and the aura layering all carry over.
+    mood?: PetMood | null;
+}> = ({ pet, size, className, alt = '', mood = null }) => (
     <span className={`pet-portrait${className ? ` ${className}` : ''}`}>
         {pet.state === 'satisfied' && (
             <img className="pet-portrait__aura" src={AURA_IMAGE_SRC} alt="" aria-hidden="true" />
         )}
         <img
             className="pet-portrait__img"
-            src={PET_IMAGE_SRC}
+            src={mood ? PET_MOOD_IMAGE_SRC[mood] : PET_IMAGE_SRC}
             style={{ filter: petImageFilter(pet.render_mode, pet.render_config) }}
             alt={alt}
             {...(size !== undefined ? { width: size, height: size } : {})}

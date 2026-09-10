@@ -71,6 +71,16 @@ async function notificationCount(pickId: string): Promise<number> {
     return rows[0].n as number;
 }
 
+// The face the widget pulls while speaking the settlement (add_mood_to_notifications.sql):
+// a win is 'happy', a loss 'sad'.
+async function notificationMood(pickId: string): Promise<string | null | undefined> {
+    const { rows } = await pool.query(
+        `SELECT mood FROM notifications WHERE idempotency_key = $1`,
+        [`settle:call:${pickId}`],
+    );
+    return rows[0]?.mood;
+}
+
 async function run() {
     await cleanup();
 
@@ -159,6 +169,9 @@ async function run() {
         check(`${f.label}: exactly one ember_ledger row (payout ${f.expectedPayout})`,
             (await ledgerRowCount(idemKey)) === 1);
         check(`${f.label}: exactly one settle:call:<pickId> notification`, (await notificationCount(f.pickId)) === 1);
+        const expectedMood = f.ruleKey === 'correct_call' ? 'happy' : 'sad';
+        const mood = await notificationMood(f.pickId);
+        check(`${f.label}: notification mood is '${expectedMood}'`, mood === expectedMood, `got ${mood}`);
     }
 
     // --- Ledger cache consistency: a smaller-scale preview of the full ledger-trace phase,
