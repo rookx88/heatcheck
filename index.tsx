@@ -14407,6 +14407,27 @@ const CurationEvidence: React.FC<{ page: TankPageRow }> = ({ page }) => {
           ) : c.stat_reason ? (
             <p style={{ margin: 0, color: '#c62828' }}><strong>Stat rejected:</strong> {c.stat_reason}</p>
           ) : null}
+          {/* The market sentence the writer was given, or why there wasn't one - and the
+              after-generation check on what it actually wrote. The check is a flag for
+              exactly this review, not a gate. */}
+          {c.market_movement && ('context' in c.market_movement ? (
+            <p style={{ margin: '0.35rem 0 0', color: '#1565c0' }}>
+              <strong>Market ({c.market_movement.context.status}):</strong>{' '}
+              {c.market_movement.context.side_labels.map((label, i) =>
+                `${label} ${c.market_movement && 'context' in c.market_movement ? `${c.market_movement.context.from_pct[i]}% → ${c.market_movement.context.to_pct[i]}%` : ''}`,
+              ).join(' · ')}
+              {' '}over ~{c.market_movement.context.window_hours}h ({c.market_movement.context.from_date_label} → {c.market_movement.context.to_date_label})
+            </p>
+          ) : (
+            <p style={{ margin: '0.35rem 0 0', color: '#777' }}>
+              <strong>Market:</strong> no movement sentence ({c.market_movement.unavailable})
+            </p>
+          ))}
+          {c.movement_check && !c.movement_check.ok && (
+            <p style={{ margin: '0.25rem 0 0', color: '#c62828' }}>
+              <strong>Check the market sentence:</strong> {c.movement_check.problems.join('; ')}
+            </p>
+          )}
         </>
       )}
     </div>

@@ -8,7 +8,7 @@
 // tank-types.ts so it's importable from backend.ts, scripts/, and the client bundle.
 // ===================================================================================
 
-import type { PropOdds } from './tank-types';
+import type { PropOdds, PropBook } from './tank-types';
 
 // "football_player_passing_yards" -> "Passing Yards", "moneyline" -> "Moneyline",
 // "season_futures" -> "Season Futures". Generic prefix-strip + title-case instead of a
@@ -33,10 +33,43 @@ export function formatPropTag(prop: { market: string; line: number | null }): st
     return prop.line != null ? `O ${prop.line} ${label}` : label;
 }
 
-// "Yes 13.5% / No 86.5%" - same math as index.tsx's formatOdds(). Null in, null out, so
-// the caller can fall back to formatMarketLabel() when no market price exists.
-export function formatOddsLabel(odds: PropOdds | null): string | null {
-    if (!odds || odds.outcomes.length === 0) return null;
+// A price is only worth showing when a real order book stands behind it. Polymarket's
+// quoted price is the bid/ask MIDPOINT, so an empty book (bid 0.06, ask 0.94, no trades)
+// reads as a perfectly plausible 50% - verified live on Yankees-Twins, 2026-09-10, and
+// shown as "50.0% / 50.0%" on 9 published articles before this guard existed. Live means
+// a two-sided quote no wider than 10 points and at least some traded volume.
+export const DEAD_BOOK_MAX_SPREAD = 0.1;
+
+export function isLiveBook(book: Pick<PropBook, 'bestBid' | 'bestAsk' | 'volume'> | null | undefined): boolean {
+    if (!book) return false;
+    const { bestBid, bestAsk, volume } = book;
+    if (typeof bestBid !== 'number' || typeof bestAsk !== 'number') return false;
+    if (!Number.isFinite(bestBid) || !Number.isFinite(bestAsk) || bestAsk < bestBid) return false;
+    if (typeof volume !== 'number' || !(volume > 0)) return false;
+    return bestAsk - bestBid <= DEAD_BOOK_MAX_SPREAD + 1e-9;
+}
+
+// Whether frozen odds may be displayed as a price. With book data (snapshots taken from
+// 2026-09-10 on) that is exactly isLiveBook. Without it - older snapshots, and the cached
+// and admin paths - an all-0.500 two-way market is treated as an empty book: a genuine
+// pick'em loses its percentages, which is the cheap direction to be wrong in.
+export function hasShowablePrices(odds: PropOdds | null | undefined, book?: PropBook | null): boolean {
+    if (!odds || odds.outcomes.length === 0 || odds.outcomePrices.length !== odds.outcomes.length) return false;
+    if (book) return isLiveBook(book);
+    const allHalf = odds.outcomePrices.length === 2 && odds.outcomePrices.every((p) => Math.abs(p - 0.5) < 1e-9);
+    return !allHalf;
+}
+
+// The note carried by every surface that shows a Tank's own Polymarket prices (the
+// article market panel's fallback and island, and /api/tank-market). Deliberately not
+// tickers.ts's RETROSPECTIVE_NOTE, which describes index values, not prices.
+export const MARKET_PANEL_NOTE = 'Polymarket midpoint prices, shown as percentages. Not a forecast and not a recommendation.';
+
+// "Yes 13.5% / No 86.5%" - same math as index.tsx's formatOdds(). Null when there is no
+// price worth showing (no odds, or a dead book - see hasShowablePrices), so the caller
+// falls back to formatMarketLabel().
+export function formatOddsLabel(odds: PropOdds | null, book?: PropBook | null): string | null {
+    if (!odds || !hasShowablePrices(odds, book)) return null;
     return odds.outcomes.map((o, i) => `${o} ${(odds.outcomePrices[i] * 100).toFixed(1)}%`).join(' / ');
 }
 
@@ -46,8 +79,11 @@ export function formatOddsLabel(odds: PropOdds | null): string | null {
 // call.sides was), so no name-matching, just a length check. Undefined when odds
 // are absent or don't line up (mock/custom providers, or a mismatched outcome
 // count) - the Fishtank ember-burst animation falls back to a fixed strength then.
-export function deriveSidesImpliedProb(odds: PropOdds | null, sidesLength: number): number[] | undefined {
+// Undefined for a dead book too, so neither the deck nor a Discord button ("Chiefs
+// (50%)") presents an empty book's midpoint as a price.
+export function deriveSidesImpliedProb(odds: PropOdds | null, sidesLength: number, book?: PropBook | null): number[] | undefined {
     if (!odds || odds.outcomes.length !== sidesLength) return undefined;
+    if (!hasShowablePrices(odds, book)) return undefined;
     return odds.outcomePrices;
 }
 

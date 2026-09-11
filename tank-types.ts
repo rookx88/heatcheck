@@ -11,6 +11,19 @@ export interface PropOdds {
     outcomePrices: number[]; // implied probability, 0-1, same order as outcomes
 }
 
+// Order-book facts about a Prop's market, captured from the same Gamma /events payload
+// curation already fetches (tank-gamma-live.ts), so they cost nothing extra. Two uses:
+// the CLOB price history needs a token id, and a price is only worth showing when the
+// book behind it is real (see isLiveBook in tank-deck-format.ts - an empty book's
+// midpoint reads as a perfectly plausible 50%). NEVER sent to the narrative writer:
+// toWriterProp (market-movement.ts) strips it along with every price.
+export interface PropBook {
+    tokenIds: string[];         // CLOB token ids, positional with odds.outcomes
+    bestBid: number | null;     // 0-1, for outcome 0
+    bestAsk: number | null;     // 0-1, for outcome 0
+    volume: number | null;      // lifetime traded volume
+}
+
 export interface Prop {
     id: string;
     player: string;
@@ -26,6 +39,14 @@ export interface Prop {
     // level date doesn't reliably describe any one prop's actual settle time. Falls back
     // to Game.settleDate when absent (mock data, season futures with no discrete game).
     settleDate?: string;
+    // The market's own wording ("Will Chelsea FC win on 2026-09-12?"). Without it a soccer
+    // game's three separate Yes/No markets - home win, draw, away win, all typed
+    // `moneyline` - are indistinguishable to the curator and the writer, which is how
+    // published articles ended up guessing what "Yes" meant. Optional: absent on
+    // snapshots taken before 2026-09-10 and on the mock and Kalshi paths.
+    question?: string;
+    // Present when Gamma supplied it (the live curation path). See PropBook.
+    book?: PropBook;
 }
 
 export interface Game {
@@ -106,7 +127,7 @@ export interface DeckPayload {
     // model prose" rule the schema.org JSON-LD already follows.
     tagline: string;           // Hook wall header - short storyline label, a few words
     contextLabel: string;      // Take 1 header - "{league} · {subject}"
-    oddsOrMarketLabel: string; // Take 2 header - live odds, or the market label if no odds
+    oddsOrMarketLabel: string; // Take 2 header - the odds FROZEN when the story was written (never live), or the market label when there is no real price (see hasShowablePrices)
     settleDateLabel: string;   // Call wall header - "Resolves {date}"
     gameTimeLabel: string;     // Call wall header, above settleDateLabel - "{weekday, month day} · {time} ET"
     // Raw ISO 8601 game start time (Game.kickoff), passed through un-formatted so the

@@ -1,4 +1,4 @@
-// The Tank — Curator Match Prompt (v2.1)
+// The Tank — Curator Match Prompt (v2.2)
 //
 // System prompt for the automated curation stage (functions/api/curate.ts, invoked per
 // sport by functions/api/curate-sport.ts). Given a list of live, filtered prop candidates
@@ -9,6 +9,11 @@
 // a career total, a streak, a record pace - and the curator now only ever sees whole-game
 // markets (moneyline/spreads/totals), so it had nothing left to attach to. Across 14
 // sampled matches it produced zero. The remaining six are unchanged.
+//
+// v2.2 (2026-09-10) passes each candidate's `question`. One soccer game is three separate
+// Yes/No markets (a home win, a draw, an away win) that were otherwise identical in the
+// candidate list, so the curator could not know which one it was matching - and the
+// writer then guessed what "Yes" meant on published articles.
 //
 // WHAT CHANGED FROM v0.1, AND WHY
 // v0.1 asked for {candidateId, angle} and asked the model not to fabricate. The same
@@ -29,9 +34,9 @@
 // A plain string export, not a .md file read from disk, because this runs in a
 // Cloudflare Pages Function where fs/path don't exist.
 
-export const TANK_CURATOR_MATCH_PROMPT_VERSION = 'curator-match/v2.1';
+export const TANK_CURATOR_MATCH_PROMPT_VERSION = 'curator-match/v2.2';
 
-export const TANK_CURATOR_MATCH_PROMPT = `# The Tank — Curator Match Prompt (v2.1)
+export const TANK_CURATOR_MATCH_PROMPT = `# The Tank — Curator Match Prompt (v2.2)
 
 ## Role
 
@@ -152,13 +157,20 @@ with a wrong stat is not.
 ## Input
 
 A JSON object: \`{ "sport", "now", "candidates": [{ "id", "player", "market", "line",
-"league", "away", "home", "kickoff" }] }\`.
+"question", "league", "away", "home", "kickoff" }] }\`.
 
-\`id\` is the value to echo back as \`candidateId\`. \`market\` is a canonical stat key
-(e.g. "basketball_player_points"); \`line\` may be null for a yes/no market. Candidates
-carry no \`team\` field (not reliably available upstream) — only the matchup-level
-\`away\`/\`home\`, which is enough to reason about which game a candidate belongs to.
-\`now\` is the current time, for judging how old a story is.
+\`id\` is the value to echo back as \`candidateId\`. \`market\` is \`moneyline\`, \`spreads\` or
+\`totals\` — every candidate is a whole-game market. \`line\` is null for a moneyline.
+Candidates carry no \`team\` field (not reliably available upstream) — only the matchup-level
+\`away\`/\`home\`, which is enough to reason about which game a candidate belongs to. \`now\` is
+the current time, for judging how old a story is.
+
+**Read \`question\` before matching a moneyline.** It is the market's own wording, and for
+soccer it is the only thing that tells candidates apart: one soccer game is three separate
+Yes/No markets — "Will Chelsea FC win on 2026-09-12?", "Will Chelsea FC vs. Hull City AFC end
+in a draw?", "Will Hull City AFC win on 2026-09-12?" — with the same \`player\`, \`market\` and
+teams. Match the one whose question fits the storyline, and write the angle about that outcome,
+not about the game in general.
 
 ## Output — JSON only, no preamble
 

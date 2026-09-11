@@ -2,7 +2,8 @@ import { renderHead, footer } from './waitlist-landing-template';
 import { escapeHtml } from '../utils/html-escape';
 import { repairTruncatedTitle } from '../utils/seo-title';
 import type { Prop, Game, TankArticle } from '../../tank-types';
-import { formatMarketLabel, formatOddsLabel, formatSettleDate, formatGameTime, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../../tank-deck-format';
+import { formatMarketLabel, formatOddsLabel, formatSettleDate, formatGameTime, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb, hasShowablePrices, MARKET_PANEL_NOTE } from '../../tank-deck-format';
+import { isYesNo, sideLabelsFor } from '../../market-movement';
 
 export interface TankResolution {
     status: 'resolved' | 'abandoned';
@@ -28,6 +29,16 @@ export interface TankPageRecord {
     // add_curation_and_resolution_to_tank_pages.sql run - all of which simply render no
     // resolution section.
     resolution?: TankResolution | null;
+}
+
+// "Sep 8" - the date a Tank's story was written (tank_pages.created_at, i.e. curation),
+// which is when its frozen prices were taken. Not published_at: a human publishes hours
+// or days after the story is written, and the prices belong to the writing.
+function writtenDateLabel(value: string | Date): string {
+    const d = new Date(value);
+    return Number.isNaN(d.getTime())
+        ? 'date unknown'
+        : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
 }
 
 /**
@@ -159,12 +170,68 @@ export function generateTankArticlePage(
                 </aside>`
         : '';
 
+    // "Polymarket prices" - the live market panel's server-rendered fallback, plus the seed
+    // its island (components/ArticleMarket.tsx) needs to fetch this market's current prices
+    // from /api/tank-market. The fallback is the price frozen when this story was written,
+    // explicitly DATED, so a no-JS reader or crawler is never shown an old number as if it
+    // were current. Only Polymarket markets get the panel (their ids are numeric; Kalshi's
+    // start with "KX"), and only two-outcome ones, which is every game line we curate. A
+    // dead book shows no percentages at all - never a fake 50/50.
+    let marketSectionHtml = '';
+    if (/^\d{1,12}$/.test(String(prop.id ?? '')) && prop.odds && prop.odds.outcomes.length === 2) {
+        const outcomes = prop.odds.outcomes;
+        // Display names: a spread side carries its line ("Chelsea FC -2.5"), since its
+        // price is the price of covering, not of winning. See sideLabelsFor.
+        const labels = sideLabelsFor(prop);
+        const yesNo = isYesNo(outcomes);
+        const question = prop.question?.trim() || null;
+        // A Yes/No market with no question on record can't say what "Yes" means, so it
+        // shows no prices rather than unlabelled ones; the island fills in Gamma's wording.
+        const unlabelled = yesNo && !question;
+        const showable = hasShowablePrices(prop.odds, prop.book) && !unlabelled;
+        let writtenPct: number[] | null = null;
+        if (showable) {
+            const first = Math.round(prop.odds.outcomePrices[0] * 100);
+            writtenPct = [first, 100 - first];
+        }
+        const writtenLabel = writtenDateLabel(page.created_at);
+        const seed = JSON.stringify({
+            marketId: String(prop.id),
+            kickoff: game.kickoff ?? null,
+            writtenLabel,
+            outcomes,
+            labels,
+            writtenPct,
+            question,
+        }).replace(/</g, '\\u003c');
+        const rows = writtenPct
+            ? labels.map((label, i) => `<li><span>${escapeHtml(label)}</span><span>${writtenPct![i]}%</span></li>`).join('')
+            : '';
+        const fallbackBody = writtenPct
+            ? `<p class="tank-article-market-meta">When this story was written (${escapeHtml(writtenLabel)})</p>
+                        <ul class="tank-article-market-rows">${rows}</ul>`
+            : unlabelled
+                ? ''
+                : `<p class="tank-article-market-meta">Not enough trading on this market to show a price when this story was written (${escapeHtml(writtenLabel)}).</p>`;
+        marketSectionHtml = `
+                <section id="tank-article-market" class="tank-article-market">
+                    <h2 class="tank-article-market-heading">Polymarket prices</h2>
+                    <div class="tank-article-market-fallback">
+                        ${yesNo && question ? `<p class="tank-article-market-question">${escapeHtml(question)}</p>` : ''}
+                        ${fallbackBody}
+                        <p class="tank-article-market-note">${escapeHtml(MARKET_PANEL_NOTE)}</p>
+                    </div>
+                    <script type="application/json" id="tank-article-market-data">${seed}</script>
+                </section>
+`;
+    }
+
     const deckPayload = JSON.stringify({
         hook, cards, slug: page.slug,
-        call: { ...call, sidesImpliedProb: deriveSidesImpliedProb(prop.odds, call.sides.length) },
+        call: { ...call, sidesImpliedProb: deriveSidesImpliedProb(prop.odds, call.sides.length, prop.book) },
         tagline,
         contextLabel: truncateHeaderLabel(`${game.league} · ${prop.player}`),
-        oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? formatMarketLabel(prop.market)),
+        oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds, prop.book) ?? formatMarketLabel(prop.market)),
         settleDateLabel: truncateHeaderLabel(formatSettleDate(effectiveSettleDate(prop, game) ?? '')),
         gameTimeLabel: truncateHeaderLabel(formatGameTime(game.kickoff)),
         kickoff: game.kickoff,
@@ -445,6 +512,58 @@ export function generateTankArticlePage(
         .tank-article-main-col > .tank-article-header { margin-top: 0; }
         .tank-article-side-col .tank-article-cards,
         .tank-article-side-col .hc-tai-heading { margin-top: 0; }
+        /* "Polymarket prices" - the market panel at the top of the rail. Deliberately flat:
+           one weight and one colour for every side, no arrows or signs - a price reported,
+           not a scoreboard. Sides stay in the market's own order, never sorted by price. */
+        .tank-article-market {
+            margin: 0 0 1.5rem;
+            padding-bottom: 1.25rem;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .tank-article-market-heading {
+            font-family: 'Montserrat', 'Nunito', sans-serif;
+            font-weight: 800;
+            font-size: 0.78rem;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--hc-teal);
+            margin: 0 0 0.6rem;
+        }
+        .tank-article-market-question {
+            margin: 0 0 0.5rem;
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.75);
+        }
+        .tank-article-market-rows {
+            list-style: none;
+            margin: 0.35rem 0 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+        .tank-article-market-rows li {
+            display: flex;
+            justify-content: space-between;
+            gap: 1rem;
+            font-size: 0.95rem;
+            color: rgba(255,255,255,0.9);
+        }
+        .tank-article-market-rows li span:last-child {
+            font-variant-numeric: tabular-nums;
+            font-weight: 700;
+        }
+        .tank-article-market-meta {
+            margin: 0.6rem 0 0;
+            font-size: 0.78rem;
+            line-height: 1.5;
+            color: rgba(255,255,255,0.55);
+        }
+        .tank-article-market-note {
+            margin: 0.5rem 0 0;
+            font-size: 0.72rem;
+            color: rgba(255,255,255,0.45);
+        }
         /* The deck alone spans the panel's full inner width - the index tiles above it
            keep the inset. The cube is a fixed-pixel 3D scene that paints past its
            container rather than shrinking into it, so giving the section the padding
@@ -550,6 +669,7 @@ ${resolutionHtml}
             </div>
 
             <aside class="tank-article-side-col">
+${marketSectionHtml}
                 <!-- The indexes this story moved. The cards list below is the fallback, and it
                      is the REAL content until the island proves otherwise: it stays for
                      untagged Tanks, for no-JS readers, and if the fetch fails. The island only

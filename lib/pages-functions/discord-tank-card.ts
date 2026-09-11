@@ -6,7 +6,7 @@
 // posting the result via lib/pages-functions/discord-api.ts#postDiscordChannelMessage.
 
 import { deriveSidesImpliedProb, deriveTaglineFallback } from '../../tank-deck-format';
-import type { PropOdds } from '../../tank-types';
+import type { PropOdds, PropBook } from '../../tank-types';
 
 const BUTTON_STYLE_PRIMARY = 1;
 const BUTTON_STYLE_SECONDARY = 2;
@@ -24,7 +24,7 @@ export interface TankCardModelOutput {
 export interface TankCardRow {
     slug: string;
     modelOutput: TankCardModelOutput;
-    gameSnapshot: { prop?: { odds?: PropOdds | null } } | null;
+    gameSnapshot: { prop?: { odds?: PropOdds | null; book?: PropBook | null } } | null;
 }
 
 export interface DiscordMessageBody {
@@ -40,7 +40,7 @@ export function buildTankCardMessage(baseUrl: string, row: TankCardRow): Discord
     if (!row.slug || sides.length === 0 || sides.length > MAX_TANK_CARD_SIDES) return null;
 
     const odds = row.gameSnapshot?.prop?.odds ?? null;
-    const sidesImpliedProb = deriveSidesImpliedProb(odds, sides.length);
+    const sidesImpliedProb = deriveSidesImpliedProb(odds, sides.length, row.gameSnapshot?.prop?.book ?? null);
     const tagline = row.modelOutput.tagline?.trim() || deriveTaglineFallback(row.modelOutput.hook);
     const tankUrl = `${baseUrl}/the-tank/articles/${row.slug}/`;
 

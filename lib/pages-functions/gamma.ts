@@ -22,6 +22,15 @@ export interface GammaMarketLite {
     outcomePrices?: string;  // JSON-encoded string array
     clobTokenIds?: string;   // JSON-encoded string array, positional with outcomes
     closed?: boolean;
+    // Read by the article market panel (functions/api/tank-market.ts). Verified live
+    // 2026-09-10: prices are bid/ask midpoints, and Gamma OMITS a change field when the
+    // change is zero - so a missing oneDayPriceChange means flat, never unknown.
+    question?: string;
+    bestBid?: number | null;
+    bestAsk?: number | null;
+    volumeNum?: number | null;
+    oneDayPriceChange?: number | null;
+    createdAt?: string;
 }
 
 export function safeJsonParse<T>(value: string | undefined | null): T | null {

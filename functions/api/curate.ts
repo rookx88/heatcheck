@@ -96,6 +96,14 @@ import {
     type CurationRecord,
     type VerifiedStat,
 } from '../../tank-curation';
+import {
+    planMovementWindow,
+    buildMarketContext,
+    checkMovementProse,
+    type MarketContext,
+} from '../../market-movement';
+import { fetchPriceHistory } from '../../lib/pages-functions/clob';
+import { TANK_NARRATIVE_PROMPT_VERSION } from '../../scripts/prompts/tank-narrative-prompt';
 import type { Prop, Game } from '../../tank-types';
 
 export const DEFAULT_DEDUPE_DAYS = 7;
@@ -223,6 +231,16 @@ export interface CurateCounters {
     angle_rewritten: number;
     stat_attached: number;
     stat_rejected: number;
+    // Market movement. attached = a market_context reached the writer; the others say why
+    // one didn't (the exact rules are planMovementWindow and buildMarketContext in
+    // market-movement.ts). unanchored = no usable news time to measure "after" from.
+    movement_attached: number;
+    movement_dead_book: number;
+    movement_unanchored: number;
+    movement_unavailable: number;
+    // The after-generation prose check flagged the draft (checkMovementProse). A flag for
+    // review, not a gate - the draft is still written.
+    movement_check_flagged: number;
     created: number;
 }
 
@@ -252,6 +270,11 @@ function emptyCounters(): CurateCounters {
         angle_rewritten: 0,
         stat_attached: 0,
         stat_rejected: 0,
+        movement_attached: 0,
+        movement_dead_book: 0,
+        movement_unanchored: 0,
+        movement_unavailable: 0,
+        movement_check_flagged: 0,
         created: 0,
     };
 }
@@ -543,6 +566,9 @@ export async function curateSportGroup(
         player: c.prop.player,
         market: c.prop.market,
         line: c.prop.line,
+        // The market's own wording - the only thing that tells a soccer game's three
+        // Yes/No markets (home win, draw, away win) apart. See tank-types.ts Prop.question.
+        question: c.prop.question ?? null,
         league: c.game.league,
         away: c.game.away,
         home: c.game.home,
@@ -641,9 +667,10 @@ export async function curateSportGroup(
         const { prop, game, provider } = candidate;
 
         // A verify call plus a generation call (which retries once internally), each
-        // able to retry once at the SDK level. Stop starting new work rather than dying
-        // mid-loop with rows half-written.
-        if (!budget.canAfford(6)) {
+        // able to retry once at the SDK level, plus at most one CLOB price-history call
+        // for the market sentence. Stop starting new work rather than dying mid-loop
+        // with rows half-written.
+        if (!budget.canAfford(7)) {
             counters.rejected_budget++;
             results.push({ candidateId: match.candidateId, status: 'rejected_budget', detail: `subrequests used ~${budget.used}` });
             continue;
@@ -719,9 +746,49 @@ export async function curateSportGroup(
             game.kickoff, entry.item.sourceTimestamp, entry.item.recency, entry.staleFallback, now,
         );
 
+        // Market movement - at most ONE CLOB call, and only when an honest window exists.
+        // planMovementWindow rules out everything it can without spending the call (no
+        // news time, a stale or undatable story, no book or a dead one, an unlabelled
+        // Yes/No market, a window under 6h); buildMarketContext then refuses anything the
+        // price history can't support. Either way the outcome is recorded on the draft.
+        let marketContext: MarketContext | null = null;
+        let movementRecord: CurationRecord['market_movement'];
+        const movementPlan = planMovementWindow({
+            prop, sourceTimestamp: entry.item.sourceTimestamp, recency: entry.item.recency, now,
+        });
+        if (!movementPlan.ok) {
+            movementRecord = { unavailable: movementPlan.reason };
+            if (movementPlan.reason === 'dead_book') counters.movement_dead_book++;
+            else if (movementPlan.reason === 'no_source_timestamp' || movementPlan.reason === 'recency_not_usable') counters.movement_unanchored++;
+            else counters.movement_unavailable++;
+        } else {
+            budget.charge(1);
+            const history = await fetchPriceHistory(movementPlan.tokenId, movementPlan.startTs, movementPlan.endTs, 60);
+            const built: { ok: true; context: MarketContext } | { ok: false; reason: string } = history.ok
+                ? buildMarketContext({ prop, history: history.points, fromTs: movementPlan.fromTs, now })
+                : { ok: false, reason: `clob_${history.reason}` };
+            if (built.ok) {
+                marketContext = built.context;
+                movementRecord = { context: built.context };
+                counters.movement_attached++;
+            } else {
+                movementRecord = { unavailable: built.reason };
+                counters.movement_unavailable++;
+            }
+        }
+
         try {
-            const genResult = await generateTankArticle(prop, angle, game, facts, config.generationConfig, timeContext);
+            const genResult = await generateTankArticle(prop, angle, game, facts, config.generationConfig, timeContext, marketContext ?? undefined);
             budget.charge(2);
+
+            // Check in code what the writer actually wrote about the market, rather than
+            // trusting the prompt: the right percentages, one sentence, no money-flow or
+            // prediction language, not bounded in the present. A flag for the reviewer.
+            const movementCheck = genResult.parsed ? checkMovementProse(genResult.parsed, marketContext) : null;
+            if (movementCheck && !movementCheck.ok) {
+                counters.movement_check_flagged++;
+                console.warn(`[curate] [${sportGroup}] movement prose check flagged ${match.candidateId}: ${movementCheck.problems.join('; ')}`);
+            }
 
             let slug: string | null = null;
             if (genResult.parsed) {
@@ -754,6 +821,9 @@ export async function curateSportGroup(
                 stat_reason: verdict.stat_reason ?? null,
                 prompt_version: TANK_CURATOR_MATCH_PROMPT_VERSION,
                 verify_prompt_version: TANK_CURATOR_VERIFY_PROMPT_VERSION,
+                narrative_prompt_version: TANK_NARRATIVE_PROMPT_VERSION,
+                market_movement: movementRecord,
+                ...(movementCheck ? { movement_check: movementCheck } : {}),
                 curated_at: now.toISOString(),
             };
 

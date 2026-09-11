@@ -22,6 +22,7 @@ import {
     fetchSoonEventsForTag,
     parsePropShape,
     safeJsonParse,
+    toNumberOrNull,
     type GammaEvent,
 } from './polymarket';
 import { buildGamesFromFlatProps, type PolymarketPropsRow } from './tank-providers';
@@ -98,6 +99,12 @@ export async function fetchLiveGames(
                         liquidity: market.liquidity !== undefined && market.liquidity !== null ? String(market.liquidity) : null,
                         question: market.question || null,
                         is_player_prop: isPlayerProp,
+                        // Already in the payload we fetched; they were being dropped here.
+                        // The token id is what CLOB price history needs, and the book is
+                        // what says whether a price is real (tank-deck-format.ts).
+                        clob_token_ids: safeJsonParse<string[]>(market.clobTokenIds),
+                        best_bid: toNumberOrNull(market.bestBid),
+                        best_ask: toNumberOrNull(market.bestAsk),
                     });
                 }
             }

@@ -24,6 +24,22 @@ export interface TankCurationRow {
     angle_facts_reason?: string;
     original_angle?: string | null;
     verify_prompt_version?: string;
+    // Market movement (market-movement.ts). Absent on rows curated before 2026-09-10.
+    market_movement?:
+        | {
+            context: {
+                status: 'moved' | 'steady' | 'unchanged';
+                side_labels: string[];
+                from_pct: number[];
+                to_pct: number[];
+                window_hours: number;
+                from_date_label: string;
+                to_date_label: string;
+            };
+        }
+        | { unavailable: string };
+    movement_check?: { ok: boolean; problems: string[] };
+    narrative_prompt_version?: string;
     verified_stat: { value: string; source_url: string } | null;
     stat_reason: string | null;
     prompt_version: string;

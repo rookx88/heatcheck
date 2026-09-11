@@ -14,6 +14,7 @@ import type { Pool } from 'pg';
 import Anthropic from '@anthropic-ai/sdk';
 import type { Prop, Game, TankArticle } from './tank-types';
 import type { TimeContext } from './tank-curation';
+import { toWriterProp, toWriterMarketContext, type MarketContext } from './market-movement';
 import { TANK_NARRATIVE_PROMPT } from './scripts/prompts/tank-narrative-prompt';
 
 export interface GenerationConfig {
@@ -133,20 +134,28 @@ async function callAnthropicOnce(systemPrompt: string, userPayload: object, conf
 // present - the model has no clock of its own, so requiring an anchor without supplying
 // these numbers would be instructing it to invent one, which is precisely what the
 // "never invent" rule exists to stop.
+//
+// `marketContext` is optional and trailing for the same reason: only curation measures
+// it (market-movement.ts). And the writer is shown the prop through toWriterProp, which
+// drops the order book and every price - it used to receive prop.odds with its prices,
+// i.e. numbers it was forbidden to quote sitting in its own input. The one price it may
+// now see is market_context's.
 export async function generateTankArticle(
     prop: Prop,
     angle: string,
     game: Game,
     facts: string[] = [],
     config: GenerationConfig,
-    timeContext?: TimeContext
+    timeContext?: TimeContext,
+    marketContext?: MarketContext
 ): Promise<GenerationResult> {
     const userPayload = {
-        prop,
+        prop: toWriterProp(prop),
         angle,
         game_context: { league: game.league, away: game.away, home: game.home, kickoff: game.kickoff },
         facts,
         ...(timeContext ? { time_context: timeContext } : {}),
+        ...(marketContext ? { market_context: toWriterMarketContext(marketContext) } : {}),
     };
 
     for (let attempt = 0; attempt < 2; attempt++) {

@@ -91,7 +91,7 @@ export function toSportCardViewModel(row: HomepageTankRow, sport: Sport): SportC
             cards: row.model_output.cards?.slice(0, 2) ?? [],
             call: {
                 ...row.model_output.call,
-                sidesImpliedProb: deriveSidesImpliedProb(prop.odds, row.model_output.call.sides.length),
+                sidesImpliedProb: deriveSidesImpliedProb(prop.odds, row.model_output.call.sides.length, prop.book),
             },
             tagline: truncateHeaderLabel(row.model_output.tagline || deriveTaglineFallback(row.model_output.hook)),
             contextLabel: truncateHeaderLabel(propTag),

@@ -115,6 +115,12 @@ export interface PolymarketPropsRow {
     liquidity: string | null;
     question: string | null;
     is_player_prop: boolean;
+    // Order-book fields, filled only by the live Gamma path (tank-gamma-live.ts). The
+    // cached polymarket_props path doesn't select them, so Props built from it carry no
+    // book and fall back to the price heuristics in tank-deck-format.ts.
+    clob_token_ids?: string[] | null;
+    best_bid?: number | null;
+    best_ask?: number | null;
 }
 
 // Team/game-level markets (as opposed to per-player stat props). Polymarket tags these
@@ -227,6 +233,15 @@ export function buildGamesFromFlatProps(rows: PolymarketPropsRow[]): Game[] {
                 ? { outcomes: row.outcomes, outcomePrices: row.outcome_prices.map(Number) }
                 : null,
             settleDate: row.market_end_date || undefined,
+            question: row.question || undefined,
+            book: row.clob_token_ids && row.clob_token_ids.length > 0
+                ? {
+                    tokenIds: row.clob_token_ids,
+                    bestBid: row.best_bid ?? null,
+                    bestAsk: row.best_ask ?? null,
+                    volume: row.volume === null ? null : (Number.isFinite(Number(row.volume)) ? Number(row.volume) : null),
+                }
+                : undefined,
         }));
 
         games.push({

@@ -133,6 +133,17 @@ export interface CurationRecord {
     stat_reason: string | null;
     prompt_version: string;
     verify_prompt_version: string;
+    // Market movement (market-movement.ts): the MarketContext handed to the writer, or
+    // why there wasn't one. Typed loosely here on purpose - the shape lives in
+    // market-movement.ts - so this module keeps importing nothing. Optional: absent on
+    // rows curated before 2026-09-10.
+    market_movement?: { context: object } | { unavailable: string };
+    // The after-generation code check on the written prose (checkMovementProse). A flag
+    // for the human reviewer, not a gate.
+    movement_check?: { ok: boolean; problems: string[] };
+    // Which narrative prompt wrote the article. Without it, drafts written under
+    // different writer rules can't be told apart when reviewing or tuning.
+    narrative_prompt_version?: string;
     curated_at: string;
 }
 
