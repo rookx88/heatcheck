@@ -19,6 +19,11 @@ export interface TankCurationRow {
     generic_filler: boolean;
     filler_reason: string;
     angle_rewritten: boolean;
+    // Absent on rows curated before verify prompt v2 (2026-09-10).
+    angle_facts_supported?: boolean;
+    angle_facts_reason?: string;
+    original_angle?: string | null;
+    verify_prompt_version?: string;
     verified_stat: { value: string; source_url: string } | null;
     stat_reason: string | null;
     prompt_version: string;

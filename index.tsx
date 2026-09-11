@@ -14356,6 +14356,18 @@ const CurationEvidence: React.FC<{ page: TankPageRow }> = ({ page }) => {
           <span style={{ marginLeft: '0.4rem', color: '#ef6c00', fontSize: '0.75rem' }}>(rewritten by verifier)</span>
         )}
       </p>
+      {/* What the verifier changed, and why. Its rewrite is accepted without a second
+          check, so this is where a reviewer confirms it removed the right thing. */}
+      {c?.angle_rewritten && c.original_angle && (
+        <p style={{ margin: '0.25rem 0 0', color: '#777', fontSize: '0.78rem' }}>
+          <strong>Original:</strong> <span style={{ textDecoration: 'line-through' }}>{c.original_angle}</span>
+        </p>
+      )}
+      {c?.angle_facts_supported === false && c.angle_facts_reason && (
+        <p style={{ margin: '0.25rem 0 0', color: '#c62828', fontSize: '0.78rem' }}>
+          <strong>Unsupported in angle:</strong> {c.angle_facts_reason}
+        </p>
+      )}
 
       {c && (
         <>

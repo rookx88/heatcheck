@@ -5,9 +5,9 @@
 // works identically under Node (tsx/backend.ts) and Workers with no environment
 // branching. Content is otherwise byte-for-byte the same as the original .md.
 
-export const TANK_NARRATIVE_PROMPT_VERSION = 'narrative/v0.3';
+export const TANK_NARRATIVE_PROMPT_VERSION = 'narrative/v0.4';
 
-export const TANK_NARRATIVE_PROMPT = `# The Tank — Narrative Generation Prompt (v0.3)
+export const TANK_NARRATIVE_PROMPT = `# The Tank — Narrative Generation Prompt (v0.4)
 
 System prompt for the content stage of the Heatchecks pipeline. Input: one prop you've already
 selected for its storyline. Output: one page's worth of content — a server-rendered narrative for
@@ -62,6 +62,10 @@ Tank narrative is one a fan would forward to a group chat, not one that improves
    it verbatim, so a fabricated stat becomes a fabricated stat sitting in someone's search result
    with your name attached. The audience knows the real numbers and the product does not survive
    being caught.
+
+   **The \`angle\` is not a source of numbers.** It tells you which storyline to build on, but a
+   figure, record, or streak that appears only in the angle has not been verified. Do not carry it
+   into your writing unless that same figure is also in \`facts\` — write the storyline without it.
 
 2. **The story is spice, not evidence.** Never claim or imply the storyline predicts the result.
    No "which is why he's due." You raise the stakes. You never hand out an edge. This cuts both

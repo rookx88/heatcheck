@@ -15,6 +15,7 @@ import { check, section, type Suite } from '../harness';
 import {
     classifyRecency,
     parsePageAge,
+    parsePageAgeRange,
     reconcileSourceTimestamp,
     partitionByRecency,
     harvestSearchSources,
@@ -75,10 +76,20 @@ async function run() {
     section('parsePageAge - free-form page_age, never assumed to be ISO');
 
     check('parses an absolute date', parsePageAge('April 30, 2025', NOW)?.startsWith('2025-04-30') === true);
-    check('parses "3 days ago" relative to now',
-        parsePageAge('3 days ago', NOW) === new Date(NOW.getTime() - 3 * DAY).toISOString());
-    check('parses "about 2 hours ago"',
-        parsePageAge('about 2 hours ago', NOW) === new Date(NOW.getTime() - 2 * HOUR).toISOString());
+    // Relative ages resolve to the OLDEST instant they could mean: "3 days ago" covers
+    // [72h, 96h), so it reads as just under 96h - never as 72h.
+    check('"3 days ago" reads as the oldest end of its range (just under 4 days)',
+        parsePageAge('3 days ago', NOW) === new Date(NOW.getTime() - 4 * DAY + 1).toISOString());
+    check('"about 2 hours ago" reads as just under 3 hours',
+        parsePageAge('about 2 hours ago', NOW) === new Date(NOW.getTime() - 3 * HOUR + 1).toISOString());
+    const twoDays = parsePageAgeRange('2 days ago', NOW);
+    check('parsePageAgeRange("2 days ago") spans 48h up to just under 72h',
+        twoDays?.newest === ago(2 * DAY) && twoDays?.oldest === new Date(NOW.getTime() - 3 * DAY + 1).toISOString(),
+        JSON.stringify(twoDays));
+    const bareDate = parsePageAgeRange('2026-09-05', NOW);
+    check('a bare date spans its whole day',
+        bareDate !== null && new Date(bareDate.newest).getTime() - new Date(bareDate.oldest).getTime() === DAY - 1,
+        JSON.stringify(bareDate));
     check('unparseable page_age returns null (-> unknown -> treated stale)',
         parsePageAge('recently', NOW) === null);
     check('null/empty page_age returns null', parsePageAge(null, NOW) === null && parsePageAge('   ', NOW) === null);
@@ -87,12 +98,26 @@ async function run() {
     section('reconcileSourceTimestamp - page_age beats the model, disagreement takes the older');
 
     const r1 = reconcileSourceTimestamp(ago(2 * HOUR), '3 days ago', NOW);
-    check('when both exist and disagree by >48h, the OLDER wins (cannot buy a false fresh)',
-        r1.origin === 'page_age' && new Date(r1.timestamp!).getTime() === NOW.getTime() - 3 * DAY,
+    check('a model date FRESHER than the page range allows loses to the range oldest end (cannot buy a false fresh)',
+        r1.origin === 'page_age' && new Date(r1.timestamp!).getTime() === NOW.getTime() - 4 * DAY + 1,
         JSON.stringify(r1));
 
     const r2 = reconcileSourceTimestamp(ago(26 * HOUR), '1 day ago', NOW);
-    check('when both agree within 48h, page_age is used', r2.origin === 'page_age');
+    check('a model date INSIDE the page range is kept - corroborated, and more precise',
+        r2.origin === 'page_age' && r2.timestamp === ago(26 * HOUR), JSON.stringify(r2));
+
+    const rOlder = reconcileSourceTimestamp(ago(10 * DAY), '1 day ago', NOW);
+    check('a model date OLDER than the page range wins (the older reading always wins a disagreement)',
+        rOlder.timestamp === ago(10 * DAY), JSON.stringify(rOlder));
+
+    // The live regression (2026-09-10): a source dated only by "2 days ago" used to land
+    // exactly on the inclusive 48h fresh boundary and pass as fresh.
+    const farKick = ahead(5 * DAY);
+    const pageOnly = reconcileSourceTimestamp(null, '2 days ago', NOW);
+    check('"2 days ago" on its own now classifies AGING, not fresh',
+        classifyRecency(pageOnly.timestamp, farKick, NOW) === 'aging', JSON.stringify(pageOnly));
+    check('"1 day ago" on its own still classifies fresh (all of 24-48h is fresh)',
+        classifyRecency(reconcileSourceTimestamp(null, '1 day ago', NOW).timestamp, farKick, NOW) === 'fresh');
 
     const r3 = reconcileSourceTimestamp(ago(5 * HOUR), null, NOW);
     check('model-only timestamp is used but flagged as origin "model"',
@@ -229,15 +254,20 @@ async function run() {
 
     check('a well-formed verdict validates', isVerifyResponse({
         supports_claim: true, supports_reason: 'ok', generic_filler: false, filler_reason: 'specific',
+        angle_facts_supported: true, angle_facts_reason: 'all supported',
         angle_rewrite: null, stat_supported: null, stat_reason: null,
     }));
     check('the STRING "true" is rejected, not coerced (a formatting failure must not become a publish decision)',
-        !isVerifyResponse({ supports_claim: 'true', generic_filler: false }));
-    check('a missing supports_claim is invalid', !isVerifyResponse({ generic_filler: false }));
-    check('a missing generic_filler is invalid', !isVerifyResponse({ supports_claim: true }));
+        !isVerifyResponse({ supports_claim: 'true', generic_filler: false, angle_facts_supported: true }));
+    check('a missing supports_claim is invalid', !isVerifyResponse({ generic_filler: false, angle_facts_supported: true }));
+    check('a missing generic_filler is invalid', !isVerifyResponse({ supports_claim: true, angle_facts_supported: true }));
+    check('a missing angle_facts_supported is invalid (the angle facts check must actually run)',
+        !isVerifyResponse({ supports_claim: true, generic_filler: false }));
+    check('angle_facts_supported as the STRING "false" is rejected, not coerced',
+        !isVerifyResponse({ supports_claim: true, generic_filler: false, angle_facts_supported: 'false' }));
     check('a non-object is invalid', !isVerifyResponse(null) && !isVerifyResponse('yes'));
     check('optional fields may be omitted entirely',
-        isVerifyResponse({ supports_claim: true, generic_filler: false }));
+        isVerifyResponse({ supports_claim: true, generic_filler: false, angle_facts_supported: true }));
 
     // -----------------------------------------------------------------------------
     section('Handoff to the narrative stage');

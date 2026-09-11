@@ -74,6 +74,7 @@ import {
 } from '../../scripts/prompts/tank-curator-match-prompt';
 import {
     TANK_CURATOR_VERIFY_PROMPT,
+    TANK_CURATOR_VERIFY_PROMPT_VERSION,
     TANK_CURATOR_VERIFY_SCHEMA,
 } from '../../scripts/prompts/tank-curator-verify-prompt';
 import { generateSlug, ensureUniqueSlug } from '../../scripts/utils/slug-generator';
@@ -207,6 +208,9 @@ export interface CurateCounters {
     rejected_stale: number;
     rejected_unsupported: number;
     rejected_generic: number;
+    // The angle stated something as fact that the snippet doesn't support, and the
+    // verifier had nothing supported left to rewrite it into.
+    rejected_angle_unsupported: number;
     // Kept SEPARATE from rejected_unsupported on purpose. A verify call that 400s or
     // returns an unparseable verdict is an infrastructure failure; a verifier that says
     // "this snippet doesn't support this claim" is a working editorial judgment. Folding
@@ -242,6 +246,7 @@ function emptyCounters(): CurateCounters {
         rejected_stale: 0,
         rejected_unsupported: 0,
         rejected_generic: 0,
+        rejected_angle_unsupported: 0,
         verify_error: 0,
         rejected_budget: 0,
         angle_rewritten: 0,
@@ -660,16 +665,35 @@ export async function curateSportGroup(
             continue;
         }
 
-        // "Reject OR rewrite" - a rewrite is free in a call already made, and throwing
-        // away a verified storyline over a lazily-worded line is a waste. Only when the
-        // verifier had nothing specific to salvage does the match actually die.
+        // The angle can fail two ways, and both go through the same "reject OR rewrite"
+        // rule - a rewrite is free in a call already made, and throwing away a verified
+        // storyline over one unsupported clause or one lazy line is a waste.
+        //
+        //   - It states a fact the snippet doesn't support. This matters more than it
+        //     looks: the writer treats the angle as given, so an unverified fact here goes
+        //     straight into the article's hook and body with no further check. That is how
+        //     "the team that ended KC's nine-year reign" - in neither the snippet nor the
+        //     claim - reached a live draft on 2026-09-10.
+        //   - It is generic filler.
+        //
+        // The verifier's rewrite is accepted without a second verify call. It is told to
+        // keep only snippet-supported statements, and re-checking its own output would
+        // spend a call to confirm the same judgment. original_angle is stored so a
+        // reviewer can check what it removed.
         let angle = match.angle;
         let angleRewritten = false;
-        if (verdict.generic_filler) {
+        const angleFactsUnsupported = verdict.angle_facts_supported === false;
+        if (angleFactsUnsupported || verdict.generic_filler) {
             if (verdict.angle_rewrite && verdict.angle_rewrite.trim()) {
                 angle = verdict.angle_rewrite.trim();
                 angleRewritten = true;
                 counters.angle_rewritten++;
+            } else if (angleFactsUnsupported) {
+                // Checked before filler: an unsupported fact is the more serious failure,
+                // so an angle that is both unsupported and generic is counted here.
+                counters.rejected_angle_unsupported++;
+                results.push({ candidateId: match.candidateId, status: 'rejected_angle_unsupported', detail: verdict.angle_facts_reason });
+                continue;
             } else {
                 counters.rejected_generic++;
                 results.push({ candidateId: match.candidateId, status: 'rejected_generic', detail: verdict.filler_reason });
@@ -722,10 +746,14 @@ export async function curateSportGroup(
                 supports_reason: verdict.supports_reason ?? '',
                 generic_filler: verdict.generic_filler,
                 filler_reason: verdict.filler_reason ?? '',
+                angle_facts_supported: verdict.angle_facts_supported,
+                angle_facts_reason: verdict.angle_facts_reason ?? '',
                 angle_rewritten: angleRewritten,
+                original_angle: angleRewritten ? match.angle : null,
                 verified_stat: verifiedStat,
                 stat_reason: verdict.stat_reason ?? null,
                 prompt_version: TANK_CURATOR_MATCH_PROMPT_VERSION,
+                verify_prompt_version: TANK_CURATOR_VERIFY_PROMPT_VERSION,
                 curated_at: now.toISOString(),
             };
 

@@ -1,4 +1,4 @@
-// The Tank — Curator Verify Prompt (v1)
+// The Tank — Curator Verify Prompt (v2)
 //
 // The second, independent pass over each candidate match (functions/api/curate.ts's
 // verifyMatch). Runs as its OWN Anthropic call, not a second turn of the matching call.
@@ -17,9 +17,15 @@
 // that the invented snippet supports the claim. That check lives in code instead:
 // curate.ts harvests the real URLs out of the search result blocks and rejects any match
 // citing one that never appeared (harvestSearchSources/isHarvestedUrl in tank-curation.ts).
-// What this pass CAN judge is overreach — a claim that says more than its snippet
-// actually supports — and whether the angle line is generic filler. Those are real, they
-// are common, and they are what it is for.
+// What this pass CAN judge is overreach — a claim, or an angle, that says more than the
+// snippet actually supports — and whether the angle line is generic filler. Those are
+// real, they are common, and they are what it is for.
+//
+// v2 (2026-09-10) added the angle facts check (Question 2). v1 checked the CLAIM against
+// the snippet but only checked the ANGLE for filler, and the angle is what the writer
+// builds from. A live angle said Denver "ended the Chiefs' nine-year division reign" — in
+// neither the snippet nor the claim — and it went straight into an article's hook and
+// body: a number the "no invented numbers" rule was supposed to make impossible.
 //
 // The prompt deliberately does not say what happens to a match that fails. A grader told
 // that "false" kills the story has a reason to say true.
@@ -28,7 +34,7 @@
 // structured outputs, so malformed JSON isn't a failure mode here the way it is for the
 // matching and narrative calls.
 
-export const TANK_CURATOR_VERIFY_PROMPT_VERSION = 'curator-verify/v1';
+export const TANK_CURATOR_VERIFY_PROMPT_VERSION = 'curator-verify/v2';
 
 export const TANK_CURATOR_VERIFY_PROMPT = `# Editorial Fact-Check
 
@@ -67,7 +73,25 @@ claim, and even if the claim is a fair, ordinary paraphrase.
 A claim can be perfectly reasonable and still not be supported by this particular snippet.
 Both answers are ordinary outcomes. Give your one-sentence reason in \`supports_reason\`.
 
-## Question 2 — is the angle generic filler?
+## Question 2 — does the angle state anything the snippet does not support?
+
+The angle may name people and teams, and it may frame why something matters — none of
+that needs support. But wherever it states something **as fact** — that an event
+happened, a player's status, a record, a streak, a history between two teams, a number —
+that statement must be supported by the snippet, under exactly the same standard as
+Question 1. The snippet is the only evidence that exists; your own knowledge of the sport
+does not count, even when you are confident the statement is true.
+
+- A number in the angle that does not appear in the snippet is always unsupported.
+- A past event, record or rivalry history the snippet does not mention is unsupported.
+- Framing and interpretation — "the stakes are personal", "a statement game" — are not
+  factual statements and are not judged here. (Question 3 judges whether they are filler.)
+
+Set \`angle_facts_supported\` to true only if every factual statement in the angle is
+supported by the snippet. Otherwise set it to false and name the unsupported statement in
+\`angle_facts_reason\`.
+
+## Question 3 — is the angle generic filler?
 
 Apply this test to \`angle\`: could this exact line be pasted into a completely different
 matchup, with only the names swapped, and still read as true?
@@ -79,13 +103,23 @@ matchup, with only the names swapped, and still read as true?
   prior event, a specific person, a particular circumstance — it is not filler →
   \`generic_filler: false\`.
 
-When and only when it is filler, and the angle contains enough specific material to
-salvage, provide \`angle_rewrite\`: the same underlying point rewritten around whatever is
-specific in it. If there is nothing specific to build on, set \`angle_rewrite\` to null —
-do not invent a detail to rescue it. Anything you add to a rewrite must already appear in
-the angle or the claim.
+Judge this independently of Question 2. A specific angle can still state an unsupported
+fact, and a fully supported angle can still be filler.
 
-## Question 3 — is the stat supported? (only if \`verified_stat\` is present)
+## Rewriting the angle
+
+Provide \`angle_rewrite\` when, and only when, Question 2 or Question 3 found a problem
+and enough of the angle survives to salvage. The rewrite must:
+
+- keep only statements the snippet supports — **drop** an unsupported statement entirely;
+  do not rephrase it, soften it, or turn it into a hedge;
+- stay specific to this situation, so that it would pass Question 3;
+- add nothing that is not already in the angle, the claim, or the snippet.
+
+If nothing specific and supported would remain, set \`angle_rewrite\` to null — do not
+invent a detail to rescue an angle. If neither question found a problem, set it to null.
+
+## Question 4 — is the stat supported? (only if \`verified_stat\` is present)
 
 Does the stat's own source text actually state that value — the same number, the same
 subject, the same span? A number that is close, or that would require combining it with
@@ -115,6 +149,8 @@ export const TANK_CURATOR_VERIFY_SCHEMA = {
             supports_reason: { type: 'string' },
             generic_filler: { type: 'boolean' },
             filler_reason: { type: 'string' },
+            angle_facts_supported: { type: 'boolean' },
+            angle_facts_reason: { type: 'string' },
             angle_rewrite: { type: ['string', 'null'] },
             stat_supported: { type: ['boolean', 'null'] },
             stat_reason: { type: ['string', 'null'] },
@@ -122,6 +158,7 @@ export const TANK_CURATOR_VERIFY_SCHEMA = {
         required: [
             'supports_claim', 'supports_reason',
             'generic_filler', 'filler_reason',
+            'angle_facts_supported', 'angle_facts_reason',
             'angle_rewrite', 'stat_supported', 'stat_reason',
         ],
         additionalProperties: false,

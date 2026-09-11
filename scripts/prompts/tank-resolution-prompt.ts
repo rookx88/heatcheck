@@ -1,4 +1,4 @@
-// The Tank — Resolution Callback Prompt (v1)
+// The Tank — Resolution Callback Prompt (v1.1)
 //
 // Stage 3. Runs once per Tank after its market settles (functions/api/tank-resolution-sweep.ts),
 // and writes the short "here's how that story ended" line that gets baked into the article
@@ -20,7 +20,7 @@
 //
 // Uses structured outputs (no tools), so malformed JSON isn't a failure mode here.
 
-export const TANK_RESOLUTION_PROMPT_VERSION = 'resolution/v1';
+export const TANK_RESOLUTION_PROMPT_VERSION = 'resolution/v1.1';
 
 export const TANK_RESOLUTION_PROMPT = `# The Tank — Resolution Callback
 
@@ -45,6 +45,10 @@ That's it.
    add a detail about how the game went, a score, a stat, a player's performance, a quote, a
    crowd, or a moment. You were not given those and you do not know them. If a sentence
    needs a fact you weren't handed, cut the sentence.
+
+   The \`angle\` is context for what the story was about, not a fact on record. Do not repeat
+   a number, record, or history that appears only in the angle — if \`trend_claim\` doesn't
+   state it, leave it out.
 
 2. **Never say the story predicted anything.** The storyline was never evidence — not before
    the game, and not now that you can see the result. Do not write "the narrative held up,"

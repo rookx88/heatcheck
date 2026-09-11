@@ -69,9 +69,17 @@ export interface VerifyResponse {
     supports_reason: string;
     generic_filler: boolean;
     filler_reason: string;
-    // Present when generic_filler is true and the verifier could salvage the angle. The
-    // spec says "reject OR rewrite" - a rewrite costs nothing in a call already being
-    // made, and throwing away a real storyline over a lazily-worded line is a waste.
+    // Whether every FACTUAL statement in the angle (an event, a status, a record, a
+    // rivalry history, a number) is supported by the snippet. Added 2026-09-10 after a
+    // live angle carried "ended the Chiefs' nine-year division reign" - in neither the
+    // snippet nor the claim - straight into an article's hook and body. The claim was
+    // checked; the angle's facts never were, and the writer treats the angle as given.
+    angle_facts_supported: boolean;
+    angle_facts_reason?: string;
+    // Present when the verifier could salvage an angle that failed either the facts check
+    // or the filler check. The spec says "reject OR rewrite" - a rewrite costs nothing in
+    // a call already being made, and throwing away a real storyline over one unsupported
+    // clause or one lazy line is a waste.
     angle_rewrite?: string | null;
     // null when the match carried no verified_stat to check.
     stat_supported?: boolean | null;
@@ -114,10 +122,17 @@ export interface CurationRecord {
     supports_reason: string;
     generic_filler: boolean;
     filler_reason: string;
+    angle_facts_supported: boolean;
+    angle_facts_reason: string;
     angle_rewritten: boolean;
+    // The curator's angle as proposed, kept whenever the verifier rewrote it, so a
+    // reviewer can see exactly what was removed or reworded - the rewrite is accepted
+    // without a second verify call, so this is where it gets checked.
+    original_angle: string | null;
     verified_stat: VerifiedStat | null;
     stat_reason: string | null;
     prompt_version: string;
+    verify_prompt_version: string;
     curated_at: string;
 }
 
@@ -177,15 +192,22 @@ export function classifyRecency(
 }
 
 // page_age is free-form, not ISO - Anthropic returns whatever the page advertised
-// ("April 30, 2025", "2 days ago", sometimes nothing). Parse defensively and return null
-// rather than guessing: null flows to 'unknown', which is handled like 'stale', so a
-// parse failure is always the conservative outcome.
-export function parsePageAge(pageAge: string | null | undefined, now: Date = new Date()): string | null {
+// ("April 30, 2025", "2 days ago", sometimes nothing). It is also COARSE: "2 days ago"
+// means anywhere from 48h to just under 72h, and "April 30, 2025" means anywhere in that
+// day. So it parses to a RANGE, not an instant.
+//
+// Returns null rather than guessing when the text won't parse: null flows to 'unknown',
+// which is handled like 'stale', so a parse failure is always the conservative outcome.
+export function parsePageAgeRange(
+    pageAge: string | null | undefined,
+    now: Date = new Date(),
+): { oldest: string; newest: string } | null {
     if (!pageAge || typeof pageAge !== 'string') return null;
     const text = pageAge.trim();
     if (!text) return null;
 
-    // "3 days ago", "about 2 hours ago", "1 month ago"
+    // "3 days ago", "about 2 hours ago", "1 month ago". A relative age of N units covers
+    // [N, N+1) units - "2 days ago" is anything from 48h up to, not including, 72h.
     const relative = text.match(/(\d+)\s*(minute|hour|day|week|month|year)s?\s+ago/i);
     if (relative) {
         const n = Number(relative[1]);
@@ -198,43 +220,72 @@ export function parsePageAge(pageAge: string | null | undefined, now: Date = new
             year: 31_536_000_000,
         };
         const ms = unitMs[relative[2].toLowerCase()];
-        if (ms && Number.isFinite(n)) return new Date(now.getTime() - n * ms).toISOString();
-        return null;
+        if (!ms || !Number.isFinite(n)) return null;
+        const nowMs = now.getTime();
+        return {
+            newest: new Date(nowMs - n * ms).toISOString(),
+            oldest: new Date(nowMs - (n + 1) * ms + 1).toISOString(),
+        };
     }
 
     const parsed = new Date(text).getTime();
-    return Number.isNaN(parsed) ? null : new Date(parsed).toISOString();
+    if (Number.isNaN(parsed)) return null;
+    // A bare date ("April 30, 2025", "2026-09-08") names a whole day; anything carrying a
+    // time of day is taken as the instant it states.
+    const hasTimeOfDay = /\d:\d/.test(text) || /T\d/.test(text);
+    return {
+        oldest: new Date(parsed).toISOString(),
+        newest: new Date(hasTimeOfDay ? parsed : parsed + 86_400_000 - 1).toISOString(),
+    };
+}
+
+// The conservative single reading of a page_age: the OLDEST instant it could mean.
+//
+// This used to return the NEWEST instant - "2 days ago" became exactly now-48h, which
+// sits on classifyRecency's inclusive fresh boundary, so every "2 days ago" source was
+// classified fresh even though almost all of that range is older than 48h. Caught on a
+// live draft (2026-09-10) whose source timestamp sat exactly 48h before the run started,
+// to the millisecond. The oldest end is the reading that can only ever cost a match,
+// never buy a false 'fresh' - the same rule reconcileSourceTimestamp applies.
+export function parsePageAge(pageAge: string | null | undefined, now: Date = new Date()): string | null {
+    return parsePageAgeRange(pageAge, now)?.oldest ?? null;
 }
 
 // The model's self-reported date and the harvested page_age each fail differently: the
-// model's can be wishful, and page_age describes when the PAGE was published, which is
-// not always when the EVENT happened (a page published today can recap a trade from
-// three weeks ago).
+// model's can be wishful, and page_age describes - coarsely - when the PAGE was
+// published, which is not always when the EVENT happened (a page published today can
+// recap a trade from three weeks ago).
 //
-// Resolution order, most to least trustworthy:
-//   1. page_age alone            -> use it, origin 'page_age'
-//   2. both, agreeing (<=48h)    -> use page_age, origin 'page_age'
-//   3. both, disagreeing         -> use the OLDER of the two, origin 'page_age'.
-//      Disagreement means one of them is wrong and we can't tell which, so take the
-//      reading that can only cost us a match, never buy us a false 'fresh'.
-//   4. model only                -> use it, origin 'model'
-//   5. neither                   -> null, origin 'none' (-> 'unknown' -> treated stale)
+// Resolution order:
+//   1. both, model's date INSIDE the page's range -> the model's date, origin 'page_age'.
+//      The page independently brackets it, and the model's reading is the more precise
+//      one. This matters beyond classification: the timestamp becomes hours_since_trend
+//      for the writer's time anchor, and snapping a "2 days ago" story to its 72h edge
+//      would have an article say "three days" about something two days old.
+//   2. both, model OUTSIDE the range -> the older of the model's date and the range's
+//      oldest end, origin 'page_age'. Disagreement means one of them is wrong and we
+//      can't tell which, so take the reading that can only cost us a match.
+//   3. page_age alone -> the range's oldest end, origin 'page_age'
+//   4. model only     -> the model's date, origin 'model'
+//   5. neither        -> null, origin 'none' (-> 'unknown' -> treated stale)
 export function reconcileSourceTimestamp(
     modelTimestamp: string | null | undefined,
     harvestedPageAge: string | null | undefined,
     now: Date = new Date(),
 ): { timestamp: string | null; origin: 'page_age' | 'model' | 'none' } {
-    const fromPage = parsePageAge(harvestedPageAge, now);
-    const fromModel = parseMs(modelTimestamp) !== null ? new Date(modelTimestamp as string).toISOString() : null;
+    const range = parsePageAgeRange(harvestedPageAge, now);
+    const modelMs = parseMs(modelTimestamp);
 
-    if (fromPage && fromModel) {
-        const delta = Math.abs(new Date(fromPage).getTime() - new Date(fromModel).getTime());
-        if (delta <= FRESH_MS) return { timestamp: fromPage, origin: 'page_age' };
-        const older = new Date(fromPage).getTime() < new Date(fromModel).getTime() ? fromPage : fromModel;
-        return { timestamp: older, origin: 'page_age' };
+    if (range && modelMs !== null) {
+        const oldestMs = new Date(range.oldest).getTime();
+        const newestMs = new Date(range.newest).getTime();
+        if (modelMs >= oldestMs && modelMs <= newestMs) {
+            return { timestamp: new Date(modelMs).toISOString(), origin: 'page_age' };
+        }
+        return { timestamp: new Date(Math.min(modelMs, oldestMs)).toISOString(), origin: 'page_age' };
     }
-    if (fromPage) return { timestamp: fromPage, origin: 'page_age' };
-    if (fromModel) return { timestamp: fromModel, origin: 'model' };
+    if (range) return { timestamp: range.oldest, origin: 'page_age' };
+    if (modelMs !== null) return { timestamp: new Date(modelMs).toISOString(), origin: 'model' };
     return { timestamp: null, origin: 'none' };
 }
 
@@ -411,6 +462,8 @@ export function isVerifyResponse(value: any): value is VerifyResponse {
     if (!value || typeof value !== 'object') return false;
     if (typeof value.supports_claim !== 'boolean') return false;
     if (typeof value.generic_filler !== 'boolean') return false;
+    if (typeof value.angle_facts_supported !== 'boolean') return false;
+    if (value.angle_facts_reason !== undefined && typeof value.angle_facts_reason !== 'string') return false;
     if (value.supports_reason !== undefined && typeof value.supports_reason !== 'string') return false;
     if (value.filler_reason !== undefined && typeof value.filler_reason !== 'string') return false;
     if (value.angle_rewrite !== undefined && value.angle_rewrite !== null && typeof value.angle_rewrite !== 'string') return false;
