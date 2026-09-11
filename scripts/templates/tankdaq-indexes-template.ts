@@ -138,13 +138,11 @@ function tankdaqIndexesStyles(): string {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; font-size: 1em;
             color: #ffffff; line-height: 1.1;
         }
-        .hc-tqb-delta {
+        /* The quote line: "45.23 (+1.2%)", or just the parenthesised return when the
+           tile is too narrow for the price (the client decides which fits). */
+        .hc-tqb-quote {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.72em;
-            line-height: 1.1;
-        }
-        .hc-tqb-total {
-            font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.55em;
-            color: rgba(255,255,255,0.6); line-height: 1.1;
+            line-height: 1.1; white-space: nowrap;
         }
 
         /* Description card: what the hovered/selected index reacts to, floating OVER

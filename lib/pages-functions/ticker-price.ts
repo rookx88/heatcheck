@@ -61,10 +61,19 @@ export function sellCredit(shares: number, price: number): number {
     return Math.floor(totalUnits(shares, price) / PRICE_UNITS);
 }
 
+// The price's % return for a move of `deltaPoints` on the cumulative index:
+// exp(delta / scale) - 1. Because the price is exponential in the value, a window's
+// return depends only on the points moved inside it, never on where the index started -
+// so a board can turn a windowed SUM(delta) straight into the parenthesised "(+1.2%)"
+// without knowing the anchor. This is the ONE exp() site for returns.
+export function priceReturnPct(deltaPoints: number, scale: number): number {
+    return (Math.exp(deltaPoints / scale) - 1) * 100;
+}
+
 // The price's percentage change between two points of the SAME cumulative series the
-// chart already has: exp(dValue / scale) - 1. This is what sits beside the headline price.
+// chart already has. This is what sits beside the headline price on the detail page.
 export function windowReturnPct(valueNow: number, valueAnchor: number, p: PriceParams): number {
-    return (Math.exp((valueNow - valueAnchor) / p.scale) - 1) * 100;
+    return priceReturnPct(valueNow - valueAnchor, p.scale);
 }
 
 export function isWholeShares(n: unknown): n is number {

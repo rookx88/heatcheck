@@ -27,11 +27,16 @@ import { indexLabelOf, tickerCopyFor } from './lib/pages-functions/ticker-copy';
 import { chooseWindow, type WindowInfo, type WindowedEvent as SeriesEvent } from './lib/pages-functions/ticker-window';
 import { layoutNested } from './lib/pages-functions/treemap';
 import { leagueShortCode, parseLeagueRule } from './lib/pages-functions/league-rules';
+import { priceReturnPct } from './lib/pages-functions/ticker-price';
+import { formatEmber, formatQuote, formatSignedPct, signOf } from './lib/pages-functions/ticker-format';
 import { ContentChrome } from './components/ContentChrome';
 
 interface TickerRow {
     key: string; displayName: string; ruleType: string; description: string;
     tabOrder: number; value: number;
+    // The Ember price and the two inputs behind it (getTickerValues). priceScale turns
+    // a window's points move into the price return the tile quotes.
+    price: number; priceBaseline: number; priceScale: number;
     parentKey?: string | null;
 }
 
@@ -54,19 +59,19 @@ interface Tile {
     indexLabel: string;
     ruleType: string;
     description: string;
-    value: number;   // all-time cumulative
-    delta: number;   // movement over the active window (see WINDOWS)
+    value: number;   // all-time cumulative index points (aria only - the detail page shows it)
+    delta: number;   // points moved over the active window (see WINDOWS)
+    price: number;
+    priceReturnPct: number; // the price's % change over the active window - what the tile shows and is sized by
+    returnLabel: string;    // formatSignedPct(priceReturnPct)
+    quote: string;          // formatQuote(price, priceReturnPct) - "45.23 (+1.2%)"
     x: number; y: number; w: number; h: number; // percentages of the board
 }
 
-// Window selection + summing live in lib/pages-functions/ticker-window.ts: pure,
-// CSS-free, and therefore directly testable (this island can't be imported outside a
-// bundler - it pulls component stylesheets).
-
-function fmtPct(v: number): string {
-    const n = Object.is(v, -0) ? 0 : v;
-    return `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}%`;
-}
+// Window selection + summing live in lib/pages-functions/ticker-window.ts, and the
+// quote formatters in ticker-format.ts: pure, CSS-free, and therefore directly
+// testable (this island can't be imported outside a bundler - it pulls component
+// stylesheets).
 
 // The squarified-treemap math lives in lib/pages-functions/treemap.ts so this board
 // and the homepage's server-rendered SVG board lay out identically by construction.
@@ -80,6 +85,7 @@ const TankdaqBoard: React.FC = () => {
     const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
     const [tiles, setTiles] = useState<Tile[]>([]);
     const [note, setNote] = useState('');
+    const [priceNote, setPriceNote] = useState('');
     const [maxAbs, setMaxAbs] = useState(0);
     const [windowInfo, setWindowInfo] = useState<WindowInfo>({ label: 'the last 24 hours', short: '24H', widened: false });
     const boardRef = useRef<HTMLDivElement | null>(null);
@@ -143,15 +149,21 @@ const TankdaqBoard: React.FC = () => {
             try {
                 const [listRes, chartRes] = await Promise.all([fetch('/api/tickers'), fetch('/api/tickers/chart')]);
                 if (!listRes.ok || !chartRes.ok) throw new Error(`tickers ${listRes.status}/${chartRes.status}`);
-                const list = (await listRes.json()) as { note: string; tickers: TickerRow[] };
+                const list = (await listRes.json()) as { note: string; priceNote?: string; tickers: TickerRow[] };
                 const chart = (await chartRes.json()) as { series: Record<string, SeriesEvent[]> };
                 if (cancelled) return;
 
                 // Widen until something actually moved - see ADAPTIVE WINDOW up top.
+                // Everything visual then follows the PRICE return over that window,
+                // not the raw points: per-ticker price scales were tuned so a one-sigma
+                // day is ~12% on every index (seed_ticker_prices_v1.sql), which makes
+                // the return the normalised "how big was this move" across indexes.
                 const { deltas, info } = chooseWindow(list.tickers, chart.series, Date.now());
-                const rows = list.tickers.map((t, i) => ({ ...t, delta: deltas[i] }));
+                const rows = list.tickers.map((t, i) => ({
+                    ...t, delta: deltas[i], priceReturnPct: priceReturnPct(deltas[i], t.priceScale),
+                }));
 
-                const biggest = Math.max(...rows.map((r) => Math.abs(r.delta)), 0);
+                const biggest = Math.max(...rows.map((r) => Math.abs(r.priceReturnPct)), 0);
 
                 // A ticker whose parent isn't on the board is laid out as a root rather
                 // than dropped - a bad parent_key can never make an index disappear.
@@ -164,13 +176,13 @@ const TankdaqBoard: React.FC = () => {
                 // is judged in roughly the shape the tiles actually render in.
                 const BH = 62.5;
                 const layout = layoutNested(
-                    roots.map((r) => r.delta),
-                    families.map((f) => f.map((c) => c.delta)),
+                    roots.map((r) => r.priceReturnPct),
+                    families.map((f) => f.map((c) => c.priceReturnPct)),
                     100, BH,
                     { headerRatio: 0.28, headerMin: 5, headerMax: 13, padding: 1.2 },
                 );
 
-                const base = (r: TickerRow & { delta: number }) => {
+                const base = (r: TickerRow & { delta: number; priceReturnPct: number }) => {
                     const rule = parseLeagueRule(r.ruleType);
                     return {
                         key: r.key,
@@ -181,6 +193,10 @@ const TankdaqBoard: React.FC = () => {
                         description: r.description,
                         value: r.value,
                         delta: r.delta,
+                        price: r.price,
+                        priceReturnPct: r.priceReturnPct,
+                        returnLabel: formatSignedPct(r.priceReturnPct),
+                        quote: formatQuote(r.price, r.priceReturnPct),
                     };
                 };
                 // y and h are normalised out of the layout's 62.5-unit box into percent
@@ -210,6 +226,7 @@ const TankdaqBoard: React.FC = () => {
                 setMaxAbs(biggest);
                 setWindowInfo(info);
                 setNote(list.note);
+                setPriceNote(list.priceNote ?? '');
                 setPhase('ready');
             } catch (err) {
                 console.error('[TANKDAQ] board fetch failed:', err);
@@ -248,6 +265,19 @@ const TankdaqBoard: React.FC = () => {
         return { text, px: Math.max(px, 7), show: px >= 7 };
     };
 
+    // The quote line under the symbol, at 0.72em of the symbol size: the full
+    // "45.23 (+1.2%)" if it fits the tile's inner width, else just the "(+1.2%)", else
+    // nothing - the aria label and the pop-over always carry the full quote. Digits and
+    // parentheses run ~0.62em/char in Montserrat 800 (an over-estimate, on purpose).
+    const fitQuote = (t: Tile, innerWpx: number, symPx: number): string | null => {
+        if (symPx < 10) return null;
+        const quotePx = symPx * 0.72;
+        const fits = (s: string) => s.length * quotePx * 0.62 <= innerWpx;
+        if (fits(t.quote)) return t.quote;
+        const short = `(${t.returnLabel})`;
+        return fits(short) ? short : null;
+    };
+
     // Identity chrome renders in every phase - it hydrates from its own endpoint and
     // must not wait on (or disappear with) the board's data. Same root <div> in every
     // phase, ContentChrome first: a fragment root here and a <div> root below made
@@ -261,15 +291,15 @@ const TankdaqBoard: React.FC = () => {
             <ContentChrome />
             <header className="hc-tqb-header">
                 <h1 className="hc-tqb-title">TANKDAQ <span style={{ color: 'var(--hc-gold)' }}>Index Board</span></h1>
-                <p className="hc-tqb-sub">Every index at a glance &mdash; tile size tracks the size of the move over {windowInfo.label}, color its direction.</p>
+                <p className="hc-tqb-sub">Every index at a glance &mdash; each tile shows the index&rsquo;s Ember price and its change over {windowInfo.label}; tile size tracks the size of that move, color its direction.</p>
                 {windowInfo.widened && (
                     <p className="hc-tqb-widened">No index moved in the last 24 hours &mdash; showing {windowInfo.label} instead.</p>
                 )}
             </header>
             <div ref={boardRef} className="hc-tqb-board" role="list" aria-label={`Index heatmap, ${windowInfo.label}`}>
                 {boardW > 0 && tiles.map((t) => {
-                    const mag = maxAbs > 0 ? Math.abs(t.delta) / maxAbs : 0;
-                    const dir = t.delta > 0 ? 'pos' : t.delta < 0 ? 'neg' : 'zero';
+                    const mag = maxAbs > 0 ? Math.abs(t.priceReturnPct) / maxAbs : 0;
+                    const dir = signOf(t.priceReturnPct);
                     const neon = NEON[dir];
                     const active = t.key === activeKey;
                     const pad = t.kind === 'child' ? childGutter : gutter;
@@ -282,6 +312,8 @@ const TankdaqBoard: React.FC = () => {
                     const innerWpx = (boardW * t.w) / 100 - 2 * pad - 10;
                     const innerHpx = (boardH * t.h) / 100 - 2 * pad;
                     const fit = fitText(t, innerWpx, innerHpx);
+                    const quoteLine = fitQuote(t, innerWpx, fit.px);
+                    const ariaLabel = `${t.displayName}: ${formatEmber(t.price)} Ember, ${t.returnLabel} over ${windowInfo.label}; index ${formatSignedPct(t.value)} overall`;
 
                     // The family's raised block. Decorative only: its header strip and
                     // its children carry every hover and every link, so it must not
@@ -324,9 +356,9 @@ const TankdaqBoard: React.FC = () => {
                                 onFocus={() => setHoverKey(t.key)}
                                 onBlur={() => setHoverKey((k) => (k === t.key ? null : k))}
                                 onClick={(e) => onTileClick(e, t.key)}
-                                aria-label={`${t.displayName}: ${fmtPct(t.delta)} over ${windowInfo.label}, ${fmtPct(t.value)} overall`}>
+                                aria-label={ariaLabel}>
                                 <span className="hc-tqb-sym">{t.displayName}</span>
-                                <span className="hc-tqb-delta" style={{ color: `rgb(${neon})` }}>{fmtPct(t.delta)}</span>
+                                {quoteLine && <span className="hc-tqb-quote" style={{ color: `rgb(${neon})` }}>{quoteLine}</span>}
                             </a>
                         );
                     }
@@ -353,10 +385,10 @@ const TankdaqBoard: React.FC = () => {
                                 onFocus={() => setHoverKey(t.key)}
                                 onBlur={() => setHoverKey((k) => (k === t.key ? null : k))}
                                 onClick={(e) => onTileClick(e, t.key)}
-                                aria-label={`${t.displayName}: ${fmtPct(t.delta)} over ${windowInfo.label}, ${fmtPct(t.value)} overall`}>
+                                aria-label={ariaLabel}>
                                 {fit.show && <span className="hc-tqb-sym">{fit.text}</span>}
-                                {fit.show && fit.px >= 10 && (
-                                    <span className="hc-tqb-delta" style={{ color: `rgb(${neon})` }}>{fmtPct(t.delta)}</span>
+                                {fit.show && quoteLine && (
+                                    <span className="hc-tqb-quote" style={{ color: `rgb(${neon})` }}>{quoteLine}</span>
                                 )}
                             </a>
                         );
@@ -399,17 +431,16 @@ const TankdaqBoard: React.FC = () => {
                             onFocus={() => setHoverKey(t.key)}
                             onBlur={() => setHoverKey((k) => (k === t.key ? null : k))}
                             onClick={(e) => onTileClick(e, t.key)}
-                            aria-label={`${t.displayName}: ${fmtPct(t.delta)} over ${windowInfo.label}, ${fmtPct(t.value)} overall`}>
+                            aria-label={ariaLabel}>
                             <span className="hc-tqb-sym">{t.displayName}</span>
-                            <span className="hc-tqb-delta" style={{ color: `rgb(${neon})` }}>{fmtPct(t.delta)}</span>
-                            {/* The all-time subline is redundant when all-time IS the metric. */}
-                            {t.w * t.h > 90 && windowInfo.short !== 'ALL' && <span className="hc-tqb-total">{fmtPct(t.value)} all-time</span>}
+                            {/* The all-time index % no longer rides on the tile - the detail page keeps it. */}
+                            {quoteLine && <span className="hc-tqb-quote" style={{ color: `rgb(${neon})` }}>{quoteLine}</span>}
                         </a>
                     );
                 })}
                 {activeTile && (() => {
                     const copy = tickerCopyFor(activeTile.ruleType);
-                    const dir = activeTile.delta > 0 ? 'pos' : activeTile.delta < 0 ? 'neg' : 'zero';
+                    const dir = signOf(activeTile.priceReturnPct);
                     // Anchor beside the block, then clamp inside the board so a card
                     // never hangs off an edge. Prefer the side of the block's centre
                     // with more room, so the card covers the map rather than its own
@@ -427,7 +458,7 @@ const TankdaqBoard: React.FC = () => {
                             <p className="hc-tqb-detail-head">
                                 <span className="hc-tqb-detail-name">{activeTile.displayName}</span>
                                 <span className="hc-tqb-detail-index">{activeTile.indexLabel}</span>
-                                <span className="hc-tqb-detail-delta" style={{ color: `rgb(${NEON[dir]})` }}>{fmtPct(activeTile.delta)} <span style={{ fontSize: '0.7em', opacity: 0.7 }}>{windowInfo.short}</span></span>
+                                <span className="hc-tqb-detail-delta" style={{ color: `rgb(${NEON[dir]})` }}>{formatEmber(activeTile.price)} Ember ({activeTile.returnLabel}) <span style={{ fontSize: '0.7em', opacity: 0.7 }}>{windowInfo.short}</span></span>
                             </p>
                             <p className="hc-tqb-detail-blurb">{copy?.blurb ?? activeTile.description}</p>
                             {copy && copy.leagues.length > 0 && (
@@ -453,6 +484,7 @@ const TankdaqBoard: React.FC = () => {
                 <span style={{ color: '#94a3b8' }}><span className="hc-tqb-swatch" />Flat</span>
             </p>
             {note && <p className="hc-tqb-note">{note}</p>}
+            {priceNote && <p className="hc-tqb-note">{priceNote}</p>}
         </div>
     );
 };

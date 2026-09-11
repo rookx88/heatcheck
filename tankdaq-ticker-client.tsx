@@ -22,7 +22,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { tickerCopyFor } from './lib/pages-functions/ticker-copy';
-import { sumSince } from './lib/pages-functions/ticker-window';
 import {
     MAX_SHARES_PER_TRADE,
     buyCost,
@@ -31,6 +30,7 @@ import {
     windowReturnPct,
     type PriceParams,
 } from './lib/pages-functions/ticker-price';
+import { formatEmber, formatSignedPct, signOf } from './lib/pages-functions/ticker-format';
 import { ContentChrome } from './components/ContentChrome';
 import { InsufficientEmberError } from './egg-shop-client';
 import {
@@ -73,20 +73,11 @@ const WINDOWS = [
 ] as const;
 type WindowId = (typeof WINDOWS)[number]['id'];
 
-// Same formatter contract as market-movers.ts's formatSignedPct (real minus, -0 -> +0.0%),
-// re-declared locally: importing market-movers would drag the SSR string builders into
-// this bundle for one 3-line function.
-function fmtPct(v: number): string {
-    const n = Object.is(v, -0) ? 0 : v;
-    return `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}%`;
-}
-function signOf(v: number): 'pos' | 'neg' | 'zero' {
-    return v > 0 ? 'pos' : v < 0 ? 'neg' : 'zero';
-}
-// Ember prices read to the cent; the 4-dp quote stays the number the math runs on.
-function fmtEmber(v: number): string {
-    return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+// The shared quote formatters (ticker-format.ts) under this file's short names - the
+// same bytes the homepage tape and the Index Board print. Ember prices read to the
+// cent; the 4-dp quote stays the number the math runs on.
+const fmtPct = formatSignedPct;
+const fmtEmber = formatEmber;
 function fmtSignedEmber(v: number): string {
     const n = Object.is(v, -0) ? 0 : v;
     return `${n >= 0 ? '+' : '−'}${Math.abs(n).toLocaleString('en-US')}`;
@@ -421,10 +412,6 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tickerKey, reloadKey]);
 
-    const delta24 = useMemo(
-        () => (data ? sumSince(data.series, Date.now() - 24 * HOUR_MS) : 0),
-        [data],
-    );
     // The price's % change over the SELECTED chart window - the number beside the price.
     const windowRet = useMemo(() => {
         if (!data) return 0;
@@ -448,7 +435,6 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
     const priceParams: PriceParams = { baseline: ticker.priceBaseline, scale: ticker.priceScale };
     const copy = tickerCopyFor(ticker.ruleType);
     const totalSign = signOf(ticker.value);
-    const d24Sign = signOf(delta24);
     const retSign = signOf(windowRet);
     const windowLabel = WINDOWS.find((w) => w.id === windowId)!.label;
     const dateLabel = (iso: string) => {
@@ -480,12 +466,13 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
                 <div className="hc-tq-main">
                     <div className="hc-tq-value-row">
                         <span className="hc-tq-price"><EmberGlyph /> {fmtEmber(ticker.price)}</span>
-                        <span className={`hc-tq-return is-${retSign}`}>{fmtPct(windowRet)}</span>
+                        <span className={`hc-tq-return is-${retSign}`}>({fmtPct(windowRet)})</span>
                         <span className="hc-tq-delta24-label">Ember price &middot; {windowLabel} change</span>
                     </div>
+                    {/* The cumulative index % is the one number that has no home on the
+                        other surfaces any more; it stays here, demoted to an aside. */}
                     <p className="hc-tq-index-line">
                         Index <span className={`is-${totalSign}`}>{fmtPct(ticker.value)}</span> all-time
-                        &nbsp;&middot;&nbsp; <span className={`is-${d24Sign}`}>({fmtPct(delta24)})</span> last 24 hours
                     </p>
                     <div className="hc-tq-ranges" role="group" aria-label="Chart window">
                         {WINDOWS.map((w) => (

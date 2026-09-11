@@ -1,11 +1,14 @@
 // GET /api/tickers/tank?slug=... (or ?id=...) - public. Which indexes a Tank is tagged
-// to, what this Tank's own news move did to each, and where each index stands now.
+// to, what this Tank's own news move did to each, and where each index stands now -
+// as an Ember price with the price's % change over the boards' adaptive window
+// (chooseWindowFromSums over this Tank's tagged indexes: 24h, widening to 7d / 30d /
+// all-time until one of them moved).
 //
 // Two consumers:
-//   * the article page's index section, which renders a tile per index plus a
-//     line describing the market's own price over the 3 days before tagging, and
-//     what the index did - it needs
-//     tagDelta/rawDelta/tickerValue, which is why this returns more than event ids.
+//   * the article page's index section, which renders a tile per index (price +
+//     window return) plus a line describing the market's own price over the 3 days
+//     before tagging, and what the index did - it needs tagDelta/rawDelta and the
+//     price fields, which is why this returns more than event ids.
 //   * chart highlighting, which pairs eventIds with /api/tickers/chart to mark this
 //     Tank's own points on each index's line.
 //
@@ -19,9 +22,11 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, UUID_RE, type Env } from '../../../lib/pages-functions/db';
-import { RETROSPECTIVE_NOTE, getTickerValues } from '../../../lib/pages-functions/tickers';
+import { RETROSPECTIVE_NOTE, getTickerValues, getTickerWindowSums, type TickerValue } from '../../../lib/pages-functions/tickers';
 import { indexLabelOf } from '../../../lib/pages-functions/ticker-copy';
 import { buildNewsSentence } from '../../../lib/pages-functions/market-movers';
+import { chooseWindowFromSums } from '../../../lib/pages-functions/ticker-window';
+import { PRICE_NOTE, priceReturnPct } from '../../../lib/pages-functions/ticker-price';
 
 interface TagRow {
     ticker_key: string;
@@ -76,7 +81,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     // Current index values come from getTickerValues - the ONE place the slate/tank leg
     // filter lives. Re-deriving that SUM(...) FILTER here would be a second copy of a
     // rule that has already changed once.
-    const [rows, values] = await Promise.all([
+    // The window sums are one statement over the same log (getTickerWindowSums) so the
+    // tile's "(+1.2%)" applies the boards' rule without loading every series here.
+    const [rows, values, sums] = await Promise.all([
         sql`
             SELECT tt.ticker_key, tt.relevant_side, tt.tagged_at, tt.calculated_at, tt.retroactive,
                    COALESCE(array_agg(e.id ORDER BY e.occurred_at) FILTER (WHERE e.id IS NOT NULL), '{}') AS event_ids,
@@ -92,8 +99,17 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             ORDER BY tt.tagged_at
         `,
         getTickerValues(sql),
+        getTickerWindowSums(sql),
     ]);
     const byKey = new Map(values.map((v) => [v.key, v]));
+
+    // The window is chosen over THIS Tank's tagged indexes (the ones the section shows),
+    // so its tiles share one lens the way a board's tiles do.
+    const tagged = (rows as unknown as TagRow[])
+        .map((r) => byKey.get(r.ticker_key))
+        .filter((v): v is TickerValue => !!v);
+    const { deltas, info: window } = chooseWindowFromSums(tagged.map(({ key, value }) => ({ key, value })), sums);
+    const deltaOf = new Map(tagged.map((t, i) => [t.key, deltas[i]]));
 
     const outcomes = Array.isArray(tank.outcomes) ? (tank.outcomes as unknown[]) : [];
     const sides = Array.isArray(tank.sides) ? (tank.sides as unknown[]) : [];
@@ -125,6 +141,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             indexLabel: ticker ? indexLabelOf(ticker.ruleType) : null,
             ruleType: ticker?.ruleType ?? null,
             tickerValue: ticker?.value ?? null,
+            // The tile's quote: the Ember price and its % change over `window` below.
+            price: ticker?.price ?? null,
+            priceBaseline: ticker?.priceBaseline ?? null,
+            priceScale: ticker?.priceScale ?? null,
+            windowDelta: ticker ? (deltaOf.get(ticker.key) ?? 0) : null,
+            priceReturnPct: ticker ? priceReturnPct(deltaOf.get(ticker.key) ?? 0, ticker.priceScale) : null,
             relevantSide: r.relevant_side,
             taggedAt: r.tagged_at,
             settledAt: r.calculated_at,
@@ -141,6 +163,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     return jsonResponse({
         note: RETROSPECTIVE_NOTE,
+        priceNote: PRICE_NOTE,
+        window,
         tank: { id: tank.id, slug: tank.slug, visibility: tank.visibility },
         tags,
     });

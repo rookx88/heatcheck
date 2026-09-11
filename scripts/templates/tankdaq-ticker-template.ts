@@ -131,11 +131,13 @@ function tankdaqTickerStyles(): string {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
             font-size: clamp(1.05rem, 3.5vw, 1.35rem);
         }
+        /* Demoted aside: the cumulative index % lives only here now, muted under the
+           price quote. */
         .hc-tq-index-line {
-            margin: 0 0 0.75rem; font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
-            font-size: 0.8rem; letter-spacing: 0.02em; color: rgba(255,255,255,0.65);
+            margin: 0 0 0.75rem; font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 700;
+            font-size: 0.72rem; letter-spacing: 0.02em; color: rgba(255,255,255,0.45);
         }
-        .hc-tq-index-line .is-pos, .hc-tq-index-line .is-neg, .hc-tq-index-line .is-zero { font-weight: 900; }
+        .hc-tq-index-line .is-pos, .hc-tq-index-line .is-neg, .hc-tq-index-line .is-zero { font-weight: 800; opacity: 0.8; }
         .hc-tq-delta24-label {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.66rem;
             letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.55);

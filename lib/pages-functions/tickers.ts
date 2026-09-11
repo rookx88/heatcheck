@@ -27,6 +27,7 @@ import { getGameConfig } from './pets';
 import { leagueGroupLabel, leagueRuleAccepts, parseLeagueRule } from './league-rules';
 import { priceFromValue } from './ticker-price';
 import { positionShareOfClose } from './index-slate';
+import type { WindowSums } from './ticker-window';
 
 // Spec'd framing constraint: ticker values/charts are never presented as predictive.
 // Every API response that carries a value or chart includes this note verbatim.
@@ -594,6 +595,37 @@ export async function getTickerSeries(sql: SqlReader, key?: string | null): Prom
         });
     }
     return series;
+}
+
+// Each ticker's points moved inside the last 24h / 7d / 30d, in ONE statement, for a
+// surface that wants the boards' adaptive window (chooseWindowFromSums, ticker-window.ts)
+// without loading a whole series - the article page's index tiles. The row predicate
+// `(e.source = 'slate' OR t.visibility = 'app')` must stay character-for-character the
+// one getTickerValues FILTERs on and getTickerSeries WHEREs on: these sums are windowed
+// slices of that same log, and a window sum that disagreed with sumSince over the chart
+// would print a different "(+1.2%)" on an article than on the board. `>=` matches
+// sumSince's cutoff comparison; the 3-dp rounding matches it too.
+export async function getTickerWindowSums(sql: SqlReader, keys: string[] | null = null): Promise<Record<string, WindowSums>> {
+    const rows = await sql`
+        SELECT e.ticker_key,
+               COALESCE(SUM(e.delta) FILTER (WHERE e.occurred_at >= NOW() - INTERVAL '24 hours'), 0)::float8 AS h24,
+               COALESCE(SUM(e.delta) FILTER (WHERE e.occurred_at >= NOW() - INTERVAL '7 days'), 0)::float8 AS d7,
+               COALESCE(SUM(e.delta) FILTER (WHERE e.occurred_at >= NOW() - INTERVAL '30 days'), 0)::float8 AS d30
+        FROM ticker_events e
+        LEFT JOIN tank_pages t ON t.id = e.tank_id
+        WHERE (e.source = 'slate' OR t.visibility = 'app')
+          AND (${keys}::text[] IS NULL OR e.ticker_key = ANY(${keys}::text[]))
+        GROUP BY e.ticker_key
+    `;
+    const sums: Record<string, WindowSums> = {};
+    for (const row of rows) {
+        sums[row.ticker_key as string] = {
+            h24: Number((row.h24 as number).toFixed(3)),
+            d7: Number((row.d7 as number).toFixed(3)),
+            d30: Number((row.d30 as number).toFixed(3)),
+        };
+    }
+    return sums;
 }
 
 export interface TickerNewsItem {

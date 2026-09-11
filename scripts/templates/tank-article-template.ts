@@ -396,7 +396,13 @@ export function generateTankArticlePage(
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; font-size: 0.95rem;
             color: #ffffff; line-height: 1.1;
         }
-        .hc-tai-val { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem; line-height: 1.1; }
+        /* The quote: Ember price, then the window return in parentheses - the same
+           form the homepage tape and the Index Board print. */
+        .hc-tai-quote {
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.85rem;
+            line-height: 1.1; color: #ffffff; white-space: nowrap;
+        }
+        .hc-tai-return { font-size: 0.82em; }
         .hc-tai-label {
             font-family: 'Nunito', sans-serif; font-weight: 700; font-size: 0.56rem;
             letter-spacing: 0.06em; text-transform: uppercase; color: rgba(255,255,255,0.55); line-height: 1.15;

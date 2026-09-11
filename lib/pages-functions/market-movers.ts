@@ -19,10 +19,12 @@
 // may present movement as predictive.
 
 import { escapeHtml } from '../../scripts/utils/html-escape';
-import { chooseWindow } from './ticker-window';
+import { chooseWindow, type WindowInfo } from './ticker-window';
 import { layoutNested } from './treemap';
 import { leagueShortCode, parseLeagueRule } from './league-rules';
 import { parseYesNoQuestion } from './index-slate';
+import { PRICE_NOTE, priceFromValue, priceReturnPct } from './ticker-price';
+import { formatEmber, formatQuote, formatSignedPct, signOf, type Sign } from './ticker-format';
 import {
     RETROSPECTIVE_NOTE,
     type TickerNewsItem,
@@ -44,10 +46,25 @@ export interface MarketMoverVM {
     displayName: string;
     indexLabel: string;  // "Underdog Index" etc, derived from rule_type
     description: string; // real tickers.description text - page content, not a UI label
-    value: number;
-    valueLabel: string;  // formatSignedPct(value) - the ONE string both tape and card show
-    sign: 'pos' | 'neg' | 'zero';
-    tabOrder: number;    // marquee/marketing order; the section grid sorts by value instead
+    value: number;       // all-time cumulative index points - tooltips and the "overall" aside only
+    valueLabel: string;  // formatSignedPct(value)
+    // The headline quote, stock-ticker style: the Ember price and the price's % return
+    // over the section's window - "45.23 (+1.2%)". sign, ranking, and the board's tile
+    // sizing all key off priceReturnPct, never off the cumulative value: per-ticker
+    // price scales were tuned so a one-sigma day is ~12% on every index
+    // (seed_ticker_prices_v1.sql), so the price return is the normalised size of a move
+    // across indexes in a way raw points are not.
+    price: number;
+    priceBaseline: number;
+    priceScale: number;
+    windowDelta: number;     // points moved inside the window (chooseWindow)
+    priceReturnPct: number;  // priceReturnPct(windowDelta, priceScale)
+    priceLabel: string;      // formatEmber(price)
+    returnLabel: string;     // formatSignedPct(priceReturnPct)
+    quoteLabel: string;      // formatQuote(price, priceReturnPct) - the ONE string tape, card and board share
+    window: WindowInfo;      // the section's window, the same on every mover
+    sign: Sign;
+    tabOrder: number;    // marquee/marketing order; the section grid sorts by price return instead
     // Set on a league sub-index, naming the index it slices. The board nests these
     // inside their parent's tile; the tape and the card grid stay top-level only.
     parentKey: string | null;
@@ -68,6 +85,8 @@ export interface MarketMoverResultVM {
 
 export interface MarketMoversData {
     note: string;
+    priceNote: string;   // PRICE_NOTE - rendered once wherever a price appears (ticker-price.ts rule)
+    window: WindowInfo;  // the ONE window the tape, cards and board all quote
     movers: MarketMoverVM[];
 }
 
@@ -76,23 +95,15 @@ export interface MarketMoversData {
 // (no synthetic origin is prepended when truncated - see renderTickerChartSvg).
 const SERIES_CAP = 60;
 
+const DEFAULT_WINDOW: WindowInfo = { label: 'the last 24 hours', short: '24H', widened: false };
+
 export function emptyMarketMovers(): MarketMoversData {
-    return { note: RETROSPECTIVE_NOTE, movers: [] };
+    return { note: RETROSPECTIVE_NOTE, priceNote: PRICE_NOTE, window: DEFAULT_WINDOW, movers: [] };
 }
 
-// The one formatter for a ticker value, used by the marquee, the card header, and the
-// SVG titles - identical strings everywhere by construction. Real minus (U+2212);
-// -0 normalizes to "+0.0%".
-export function formatSignedPct(v: number): string {
-    const normalized = Object.is(v, -0) ? 0 : v;
-    return `${normalized >= 0 ? '+' : '−'}${Math.abs(normalized).toFixed(1)}%`;
-}
-
-function signOf(v: number): 'pos' | 'neg' | 'zero' {
-    if (v > 0) return 'pos';
-    if (v < 0) return 'neg';
-    return 'zero';
-}
+// The formatters live in ticker-format.ts so the TANKDAQ islands and the article tiles
+// print byte-identical strings; re-exported here for this module's existing callers.
+export { formatSignedPct } from './ticker-format';
 
 // "underdog" -> "Underdog Index" - the card's display title ("UNDERDOG INDEX ($DOGS)").
 // Implementation moved to ticker-copy.ts (a dependency-free module the TANKDAQ client
@@ -330,9 +341,19 @@ export function toMarketMovers(
     series: Record<string, TickerSeriesEvent[]>,
     news: Record<string, TickerNewsItem[]>,
     results: Record<string, TickerResultItem[]>,
+    now = Date.now(),
 ): MarketMoversData {
-    const movers = values.map((t) => {
+    // ONE window for the whole section, chosen over every index (parents and children
+    // alike, so a family's tiles are sized against the same lens): the tape, the card
+    // and the board tile then all print the same "(+1.2%)" for an index. Widens
+    // 24h -> 7d -> 30d until something moved; the all-time fallback hands back each
+    // index's cumulative value, whose price return is simply the price against its
+    // launch baseline.
+    const { deltas, info } = chooseWindow(values.map((t) => ({ key: t.key, value: t.value })), series, now);
+    const movers = values.map((t, i) => {
         const full = series[t.key] ?? [];
+        const windowDelta = deltas[i];
+        const ret = priceReturnPct(windowDelta, t.priceScale);
         return {
             key: t.key,
             displayName: t.displayName,
@@ -340,7 +361,16 @@ export function toMarketMovers(
             description: t.description,
             value: t.value,
             valueLabel: formatSignedPct(t.value),
-            sign: signOf(t.value),
+            price: t.price,
+            priceBaseline: t.priceBaseline,
+            priceScale: t.priceScale,
+            windowDelta,
+            priceReturnPct: ret,
+            priceLabel: formatEmber(t.price),
+            returnLabel: formatSignedPct(ret),
+            quoteLabel: formatQuote(t.price, ret),
+            window: info,
+            sign: signOf(ret),
             tabOrder: t.tabOrder,
             parentKey: t.parentKey,
             shortLabel: (() => { const r = parseLeagueRule(t.ruleType); return r ? leagueShortCode(r) : null; })(),
@@ -357,15 +387,19 @@ export function toMarketMovers(
             results: toResultSentences(results[t.key] ?? [], t.displayName),
         };
     });
-    // Default (no-JS) presentation order: biggest movers first, tab_order as tiebreak.
-    // The marquee re-sorts its own copy back to tab_order (renderTickerTape).
-    const byValueDesc = [...movers].sort((a, b) => b.value - a.value || a.tabOrder - b.tabOrder);
-    return { note: RETROSPECTIVE_NOTE, movers: byValueDesc };
+    // Default (no-JS) presentation order: biggest price movers over the window first,
+    // tab_order as tiebreak. The marquee re-sorts its own copy back to tab_order
+    // (renderTickerTape).
+    const byReturnDesc = [...movers].sort((a, b) => b.priceReturnPct - a.priceReturnPct || a.tabOrder - b.tabOrder);
+    return { note: RETROSPECTIVE_NOTE, priceNote: PRICE_NOTE, window: info, movers: byReturnDesc };
 }
 
 // -----------------------------------------------------------------------------------
-// SVG chart - server-computed cumulative line, zero JS. Hover detail comes from native
-// <title> elements; the whole SVG is role="img" with a spoken summary.
+// SVG chart - server-computed PRICE line, zero JS. The cumulative series is mapped
+// point-by-point through priceFromValue with the ticker's own (baseline, scale), the
+// same function the detail page and the trade endpoints use, so the sparkline draws
+// the number the card quotes. Hover detail comes from native <title> elements; the
+// whole SVG is role="img" with a spoken summary.
 // -----------------------------------------------------------------------------------
 
 const CHART_W = 260;
@@ -379,30 +413,36 @@ export function renderTickerChartSvg(vm: MarketMoverVM): string {
         return `<p class="hc-mm-chart-empty">No activity yet.</p>`;
     }
 
-    // A non-truncated series gets a synthetic 0-origin so even a single event draws a
-    // real line from 0 to its value; a truncated one honestly starts mid-flight.
+    const params = { baseline: vm.priceBaseline, scale: vm.priceScale };
+    // A non-truncated series gets a synthetic origin at the launch price (value 0) so
+    // even a single event draws a real line; a truncated one honestly starts mid-flight.
+    const launch = priceFromValue(0, params);
     const cums = vm.series.map((e) => e.cumulative);
-    const points = vm.seriesTruncated ? cums : [0, ...cums];
-    const lo = Math.min(0, ...points);
-    const hi = Math.max(0, ...points);
+    const points = (vm.seriesTruncated ? cums : [0, ...cums]).map((v) => priceFromValue(v, params));
+    const lo = Math.min(...points);
+    const hi = Math.max(...points);
     const span = hi - lo || 1;
     const x = (i: number) => (PAD + (i * (CHART_W - 2 * PAD)) / Math.max(points.length - 1, 1)).toFixed(1);
-    const y = (v: number) => (PAD + ((hi - v) * (PLOT_H - 2 * PAD)) / span).toFixed(1);
+    const y = (p: number) => (PAD + ((hi - p) * (PLOT_H - 2 * PAD)) / span).toFixed(1);
 
-    const polyline = points.map((v, i) => `${x(i)},${y(v)}`).join(' ');
+    const polyline = points.map((p, i) => `${x(i)},${y(p)}`).join(' ');
     // Navy plot panel in the site palette; market colors brightened for the dark
-    // background - green up, red down, slate for a flat zero line.
+    // background - green up, red down, slate for a flat line. Sign is the window's
+    // price return, the same sign the quote beside the chart carries.
     const stroke = vm.sign === 'pos' ? '#3ddc64' : vm.sign === 'neg' ? '#ff6b57' : '#94a3b8';
-    const zeroAxis = lo < 0 && hi > 0
-        ? `<line x1="${PAD}" x2="${CHART_W - PAD}" y1="${y(0)}" y2="${y(0)}" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 4" stroke-width="1"/>`
+    // Dashed reference at the launch price when the line crosses it.
+    const launchAxis = lo < launch && hi > launch
+        ? `<line x1="${PAD}" x2="${CHART_W - PAD}" y1="${y(launch)}" y2="${y(launch)}" stroke="rgba(255,255,255,0.25)" stroke-dasharray="4 4" stroke-width="1"/>`
         : '';
 
     // One dot per REAL event (the synthetic origin gets none) with a native tooltip
-    // carrying the full date + event detail.
+    // carrying the date, the event, the price it left the index at, and the event's
+    // own price return; the cumulative index points ride along for the curious.
     const originOffset = vm.seriesTruncated ? 0 : 1;
     const dots = vm.series.map((e, i) => {
-        const title = `${utcDateLabel(e.occurredAt)} · ${e.eventType} · ${formatSignedPct(e.delta)} (running: ${formatSignedPct(e.cumulative)})`;
-        return `<circle cx="${x(i + originOffset)}" cy="${y(e.cumulative)}" r="2.5" fill="${stroke}"><title>${escapeHtml(title)}</title></circle>`;
+        const price = priceFromValue(e.cumulative, params);
+        const title = `${utcDateLabel(e.occurredAt)} · ${e.eventType} · ${formatEmber(price)} Ember · ${formatSignedPct(priceReturnPct(e.delta, vm.priceScale))} (index running: ${formatSignedPct(e.cumulative)})`;
+        return `<circle cx="${x(i + originOffset)}" cy="${y(price)}" r="2.5" fill="${stroke}"><title>${escapeHtml(title)}</title></circle>`;
     }).join('');
 
     // Visible date ticks under the plot: first / middle / last real event, deduped
@@ -419,11 +459,11 @@ export function renderTickerChartSvg(vm: MarketMoverVM): string {
         return `<text class="hc-mm-tick" x="${tx}" y="${PLOT_H + 12}" text-anchor="${anchor}">${escapeHtml(label)}</text>`;
     }).join('');
 
-    const summary = `${vm.displayName} cumulative chart: currently ${vm.valueLabel} over ${vm.eventCount} event${vm.eventCount === 1 ? '' : 's'}`;
+    const summary = `${vm.displayName}: ${vm.priceLabel} Ember, ${vm.returnLabel} over ${vm.window.label} (${vm.eventCount} event${vm.eventCount === 1 ? '' : 's'})`;
     return `<svg class="hc-mm-svg" viewBox="0 0 ${CHART_W} ${CHART_H}" role="img" aria-label="${escapeHtml(summary)}">
                 <title>${escapeHtml(summary)}</title>
                 <rect x="0.75" y="0.75" width="${CHART_W - 1.5}" height="${PLOT_H - 1.5}" rx="8" fill="#160c27" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
-                ${zeroAxis}
+                ${launchAxis}
                 <polyline fill="none" points="${polyline}" stroke="${stroke}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
                 ${dots}
                 ${ticks}
@@ -471,24 +511,25 @@ const CHILD_MAX_SIZE = 3.2;
 // Per-character width estimate for Montserrat 900 caps, in ems. Deliberately over the
 // true average - a symbol that fits with room to spare beats one that kisses the border.
 const CHAR_EM = 0.86;
+// Digits, the point and the parentheses of a quote are narrower than caps; still an
+// over-estimate for Montserrat 800.
+const QUOTE_CHAR_EM = 0.62;
+// The quote line's floor: what the old delta line rendered at when the symbol sat
+// exactly at MIN_LEGIBLE_SIZE (0.72 of it).
+const MIN_QUOTE_SIZE = MIN_LEGIBLE_SIZE * 0.72;
 
 const neonFor = (delta: number): string =>
     delta > 0 ? '61, 220, 100' : delta < 0 ? '255, 107, 87' : '148, 163, 184';
 
-export function renderIndexBoardSvg(movers: MarketMoverVM[], now = Date.now()): string {
+// `window` is the section's window, chosen once in toMarketMovers - the same lens the
+// tape and the cards quote, so a tile's "(+1.2%)" is the tape's "(+1.2%)". Tile area,
+// colour and stroke all follow the price return over that window.
+export function renderIndexBoardSvg(movers: MarketMoverVM[], window: WindowInfo): string {
     if (movers.length === 0) return '';
 
-    // Same adaptive window as the TANKDAQ board: widen until something actually moved,
-    // so a quiet day reads as quiet rather than as fourteen identical grey blocks. Run
-    // over every index, parents and children alike, so a family's tiles are all sized
-    // against the same window.
-    const { deltas, info } = chooseWindow(
-        movers.map((m) => ({ key: m.key, value: m.value })),
-        Object.fromEntries(movers.map((m) => [m.key, m.series])),
-        now,
-    );
-    const deltaOf = new Map(movers.map((m, i) => [m.key, deltas[i]]));
-    const maxAbs = Math.max(...deltas.map((d) => Math.abs(d)), 0);
+    const retOf = new Map(movers.map((m) => [m.key, m.priceReturnPct]));
+    const maxAbs = Math.max(...movers.map((m) => Math.abs(m.priceReturnPct)), 0);
+    const info = window;
 
     // A ticker whose parent isn't on this board is drawn as a root rather than dropped -
     // an index is never silently missing because of a bad parent_key.
@@ -499,8 +540,8 @@ export function renderIndexBoardSvg(movers: MarketMoverVM[], now = Date.now()): 
     const families = roots.map((r) => kidsOf(r.key));
 
     const layout = layoutNested(
-        roots.map((m) => deltaOf.get(m.key) ?? 0),
-        families.map((kids) => kids.map((k) => deltaOf.get(k.key) ?? 0)),
+        roots.map((m) => retOf.get(m.key) ?? 0),
+        families.map((kids) => kids.map((k) => retOf.get(k.key) ?? 0)),
         BOARD_W,
         BOARD_H,
         { headerRatio: 0.3, headerMin: 5, headerMax: 11, padding: 0.9 },
@@ -527,23 +568,30 @@ export function renderIndexBoardSvg(movers: MarketMoverVM[], now = Date.now()): 
         }
         if (symSize < MIN_SYMBOL_SIZE) return '';
         const deltaSize = symSize * 0.72;
-        const showDelta = r.h > symSize * 2.2 && symSize >= MIN_LEGIBLE_SIZE;
+        // The quote line degrades: the full "45.23 (+1.2%)" if it fits, else just the
+        // "(+1.2%)", else nothing - the tooltip and aria label always carry the full
+        // quote, so a bare tile loses no information.
+        const quoteSizeFor = (t: string) => Math.min(deltaSize, (r.w - 1.2) / (t.length * QUOTE_CHAR_EM));
+        const quote = [m.quoteLabel, `(${m.returnLabel})`]
+            .map((t) => ({ text: t, size: quoteSizeFor(t) }))
+            .find((q) => q.size >= MIN_QUOTE_SIZE);
+        const showDelta = !!quote && r.h > symSize * 2.2 && symSize >= MIN_LEGIBLE_SIZE;
         const cx = (r.x + r.w / 2).toFixed(2);
         const neon = neonFor(delta);
         return `<text class="hc-mmb-sym" x="${cx}" y="${(r.y + r.h / 2 + (showDelta ? -0.2 : symSize * 0.35)).toFixed(2)}"
                           text-anchor="middle" font-size="${symSize.toFixed(2)}">${escapeHtml(text)}</text>
-                    ${showDelta ? `<text class="hc-mmb-delta" x="${cx}" y="${(r.y + r.h / 2 + deltaSize * 1.35).toFixed(2)}"
-                          text-anchor="middle" font-size="${deltaSize.toFixed(2)}" fill="rgb(${neon})">${formatSignedPct(delta)}</text>` : ''}`;
+                    ${showDelta && quote ? `<text class="hc-mmb-quote" x="${cx}" y="${(r.y + r.h / 2 + quote.size * 1.35).toFixed(2)}"
+                          text-anchor="middle" font-size="${quote.size.toFixed(2)}" fill="rgb(${neon})">${escapeHtml(quote.text)}</text>` : ''}`;
     };
 
-    const titleOf = (m: MarketMoverVM, delta: number, parent?: MarketMoverVM) =>
+    const titleOf = (m: MarketMoverVM, parent?: MarketMoverVM) =>
         `${m.displayName}${parent ? ` (${parent.displayName} · ${m.indexLabel})` : ''}: `
-        + `${formatSignedPct(delta)} over ${info.label}, ${m.valueLabel} overall`;
+        + `${m.priceLabel} Ember (${m.returnLabel} over ${info.label}), index ${m.valueLabel} overall`;
 
     const tiles = roots.map((m, i) => {
         const r = layout.roots[i];
         const kids = families[i];
-        const delta = deltaOf.get(m.key) ?? 0;
+        const delta = retOf.get(m.key) ?? 0;
         const mag = maxAbs > 0 ? Math.abs(delta) / maxAbs : 0;
         const neon = neonFor(delta);
 
@@ -552,7 +600,7 @@ export function renderIndexBoardSvg(movers: MarketMoverVM[], now = Date.now()): 
         const w = Math.max(r.w - 2 * BOARD_GUTTER, 0.1);
         const h = Math.max(r.h - 2 * BOARD_GUTTER, 0.1);
 
-        const title = titleOf(m, delta);
+        const title = titleOf(m);
         // A family's box is tinted in its own direction so the children read as sitting
         // INSIDE it; a leaf stays pure black against the board, exactly as before.
         const fill = kids.length > 0 ? `rgba(${neon}, 0.08)` : '#000000';
@@ -575,14 +623,14 @@ export function renderIndexBoardSvg(movers: MarketMoverVM[], now = Date.now()): 
                     </a>
                     ${kids.map((k, j) => {
                         const kr = layout.children[i][j];
-                        const kd = deltaOf.get(k.key) ?? 0;
+                        const kd = retOf.get(k.key) ?? 0;
                         const kmag = maxAbs > 0 ? Math.abs(kd) / maxAbs : 0;
                         const kneon = neonFor(kd);
                         const kx = kr.x + CHILD_GUTTER;
                         const ky = kr.y + CHILD_GUTTER;
                         const kw = Math.max(kr.w - 2 * CHILD_GUTTER, 0.1);
                         const kh = Math.max(kr.h - 2 * CHILD_GUTTER, 0.1);
-                        const kt = titleOf(k, kd, m);
+                        const kt = titleOf(k, m);
                         return `
                     <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/${escapeHtml(k.key)}/" aria-label="${escapeHtml(kt)}">
                         <title>${escapeHtml(kt)}</title>
@@ -595,7 +643,7 @@ export function renderIndexBoardSvg(movers: MarketMoverVM[], now = Date.now()): 
     }).join('');
 
     const nested = movers.length - roots.length;
-    const summary = `Index board: ${roots.length} indexes sized by their move over ${info.label}`
+    const summary = `Index board: ${roots.length} indexes sized by their price move over ${info.label}`
         + (nested > 0 ? `, with ${nested} league sub-indexes drawn inside the index each one slices` : '');
     return `
         <div class="hc-mmb">
@@ -605,7 +653,7 @@ export function renderIndexBoardSvg(movers: MarketMoverVM[], now = Date.now()): 
                 <rect x="0" y="0" width="${BOARD_W}" height="${BOARD_H}" fill="#000000"/>
                 ${tiles}
             </svg>
-            <p class="hc-mmb-caption">Tile size tracks the move over ${escapeHtml(info.label)}${info.widened ? ' (nothing moved in the last 24 hours)' : ''}${nested > 0 ? ' &middot; league slices sit inside the index they slice' : ''} &middot; <a href="/tankdaq/indexes/">Open the full board</a></p>
+            <p class="hc-mmb-caption">Tile size tracks the price move over ${escapeHtml(info.label)}${info.widened ? ' (nothing moved in the last 24 hours)' : ''}${nested > 0 ? ' &middot; league slices sit inside the index they slice' : ''} &middot; <a href="/tankdaq/indexes/">Open the full board</a></p>
         </div>`;
 }
 
@@ -644,7 +692,8 @@ export function renderMarketMoverCard(vm: MarketMoverVM, role?: 'gainer' | 'lose
                     <p class="hc-mm-desc">${escapeHtml(vm.description)}</p>
                 </header>
                 <div class="hc-mm-chartrow">
-                    <span class="hc-mm-value is-${vm.sign}">${vm.valueLabel}</span>
+                    <span class="hc-mm-quote is-${vm.sign}" data-quote-for="${escapeHtml(vm.key)}"><span class="hc-mm-price">${escapeHtml(vm.priceLabel)}</span> <span class="hc-mm-return">(${escapeHtml(vm.returnLabel)})</span></span>
+                    <span class="hc-mm-quote-label">Ember price &middot; ${escapeHtml(vm.window.short)} change</span>
                     <div class="hc-mm-chart">${renderTickerChartSvg(vm)}</div>
                 </div>
             </div>
@@ -673,20 +722,20 @@ export function renderTickerTape(movers: MarketMoverVM[]): string {
     // screen - and a headline tape wants headlines. The slices are one click away on
     // the board, which draws them inside their parent.
     const headline = movers.filter((m) => !m.parentKey);
-    // Marquee reads in tab_order (marketing order), not the section's value-desc order -
-    // both label strings come from the same VM, so the numbers can't disagree. Each item
-    // trails its ticker's newest settled slate game as a sentence (results[0] - same VM
-    // the cards render), in a deliberately quieter style than the symbol/value.
+    // Marquee reads in tab_order (marketing order), not the section's return-desc order -
+    // the quote string comes from the same VM the card prints, so the numbers can't
+    // disagree. Each item trails its ticker's newest settled slate game as a sentence
+    // (results[0] - same VM the cards render), in a deliberately quieter style.
     const items = [...(headline.length > 0 ? headline : movers)].sort((a, b) => a.tabOrder - b.tabOrder).map((m) => {
         const headline = m.results[0]
             ? ` <span class="hc-tape-headline">${escapeHtml(m.results[0].text)}</span>`
             : '';
         return `
-                <li class="hc-tape-item is-${m.sign}"><a class="hc-tape-link" href="/tankdaq/${escapeHtml(m.key)}/">${escapeHtml(m.displayName)}</a> <span class="hc-mm-value is-${m.sign}">${m.valueLabel}</span>${headline}</li>`;
+                <li class="hc-tape-item is-${m.sign}"><a class="hc-tape-link" href="/tankdaq/${escapeHtml(m.key)}/">${escapeHtml(m.displayName)}</a> <span class="hc-mm-quote is-${m.sign}">${escapeHtml(m.quoteLabel)}</span>${headline}</li>`;
     }).join('');
     const group = (hidden: boolean) => `<ul class="hc-tape-group"${hidden ? ' aria-hidden="true"' : ''}>${items}</ul>`;
     return `
-        <div class="hc-ticker-tape" aria-label="Ticker values — how tagged storylines have gone, not a forecast">
+        <div class="hc-ticker-tape" aria-label="Ember prices — how tagged storylines have gone, not a forecast">
             <div class="hc-tape-track">
                 ${group(false)}
                 ${group(true)}
@@ -702,8 +751,9 @@ export function renderTickerTape(movers: MarketMoverVM[]): string {
 
 export function renderMarketMoversSection(data: MarketMoversData): string {
     // Only the single top mover and (when one exists) the single top loser render -
-    // one card per tab, so the section stays compact. movers is value-desc sorted:
-    // gainer = first; loser = last, only if it actually moved down. Server default
+    // one card per tab, so the section stays compact. movers is sorted by price return
+    // over the section window: gainer = first; loser = last, only if its price actually
+    // fell. Server default
     // view is "all" so the no-JS page shows both cards; the island reveals the tab
     // strip and flips the view to "gainers" (the mockup's default) in the same pass -
     // the gainers button ships aria-pressed to match that JS state.
@@ -714,24 +764,27 @@ export function renderMarketMoversSection(data: MarketMoversData): string {
     const ranked = headline.length > 0 ? headline : data.movers;
     const gainer = ranked[0];
     const last = ranked[ranked.length - 1];
-    const loser = last && last !== gainer && last.value < 0 ? last : null;
+    const loser = last && last !== gainer && last.priceReturnPct < 0 ? last : null;
     const cards = gainer
         ? renderMarketMoverCard(gainer, 'gainer') + (loser ? renderMarketMoverCard(loser, 'loser') : '')
         : '';
     // The board sits AFTER the grid, never inside it: the gainers/losers rules are
     // scoped to .hc-mm-grid's descendants, so a sibling can't be hidden by a tab. It
     // also renders in the empty branch - with no card to show, the whole-board view is
-    // the one thing still worth showing.
-    const board = renderIndexBoardSvg(data.movers);
+    // the one thing still worth showing. The price note follows it in both branches:
+    // every surface that prints an Ember price ships PRICE_NOTE (ticker-price.ts), and
+    // one line under the board covers the tape, the cards and the tiles together.
+    const board = renderIndexBoardSvg(data.movers, data.window);
+    const priceNote = `<p class="hc-mm-price-note">${escapeHtml(data.priceNote)}</p>`;
     const body = !gainer
-        ? `<p class="hc-mm-empty">No ticker activity yet — storylines get tagged as they publish.</p>${board}`
+        ? `<p class="hc-mm-empty">No ticker activity yet — storylines get tagged as they publish.</p>${board}${priceNote}`
         : `
         <div class="hc-mm-tabs" data-hc-mm-tabs hidden>
             <button type="button" class="hc-mm-tab is-gainers" data-mm-view="gainers" aria-pressed="true">Top Gainers</button>
             <button type="button" class="hc-mm-tab is-losers" data-mm-view="losers" aria-pressed="false">Top Losers</button>
         </div>
         <div class="hc-mm-grid" data-hc-mm-grid data-mm-view="all">${cards}</div>
-        ${board}`;
+        ${board}${priceNote}`;
 
     return `
         <section id="market-movers" class="hc-section" aria-labelledby="hc-mm-heading">
@@ -760,11 +813,21 @@ export function marketMoversStyles(): string {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
             font-size: 1.45rem; letter-spacing: 0.03em; text-transform: uppercase;
         }
-        .hc-tape-item, .hc-tape-item .hc-mm-value { font-weight: 800; }
-        .hc-tape-item .hc-mm-value { font-size: 1.3rem; }
-        .hc-tape-item.is-pos, .hc-tape-item.is-pos .hc-mm-value { color: #2f9e1e; }
-        .hc-tape-item.is-neg, .hc-tape-item.is-neg .hc-mm-value { color: #e33a24; }
-        .hc-tape-item.is-zero, .hc-tape-item.is-zero .hc-mm-value { color: #5b6572; }
+        .hc-tape-item, .hc-tape-item .hc-mm-quote { font-weight: 800; }
+        /* The quote ("45.23 (+1.2%)") is about twice the old value's length - a size
+           down keeps every symbol's turn on screen the same length. */
+        .hc-tape-item .hc-mm-quote { font-size: 1.15rem; white-space: nowrap; }
+        .hc-tape-item.is-pos, .hc-tape-item.is-pos .hc-mm-quote { color: #2f9e1e; }
+        .hc-tape-item.is-neg, .hc-tape-item.is-neg .hc-mm-quote { color: #e33a24; }
+        .hc-tape-item.is-zero, .hc-tape-item.is-zero .hc-mm-quote { color: #5b6572; }
+        /* The parenthesised return sits a step under the price wherever a quote is
+           split into its two parts (the card); the tape prints the joined string. */
+        .hc-mm-return { font-size: 0.82em; }
+        .hc-mm-quote-label {
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.62rem;
+            letter-spacing: 0.1em; text-transform: uppercase; color: #10203a; margin: -0.1rem 0 0.2rem;
+        }
+        .hc-mm-price-note { margin: 0.5rem 0 0; font-size: 0.72rem; line-height: 1.4; color: rgba(255,255,255,0.55); }
         .hc-tape-item {
             text-shadow:
                 1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff,
@@ -860,17 +923,17 @@ export function marketMoversStyles(): string {
             font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 9px;
             letter-spacing: 0.04em; fill: #10203a;
         }
-        .hc-mm-chartrow .hc-mm-value {
+        .hc-mm-chartrow .hc-mm-quote {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900;
-            font-size: clamp(1.15rem, 4vw, 1.5rem); flex-shrink: 0;
+            font-size: clamp(1.15rem, 4vw, 1.5rem); flex-shrink: 0; white-space: nowrap;
             text-shadow:
                 1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff,
                 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff,
                 2.5px 2.5px 3px rgba(0,0,0,0.35);
         }
-        .hc-mm-chartrow .hc-mm-value.is-pos { color: #2f9e1e; }
-        .hc-mm-chartrow .hc-mm-value.is-neg { color: #e33a24; }
-        .hc-mm-chartrow .hc-mm-value.is-zero { color: #5b6572; }
+        .hc-mm-chartrow .hc-mm-quote.is-pos { color: #2f9e1e; }
+        .hc-mm-chartrow .hc-mm-quote.is-neg { color: #e33a24; }
+        .hc-mm-chartrow .hc-mm-quote.is-zero { color: #5b6572; }
         .hc-mm-chart-empty {
             font-size: 0.82rem; font-weight: 800; color: rgba(255,255,255,0.85); margin: 0;
             background: #160c27; border: 1.5px solid rgba(47,230,217,0.4); border-radius: 8px; padding: 0.8rem 0.9rem;
@@ -936,7 +999,7 @@ export function marketMoversStyles(): string {
             background: #000000; border: 2px solid rgba(47, 230, 217, 0.35); border-radius: 10px;
         }
         .hc-mmb-sym { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; fill: #ffffff; }
-        .hc-mmb-delta { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; }
+        .hc-mmb-quote { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; }
         /* Hover lives on the <a>, so the whole tile lights up rather than just the
            glyph the cursor happens to be over. */
         .hc-mmb-tile { cursor: pointer; transition: filter 0.16s ease; }
