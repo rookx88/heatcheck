@@ -9,12 +9,54 @@
 // widget, and Inbox host the TANKDAQ content pages mount).
 // ===================================================================================
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Fishtank, type DeckPayload } from './components/Fishtank';
 import { ContentChrome } from './components/ContentChrome';
 import { ArticleIndexes } from './components/ArticleIndexes';
 import { ArticleMarket, type MarketPanelSeed } from './components/ArticleMarket';
+
+// Fishtank's stage box is this tall at every scale - see its `scale` prop note.
+const STAGE_H = 420;
+
+// Phone sizing. The deck shrinks only as far as it must for the cube AND its turn
+// arrows to fit inside the rail's panel: each arrow sits (200s + 18)px from the cube's
+// centre and is 40px wide, so the pair spans 400s + 76px, plus ~16px of breathing
+// room, against a panel as wide as the viewport less the page's 8px side padding.
+// Solving 400s + 92 <= vw - 16 gives the line below. Full size wherever that fits,
+// which is every desktop and most tablets; floored so a very narrow phone still gets
+// a legible cube. Mirrored by the min-height clamp on .tank-article-artifact in
+// tank-article-template.ts, which reserves the space before this mounts - change one,
+// change both.
+function deckScale(): number {
+    const vw = document.documentElement.clientWidth;
+    return Math.min(1, Math.max(0.6, (vw - 108) / 400));
+}
+
+// Re-sized on resize so a phone rotated to landscape gets its full-size cube back.
+// Fishtank paints its stage scaled but keeps the 420px layout box, so a smaller cube
+// would leave STAGE_H * (1 - s) / 2 of unpainted stage above it and below it; the
+// wrapper pulls exactly that back so the panel tightens around the cube. Margins, not
+// a transform: a transformed ancestor would become the containing block for the fixed
+// captain widget and its modal overlays (same reason the homepage showcase gives).
+const ArticleDeck: React.FC<{ payload: DeckPayload; slug: string }> = ({ payload, slug }) => {
+    const [scale, setScale] = useState(deckScale);
+    useEffect(() => {
+        const onResize = () => setScale(deckScale());
+        window.addEventListener('resize', onResize);
+        window.addEventListener('orientationchange', onResize);
+        return () => {
+            window.removeEventListener('resize', onResize);
+            window.removeEventListener('orientationchange', onResize);
+        };
+    }, []);
+    const reclaim = Math.round((STAGE_H * (1 - scale)) / 2);
+    return (
+        <div style={reclaim ? { margin: `${-reclaim}px 0` } : undefined}>
+            <Fishtank payload={payload} slug={slug} scale={scale} />
+        </div>
+    );
+};
 
 function mount() {
     // "Polymarket prices" - this market's current prices, in place of the dated
@@ -63,7 +105,7 @@ function mount() {
     if (!root || !dataEl || !dataEl.textContent) return;
     try {
         const { slug, ...payload } = JSON.parse(dataEl.textContent) as DeckPayload & { slug: string };
-        createRoot(root).render(<Fishtank payload={payload} slug={slug} />);
+        createRoot(root).render(<ArticleDeck payload={payload} slug={slug} />);
     } catch (err) {
         console.error('[Tank Article Deck] Failed to parse deck payload:', err);
     }

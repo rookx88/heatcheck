@@ -452,13 +452,36 @@ export function generateTankArticlePage(
            banner - wrap it so the banner drops to its own line on narrow phones
            instead of clipping past the viewport edge. */
         .hc-topbar { flex-wrap: wrap; row-gap: 0.75rem; }
+        /* Pins to the topbar's right edge as one unit - margin-left:auto lives on the
+           group, not on the banner, so it still works when the banner is hidden for a
+           signed-in reader and the chip is the only thing in it. Centred on the logo's
+           line, the way the homepage header centres its own right-hand cluster. */
+        .tank-article-topbar-right {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 0.75rem 0.9rem;
+            margin-left: auto;
+            align-self: center;
+        }
+        /* MapHud pins itself absolutely (it floats over the map pages), which in a
+           slot gives the slot no width of its own. That is harmless where the slot
+           stands alone - the account and portfolio topbars - but here it sits beside
+           the register banner: the "Log in" pill slid under the banner's edge, and,
+           shrink-wrapped to the slot's 2.4rem minimum, broke onto two lines. Back in
+           flow, the slot sizes to the pill or the chip and the gap between it and the
+           banner is real. The mini nav then has to overlay explicitly, since it no
+           longer rides an absolutely positioned parent - otherwise opening it would
+           push the whole topbar down. */
+        .tank-article-topbar-right .map-hud { position: relative; top: auto; right: auto; }
+        .tank-article-topbar-right .map-hud__menu { position: absolute; top: 100%; right: 0; }
         .tank-article-register-banner {
             display: block;
             width: clamp(220px, 46vw, 420px);
             border-radius: 12px;
             overflow: hidden;
             flex-shrink: 0;
-            margin-left: auto;
             box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(47, 230, 217, 0.25);
             transition: transform 0.15s ease, filter 0.2s ease;
         }
@@ -580,6 +603,13 @@ export function generateTankArticlePage(
            sitting inside it. The roomier measure is a welcome side effect. */
         @media (max-width: 1179px) {
             .tank-article { padding-left: 0.5rem; padding-right: 0.5rem; }
+            /* The deck renders smaller on a phone (deckScale in tank-article-deck-
+               client.tsx), so the space reserved for it before hydration shrinks to
+               match, or the smaller cube would sit in the middle of a full-height gap
+               and the page would jump when it mounted. 420px times that same scale:
+               105vw - 113.4px is 420 * (100vw - 108px) / 400, the client's formula
+               in CSS. Change one, change both. */
+            .tank-article-artifact { min-height: clamp(252px, 105vw - 113.4px, 420px); }
         }
 
         /* Desktop: story on the left, indexes and the Call deck stacked on the right.
@@ -631,16 +661,24 @@ export function generateTankArticlePage(
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
                 <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
             </a>
-            <a class="tank-article-register-banner" href="${baseUrl}/login/" aria-label="Register for HeatChecks - free to play">
-                <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
-            </a>
+            <!-- The right-hand cluster, grouped like the homepage header's
+                 .hc-header-right: the register banner (logged out) and the identity
+                 slot. ContentChrome portals MapHud into [data-hc-hud-slot] whenever the
+                 page has one, so the username + Ember chip sits on the logo's line -
+                 without it the chip fell back to a row of its own under the topbar,
+                 which on these pages landed just above the rail's panel. -->
+            <div class="tank-article-topbar-right">
+                <a class="tank-article-register-banner" href="${baseUrl}/login/" aria-label="Register for HeatChecks - free to play">
+                    <img src="/assets/images/register-banner.webp" alt="A new way to enjoy sports content - build your pet, team, franchise. Click here, free to play, to start" width="840" height="210" loading="lazy">
+                </a>
+                <div class="hc-topbar-hud" data-hc-hud-slot></div>
+            </div>
         </div>
 
-        <!-- Identity chrome slot (ContentChrome, mounted by tank-article-deck.js):
-             the username + Ember chip and its mini nav for signed-in readers. Sits
-             under the topbar as its own row, the placement ContentChrome.css's
-             .hc-chrome-hud is written for - it reserves the chip's height so the
-             article doesn't jump when hydration finishes. -->
+        <!-- ContentChrome's React root (mounted by tank-article-deck.js). The chip
+             itself is portaled up into the topbar slot above; what renders here is the
+             fixed captain widget and the Inbox modal host, both out of flow, so this
+             takes no space. -->
         <div id="tank-article-chrome"></div>
 
         <!-- Two wrappers that do NOTHING below the desktop breakpoint: they carry no
