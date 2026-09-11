@@ -16,6 +16,10 @@
   display: flex;
   flex-direction: column;
   align-items: flex-end;
+  /* The body sprite's rendered box (square). One variable so the speech bubble
+     can aim its tail at the head at every size - the desktop rules below only
+     override this, never the img dimensions directly. */
+  --pet-size: 140px;
 }
 
 .pet-widget--card {
@@ -80,8 +84,8 @@
 
 .pet-widget__pet .pet-portrait__img {
   display: block;
-  width: 140px;
-  height: 140px;
+  width: var(--pet-size);
+  height: var(--pet-size);
   object-fit: contain;
   /* Layered depth: a tight dark cast for weight + a teal rim glow lifting the
      silhouette off the background. */
@@ -202,9 +206,8 @@ button.pet-widget__name--prompt:focus-visible {
   }
 
   /* Homepage (fixed): the captain gets real presence - roughly 2.5x mobile. */
-  .pet-widget--fixed .pet-widget__pet .pet-portrait__img {
-    width: 350px;
-    height: 350px;
+  .pet-widget--fixed {
+    --pet-size: 350px;
   }
 
   .pet-widget--fixed .pet-widget__pet::after {
@@ -224,15 +227,11 @@ button.pet-widget__name--prompt:focus-visible {
      letterbox below the top-anchored card + a small inset, so his feet sit just
      above the card's bottom edge. */
   .pet-widget--card {
+    --pet-size: 400px;
     /* 400px puppy with ~60px overlapping the card's right edge - shifted right so
        he stays clear of hotspots along the card's rim. */
     right: max(8px, calc((100vw - min(100vw, min(56.25vh, 640px))) / 2 - 340px));
     bottom: max(14px, calc(100vh - min(100vh, calc(100vw / 0.5625)) + 14px));
-  }
-
-  .pet-widget--card .pet-widget__pet .pet-portrait__img {
-    width: 400px;
-    height: 400px;
   }
 
   .pet-widget--card .pet-widget__pet::after {
@@ -289,8 +288,18 @@ button.pet-widget__name--prompt:focus-visible {
    border so the tail reads as part of the same shape. */
 .pet-widget__bubble {
   position: absolute;
-  bottom: calc(100% + 14px);
-  right: 0;
+  /* Aimed at the head, not the box. In the 1158px sprites (base, happy and sad
+     share one canvas and pose) the head's mass is centered ~55% of the width in
+     from the RIGHT edge, and the hair starts ~5% below the top - the rest of the
+     square is empty canvas and the tail curling off to the right. The tail's
+     apex sits 51px in from the bubble's right edge (::before: right 39px + 12px
+     half-width), so shifting the bubble left by 55% of the sprite minus that
+     puts the apex over the face at 140px, 350px and 400px alike. Pinning
+     right:0 instead put it over the tail spikes once the pet grew past mobile
+     size. The bottom offset likewise pulls the tail down to the hairline rather
+     than hovering above the sprite's empty top margin. */
+  bottom: calc(100% + 18px - var(--pet-size) * 0.05);
+  right: calc(var(--pet-size) * 0.55 - 51px);
   width: max-content;
   max-width: min(340px, 84vw);
   display: flex;
