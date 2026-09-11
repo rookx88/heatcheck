@@ -22,6 +22,40 @@ import { ContentChrome } from './components/ContentChrome';
 import { formatGameTime, formatSettleDate, hasKickoffPassed } from './tank-deck-format';
 import { getHoldings, type HoldingsResponse, type HoldingPosition, type TradeHistoryItem } from './tankdaq-shares-client';
 
+// The page is a stadium scoreboard (styles: my-portfolio-template.ts). LED face for
+// numbers, labels and short tokens only; anything read as a sentence stays in Nunito.
+
+// ---------------------------------------------------------------------------------
+// Score boxes - the big readouts at the top of each section
+// ---------------------------------------------------------------------------------
+
+interface Score {
+    label: string;
+    value: string | null; // null = awaiting data, shown as unlit dashes
+    tone?: 'pos' | 'neg' | 'zero';
+}
+
+// Rendered by each section rather than the page, because each section owns its own
+// fetch. They render in EVERY state: while loading (and on the onboarding / auth /
+// error states) the boxes show dashes like a board awaiting data, which also keeps the
+// page from jumping when the numbers land.
+function ScoreBoxes({ scores }: { scores: Score[] }) {
+    return (
+        <div className="hc-sb-scores">
+            {scores.map((s) => (
+                <div key={s.label} className="hc-sb-score">
+                    <span className="hc-sb-score-label">{s.label}</span>
+                    {s.value === null ? (
+                        <span className="hc-sb-score-value is-pending" aria-hidden="true">--</span>
+                    ) : (
+                        <span className={`hc-sb-score-value${s.tone ? ` is-${s.tone}` : ''}`}>{s.value}</span>
+                    )}
+                </div>
+            ))}
+        </div>
+    );
+}
+
 // ---------------------------------------------------------------------------------
 // Tanks (picks) - the former My Tanks page
 // ---------------------------------------------------------------------------------
@@ -54,6 +88,26 @@ interface MinePicks {
 
 const tankHref = (slug: string) => `/the-tank/articles/${encodeURIComponent(slug)}/`;
 
+// WON and LOST side by side, like HOME and GUEST.
+function tankScores(d: MinePicks | null): Score[] {
+    return [
+        { label: 'Won', value: d ? String(d.record.correct) : null },
+        { label: 'Lost', value: d ? String(d.record.incorrect) : null },
+        { label: 'Ember', value: d ? (d.record.emberTotal > 0 ? `+${d.record.emberTotal.toLocaleString('en-US')}` : '0') : null },
+        { label: 'Open', value: d ? String(d.pending.length) : null },
+    ];
+}
+
+// "PICK  FALCONS" - a small caption beside an LED token.
+function PickTag({ side }: { side: string }) {
+    return (
+        <span className="hc-sb-pair">
+            <span className="hc-sb-cap">Pick</span>
+            <span className="hc-portfolio-side hc-sb-led">{side}</span>
+        </span>
+    );
+}
+
 function PendingList({ picks }: { picks: PendingPick[] }) {
     if (picks.length === 0) {
         return (
@@ -74,19 +128,28 @@ function PendingList({ picks }: { picks: PendingPick[] }) {
                     : null;
                 return (
                     <li key={p.slug} className="hc-portfolio-row">
-                        <a href={tankHref(p.slug)}>{p.tagline}</a>
-                        <div className="hc-portfolio-meta">
-                            <span className="hc-portfolio-side">
-                                You took &ldquo;{p.side}&rdquo;{pct !== null ? ` at ${pct}%` : ''}
-                            </span>
-                            {started ? (
-                                <span className="hc-portfolio-live">In progress — settles soon</span>
-                            ) : (
-                                <>
-                                    {p.kickoff && <span>{formatGameTime(p.kickoff)}</span>}
-                                    <span>Settles after the game</span>
-                                </>
-                            )}
+                        <div className="hc-portfolio-rowbody">
+                            <a href={tankHref(p.slug)}>{p.tagline}</a>
+                            <div className="hc-portfolio-meta">
+                                <PickTag side={p.side} />
+                                {pct !== null && (
+                                    <span className="hc-sb-pair">
+                                        <span className="hc-sb-cap">At</span>
+                                        <span className="hc-sb-led hc-sb-amber">{pct}%</span>
+                                    </span>
+                                )}
+                                {started ? (
+                                    <>
+                                        <span className="hc-sb-live">Live</span>
+                                        <span>Settles soon</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        {p.kickoff && <span className="hc-sb-led">{formatGameTime(p.kickoff)}</span>}
+                                        <span>Settles after the game</span>
+                                    </>
+                                )}
+                            </div>
                         </div>
                     </li>
                 );
@@ -95,9 +158,10 @@ function PendingList({ picks }: { picks: PendingPick[] }) {
     );
 }
 
-function SettledList({ picks, record, cursor, loadingMore, onLoadMore }: {
+// The W-L record and Ember total that used to head this list now live on the score
+// boxes above it, so the list is just the results.
+function SettledList({ picks, cursor, loadingMore, onLoadMore }: {
     picks: SettledPick[];
-    record: MinePicks['record'];
     cursor: string | null;
     loadingMore: boolean;
     onLoadMore: () => void;
@@ -107,21 +171,22 @@ function SettledList({ picks, record, cursor, loadingMore, onLoadMore }: {
     }
     return (
         <>
-            <p className="hc-portfolio-record">
-                {record.correct}-{record.incorrect} on settled calls
-                {record.emberTotal > 0 && <> · <span className="hc-portfolio-ember">+{record.emberTotal} Ember</span></>}
-            </p>
             <ul className="hc-portfolio-list">
                 {picks.map((p) => (
                     <li key={p.slug} className="hc-portfolio-row">
-                        <a href={tankHref(p.slug)}>{p.tagline}</a>
-                        <div className="hc-portfolio-meta">
-                            <span className={`hc-portfolio-badge hc-portfolio-badge--${p.result}`}>
-                                {p.result === 'correct' ? 'Correct' : 'Incorrect'}
-                            </span>
-                            <span className="hc-portfolio-side">You took &ldquo;{p.side}&rdquo;</span>
-                            {p.settledAt && <span>{formatSettleDate(p.settledAt).replace('Resolves', 'Settled')}</span>}
-                            {p.emberAwarded > 0 && <span className="hc-portfolio-ember">+{p.emberAwarded} Ember</span>}
+                        {/* The lamp shows one letter; the hidden word is what a screen
+                            reader announces. */}
+                        <span className={`hc-sb-lamp hc-sb-lamp--${p.result}`}>
+                            <span aria-hidden="true">{p.result === 'correct' ? 'W' : 'L'}</span>
+                            <span className="hc-sb-vh">{p.result === 'correct' ? 'Correct' : 'Incorrect'}</span>
+                        </span>
+                        <div className="hc-portfolio-rowbody">
+                            <a href={tankHref(p.slug)}>{p.tagline}</a>
+                            <div className="hc-portfolio-meta">
+                                <PickTag side={p.side} />
+                                {p.settledAt && <span className="hc-sb-led">{formatSettleDate(p.settledAt).replace('Resolves', 'Settled')}</span>}
+                                {p.emberAwarded > 0 && <span className="hc-sb-led hc-portfolio-ember">+{p.emberAwarded} Ember</span>}
+                            </div>
                         </div>
                     </li>
                 ))}
@@ -188,14 +253,24 @@ function TanksSection() {
         })();
     }, []);
 
-    if (phase === 'loading') return <p className="hc-portfolio-loading">Loading your Tanks…</p>;
-    if (phase === 'onboarding') {
-        return <p className="hc-portfolio-empty">Finish setting up your account to see your Tanks. <a href="/welcome/">Finish setup</a></p>;
+    if (phase !== 'ready' || !data) {
+        return (
+            <>
+                <ScoreBoxes scores={tankScores(null)} />
+                {phase === 'loading' && <p className="hc-portfolio-loading">Loading your Tanks…</p>}
+                {phase === 'onboarding' && (
+                    <p className="hc-portfolio-empty">Finish setting up your account to see your Tanks. <a href="/welcome/">Finish setup</a></p>
+                )}
+                {(phase === 'error' || (phase === 'ready' && !data)) && (
+                    <p className="hc-portfolio-loading">Could not load your picks. Try refreshing.</p>
+                )}
+            </>
+        );
     }
-    if (phase === 'error' || !data) return <p className="hc-portfolio-loading">Could not load your picks. Try refreshing.</p>;
 
     return (
         <>
+            <ScoreBoxes scores={tankScores(data)} />
             <div className="hc-portfolio-tabs" role="tablist" aria-label="Tank picks">
                 <button type="button" role="tab" aria-selected={tab === 'pending'}
                     className={`hc-portfolio-tab${tab === 'pending' ? ' is-active' : ''}`} onClick={() => setTab('pending')}>
@@ -210,7 +285,7 @@ function TanksSection() {
                 ? <PendingList picks={data.pending} />
                 : (
                     <SettledList
-                        picks={data.settled} record={data.record}
+                        picks={data.settled}
                         cursor={data.settledCursor} loadingMore={loadingMore} onLoadMore={loadMore}
                     />
                 )}
@@ -238,7 +313,18 @@ function tradeDate(iso: string): string {
 }
 const tickerHref = (key: string) => `/tankdaq/${encodeURIComponent(key)}/`;
 
-function ActivePositions({ positions, totals, balance }: { positions: HoldingPosition[]; totals: HoldingsResponse['totals']; balance: number }) {
+function indexScores(d: HoldingsResponse | null): Score[] {
+    return [
+        { label: 'Value', value: d ? d.totals.marketValue.toLocaleString('en-US') : null },
+        { label: 'P/L', value: d ? fmtSigned(d.totals.unrealizedPnl) : null, tone: d ? signOf(d.totals.unrealizedPnl) : undefined },
+        { label: 'Balance', value: d ? d.balance.toLocaleString('en-US') : null },
+        { label: 'Held', value: d ? String(d.positions.length) : null },
+    ];
+}
+
+// The Ember balance that used to trail this table now lives on the score boxes;
+// realized P/L stays here, and only when there is some.
+function ActivePositions({ positions, totals }: { positions: HoldingPosition[]; totals: HoldingsResponse['totals'] }) {
     if (positions.length === 0) {
         return (
             <p className="hc-portfolio-empty">
@@ -286,10 +372,14 @@ function ActivePositions({ positions, totals, balance }: { positions: HoldingPos
                     </tfoot>
                 </table>
             </div>
-            <p className="hc-portfolio-balance">
-                Ember balance <strong>{balance.toLocaleString('en-US')}</strong>
-                {totals.realizedPnl !== 0 && <> &middot; realized <span className={`is-${signOf(totals.realizedPnl)}`}>{fmtSigned(totals.realizedPnl)}</span></>}
-            </p>
+            {totals.realizedPnl !== 0 && (
+                <p className="hc-portfolio-balance">
+                    <span className="hc-sb-pair">
+                        <span className="hc-sb-cap">Realized</span>
+                        <span className={`hc-sb-led is-${signOf(totals.realizedPnl)}`}>{fmtSigned(totals.realizedPnl)}</span>
+                    </span>
+                </p>
+            )}
         </>
     );
 }
@@ -302,17 +392,22 @@ function TradeHistory({ trades }: { trades: TradeHistoryItem[] }) {
         <ul className="hc-portfolio-list">
             {trades.map((t) => (
                 <li key={t.id} className="hc-portfolio-row">
-                    <div className="hc-portfolio-traderow">
-                        <span className={`hc-portfolio-badge hc-portfolio-badge--${t.side}`}>{t.side === 'buy' ? 'Buy' : 'Sell'}</span>
-                        <a href={tickerHref(t.tickerKey)}>{t.displayName}</a>
-                        <span className="hc-portfolio-tradeqty">{t.shares.toLocaleString('en-US')} @ {fmtEmber(t.price)}</span>
-                    </div>
-                    <div className="hc-portfolio-meta">
-                        <span className="hc-portfolio-ember">{t.side === 'buy' ? '−' : '+'}{t.emberAmount.toLocaleString('en-US')} Ember</span>
-                        {t.side === 'sell' && t.realizedPnl !== null && (
-                            <span className={`is-${signOf(t.realizedPnl)}`}>{fmtSigned(t.realizedPnl)} realized</span>
-                        )}
-                        <span>{tradeDate(t.createdAt)}</span>
+                    <div className="hc-portfolio-rowbody">
+                        <div className="hc-portfolio-traderow">
+                            <span className={`hc-portfolio-badge hc-portfolio-badge--${t.side}`}>{t.side === 'buy' ? 'Buy' : 'Sell'}</span>
+                            <a href={tickerHref(t.tickerKey)}>{t.displayName}</a>
+                            <span className="hc-sb-led hc-sb-amber">{t.shares.toLocaleString('en-US')} @ {fmtEmber(t.price)}</span>
+                        </div>
+                        <div className="hc-portfolio-meta">
+                            <span className="hc-sb-led hc-portfolio-ember">{t.side === 'buy' ? '−' : '+'}{t.emberAmount.toLocaleString('en-US')} Ember</span>
+                            {t.side === 'sell' && t.realizedPnl !== null && (
+                                <span className="hc-sb-pair">
+                                    <span className="hc-sb-cap">Realized</span>
+                                    <span className={`hc-sb-led is-${signOf(t.realizedPnl)}`}>{fmtSigned(t.realizedPnl)}</span>
+                                </span>
+                            )}
+                            <span className="hc-sb-led">{tradeDate(t.createdAt)}</span>
+                        </div>
                     </div>
                 </li>
             ))}
@@ -339,16 +434,24 @@ function IndexesSection() {
         })();
     }, []);
 
-    if (phase === 'loading') return <p className="hc-portfolio-loading">Loading your indexes…</p>;
-    if (phase === 'auth') {
-        // Reached by deep-linking ?tab=indexes while logged out or un-onboarded; the
-        // Tanks tab would have redirected. Say what to do rather than bouncing.
-        return <p className="hc-portfolio-empty"><a href="/login/">Log in</a> to see your index holdings.</p>;
+    if (phase !== 'ready' || !data) {
+        return (
+            <>
+                <ScoreBoxes scores={indexScores(null)} />
+                {phase === 'loading' && <p className="hc-portfolio-loading">Loading your indexes…</p>}
+                {/* Reached by deep-linking ?tab=indexes while logged out or un-onboarded;
+                    the Tanks tab would have redirected. Say what to do rather than bouncing. */}
+                {phase === 'auth' && <p className="hc-portfolio-empty"><a href="/login/">Log in</a> to see your index holdings.</p>}
+                {(phase === 'error' || (phase === 'ready' && !data)) && (
+                    <p className="hc-portfolio-loading">Could not load your holdings. Try refreshing.</p>
+                )}
+            </>
+        );
     }
-    if (phase === 'error' || !data) return <p className="hc-portfolio-loading">Could not load your holdings. Try refreshing.</p>;
 
     return (
         <>
+            <ScoreBoxes scores={indexScores(data)} />
             <div className="hc-portfolio-tabs" role="tablist" aria-label="Index holdings">
                 <button type="button" role="tab" aria-selected={tab === 'active'}
                     className={`hc-portfolio-tab${tab === 'active' ? ' is-active' : ''}`} onClick={() => setTab('active')}>
@@ -360,7 +463,7 @@ function IndexesSection() {
                 </button>
             </div>
             {tab === 'active'
-                ? <ActivePositions positions={data.positions} totals={data.totals} balance={data.balance} />
+                ? <ActivePositions positions={data.positions} totals={data.totals} />
                 : <TradeHistory trades={data.trades} />}
             <p className="hc-portfolio-note">{data.priceNote}</p>
         </>
@@ -383,20 +486,25 @@ function MyPortfolioPage() {
         window.history.replaceState(null, '', url);
     };
 
+    // Steel bezel around a matte black board, the page title on a marquee sign.
     return (
-        <div className="hc-portfolio-card">
-            <h1>My Portfolio</h1>
-            <div className="hc-portfolio-toptabs" role="tablist" aria-label="Portfolio sections">
-                <button type="button" role="tab" aria-selected={tab === 'tanks'}
-                    className={`hc-portfolio-toptab${tab === 'tanks' ? ' is-active' : ''}`} onClick={() => select('tanks')}>
-                    Tanks
-                </button>
-                <button type="button" role="tab" aria-selected={tab === 'indexes'}
-                    className={`hc-portfolio-toptab${tab === 'indexes' ? ' is-active' : ''}`} onClick={() => select('indexes')}>
-                    Indexes
-                </button>
+        <div className="hc-sb-frame">
+            <div className="hc-sb">
+                <header className="hc-sb-marquee">
+                    <h1>My Portfolio</h1>
+                </header>
+                <div className="hc-sb-toptabs" role="tablist" aria-label="Portfolio sections">
+                    <button type="button" role="tab" aria-selected={tab === 'tanks'}
+                        className={`hc-sb-toptab${tab === 'tanks' ? ' is-active' : ''}`} onClick={() => select('tanks')}>
+                        Tanks
+                    </button>
+                    <button type="button" role="tab" aria-selected={tab === 'indexes'}
+                        className={`hc-sb-toptab${tab === 'indexes' ? ' is-active' : ''}`} onClick={() => select('indexes')}>
+                        Indexes
+                    </button>
+                </div>
+                {tab === 'tanks' ? <TanksSection /> : <IndexesSection />}
             </div>
-            {tab === 'tanks' ? <TanksSection /> : <IndexesSection />}
         </div>
     );
 }
