@@ -150,6 +150,11 @@ const NEW_SITE_IMAGES = [
     'checknav.webp',
     'heatchecks-logo.png',
     'heatchecks-logo.webp',
+    // Opaque wordmark for the Hall of Fame crest (components/HallOfFameModal.tsx):
+    // heatchecks-logo.webp's lettering is mostly semi-transparent pixels, so the
+    // gold ribbon it overlaps showed through it. Same art with the alpha lifted to
+    // solid inside the letters (edges kept soft), derived with sharp.
+    'heatchecks-logo-solid.webp',
     'mudpuppy-default.png',
     'mudpuppy-default.webp',
     'mudpuppy-football.png',

@@ -156,12 +156,14 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({ onClose }) => 
             >
                 <div className="tank-modal-header">
                     {/* Wordmark stacked above the ribbon and overlapping its top edge,
-                        layered on top - the reference art's banner-under-crest stack. */}
+                        layered on top - the reference art's banner-under-crest stack.
+                        The -solid variant: the standard wordmark's lettering is mostly
+                        semi-transparent pixels, so the ribbon showed through it here. */}
                     <span className="hof-title">
                         <span className="hof-ribbon">Hall of Fame</span>
                         <img
                             className="hof-logo"
-                            src="/assets/images/heatchecks-logo.webp"
+                            src="/assets/images/heatchecks-logo-solid.webp"
                             alt="HeatChecks"
                             width="500"
                             height="241"
@@ -230,6 +232,15 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({ onClose }) => 
                             </p>
                         )
                     )}
+
+                    {/* What the ranking figure is - mirrors the definition in
+                        add_lifetime_earned_to_ember_balances.sql, in plain words. */}
+                    <p className="hof-disclaimer">
+                        <strong>Ember earned</strong> counts Ember paid out on settled picks (wins and the
+                        participation Ember on losses), Ember your Mud Puppy finds, and profit from selling
+                        TANKDAQ shares above what you paid. It does not include starting balances,
+                        adjustments, or the sale proceeds themselves, and spending never lowers it.
+                    </p>
                 </div>
             </div>
         </div>
