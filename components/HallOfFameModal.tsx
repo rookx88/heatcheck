@@ -10,6 +10,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { EmberIcon } from './MapHud';
+import { PET_IMAGE_SRC, petImageFilter } from './petRender';
 import './TankScreen.css';
 import './HallOfFameModal.css';
 
@@ -17,6 +18,9 @@ interface HallOfFameRow {
     rank: number;
     username: string;
     earned: number;
+    // The account's Captain pet, drawn as the avatar with the same tint recipe every
+    // other surface uses (petRender.ts); null = no pet yet, fall back to an initial.
+    pet: { renderMode: string; renderConfig: Record<string, unknown> } | null;
 }
 
 interface HallOfFamePage {
@@ -49,7 +53,22 @@ function formatEmber(n: number): string {
 const Row: React.FC<{ row: HallOfFameRow; isMe: boolean; pinned?: boolean }> = ({ row, isMe, pinned }) => (
     <li className={`hof-row hof-row--${tierFor(row.rank)}${isMe ? ' is-me' : ''}${pinned ? ' hof-row--pinned' : ''}`}>
         <span className="hof-row__rank" aria-label={`Rank ${row.rank}`}>{row.rank}</span>
-        <span className="hof-row__avatar" aria-hidden="true">{row.username.charAt(0).toUpperCase()}</span>
+        <span className={`hof-row__avatar${row.pet ? ' hof-row__avatar--pet' : ''}`} aria-hidden="true">
+            {row.pet ? (
+                // Head crop of the shared body sprite: the disc clips it, the CSS
+                // scales and anchors it so the face fills the circle.
+                <img
+                    className="hof-row__pet"
+                    src={PET_IMAGE_SRC}
+                    alt=""
+                    decoding="async"
+                    loading="lazy"
+                    style={{ filter: petImageFilter(row.pet.renderMode, row.pet.renderConfig) }}
+                />
+            ) : (
+                row.username.charAt(0).toUpperCase()
+            )}
+        </span>
         <span className="hof-row__name">
             {row.username}
             {isMe && <span className="hof-row__you">You</span>}
@@ -136,7 +155,10 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({ onClose }) => 
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="tank-modal-header">
+                    {/* Wordmark stacked above the ribbon and overlapping its top edge,
+                        layered on top - the reference art's banner-under-crest stack. */}
                     <span className="hof-title">
+                        <span className="hof-ribbon">Hall of Fame</span>
                         <img
                             className="hof-logo"
                             src="/assets/images/heatchecks-logo.webp"
@@ -145,7 +167,6 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({ onClose }) => 
                             height="241"
                             decoding="async"
                         />
-                        <span className="hof-ribbon">Hall of Fame</span>
                     </span>
                     <button ref={closeButtonRef} className="tank-modal-close" onClick={onClose} aria-label="Close">
                         &times;

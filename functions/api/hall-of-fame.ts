@@ -16,6 +16,11 @@
 // viewer's rank is 1 + the count of accounts above them - the same arithmetic, so a
 // viewer inside the top 100 sees the same number in both places. Ties within the
 // board break by account age (oldest first) purely so pagination is stable.
+//
+// Each row also carries the account's Captain pet's render recipe (pets.render_mode +
+// render_config - a hue, or a custom asset key) so the board can draw the pet as the
+// avatar the same way every other surface draws it (components/petRender.ts). null
+// when the account has no pet; the client falls back to an initial.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
@@ -26,10 +31,28 @@ const MAX_RANKED = 100;
 const MAX_PAGES = MAX_RANKED / PAGE_SIZE;
 const CACHE_SECONDS = 60;
 
+interface PetRecipe {
+    renderMode: string;
+    renderConfig: Record<string, unknown>;
+}
+
 interface RankedRow {
     rank: number;
     username: string;
     earned: number;
+    pet: PetRecipe | null;
+}
+
+interface RankedDbRow {
+    rank: number;
+    username: string;
+    earned: number;
+    render_mode: string | null;
+    render_config: Record<string, unknown> | null;
+}
+
+function petOf(row: { render_mode: string | null; render_config: Record<string, unknown> | null }): PetRecipe | null {
+    return row.render_mode ? { renderMode: row.render_mode, renderConfig: row.render_config ?? {} } : null;
 }
 
 interface RankedPage {
@@ -46,9 +69,12 @@ async function loadRankedPage(sql: ReturnType<typeof getSql>, page: number): Pro
         sql`
             SELECT RANK() OVER (ORDER BY b.lifetime_earned DESC)::int AS rank,
                    w.username,
-                   b.lifetime_earned AS earned
+                   b.lifetime_earned AS earned,
+                   p.render_mode,
+                   p.render_config
             FROM ember_balances b
             JOIN waitlist w ON w.id = b.user_id
+            LEFT JOIN pets p ON p.user_id = b.user_id AND p.is_captain
             WHERE b.lifetime_earned > 0 AND w.username IS NOT NULL
             ORDER BY b.lifetime_earned DESC, w.created_at ASC
             LIMIT ${PAGE_SIZE} OFFSET ${offset}
@@ -66,7 +92,9 @@ async function loadRankedPage(sql: ReturnType<typeof getSql>, page: number): Pro
         pageSize: PAGE_SIZE,
         totalPages: Math.max(1, Math.ceil(totalRanked / PAGE_SIZE)),
         totalRanked,
-        rows: (rows as unknown as RankedRow[]).map((r) => ({ rank: Number(r.rank), username: r.username, earned: Number(r.earned) })),
+        rows: (rows as unknown as RankedDbRow[]).map((r) => ({
+            rank: Number(r.rank), username: r.username, earned: Number(r.earned), pet: petOf(r),
+        })),
     };
 }
 
@@ -101,20 +129,23 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         context.waitUntil(cache.put(cacheKey, stored));
     }
 
-    let me: { rank: number; username: string; earned: number } | null = null;
+    let me: RankedRow | null = null;
     if (session && session.username) {
         const meRows = await sql`
             SELECT b.lifetime_earned AS earned,
                    (1 + (SELECT COUNT(*) FROM ember_balances b2
                          JOIN waitlist w2 ON w2.id = b2.user_id
-                         WHERE b2.lifetime_earned > b.lifetime_earned AND w2.username IS NOT NULL))::int AS rank
+                         WHERE b2.lifetime_earned > b.lifetime_earned AND w2.username IS NOT NULL))::int AS rank,
+                   p.render_mode,
+                   p.render_config
             FROM ember_balances b
+            LEFT JOIN pets p ON p.user_id = b.user_id AND p.is_captain
             WHERE b.user_id = ${session.userId}
             LIMIT 1
         `;
-        const row = meRows[0] as { earned: number; rank: number } | undefined;
+        const row = meRows[0] as (Omit<RankedDbRow, 'username'>) | undefined;
         if (row && Number(row.earned) > 0) {
-            me = { rank: Number(row.rank), username: session.username, earned: Number(row.earned) };
+            me = { rank: Number(row.rank), username: session.username, earned: Number(row.earned), pet: petOf(row) };
         }
     }
 

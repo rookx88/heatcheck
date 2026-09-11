@@ -33,6 +33,9 @@
 .hof-modal .tank-modal-header {
   border-bottom: none;
   padding-bottom: 0.9rem;
+  /* The stacked crest is taller than a text title; the close button stays pinned
+     to the top-right corner instead of centering on the stack. */
+  align-items: flex-start;
 }
 
 .hof-modal .tank-modal-header::after {
@@ -45,25 +48,37 @@
   background: linear-gradient(90deg, rgba(255, 199, 44, 0) 0%, rgba(255, 199, 44, 0.55) 50%, rgba(255, 199, 44, 0) 100%);
 }
 
+/* Crest: the wordmark sits ABOVE the ribbon, overlapping its top edge, and is
+   layered on top of it. The title fills the header (minus the close button) so the
+   stack centers on the panel. */
 .hof-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.8rem;
+  position: relative;
+  flex: 1;
   min-width: 0;
+  display: flex;
+  justify-content: center;
+  /* Room for the part of the wordmark that rises above the ribbon. */
+  padding-top: 2.35em;
+  margin-right: -2.4rem; /* re-center under the absolutely-sized close button */
 }
 
 .hof-logo {
-  display: block;
-  height: 2.1em;
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%) rotate(-3deg);
+  height: 3.1em;
   width: auto;
-  flex-shrink: 0;
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55));
+  z-index: 2;
+  filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
 }
 
 /* The gold banner from the reference art, drawn in CSS: a beveled gold plate with
    two folded tails tucked behind it. */
 .hof-ribbon {
   position: relative;
+  z-index: 1;
   display: inline-block;
   padding: 0.38rem 1.1rem;
   background: linear-gradient(180deg, #ffe08a 0%, var(--hc-gold, #ffc72c) 55%, var(--hc-gold-dark, #e8a800) 100%);
@@ -161,6 +176,8 @@
 }
 
 .hof-row__avatar {
+  position: relative;
+  overflow: hidden;
   width: 2.2rem;
   height: 2.2rem;
   display: inline-flex;
@@ -174,6 +191,27 @@
   background: linear-gradient(180deg, #23143e 0%, #160c27 100%);
   border: 2px solid var(--hof-tier);
   box-shadow: 0 0 10px rgba(47, 230, 217, 0.12);
+}
+
+/* The pet's face, cropped out of the shared full-body sprite (petRender.ts): the
+   head sits in the top ~30% of the square canvas, a little left of center, so the
+   sprite is blown up and anchored there. Same hue-rotate filter the widget applies. */
+.hof-row__avatar--pet {
+  background: radial-gradient(circle at 50% 40%, #2a1a4a 0%, #160c27 75%);
+}
+
+.hof-row__pet {
+  position: absolute;
+  /* Head center sits at ~(42%, 20%) of the sprite canvas: at 3.2x the disc, that
+     lands on the disc's center with the sprite pulled 42% of its width left and
+     14% of the disc up. */
+  width: 320%;
+  height: auto;
+  left: 50%;
+  top: -14%;
+  transform: translateX(-42%);
+  max-width: none;
+  pointer-events: none;
 }
 
 .hof-row__name {
@@ -338,7 +376,10 @@
     letter-spacing: 0.1em;
   }
   .hof-title {
-    gap: 0.55rem;
+    padding-top: 2.1em;
+  }
+  .hof-logo {
+    height: 2.7em;
   }
 }
 

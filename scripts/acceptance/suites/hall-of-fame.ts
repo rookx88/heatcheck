@@ -105,7 +105,7 @@ async function cleanup(): Promise<void> {
     await cleanupTanksBySlugPrefix(SLUG_PREFIX);
 }
 
-interface BoardRow { rank: number; username: string; earned: number }
+interface BoardRow { rank: number; username: string; earned: number; pet: { renderMode: string; renderConfig: Record<string, unknown> } | null }
 
 async function run(): Promise<void> {
     await cleanup();
@@ -119,6 +119,11 @@ async function run(): Promise<void> {
     const c = await createSessionUser(user('c'), { username: 'acceptancehofc' });
     const d = await createSessionUser(user('d'), { username: 'acceptancehofd' }); // never earns
     check('no ember_balances row for a fresh account', (await lifetimeEarned(a.userId)) === null && (await balanceOf(a.userId)) === null);
+    // A has a Captain pet (the board draws it as the avatar); the others have none.
+    await pool.query(
+        `INSERT INTO pets (user_id, color, render_mode, render_config) VALUES ($1, 'blue', 'filter', '{"hue": 220}')`,
+        [a.userId],
+    );
 
     // =================================================================================
     section('2. A seed / adjustment moves balance, never lifetime_earned');
@@ -229,8 +234,9 @@ async function run(): Promise<void> {
     check('no-store (the me half is personalised)', anon.headers.get('cache-control') === 'no-store', `cache-control=${anon.headers.get('cache-control')}`);
     const rows: BoardRow[] = anon.json?.rows ?? [];
     check('rows <= page size', Array.isArray(rows) && rows.length <= PAGE_SIZE, `n=${rows.length}`);
-    check('every row is exactly {rank, username, earned} with earned > 0',
-        rows.every((r) => Object.keys(r).sort().join(',') === 'earned,rank,username' && typeof r.username === 'string' && Number.isInteger(r.earned) && r.earned > 0),
+    check('every row is exactly {rank, username, earned, pet} with earned > 0 and pet null or a render recipe',
+        rows.every((r) => Object.keys(r).sort().join(',') === 'earned,pet,rank,username' && typeof r.username === 'string' && Number.isInteger(r.earned) && r.earned > 0
+            && (r.pet === null || (Object.keys(r.pet).sort().join(',') === 'renderConfig,renderMode' && typeof r.pet.renderMode === 'string'))),
         JSON.stringify(rows.slice(0, 2)));
     check('rows ordered by earned desc, ranks non-decreasing, first rank is 1',
         rows.every((r, i) => i === 0 || (r.earned <= rows[i - 1].earned && r.rank >= rows[i - 1].rank)) && (rows.length === 0 || rows[0].rank === 1));
@@ -256,6 +262,7 @@ async function run(): Promise<void> {
         } else {
             const rowA = (res.json?.rows as BoardRow[] | undefined)?.find((r) => r.username === 'acceptancehofa');
             check(`A appears on page ${pageA} at rank ${rankA} with earned ${expectedA}`, !!rowA && rowA.rank === rankA && rowA.earned === expectedA, JSON.stringify(rowA));
+            check('A\'s row carries its Captain pet\'s render recipe', rowA?.pet?.renderMode === 'filter' && rowA?.pet?.renderConfig?.hue === 220, JSON.stringify(rowA?.pet));
         }
     }
 
@@ -264,10 +271,12 @@ async function run(): Promise<void> {
     // =================================================================================
     const meA = await api('GET', '/api/hall-of-fame', { cookie: a.cookie });
     check('A: loggedIn true', meA.status === 200 && meA.json?.loggedIn === true);
-    check('A: me = {rank, username, earned} with the competition rank and the counter', meA.json?.me?.username === 'acceptancehofa' && meA.json?.me?.earned === expectedA && meA.json?.me?.rank === rankA,
+    check('A: me = {rank, username, earned, pet} with the competition rank and the counter', meA.json?.me?.username === 'acceptancehofa' && meA.json?.me?.earned === expectedA && meA.json?.me?.rank === rankA,
         JSON.stringify({ me: meA.json?.me, rankA }));
+    check('A: me carries the pet recipe', meA.json?.me?.pet?.renderMode === 'filter' && meA.json?.me?.pet?.renderConfig?.hue === 220, JSON.stringify(meA.json?.me?.pet));
     const meC = await api('GET', '/api/hall-of-fame', { cookie: c.cookie });
     check('C: me.rank is 1 + accounts above (a lower earner ranks below A)', meC.json?.me?.earned === expectedC && meC.json?.me?.rank === (await competitionRank(expectedC)) && meC.json.me.rank > rankA, JSON.stringify(meC.json?.me));
+    check('C (no pet): me.pet is null', meC.json?.me?.pet === null, JSON.stringify(meC.json?.me?.pet));
     const meD = await api('GET', '/api/hall-of-fame', { cookie: d.cookie });
     check('D (never earned): loggedIn true, me null', meD.json?.loggedIn === true && meD.json?.me === null, JSON.stringify({ loggedIn: meD.json?.loggedIn, me: meD.json?.me }));
     check('the board never carries an account with nothing earned', !((meD.json?.rows as BoardRow[]) ?? []).some((r) => r.username === 'acceptancehofd'));
