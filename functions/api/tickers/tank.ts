@@ -3,7 +3,8 @@
 //
 // Two consumers:
 //   * the article page's index section, which renders a tile per index plus a
-//     market-reaction line ("the market slid 5 points; $DOGS eases 0.6%") - it needs
+//     line describing the market's own price over the 3 days before tagging, and
+//     what the index did - it needs
 //     tagDelta/rawDelta/tickerValue, which is why this returns more than event ids.
 //   * chart highlighting, which pairs eventIds with /api/tickers/chart to mark this
 //     Tank's own points on each index's line.
@@ -32,6 +33,8 @@ interface TagRow {
     tag_delta: number | null;
     raw_delta: number | null;
     settle_delta: number | null;
+    price_3d_ago: number | null;
+    price_now: number | null;
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
@@ -79,6 +82,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
                    COALESCE(array_agg(e.id ORDER BY e.occurred_at) FILTER (WHERE e.id IS NOT NULL), '{}') AS event_ids,
                    MAX(e.delta) FILTER (WHERE e.event_type = 'tag')::float8 AS tag_delta,
                    MAX((e.metadata->>'rawDelta')::float8) FILTER (WHERE e.event_type = 'tag') AS raw_delta,
+                   MAX((e.metadata->>'price3dAgo')::float8) FILTER (WHERE e.event_type = 'tag') AS price_3d_ago,
+                   MAX((e.metadata->>'priceNow')::float8) FILTER (WHERE e.event_type = 'tag') AS price_now,
                    MAX(e.delta) FILTER (WHERE e.event_type = 'settle')::float8 AS settle_delta
             FROM ticker_tags tt
             LEFT JOIN ticker_events e ON e.ticker_tag_id = tt.id
@@ -105,6 +110,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
                 outcomeLabel: typeof outcomes[r.relevant_side] === 'string' ? (outcomes[r.relevant_side] as string) : '',
                 pickLabel: typeof sides[r.relevant_side] === 'string' ? (sides[r.relevant_side] as string) : '',
                 rawPoints: r.raw_delta,
+                fromPrice: r.price_3d_ago,
+                toPrice: r.price_now,
                 // The index's move ON THIS STORY, not its level - the tile shows level.
                 indexPct: r.tag_delta,
             }, ticker.displayName, i)

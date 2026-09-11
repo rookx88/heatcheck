@@ -2,14 +2,19 @@
 //
 // Replaces the article's bullet-card list, which duplicated text the 3D artifact
 // already paints. Each index the Tank is tagged to gets a TANKDAQ-style tile (its
-// current value) beside a market-reaction line composed server-side by
-// /api/tickers/tank ("Buyers stay wary on X - the market slid 5 points. $DOGS eases
-// to -0.6%").
+// current value) beside a line composed server-side by /api/tickers/tank describing the
+// market's own price over the 3 days before the story was added to the index, and what
+// the index did ("Over the 3 days before this story was added to $DOGS, the price on the
+// Chiefs went from 52% to 57%. The index rose 0.6%.").
 //
 // FALLBACK IS THE DEFAULT, NOT THE ERROR PATH: this renders null until it has at least
 // one tag, and the caller only swaps the DOM when it returns something. So an untagged
 // Tank, a no-JS reader, and a failed fetch all keep the server-rendered cards - the
 // page never loses that spot and no crawlable text disappears.
+//
+// The endpoint's `note` (RETROSPECTIVE_NOTE - "not a forecast") is rendered visibly
+// under the list. market-movers.ts requires it wherever ticker values appear, and this
+// section showed values without it until 2026-09-10.
 //
 // Why the sentences arrive pre-composed: building them here would mean importing
 // market-movers.ts (every SSR string builder) into the article bundle. Same split
@@ -37,6 +42,7 @@ function fmtPct(v: number): string {
 
 export const ArticleIndexes: React.FC<{ slug: string; onReady: () => void }> = ({ slug, onReady }) => {
     const [tags, setTags] = useState<TankTag[] | null>(null);
+    const [note, setNote] = useState<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -44,11 +50,12 @@ export const ArticleIndexes: React.FC<{ slug: string; onReady: () => void }> = (
             try {
                 const res = await fetch(`/api/tickers/tank?slug=${encodeURIComponent(slug)}`);
                 if (!res.ok) return;
-                const body = (await res.json()) as { tags: TankTag[] };
+                const body = (await res.json()) as { tags: TankTag[]; note?: string };
                 // Only indexes with a real news move and a live ticker behind them.
                 const usable = (body.tags ?? []).filter((t) => t.displayName && t.sentence && t.tickerValue !== null);
                 if (!cancelled && usable.length > 0) {
                     setTags(usable);
+                    setNote(typeof body.note === 'string' && body.note.trim() ? body.note : null);
                     onReady();
                 }
             } catch (err) {
@@ -63,7 +70,7 @@ export const ArticleIndexes: React.FC<{ slug: string; onReady: () => void }> = (
     return (
         <>
             <h2 className="hc-tai-heading">Indexes this story moved</h2>
-            <p className="hc-tai-sub">How the market repriced, and where each index stands now.</p>
+            <p className="hc-tai-sub">What the market's price did before each index added this story, and where each index stands now.</p>
             <ul className="hc-tai-list">
                 {tags.map((t) => {
                     const dir = (t.tagDelta ?? 0) > 0 ? 'pos' : (t.tagDelta ?? 0) < 0 ? 'neg' : 'zero';
@@ -86,6 +93,7 @@ export const ArticleIndexes: React.FC<{ slug: string; onReady: () => void }> = (
                     );
                 })}
             </ul>
+            {note && <p className="hc-tai-sub" style={{ marginTop: '0.9rem', marginBottom: 0 }}>{note}</p>}
         </>
     );
 };

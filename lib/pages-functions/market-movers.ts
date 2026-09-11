@@ -233,15 +233,22 @@ export function toResultSentences(items: TickerResultItem[], displayName: string
 // -----------------------------------------------------------------------------------
 // News sentences - the article-page counterpart to the result sentences above.
 //
-// A tag is a different kind of event from a settle: it is the market REPRICING on a
-// story, before any game has been played, so none of the win/loss templates above
-// apply. These read like investors reacting to a stock story.
+// A tag is a different kind of event from a settle: it records how the market priced a
+// story over the 3 days before the story was added to an index, before any game has been
+// played, so none of the win/loss templates above apply.
 //
-// Two numbers, and they must not be conflated. rawPoints is the market's real 3-day
-// move (vivid, typically 1-10 points); indexPct is what the index actually did after
-// tag_scale_pct, which is well under a point. Quoting the raw number as the index's
-// move would overstate it, so every template below attributes each number to its own
-// subject: the market moved X, the index moved Y.
+// DESCRIPTIVE ONLY (rewritten 2026-09-10). These used to read like investors reacting to
+// a stock story - "Buyers pile in", "Traders shrug", "catches a bid", "points of buying".
+// That is money-flow language, and on an article page it sits beside the Polymarket
+// prices panel and the article's own market sentence, both of which report prices as
+// plain levels and never as crowd behaviour. Tank content never pushes a take, so these
+// now say what the price was, over which window, and what the index did - and nothing
+// about who was buying or what it means.
+//
+// Two numbers, and they must not be conflated. The market's own move (fromPrice ->
+// toPrice, or rawPoints when the levels weren't recorded) is real and typically 1-10
+// points; indexPct is what the index actually did after tag_scale_pct, well under a
+// point. Each is attributed to its own subject: the price did X, the index did Y.
 // -----------------------------------------------------------------------------------
 
 export interface TickerNewsMoveItem {
@@ -251,6 +258,11 @@ export interface TickerNewsMoveItem {
     pickLabel: string;
     rawPoints: number; // the market's own 3-day repricing, signed
     indexPct: number;  // what the index MOVED on this story, signed (already scaled)
+    // The tagged side's price 3 days before tagging and at tagging (0-1), from the tag
+    // event's metadata. When both are present the sentence quotes two levels instead of
+    // a difference.
+    fromPrice?: number | null;
+    toPrice?: number | null;
 }
 
 // Below this the market didn't really move - most publishes don't coincide with a
@@ -258,42 +270,37 @@ export interface TickerNewsMoveItem {
 // must not manufacture drama on a quiet market.
 const FLAT_POINTS = 0.5;
 
-export function buildNewsSentence(item: TickerNewsMoveItem, displayName: string, templateIndex: number): string {
-    const tickerWord = displayName.replace(/^\$/, '');
-    const raw = Math.abs(item.rawPoints).toFixed(1);
-    // Magnitude only - the direction verb carries the sign, and the tile beside this
-    // sentence already shows where the index STANDS. Saying "climbs to -41.8%" would
-    // read as a contradiction: the story moved it up, the index level is negative.
-    const moved = `${Math.abs(item.indexPct).toFixed(1)}%`;
+// _templateIndex is kept for callers (toNewsSentences passes a position) but no longer
+// rotates phrasings: there is one descriptive form per case, so the same move always
+// reads the same way.
+export function buildNewsSentence(item: TickerNewsMoveItem, displayName: string, _templateIndex: number): string {
     const subject = subjectFor({
         player: item.subject, market: item.market, outcomeLabel: item.outcomeLabel,
         pickLabel: item.pickLabel, tickerKey: '', won: false, delta: 0, occurredAt: '',
     });
-    const up = item.rawPoints > 0;
-    const flat = Math.abs(item.rawPoints) < FLAT_POINTS;
+    const lead = `Over the 3 days before this story was added to ${displayName}`;
+    const moved = `${Math.abs(item.indexPct).toFixed(1)}%`;
+    const indexClause = item.indexPct > 0
+        ? `The index rose ${moved}.`
+        : item.indexPct < 0
+            ? `The index fell ${moved}.`
+            : 'The index was unchanged.';
 
-    if (flat) {
-        // Deliberately only two flat phrasings and no numbers quoted: there is nothing
-        // to report but the absence of a move.
-        return templateIndex % 2 === 0
-            ? `${displayName} barely blinks at ${subject}; the market held its price.`
-            : `Traders shrug at ${subject}, and the ${tickerWord} index sits still.`;
+    if (Math.abs(item.rawPoints) < FLAT_POINTS) {
+        return `${lead}, the price on ${subject} held steady, and the index barely changed.`;
     }
 
-    switch (templateIndex % 3) {
-        case 0:
-            return up
-                ? `Buyers pile in on ${subject} — the market moved ${raw} points. ${displayName} climbs ${moved}.`
-                : `Buyers stay wary on ${subject} — the market slid ${raw} points. ${displayName} eases ${moved}.`;
-        case 1:
-            return up
-                ? `The ${tickerWord} index catches a bid, up ${moved}, as the market repriced ${subject} by ${raw} points.`
-                : `The ${tickerWord} index gives ground, down ${moved}, as the market marked ${subject} down ${raw} points.`;
-        default:
-            return up
-                ? `${raw} points of buying on ${subject}. ${displayName} follows it up ${moved}.`
-                : `${raw} points came off ${subject}. ${displayName} follows it down ${moved}.`;
+    const hasLevels = typeof item.fromPrice === 'number' && typeof item.toPrice === 'number'
+        && Number.isFinite(item.fromPrice) && Number.isFinite(item.toPrice);
+    if (hasLevels) {
+        const from = Math.round((item.fromPrice as number) * 100);
+        const to = Math.round((item.toPrice as number) * 100);
+        if (from !== to) return `${lead}, the price on ${subject} went from ${from}% to ${to}%. ${indexClause}`;
     }
+
+    const raw = Math.abs(item.rawPoints).toFixed(1);
+    const direction = item.rawPoints > 0 ? 'rose' : 'fell';
+    return `${lead}, the price on ${subject} ${direction} ${raw} percentage points. ${indexClause}`;
 }
 
 export function toNewsSentences(items: TickerNewsMoveItem[], displayName: string): string[] {
