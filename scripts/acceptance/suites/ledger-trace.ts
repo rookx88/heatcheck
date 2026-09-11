@@ -40,7 +40,13 @@ async function cleanup(): Promise<void> {
 const lastSeenSum = new Map<string, number>();
 
 async function assertLedgerConsistent(userId: string, cookie: string, label: string): Promise<void> {
-    const { balanceCache, ledgerSum } = await ledgerTotals(userId);
+    const { balanceCache, ledgerSum, lifetimeCache, lifetimeRecomputed } = await ledgerTotals(userId);
+
+    // The second cached column (Hall of Fame's lifetime_earned) holds to the same rule:
+    // every step must leave it equal to its independent recompute, with null only
+    // legitimate while no ember_balances row exists yet.
+    const lifetimeOk = lifetimeCache === lifetimeRecomputed || (lifetimeCache === null && lifetimeRecomputed === 0);
+    check(`${label}: cached lifetime_earned == recompute`, lifetimeOk, `cached=${lifetimeCache} recomputed=${lifetimeRecomputed}`);
 
     // cached === ledgerSum covers the normal case (a row exists and agrees). The only
     // legitimate way for balanceCache to be null is "no ember_balances row was ever

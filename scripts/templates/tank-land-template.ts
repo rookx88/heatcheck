@@ -2,14 +2,16 @@ import { renderHead } from './waitlist-landing-template';
 
 /**
  * Tank Land (/the-tank/) - the hub the world map's tank region lands on. The page is
- * pure navigation artwork: the Tank HQ structure leads to /the-tank-hq/ (the story
- * browser) and the egg machine leads to /the-hatchery/. The fallback nav below
- * mirrors the artwork's hotspots as real crawlable links, covered by the fixed
- * .land-screen once tank-land.js mounts (same trick as the Tank HQ page).
+ * navigation artwork: the Tank HQ structure leads to /the-tank-hq/ (the story
+ * browser), the egg machine leads to /the-hatchery/, and the Hall of Fame rotunda
+ * opens the Ember leaderboard in place (a modal, no page of its own - which is why
+ * it has no entry in the fallback nav). The fallback nav below mirrors the artwork's
+ * navigating hotspots as real crawlable links, covered by the fixed .land-screen once
+ * tank-land.js mounts (same trick as the Tank HQ page).
  */
 export function generateTankLandPageHtml(baseUrl: string): string {
     const title = 'Tank Land | Heatchecks';
-    const description = 'Explore Tank Land - visit the Tank HQ for today’s stories or the Hatchery for eggs and hatching.';
+    const description = 'Explore Tank Land - visit the Tank HQ for today’s stories, the Hatchery for eggs and hatching, or the Hall of Fame for the top Ember earners.';
 
     const schemaOrg = [
         {

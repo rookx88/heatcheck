@@ -8,10 +8,25 @@
 // The ledger is a diary, not a bank balance: ember_ledger rows are append-only, never
 // UPDATEd or DELETEd. ember_balances is a derived cache — always reconstructable from
 // ember_ledger via rebuildBalance() — never the source of truth.
+//
+// ember_balances carries TWO cached columns: `balance` (SUM of every ledger row) and
+// `lifetime_earned` (the Hall of Fame's ranking figure - see
+// add_lifetime_earned_to_ember_balances.sql for the definition). Every credit path
+// below that counts as "earned" folds both columns in the same statement as its ledger
+// insert, so the two can never drift apart from each other or from the ledger.
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 
 export type EntryType = 'earn' | 'spend' | 'reversal' | 'adjustment';
+
+// The ledger rules whose 'earn' rows count toward ember_balances.lifetime_earned (game
+// earnings). Exported so the acceptance harness's independent recompute and this file's
+// rebuildBalance() share one list. Always paired with entry_type = 'earn': the harness's
+// seed rows borrow the 'participation' rule key with entry_type 'adjustment', and an
+// adjustment must never put an account on the Hall of Fame. TANKDAQ profit is the other
+// half of the definition and comes from share_trades.realized_pnl, not from a rule key:
+// 'shares_sell' rows are proceeds (the trader's own Ember coming back), not earnings.
+export const LIFETIME_EARNED_RULE_KEYS = ['correct_call', 'participation', 'discovery_find'] as const;
 
 interface RuleRow {
     version: number;
@@ -55,6 +70,11 @@ export interface PostInput {
 // idempotency key — that gap would double-credit the balance on retry even though the
 // ledger correctly wrote nothing. A single statement is atomic by construction and
 // closes it: the balance CTE only ever sees a row from `ins` when the insert was real.
+//
+// No production caller today (the acceptance fixtures' seed rows take this shape). It
+// folds `balance` only - never lifetime_earned - so a seed/adjustment can't put an
+// account on the Hall of Fame. A future real source that should count must fold both
+// columns the way settleCall() and discoveryFindEmber() do.
 export async function post(sql: NeonQueryFunction<false, false>, input: PostInput): Promise<void> {
     const rule = await getActiveRule(sql, input.ruleKey);
     const entryType: EntryType = rule.kind === 'source' ? 'earn' : 'adjustment';
@@ -350,7 +370,10 @@ export async function buyShares(sql: NeonQueryFunction<false, false>, input: Tra
 //               drive a position negative
 //   led       - the credit row, only when held actually decremented ('earn' - the
 //               nearest of the ledger's four entry types)
-//   bal       - post()'s balance fold, only when led wrote
+//   bal       - post()'s balance fold, only when led wrote, plus the lifetime_earned
+//               fold: the PROFIT of this sale (credit - shares * avg, rounded to the 4 dp
+//               realized_pnl is stored at, floored, never below zero) - proceeds are the
+//               trader's own Ember coming back and never count as earned
 //   trade     - the diary row, with realized P/L against the average the row held
 // The second removes the row if the sale emptied it. A separate statement on purpose:
 // Postgres does not permit an UPDATE and a DELETE of the same row inside one WITH (the
@@ -385,10 +408,15 @@ export async function sellShares(sql: NeonQueryFunction<false, false>, input: Tr
             ON CONFLICT (idempotency_key) DO NOTHING
             RETURNING id, amount
         ), bal AS (
-            INSERT INTO ember_balances (user_id, balance, updated_at)
-            SELECT ${input.userId}, amount, NOW() FROM led
+            INSERT INTO ember_balances (user_id, balance, lifetime_earned, updated_at)
+            SELECT ${input.userId}, led.amount,
+                   GREATEST(FLOOR(ROUND(${credit}::numeric - ${input.shares}::numeric * held.avg_buy_price, 4)), 0)::int,
+                   NOW()
+            FROM led, held
             ON CONFLICT (user_id) DO UPDATE
-                SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
+                SET balance = ember_balances.balance + EXCLUDED.balance,
+                    lifetime_earned = ember_balances.lifetime_earned + EXCLUDED.lifetime_earned,
+                    updated_at = NOW()
             RETURNING user_id
         ), trade AS (
             INSERT INTO share_trades (id, user_id, ticker_key, side, shares, price, ember_amount,
@@ -521,10 +549,12 @@ export async function settleCall(sql: NeonQueryFunction<false, false>, input: Se
                 ON CONFLICT (idempotency_key) DO NOTHING
                 RETURNING amount
             )
-            INSERT INTO ember_balances (user_id, balance, updated_at)
-            SELECT ${input.userId}, amount, NOW() FROM ins
+            INSERT INTO ember_balances (user_id, balance, lifetime_earned, updated_at)
+            SELECT ${input.userId}, amount, amount, NOW() FROM ins
             ON CONFLICT (user_id) DO UPDATE
-                SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
+                SET balance = ember_balances.balance + EXCLUDED.balance,
+                    lifetime_earned = ember_balances.lifetime_earned + EXCLUDED.lifetime_earned,
+                    updated_at = NOW()
         `,
         sql`
             INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
@@ -588,10 +618,12 @@ export async function discoveryFindEmber(
             ON CONFLICT (idempotency_key) DO NOTHING
             RETURNING amount
         ), bal AS (
-            INSERT INTO ember_balances (user_id, balance, updated_at)
-            SELECT ${input.userId}, amount, NOW() FROM led
+            INSERT INTO ember_balances (user_id, balance, lifetime_earned, updated_at)
+            SELECT ${input.userId}, amount, amount, NOW() FROM led
             ON CONFLICT (user_id) DO UPDATE
-                SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
+                SET balance = ember_balances.balance + EXCLUDED.balance,
+                    lifetime_earned = ember_balances.lifetime_earned + EXCLUDED.lifetime_earned,
+                    updated_at = NOW()
             RETURNING user_id
         ), note AS (
             INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
@@ -612,12 +644,27 @@ export async function balance(sql: NeonQueryFunction<false, false>, userId: stri
 
 // Recomputes the true balance from the ledger and resets the cache to match — used for
 // reconciliation and after any incident. Always agrees with balance() in steady state.
+// Rebuilds lifetime_earned from the same definition the incremental writes and the
+// migration's backfill use (add_lifetime_earned_to_ember_balances.sql), so a rebuilt
+// row is indistinguishable from one that was maintained step by step.
 export async function rebuildBalance(sql: NeonQueryFunction<false, false>, userId: string): Promise<number> {
-    const rows = await sql`SELECT COALESCE(SUM(amount), 0) AS total FROM ember_ledger WHERE user_id = ${userId}`;
-    const total = Number((rows[0] as unknown as { total: number }).total);
+    const rows = await sql`
+        SELECT
+            (SELECT COALESCE(SUM(amount), 0) FROM ember_ledger WHERE user_id = ${userId}) AS total,
+            (SELECT COALESCE(SUM(amount), 0) FROM ember_ledger
+              WHERE user_id = ${userId} AND entry_type = 'earn'
+                AND rule_key = ANY(${[...LIFETIME_EARNED_RULE_KEYS]}::text[])) AS game_earned,
+            (SELECT COALESCE(SUM(GREATEST(FLOOR(realized_pnl), 0)), 0) FROM share_trades
+              WHERE user_id = ${userId} AND side = 'sell') AS trade_profit
+    `;
+    const row = rows[0] as unknown as { total: number; game_earned: number; trade_profit: number };
+    const total = Number(row.total);
+    const lifetimeEarned = Number(row.game_earned) + Number(row.trade_profit);
     await sql`
-        INSERT INTO ember_balances (user_id, balance, updated_at) VALUES (${userId}, ${total}, NOW())
-        ON CONFLICT (user_id) DO UPDATE SET balance = EXCLUDED.balance, updated_at = NOW()
+        INSERT INTO ember_balances (user_id, balance, lifetime_earned, updated_at)
+        VALUES (${userId}, ${total}, ${lifetimeEarned}, NOW())
+        ON CONFLICT (user_id) DO UPDATE
+            SET balance = EXCLUDED.balance, lifetime_earned = EXCLUDED.lifetime_earned, updated_at = NOW()
     `;
     return total;
 }

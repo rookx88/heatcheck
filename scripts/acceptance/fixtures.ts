@@ -6,8 +6,10 @@
 // scripts/acceptance-tickers.ts only ever flipped 'tickers'; Phases 2-4 need
 // 'discovery' and 'feeding' too).
 
+import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { pool, registerTeardown, api } from './harness';
 import { signAuthToken } from '../../lib/pages-functions/auth-tokens';
+import { LIFETIME_EARNED_RULE_KEYS } from '../../lib/pages-functions/ledger';
 import type { SessionTokenPayload, LoginTokenPayload } from '../../lib/auth-token-payloads';
 import { KALSHI_SERIES_MAP } from '../../kalshi';
 
@@ -97,7 +99,17 @@ export async function mintVerificationCode(userId: string, code: string, ttlSeco
 // Ember ledger totals
 // ---------------------------------------------------------------------------------
 
-export interface LedgerTotals { balanceCache: number | null; ledgerSum: number; ledgerRows: number }
+export interface LedgerTotals {
+    balanceCache: number | null;
+    ledgerSum: number;
+    ledgerRows: number;
+    // ember_balances.lifetime_earned (the Hall of Fame counter) and its independent
+    // recompute from the definition in add_lifetime_earned_to_ember_balances.sql:
+    // game-rule ledger rows + the positive floored realized_pnl of every sell. null
+    // cache means no ember_balances row exists at all (same semantics as balanceCache).
+    lifetimeCache: number | null;
+    lifetimeRecomputed: number;
+}
 // Gives a fixture account Ember THROUGH the ledger: one 'adjustment' ember_ledger row
 // whose amount folds into ember_balances in the same statement - the exact CTE shape
 // lib/pages-functions/ledger.ts uses. Never write ember_balances directly from a suite:
@@ -126,14 +138,20 @@ export async function ledgerTotals(userId: string): Promise<LedgerTotals> {
         `SELECT
             (SELECT balance FROM ember_balances WHERE user_id = $1) AS balance_cache,
             (SELECT COALESCE(SUM(amount), 0)::int FROM ember_ledger WHERE user_id = $1) AS ledger_sum,
-            (SELECT COUNT(*)::int FROM ember_ledger WHERE user_id = $1) AS ledger_rows`,
-        [userId],
+            (SELECT COUNT(*)::int FROM ember_ledger WHERE user_id = $1) AS ledger_rows,
+            (SELECT lifetime_earned FROM ember_balances WHERE user_id = $1) AS lifetime_cache,
+            (SELECT COALESCE(SUM(amount), 0)::int FROM ember_ledger WHERE user_id = $1 AND entry_type = 'earn' AND rule_key = ANY($2::text[]))
+              + (SELECT COALESCE(SUM(GREATEST(FLOOR(realized_pnl), 0)), 0)::int FROM share_trades WHERE user_id = $1 AND side = 'sell')
+              AS lifetime_recomputed`,
+        [userId, [...LIFETIME_EARNED_RULE_KEYS]],
     );
     const r = rows[0];
     return {
         balanceCache: r.balance_cache === null ? null : Number(r.balance_cache),
         ledgerSum: Number(r.ledger_sum),
         ledgerRows: Number(r.ledger_rows),
+        lifetimeCache: r.lifetime_cache === null ? null : Number(r.lifetime_cache),
+        lifetimeRecomputed: Number(r.lifetime_recomputed),
     };
 }
 
@@ -525,6 +543,43 @@ export const sqlViaPool = async (strings: TemplateStringsArray, ...values: unkno
     const text = strings.reduce((acc, part, i) => acc + `$${i}` + part);
     return (await pool.query(text, values as unknown[])).rows;
 };
+
+// The fuller NeonQueryFunction shape the WRITE helpers in lib/pages-functions/ledger.ts
+// need: a tagged template that runs on await, PLUS sql.transaction([...]) over the
+// un-awaited tagged calls (settleCall, buyShares and sellShares all use it). Runs the
+// array on one pooled client inside BEGIN/COMMIT (ROLLBACK on any failure), which is
+// what Neon's HTTP driver does server-side - so a suite can drive the real ledger
+// functions against the harness pool instead of re-implementing their statements.
+// Returns rows arrays exactly like the Neon driver's default (non-fullResults) mode.
+interface LazyQuery { text: string; values: unknown[] }
+export function sqlViaPoolTx(): NeonQueryFunction<false, false> {
+    const tagged = (strings: TemplateStringsArray, ...values: unknown[]) => {
+        const text = strings.reduce((acc, part, i) => acc + `$${i}` + part);
+        const lazy: LazyQuery & PromiseLike<Record<string, unknown>[]> = {
+            text,
+            values,
+            then: (onFulfilled, onRejected) =>
+                pool.query(text, values).then((r) => r.rows).then(onFulfilled, onRejected),
+        };
+        return lazy;
+    };
+    tagged.transaction = async (queries: LazyQuery[]) => {
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
+            const out: Record<string, unknown>[][] = [];
+            for (const q of queries) out.push((await client.query(q.text, q.values)).rows);
+            await client.query('COMMIT');
+            return out;
+        } catch (err) {
+            await client.query('ROLLBACK').catch(() => undefined);
+            throw err;
+        } finally {
+            client.release();
+        }
+    };
+    return tagged as unknown as NeonQueryFunction<false, false>;
+}
 
 // ---------------------------------------------------------------------------------
 // Live catalog SKU lookup - shared by suites/pets.ts, suites/concurrency.ts, and
