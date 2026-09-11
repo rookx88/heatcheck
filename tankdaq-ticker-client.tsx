@@ -44,8 +44,8 @@ import {
 
 interface SeriesEvent {
     id: string;
-    tankId: string;
-    eventType: 'tag' | 'settle';
+    tankId: string | null;
+    eventType: 'tag' | 'settle' | 'close';
     delta: number;
     cumulative: number;
     occurredAt: string;

@@ -59,9 +59,10 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_community_picks_open
     ON community_picks (created_at)
     WHERE status = 'open';
 
--- ticker_tags: getTickerNews / getTickerResults (lib/pages-functions/tickers.ts) rank
--- tags with ROW_NUMBER() OVER (PARTITION BY ticker_key ORDER BY tagged_at DESC) on
--- every SSR homepage request and every /api/tickers/detail call; the table only had
--- indexes on tank_id and the (now dormant) pending partial.
+-- ticker_tags: getTickerNews (lib/pages-functions/tickers.ts) ranks tags with
+-- ROW_NUMBER() OVER (PARTITION BY ticker_key ORDER BY tagged_at DESC) on every SSR
+-- homepage request and every /api/tickers/detail call; the table only had indexes on
+-- tank_id and the (now dormant) pending partial. (getTickerResults used to rank here
+-- too; since 2026-09-11 it reads index_positions, served by idx_index_positions_close.)
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_ticker_tags_key_tagged
     ON ticker_tags (ticker_key, tagged_at DESC);

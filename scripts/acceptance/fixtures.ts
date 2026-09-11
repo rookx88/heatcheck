@@ -441,6 +441,92 @@ export async function settleEventDelta(tagId: string): Promise<number | null> {
 }
 
 // ---------------------------------------------------------------------------------
+// Slate fixtures - index_positions rows and the daily 'close' event they roll into
+// (create_index_positions_table.sql / alter_ticker_events_for_slate.sql). These feed
+// the Recent Results path (getTickerResults, lib/pages-functions/tickers.ts), which
+// reads settled win/loss positions joined to their close.
+//
+// Constraint hazards, and how the helpers dodge them:
+//   * ticker_events has a partial UNIQUE (ticker_key, close_date) WHERE source='slate',
+//     so a fixture close dated today would collide with the REAL daily close. Fixture
+//     closes take a far-past date (1999-01-01 by convention in suites/index-results.ts).
+//   * A slate close's delta counts toward the live ticker value while it exists - same
+//     precedent as insertTagDirect's live-counting tag events - so cleanup must run.
+//   * index_positions has no tank FK: cleanupTanksBySlugPrefix does NOT cascade here.
+//     Fixture rows carry INDEX_FIXTURE_PREFIX on event_id/market_id and are deleted by
+//     cleanupIndexFixtures below; close_id is ON DELETE SET NULL, so positions go first.
+// ---------------------------------------------------------------------------------
+
+export const INDEX_FIXTURE_PREFIX = 'acceptance-index-';
+
+export interface SlateCloseMeta { positionsCounted: number; positionsWon: number; scalePct: number; smoothing: number }
+
+export async function insertSlateCloseDirect(tickerKey: string, closeDate: string, delta: number, meta: SlateCloseMeta): Promise<string> {
+    const { rows } = await pool.query(
+        `INSERT INTO ticker_events (ticker_key, event_type, source, close_date, delta, metadata)
+         VALUES ($1, 'close', 'slate', $2::date, $3, $4::jsonb) RETURNING id`,
+        [tickerKey, closeDate, delta, JSON.stringify({ ...meta, acceptance: true })],
+    );
+    return rows[0].id as string;
+}
+
+export interface IndexPositionFixture {
+    tickerKey: string;
+    eventId: string;   // must start with INDEX_FIXTURE_PREFIX
+    marketId: string;  // likewise; no polymarket_props row exists for it (LEFT JOIN tolerance)
+    league?: string;
+    away: string;
+    home: string;
+    marketType: 'totals' | 'moneyline';
+    marketLine?: number | null;
+    sideIndex: number;
+    sideLabel: string;
+    entryProb: number;
+    result: 'win' | 'loss';
+    closeId: string;
+    settledAt?: string; // ISO; defaults to NOW() so the row ranks newest
+}
+
+// Mirrors what index-lock + index-settle leave behind for one game, in one insert.
+export async function insertIndexPositionDirect(f: IndexPositionFixture): Promise<{ id: string; contrib: number }> {
+    if (!f.eventId.startsWith(INDEX_FIXTURE_PREFIX) || !f.marketId.startsWith(INDEX_FIXTURE_PREFIX)) {
+        throw new Error(`index fixture ids must start with ${INDEX_FIXTURE_PREFIX}`);
+    }
+    const won = f.result === 'win';
+    const contrib = Number((won ? 1 - f.entryProb : -f.entryProb).toFixed(3)); // contributionFor, index-slate.ts
+    const { rows } = await pool.query(
+        `INSERT INTO index_positions (
+             ticker_key, provider, market_id, league, event_id, away, home, kickoff,
+             market_type, market_line, side_index, side_label, entry_prob, locked_at,
+             result, winning_index, settled_at, contrib, close_id)
+         VALUES ($1, 'polymarket', $2, $3, $4, $5, $6, NOW() - INTERVAL '6 hours',
+                 $7, $8, $9, $10, $11, NOW() - INTERVAL '7 hours',
+                 $12, $13, COALESCE($14::timestamptz, NOW()), $15, $16)
+         RETURNING id`,
+        [
+            f.tickerKey, f.marketId, f.league ?? 'ACCEPTANCE', f.eventId, f.away, f.home,
+            f.marketType, f.marketLine ?? null, f.sideIndex, f.sideLabel, f.entryProb,
+            f.result, won ? f.sideIndex : 1 - f.sideIndex, f.settledAt ?? null, contrib, f.closeId,
+        ],
+    );
+    return { id: rows[0].id as string, contrib };
+}
+
+export async function cleanupIndexFixtures(): Promise<void> {
+    await pool.query(`DELETE FROM index_positions WHERE event_id LIKE $1`, [`${INDEX_FIXTURE_PREFIX}%`]);
+    await pool.query(`DELETE FROM ticker_events WHERE source = 'slate' AND metadata @> '{"acceptance": true}'::jsonb`);
+}
+
+// The SqlReader shape lib/pages-functions/tickers.ts's read helpers take, adapted onto
+// the harness pool - the same 3-line adapter scripts/generate-static-site.ts uses at
+// build time, so a suite that runs a helper through this proves the statement is plain
+// parameterised SQL and not Neon-only.
+export const sqlViaPool = async (strings: TemplateStringsArray, ...values: unknown[]): Promise<Record<string, unknown>[]> => {
+    const text = strings.reduce((acc, part, i) => acc + `$${i}` + part);
+    return (await pool.query(text, values as unknown[])).rows;
+};
+
+// ---------------------------------------------------------------------------------
 // Live catalog SKU lookup - shared by suites/pets.ts, suites/concurrency.ts, and
 // suites/security.ts. The catalog is retuned independently of this harness (SKUs get
 // deactivated/replaced), so a suite that hardcodes a SKU key silently starts testing a

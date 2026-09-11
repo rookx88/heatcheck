@@ -22,6 +22,7 @@ import { escapeHtml } from '../../scripts/utils/html-escape';
 import { chooseWindow } from './ticker-window';
 import { layoutNested } from './treemap';
 import { leagueShortCode, parseLeagueRule } from './league-rules';
+import { parseYesNoQuestion } from './index-slate';
 import {
     RETROSPECTIVE_NOTE,
     type TickerNewsItem,
@@ -57,7 +58,7 @@ export interface MarketMoverVM {
     series: TickerSeriesEvent[]; // capped (SERIES_CAP) tail; cumulative values stay truthful
     seriesTruncated: boolean;
     news: MarketMoverNewsVM[];
-    results: MarketMoverResultVM[]; // "Recent Results" sentences, newest first
+    results: MarketMoverResultVM[]; // "Recent Results" - settled slate games as sentences, newest first
 }
 
 export interface MarketMoverResultVM {
@@ -117,27 +118,29 @@ function utcShortDateLabel(iso: string): string {
         : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
 
-// "Lakers" -> "Lakers'"; "Celtics" -> "Celtics'"; "LeBron James" -> "LeBron James's" - the
-// standard English rule (names already ending in s just take the bare apostrophe).
-function possessive(name: string): string {
-    return /s$/i.test(name) ? `${name}'` : `${name}'s`;
-}
-
 // A side label that names a side rather than a team/player ("Over", "Under 37.5",
-// "Yes"/"No" on Kalshi markets) - never a sentence subject: "with Under's recent win"
-// reads broken. Word-boundary match so "Over 37.5" counts but "Overton" wouldn't.
+// "Yes"/"No" on Kalshi markets) - never a sentence subject: "the price on Under" reads
+// broken. Word-boundary match so "Over 37.5" counts but "Overton" wouldn't.
 const GENERIC_SIDE_LABEL = /^(over|under|yes|no)\b/i;
 
-// The "Team Name" / "Player" subject for a settled result: a player prop's real subject is
-// prop.player itself; a game-line market's prop.player is a matchup fallback ("Away vs.
-// Home" - tank-providers.ts), so the tagged side's own outcome label (a real team name for
-// moneylines/spreads) is the correct subject there instead - EXCEPT totals-style markets,
-// whose labels are generic side words: those pull the matchup name from prop.player. Same
-// "_player_" substring test formatMarketLabel() (tank-deck-format.ts) already uses.
-function subjectFor(item: TickerResultItem): string {
+// The "Team Name" / "Player" subject for a NEWS sentence (a Tank's own market): a player
+// prop's real subject is prop.player itself; a game-line market's prop.player is a matchup
+// fallback ("Away vs. Home" - tank-providers.ts), so the tagged side's own outcome label
+// (a real team name for moneylines/spreads) is the correct subject there instead - EXCEPT
+// totals-style markets, whose labels are generic side words: those pull the matchup name
+// from prop.player. Same "_player_" substring test formatMarketLabel() (tank-deck-format.ts)
+// already uses. Result sentences no longer come through here - a slate position carries
+// its own away/home/side fields (see buildResultSentence).
+interface SubjectFields {
+    subject: string;
+    market: string;
+    outcomeLabel: string;
+    pickLabel: string;
+}
+function subjectFor(item: SubjectFields): string {
     const isPlayerProp = /_player_/.test(item.market);
-    if (isPlayerProp) return item.player;
-    if (!item.outcomeLabel || GENERIC_SIDE_LABEL.test(item.outcomeLabel)) return item.player;
+    if (isPlayerProp) return item.subject;
+    if (!item.outcomeLabel || GENERIC_SIDE_LABEL.test(item.outcomeLabel)) return item.subject;
     return item.outcomeLabel;
 }
 
@@ -145,87 +148,105 @@ function subjectFor(item: TickerResultItem): string {
 // GAME_LINE_MARKET_TYPES' totals subset in tank-providers.ts).
 const TOTALS_MARKET_TYPES = ['totals', 'team_totals'];
 
-// 'Over' | 'Under' from the tagged side's labels (outcome label first, then the call's
-// pick label); null when the market words its sides some other way (e.g. Kalshi Yes/No -
-// those fall through to the generic game-line sentences).
-function totalsSideWord(item: TickerResultItem): 'Over' | 'Under' | null {
-    for (const label of [item.outcomeLabel, item.pickLabel]) {
-        if (/^over\b/i.test(label)) return 'Over';
-        if (/^under\b/i.test(label)) return 'Under';
-    }
-    return null;
+// -----------------------------------------------------------------------------------
+// Result sentences - one per settled slate GAME (an index_positions row, via
+// getTickerResults in tickers.ts).
+//
+// DESCRIPTIVE ONLY (rewritten 2026-09-11, alongside the news sentences' 2026-09-10
+// rewrite). These used to rotate three playful templates - "Buyers applaud", "up in
+// arms", "experiences a local high" - which is money-flow language describing a crowd
+// that doesn't exist. Tank content never pushes a take, so a result sentence now states
+// exactly two facts and nothing else: what happened in the game, and what the index did.
+// One form per case, so the same kind of result always reads the same way. Past tense,
+// never a forecast.
+//
+// The points figure is the game's own share of its day's close (TickerResultItem.delta,
+// from positionShareOfClose) - deliberately not the %-formatted valueLabel, per the
+// "points, not percent" ask - so a card's sentences add up to the move on its chart.
+// Typical shares are small (0.05-0.8 points); when one decimal would print "0.0" the
+// sentence shows two rather than claim a zero move.
+//
+// Four market shapes:
+//   totals        - the game cleared the line or stayed under it. Whether it cleared
+//                   follows from side + outcome: an Over winning and an Under losing both
+//                   mean the total was cleared.
+//   team line     - the side label IS the team; it won or lost.
+//   Yes/No line   - Polymarket's soccer moneylines ("Will <TEAM> win?"). The team comes
+//                   from the question. Yes held = the team; No held = the other side of a
+//                   three-way (opponent win OR draw), so the only honest fact is that the
+//                   team "did not win", and the index is named as having held the other
+//                   side rather than pretending it backed a team.
+//   draw market   - legacy only (isDrawMarket now keeps these out of the slate).
+// Anything the shapes above can't name (a Yes/No with no readable question, an unknown
+// market type) gets a tolerant fallback so nothing ever renders blank or throws.
+// -----------------------------------------------------------------------------------
+
+const YES_NO_LABEL = /^(yes|no)$/i;
+
+function resultPoints(delta: number): string {
+    const one = Math.abs(delta).toFixed(1);
+    return one === '0.0' ? Math.abs(delta).toFixed(2) : one;
 }
 
-// One newsline-style sentence per settled result, rotating through 3 phrasings so a card's
-// results list doesn't read as a repeated mad-lib. All three read the SAME two facts (won,
-// |delta| in points - deliberately not the %-formatted valueLabel per the "points, not
-// percent" ask) off the event; only the copy differs.
-//
-// Three market shapes, three sentence families (user feedback 2026-08-29: an Over can't
-// "win", a matchup can't "lose", and "Over 8.5 don't deliver" fails agreement):
-//   totals       - the side hits or misses IN a game; the game clears or stays under.
-//   player props - the player is the singular animate subject; the pick label ("Over 1.5
-//                  hits") is what they deliver on or miss, never the subject itself.
-//   team lines   - the tagged team is the subject (original templates, plural verbs).
-function buildResultSentence(item: TickerResultItem, displayName: string, templateIndex: number): string {
-    const tickerWord = displayName.replace(/^\$/, '');
-    const points = Math.abs(item.delta).toFixed(1);
-    const t = templateIndex % 3;
+function matchupOf(item: Pick<TickerResultItem, 'away' | 'home'>): string {
+    if (item.away && item.home) return `${item.away} vs. ${item.home}`;
+    return item.away ?? item.home ?? 'the game';
+}
 
-    const totalsSide = TOTALS_MARKET_TYPES.includes(item.market) ? totalsSideWord(item) : null;
-    if (totalsSide) {
-        const matchup = item.player; // the game-line matchup fallback ("Away vs. Home")
-        const line = (item.pickLabel.match(/\d+(?:\.\d+)?/) ?? [])[0];
-        if (t === 0) {
-            return `${displayName} ${item.won ? 'climbs' : 'sinks'} ${points} points as the ${totalsSide} ${item.won ? 'hits' : 'misses'} in ${matchup}.`;
-        }
-        if (t === 1) {
-            return `The ${tickerWord} index experiences a local ${item.won ? 'high' : 'low'} as ${item.pickLabel || `the ${totalsSide}`} ${item.won ? 'hits' : 'misses'} in ${matchup}.`;
-        }
-        // Whether the GAME cleared the number follows from side + outcome: an Over
-        // winning and an Under losing both mean the total was cleared.
-        const cleared = (totalsSide === 'Over') === item.won;
-        const gameAction = cleared ? 'clears the total' : line ? `stays under ${line}` : 'stays under the total';
-        return item.won
-            ? `Buyers applaud as ${matchup} ${gameAction}. The market climbs ${points} points.`
-            : `Buyers up in arms as ${matchup} ${gameAction}. The market falls ${points} points.`;
+// "at {home}" for the away side, "against {away}" for the home side, else the matchup.
+function venueOf(team: string, item: Pick<TickerResultItem, 'away' | 'home'>): string {
+    const norm = (s: string | null) => (s ?? '').trim().toLowerCase();
+    if (item.home && norm(team) === norm(item.away)) return `at ${item.home}`;
+    if (item.away && norm(team) === norm(item.home)) return `against ${item.away}`;
+    return `in ${matchupOf(item)}`;
+}
+
+export function buildResultSentence(item: TickerResultItem, displayName: string, _templateIndex: number): string {
+    const points = resultPoints(item.delta);
+    const moved = item.won ? 'rose' : 'fell';
+    const indexClause = (otherSide: boolean) =>
+        `${displayName}${otherSide ? ', which held the other side,' : ''} ${moved} ${points} points.`;
+    const matchup = matchupOf(item);
+
+    if (TOTALS_MARKET_TYPES.includes(item.marketType)) {
+        const isOver = /^over\b/i.test(item.sideLabel);
+        const cleared = isOver === item.won;
+        const line = typeof item.marketLine === 'number' ? String(item.marketLine) : null;
+        const game = cleared
+            ? `${line ? `Over ${line}` : 'The Over'} hit in ${matchup}`
+            : `${matchup} stayed under ${line ?? 'the total'}`;
+        return `${game}; ${indexClause(false)}`;
     }
 
-    if (/_player_/.test(item.market)) {
-        const player = item.player;
-        if (t === 0) {
-            return `${displayName} ${item.won ? 'climbs' : 'sinks'} ${points} points with ${possessive(player)} recent ${item.won ? 'win' : 'loss'}.`;
+    if (YES_NO_LABEL.test(item.sideLabel.trim())) {
+        const heldYes = item.sideLabel.trim().toLowerCase() === 'yes';
+        // The Yes side's fact came true exactly when (Yes held AND won) or (No held AND lost).
+        const yesHappened = heldYes === item.won;
+        const parsed = parseYesNoQuestion(item.question);
+        if (parsed?.kind === 'team') {
+            const team = parsed.team;
+            const game = yesHappened ? `${team} won ${venueOf(team, item)}` : `${team} did not win ${venueOf(team, item)}`;
+            return `${game}; ${indexClause(!heldYes)}`;
         }
-        if (t === 1) {
-            return item.pickLabel
-                ? `The ${tickerWord} index experiences a local ${item.won ? 'high' : 'low'} as ${player} ${item.won ? 'delivers on' : 'misses'} ${item.pickLabel}.`
-                : `The ${tickerWord} index experiences a local ${item.won ? 'high' : 'low'} as ${player} ${item.won ? 'delivers' : 'comes up short'}.`;
+        if (parsed?.kind === 'draw') {
+            const game = yesHappened ? `${matchup} ended in a draw` : `${matchup} did not end in a draw`;
+            return `${game}; ${indexClause(!heldYes)}`;
         }
-        return item.won
-            ? `Buyers applaud heroics as ${player} impresses. The market climbs ${points} points.`
-            : `Buyers up in arms as ${player} fails to impress. The market falls ${points} points.`;
+        // No readable question: name the side literally rather than guess a team.
+        return `${matchup}: the ${item.sideLabel.trim()} side ${item.won ? 'came in' : 'missed'}; ${indexClause(false)}`;
     }
 
-    const subject = subjectFor(item);
-    // A pickLabel with substance beats the subject; a bare side word ("Under", "Yes")
-    // doesn't - "as Under deliver" reads as broken as the possessive.
-    const pickLabelIsBareSide = /^(over|under|yes|no)$/i.test(item.pickLabel.trim());
-    const pick = (item.pickLabel && !pickLabelIsBareSide) ? item.pickLabel : subject;
-    switch (t) {
-        case 0:
-            return `${displayName} ${item.won ? 'climbs' : 'sinks'} ${points} points with ${possessive(subject)} recent ${item.won ? 'win' : 'loss'}.`;
-        case 1:
-            return `The ${tickerWord} index experiences a local ${item.won ? 'high' : 'low'} as ${pick} ${item.won ? 'deliver' : "don't deliver"}.`;
-        default:
-            return item.won
-                ? `Buyers applaud heroics as ${pick} impress. The market climbs ${points} points.`
-                : `Buyers up in arms as ${pick} fails to impress. The market falls ${points} points.`;
+    if (item.marketType === 'moneyline' && item.sideLabel) {
+        const team = item.sideLabel;
+        return `${team} ${item.won ? 'won' : 'lost'} ${venueOf(team, item)}; ${indexClause(false)}`;
     }
+
+    return `${matchup}: the ${item.sideLabel || 'held'} side ${item.won ? 'came in' : 'missed'}; ${indexClause(false)}`;
 }
 
 // The one sentence-composition entry point, shared by toMarketMovers below and the
-// TANKDAQ detail endpoint (functions/api/tickers/detail.ts) - the same result reads
-// the same everywhere it appears.
+// TANKDAQ detail endpoint (functions/api/tickers/detail.ts) - the same settled game
+// reads the same on the homepage cards, the tape, and /tankdaq/<key>/.
 export function toResultSentences(items: TickerResultItem[], displayName: string): MarketMoverResultVM[] {
     return items.map((r, i) => ({ text: buildResultSentence(r, displayName, i), won: r.won }));
 }
@@ -274,10 +295,7 @@ const FLAT_POINTS = 0.5;
 // rotates phrasings: there is one descriptive form per case, so the same move always
 // reads the same way.
 export function buildNewsSentence(item: TickerNewsMoveItem, displayName: string, _templateIndex: number): string {
-    const subject = subjectFor({
-        player: item.subject, market: item.market, outcomeLabel: item.outcomeLabel,
-        pickLabel: item.pickLabel, tickerKey: '', won: false, delta: 0, occurredAt: '',
-    });
+    const subject = subjectFor(item);
     const lead = `Over the 3 days before this story was added to ${displayName}`;
     const moved = `${Math.abs(item.indexPct).toFixed(1)}%`;
     const indexClause = item.indexPct > 0
@@ -657,8 +675,8 @@ export function renderTickerTape(movers: MarketMoverVM[]): string {
     const headline = movers.filter((m) => !m.parentKey);
     // Marquee reads in tab_order (marketing order), not the section's value-desc order -
     // both label strings come from the same VM, so the numbers can't disagree. Each item
-    // trails its ticker's newest Recent Results sentence (same VM the cards render), in
-    // a deliberately quieter style than the symbol/value.
+    // trails its ticker's newest settled slate game as a sentence (results[0] - same VM
+    // the cards render), in a deliberately quieter style than the symbol/value.
     const items = [...(headline.length > 0 ? headline : movers)].sort((a, b) => a.tabOrder - b.tabOrder).map((m) => {
         const headline = m.results[0]
             ? ` <span class="hc-tape-headline">${escapeHtml(m.results[0].text)}</span>`

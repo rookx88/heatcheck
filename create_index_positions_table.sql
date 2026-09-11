@@ -70,7 +70,8 @@ CREATE TABLE IF NOT EXISTS index_positions (
 -- The lock job's "is this game already locked?" probe and the settle job's work queue.
 CREATE INDEX IF NOT EXISTS idx_index_positions_pending
     ON index_positions(kickoff) WHERE settled_at IS NULL;
--- The daily close's aggregation, and the "what moved it today" reads behind it.
+-- The daily close's aggregation, and the "what moved it today" reads behind it -
+-- including getTickerResults' per-ticker newest-first rank (Recent Results).
 CREATE INDEX IF NOT EXISTS idx_index_positions_close
     ON index_positions(ticker_key, settled_at);
 CREATE INDEX IF NOT EXISTS idx_index_positions_event ON index_positions(event_id);

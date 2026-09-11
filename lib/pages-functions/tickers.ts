@@ -12,6 +12,11 @@
 //            flat +settle_win_pct/-settle_loss_pct scheme sent chalk/dogs past +/-100).
 //            The flat pcts remain as the fallback when the snapshot prob is missing.
 //            Uncapped, guarded by ticker_tags.calculated_at.
+//            RETIRED 2026-08-31 (functions/api/settle.ts, SETTLE_TANK_TAGS): results are
+//            now the slate leg - index_positions scored and closed daily by
+//            /api/index-settle - and the public Recent Results (getTickerResults below)
+//            read those positions, not settle events. settleTag/computeSettleDelta stay
+//            for the one-off recompute script and the flag-guarded block.
 // No Ember writes live here (that's ledger.ts) - tickers are a display layer; nothing
 // in this module credits, debits, or unlocks anything.
 
@@ -21,6 +26,7 @@ import { fetchMarket as fetchKalshiMarket, fetchKalshiTradesPage } from './kalsh
 import { getGameConfig } from './pets';
 import { leagueGroupLabel, leagueRuleAccepts, parseLeagueRule } from './league-rules';
 import { priceFromValue } from './ticker-price';
+import { positionShareOfClose } from './index-slate';
 
 // Spec'd framing constraint: ticker values/charts are never presented as predictive.
 // Every API response that carries a value or chart includes this note verbatim.
@@ -549,8 +555,8 @@ export async function getTickerValues(sql: SqlReader, key: string | null = null)
 
 export interface TickerSeriesEvent {
     id: string;
-    tankId: string;
-    eventType: 'tag' | 'settle';
+    tankId: string | null; // null on a slate close (source='slate' carries no Tank)
+    eventType: 'tag' | 'settle' | 'close';
     delta: number;
     cumulative: number;
     occurredAt: string;
@@ -580,8 +586,8 @@ export async function getTickerSeries(sql: SqlReader, key?: string | null): Prom
     for (const row of rows) {
         (series[row.ticker_key as string] ??= []).push({
             id: row.id as string,
-            tankId: row.tank_id as string,
-            eventType: row.event_type as 'tag' | 'settle',
+            tankId: (row.tank_id as string | null) ?? null,
+            eventType: row.event_type as 'tag' | 'settle' | 'close',
             delta: row.delta as number,
             cumulative: row.cumulative as number,
             occurredAt: String(row.occurred_at),
@@ -632,65 +638,85 @@ export async function getTickerNews(sql: SqlReader, limitPerTicker = 3): Promise
     return news;
 }
 
+// One settled slate position - a single game as one index held it. Everything the
+// result sentence needs comes off the index_positions row itself (a frozen pre-game
+// fact plus its outcome), plus the market's question for the Yes/No case.
 export interface TickerResultItem {
     tickerKey: string;
-    player: string;        // prop.player (matchup fallback for whole-game markets)
-    market: string;        // prop.market - used to detect "_player_" markets
-    outcomeLabel: string;  // odds.outcomes[relevant_side], '' if unavailable
-    pickLabel: string;     // call.sides[relevant_side], '' if unavailable
-    won: boolean;
-    delta: number;         // signed settle delta (points, not a percent string)
-    occurredAt: string;
+    won: boolean;             // index_positions.result = 'win' - never inferred from delta's sign
+    delta: number;            // THIS game's exact share of its day's close, signed points
+    occurredAt: string;       // index_positions.settled_at
+    marketType: string;       // 'totals' | 'moneyline'
+    marketLine: number | null;// the total's number; null for moneylines
+    sideLabel: string;        // 'Over'/'Under', a team name, or literally 'Yes'/'No'
+    sideIndex: number;
+    away: string | null;
+    home: string | null;
+    league: string;
+    question: string | null;  // polymarket_props.question - names the team behind a Yes/No side
 }
 
-// Most recently SETTLED tagged Tanks per ticker - the SSR "Recent Results" source. Only
-// event_type='settle' rows (a real win/loss outcome), same public-surface predicate as
-// getTickerNews. won is read from the settle event's own metadata (functions/api/settle.ts
-// writes { winningIndex, relevantSide } on every settle event) rather than inferred from
-// delta's sign, so a misconfigured zero-magnitude ticker can never misreport a loss as a win;
-// the sign check only backstops rows missing that metadata (e.g. hand-inserted fixtures).
+// Most recently SETTLED slate positions per ticker - the SSR "Recent Results" source.
+// One row per (index, game) from index_positions, restricted to win/loss rows that have
+// rolled into a daily close (close_id set - index-settle.ts stamps it in the same request
+// that writes the close, so in practice every settled row qualifies; 'void' rows
+// contribute nothing and are not results). Tank-tag settle events are retired and are
+// no longer read here.
+//
+// delta is this game's own share of its day's close, recomputed from the close event's
+// metadata via positionShareOfClose (index-slate.ts) - the same term closeDelta summed -
+// so the numbers on a card add up to the day's move on the chart. Rows without usable
+// close metadata (hand-inserted fixtures) fall back to the raw contrib.
+//
+// The polymarket_props join sits OUTSIDE the ranked subquery so it runs on at most
+// limit x tickers rows, never the whole positions table; LEFT, so a missing props row
+// degrades to question=null and the sentence falls back to the side label. Plain
+// parameterised SQL on purpose: generate-static-site.ts runs this same statement through
+// a pg adapter at build time.
 export async function getTickerResults(sql: SqlReader, limitPerTicker = 3): Promise<Record<string, TickerResultItem[]>> {
     const rows = await sql`
-        SELECT ticker_key, player, market, outcomes, relevant_side, sides, delta, metadata, occurred_at FROM (
-            SELECT tt.ticker_key,
-                   t.game_snapshot->'prop'->>'player' AS player,
-                   t.game_snapshot->'prop'->>'market' AS market,
-                   t.game_snapshot->'prop'->'odds'->'outcomes' AS outcomes,
-                   tt.relevant_side,
-                   t.model_output->'call'->'sides' AS sides,
-                   te.delta::float8 AS delta,
-                   te.metadata,
-                   te.occurred_at,
-                   ROW_NUMBER() OVER (PARTITION BY tt.ticker_key ORDER BY te.occurred_at DESC, te.id) AS rn
-            FROM ticker_tags tt
-            JOIN tank_pages t ON t.id = tt.tank_id
-            JOIN ticker_events te ON te.ticker_tag_id = tt.id AND te.event_type = 'settle'
-            WHERE t.status = 'published' AND t.visibility = 'app'
-              AND t.slug IS NOT NULL AND t.model_output IS NOT NULL
-              AND tt.calculated_at IS NOT NULL
-        ) ranked
-        WHERE rn <= ${limitPerTicker}
-        ORDER BY ticker_key, rn
+        SELECT r.ticker_key, r.away, r.home, r.league, r.market_type, r.market_line,
+               r.side_index, r.side_label, r.result, r.contrib, r.settled_at,
+               r.close_metadata, pp.question
+        FROM (
+            SELECT ip.ticker_key, ip.market_id, ip.away, ip.home, ip.league, ip.market_type,
+                   ip.market_line::float8 AS market_line,
+                   ip.side_index, ip.side_label, ip.result,
+                   ip.contrib::float8 AS contrib,
+                   ip.settled_at,
+                   ce.metadata AS close_metadata,
+                   ROW_NUMBER() OVER (PARTITION BY ip.ticker_key ORDER BY ip.settled_at DESC, ip.id) AS rn
+            FROM index_positions ip
+            JOIN ticker_events ce ON ce.id = ip.close_id
+            WHERE ip.result IN ('win', 'loss') AND ip.close_id IS NOT NULL
+        ) r
+        LEFT JOIN polymarket_props pp ON pp.market_id = r.market_id
+        WHERE r.rn <= ${limitPerTicker}
+        ORDER BY r.ticker_key, r.rn
     `;
     const results: Record<string, TickerResultItem[]> = {};
     for (const row of rows) {
-        const outcomes = Array.isArray(row.outcomes) ? (row.outcomes as unknown[]) : [];
-        const sides = Array.isArray(row.sides) ? (row.sides as unknown[]) : [];
-        const relevantSide = row.relevant_side as number;
-        const delta = row.delta as number;
-        const metadata = row.metadata as { winningIndex?: unknown; relevantSide?: unknown } | null;
-        const won = metadata && typeof metadata.winningIndex === 'number' && typeof metadata.relevantSide === 'number'
-            ? metadata.relevantSide === metadata.winningIndex
-            : delta >= 0;
+        const contrib = row.contrib as number;
+        const meta = (row.close_metadata ?? null) as { positionsCounted?: unknown; smoothing?: unknown; scalePct?: unknown } | null;
+        const share = meta
+            && typeof meta.positionsCounted === 'number'
+            && typeof meta.smoothing === 'number'
+            && typeof meta.scalePct === 'number'
+            ? positionShareOfClose(contrib, { positionsCounted: meta.positionsCounted, smoothing: meta.smoothing, scalePct: meta.scalePct })
+            : null;
         (results[row.ticker_key as string] ??= []).push({
             tickerKey: row.ticker_key as string,
-            player: (row.player as string | null) ?? '',
-            market: (row.market as string | null) ?? '',
-            outcomeLabel: typeof outcomes[relevantSide] === 'string' ? (outcomes[relevantSide] as string) : '',
-            pickLabel: typeof sides[relevantSide] === 'string' ? (sides[relevantSide] as string) : '',
-            won,
-            delta,
-            occurredAt: String(row.occurred_at),
+            won: row.result === 'win',
+            delta: share ?? contrib,
+            occurredAt: String(row.settled_at),
+            marketType: (row.market_type as string | null) ?? '',
+            marketLine: typeof row.market_line === 'number' ? row.market_line : null,
+            sideLabel: (row.side_label as string | null) ?? '',
+            sideIndex: row.side_index as number,
+            away: (row.away as string | null) ?? null,
+            home: (row.home as string | null) ?? null,
+            league: (row.league as string | null) ?? '',
+            question: (row.question as string | null) ?? null,
         });
     }
     return results;

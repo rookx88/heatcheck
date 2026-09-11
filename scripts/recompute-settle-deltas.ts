@@ -82,8 +82,8 @@ async function main(): Promise<void> {
             continue;
         }
         // The settle writer has always stamped winningIndex/relevantSide; the delta-sign
-        // fallback only covers hand-inserted fixture rows (same backstop as
-        // getTickerResults). No zero-magnitude ticker exists, so the sign is decisive.
+        // fallback only covers hand-inserted fixture rows. No zero-magnitude ticker
+        // exists, so the sign is decisive.
         const won = typeof ev.metadata?.winningIndex === 'number' && typeof ev.metadata?.relevantSide === 'number'
             ? ev.metadata.relevantSide === ev.metadata.winningIndex
             : ev.old_delta >= 0;

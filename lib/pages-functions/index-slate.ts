@@ -35,6 +35,33 @@ export interface SlateMarketRow {
     kickoff: string | null;
     away: string | null;
     home: string | null;
+    // polymarket_props.question. Only read for Yes/No markets, where the outcome labels
+    // say nothing about what the market is (see parseYesNoQuestion / isDrawMarket).
+    question: string | null;
+}
+
+// -----------------------------------------------------------------------------------
+// Yes/No market questions. Polymarket lists soccer moneylines as "Will <TEAM> win on
+// <date>?" with outcomes ['Yes','No'], so the side label alone never names the team; and
+// it lists "Will <A> vs. <B> end in a draw?" under the same 'moneyline' market_type even
+// though it is a side bet on one outcome of a three-way, not the game's line. Both need
+// the question to be read. Same regex forms as yesSideLabel in market-movement.ts, kept
+// local so this module stays free of that file's tank-deck dependencies.
+// -----------------------------------------------------------------------------------
+
+export type YesNoQuestion = { kind: 'team'; team: string } | { kind: 'draw' };
+
+export function parseYesNoQuestion(question: string | null | undefined): YesNoQuestion | null {
+    if (!question) return null;
+    const q = question.trim();
+    if (/\bend in a draw\b/i.test(q)) return { kind: 'draw' };
+    const win = q.match(/^Will\s+(.+?)\s+win\b/i);
+    if (win) return { kind: 'team', team: win[1].trim() };
+    return null;
+}
+
+export function isDrawMarket(row: Pick<SlateMarketRow, 'question'>): boolean {
+    return parseYesNoQuestion(row.question)?.kind === 'draw';
 }
 
 export interface PositionSpec {
@@ -181,6 +208,10 @@ export function pickCanonicalMarket(
 ): { row: SlateMarketRow; runnerUpLine: number | null; medianAgreed: boolean | null } | null {
     const candidates = rows.filter((r) => {
         if (r.market_type !== marketType) return false;
+        // A draw market is not a game's line, whatever its volume says - $CHALK holding
+        // "No draw" at 0.76 measures nothing the index is about. Six such positions were
+        // locked before this guard existed (MLS, 2026-09) and stay as history.
+        if (isDrawMarket(r)) return false;
         const p = prices(r);
         if (!p) return false;
         if ((r.liquidity ?? 0) <= 0) return false;
@@ -304,4 +335,20 @@ export function closeDelta(
     const sum = contributions.reduce((a, b) => a + b, 0);
     const raw = (sum / (contributions.length + cfg.smoothing)) * cfg.scalePct;
     return Number(raw.toFixed(3));
+}
+
+/**
+ * One position's exact share of the close closeDelta() built from it: the same term,
+ * unrounded, so a day's shares sum to that day's close. This is the "points" a Recent
+ * Results sentence quotes for a single game (getTickerResults, tickers.ts) - the
+ * inputs come from the close event's own metadata, never recomputed from config, so
+ * the number stays true even after a v4 retune. Null when the metadata is unusable.
+ */
+export function positionShareOfClose(
+    contrib: number,
+    close: { positionsCounted: number; smoothing: number; scalePct: number },
+): number | null {
+    const denom = close.positionsCounted + close.smoothing;
+    if (!Number.isFinite(denom) || denom <= 0 || !Number.isFinite(contrib) || !Number.isFinite(close.scalePct)) return null;
+    return (contrib * close.scalePct) / denom;
 }

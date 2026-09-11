@@ -1,7 +1,8 @@
 // Acceptance suite for the Exchange ticker layer (and the settlement paths it touches).
 // This IS the ticker acceptance suite: run it after any change to
 // functions/api/settle.ts, lib/pages-functions/gamma.ts, lib/pages-functions/tickers.ts,
-// or the ticker endpoints. Lifted verbatim (behavior-preserving) from the original
+// or the ticker endpoints (and suites/index-results.ts after functions/api/index-settle.ts
+// or the Recent Results path). Lifted verbatim (behavior-preserving) from the original
 // standalone scripts/acceptance-tickers.ts into the consolidated runner.
 //
 // Uses real Polymarket data on purpose: eligibility/tag tests hit a live high-volume

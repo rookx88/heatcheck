@@ -54,7 +54,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // Every open game-line market for games kicking off inside the window. The volume
     // floor is applied here as well as in the selector so the payload stays small.
     const rows = await sql`
-        SELECT event_id, league, market_id, condition_id, market_type,
+        SELECT event_id, league, market_id, condition_id, market_type, question,
                market_line::float8 AS market_line,
                outcomes, outcome_prices,
                volume::float8 AS volume, liquidity::float8 AS liquidity,
@@ -90,6 +90,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             kickoff: r.event_start_time ? new Date(r.event_start_time as string | Date).toISOString() : null,
             away: teamName(r.event_teams, 'away'),
             home: teamName(r.event_teams, 'home'),
+            // The selector reads this to keep "end in a draw?" markets out of the
+            // moneyline pick (isDrawMarket, index-slate.ts).
+            question: (r.question as string | null) ?? null,
         };
         const list = byEvent.get(row.event_id);
         if (list) list.push(row); else byEvent.set(row.event_id, [row]);

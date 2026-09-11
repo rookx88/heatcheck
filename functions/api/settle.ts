@@ -203,7 +203,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     //
     // Tags are left with calculated_at NULL on purpose: that column is the settle
     // idempotency marker, and stamping it without an event would fake a settlement that
-    // never happened. Nothing scans them any more.
+    // never happened. Nothing scans them any more - the public Recent Results
+    // (getTickerResults, lib/pages-functions/tickers.ts) read settled index_positions,
+    // not settle events.
     //
     // The block below is kept, unreached, behind SETTLE_TANK_TAGS purely so the previous
     // behaviour is one flag away while the slate legs bed in. Delete it once a full

@@ -1,8 +1,9 @@
 // GET /api/tickers/detail?key=dogs - everything one TANKDAQ index detail page needs in
 // a single fetch: the ticker's meta + current value, its full event series (the chart
 // source - the client windows it for the 24H/3D/1W toggle and computes the 24h delta),
-// recent tagged storylines, and composed Recent Results sentences (toResultSentences -
-// the exact copy the homepage Market Movers cards show). Public, read-only, no session.
+// recent tagged storylines, and composed Recent Results sentences (toResultSentences over
+// the index's most recently settled slate games from index_positions - the exact copy
+// the homepage Market Movers cards show). Public, read-only, no session.
 // Same retrospective-framing contract as every ticker read endpoint.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
