@@ -25,6 +25,8 @@
 --     carries the amount range (uniform min..max, rolled in code - knobs in DB,
 --     formula in code, same split as correct_call). Pocket-change by design.
 -- Retune by inserting (key, version+1) and flipping active - never mutate config.
+-- Footprints gate (min_new_places, pets.places_since_find): see add_pet_footprints.sql,
+-- which seeds discovery config version 2.
 -- Execute: psql "$DATABASE_URL" -f add_pet_discovery.sql
 
 ALTER TABLE pets ADD COLUMN IF NOT EXISTS next_eligible_roll_at TIMESTAMPTZ; -- nullable, no default: NULL = not yet scheduled

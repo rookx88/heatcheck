@@ -66,7 +66,13 @@ export function getToolbarState(): Promise<ToolbarState | null> {
 }
 
 async function fetchToolbarState(): Promise<ToolbarState | null> {
-    const res = await fetch('/api/toolbar-state');
+    // `place` is the page this chrome is mounted on. The server turns it into a
+    // footprint for the pet (lib/pages-functions/discovery.ts placeFromPath - an
+    // allowlist, so an unknown path is ignored rather than an error): a pet only finds
+    // things after its owner has taken it to enough new places, which is what makes
+    // discovery an exploration reward instead of a timer. Sent as a query param so this
+    // stays a plain same-origin GET (no preflight, no CSRF posture change).
+    const res = await fetch(`/api/toolbar-state?place=${encodeURIComponent(window.location.pathname)}`);
     if (res.status === 401) return null;
     const data = await parseJsonSafe(res);
     if (!res.ok) throw new Error(data.message || `GET /api/toolbar-state failed: ${res.status}`);

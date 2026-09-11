@@ -572,6 +572,9 @@ export interface DiscoveryFindEmberInput {
     petId: string;
     // Pre-rolled by discovery.ts (sustained-aware, randomized within the config range).
     cooldownMinutes: number;
+    // The footprints gate (add_pet_footprints.sql): discovery.ts pre-reads it from
+    // game_config and the claim UPDATE below re-checks it atomically alongside the clock.
+    minPlaces: number;
     // Epoch-ms of the pets.next_eligible_roll_at value being consumed - the identity of
     // this roll window. Makes the ledger idempotency key deterministic per window, so a
     // theoretical replay of the same window is a no-op everywhere.
@@ -591,10 +594,11 @@ export interface DiscoveryFindEmberResult {
 // Rolls a uniform amount from discovery_find's {min, max} and then, in ONE CTE-chained
 // statement: consumes the roll window (the pets UPDATE below is the race guard - a
 // losing concurrent request re-evaluates against the winner's pushed-out timestamp and
-// matches zero rows), appends the ledger row, folds the balance cache (post()'s shape,
-// same double-credit-on-retry reasoning), and inserts the claimable notification. Every
-// leg selects FROM the one before it, so a lost race writes nothing anywhere. No
-// spendLock: this never debits, and the claim UPDATE serializes concurrent rolls.
+// matches zero rows - and also enforces + resets the footprints gate), appends the
+// ledger row, folds the balance cache (post()'s shape, same double-credit-on-retry
+// reasoning), and inserts the claimable notification. Every leg selects FROM the one
+// before it, so a lost race writes nothing anywhere. No spendLock: this never debits,
+// and the claim UPDATE serializes concurrent rolls.
 export async function discoveryFindEmber(
     sql: NeonQueryFunction<false, false>,
     input: DiscoveryFindEmberInput
@@ -606,9 +610,12 @@ export async function discoveryFindEmber(
     const message = input.buildMessage(amount);
     const rows = await sql`
         WITH claimed AS (
-            UPDATE pets SET next_eligible_roll_at = NOW() + (${input.cooldownMinutes}::float8 * INTERVAL '1 minute')
+            UPDATE pets
+            SET next_eligible_roll_at = NOW() + (${input.cooldownMinutes}::float8 * INTERVAL '1 minute'),
+                places_since_find = '{}'
             WHERE id = ${input.petId} AND user_id = ${input.userId}
               AND next_eligible_roll_at IS NOT NULL AND next_eligible_roll_at <= NOW()
+              AND cardinality(places_since_find) >= ${input.minPlaces}::int
             RETURNING id
         ), led AS (
             INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)

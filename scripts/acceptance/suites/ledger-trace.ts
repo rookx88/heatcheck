@@ -141,8 +141,15 @@ function correctCallPayout(base: number, cap: number, impliedProb: number): numb
     return Math.round(base * Math.min(1 / impliedProb, cap));
 }
 
+// Opens both discovery gates: the clock (due) and the footprints (add_pet_footprints.sql
+// - stamped with synthetic places up to the active min_new_places).
 async function rewindPetForRoll(petId: string): Promise<void> {
-    await pool.query(`UPDATE pets SET next_eligible_roll_at = NOW() - INTERVAL '1 minute' WHERE id = $1`, [petId]);
+    const { rows } = await pool.query(`SELECT config->>'min_new_places' AS n FROM game_config WHERE key = 'discovery' AND active`);
+    const stamped = Array.from({ length: Number(rows[0]?.n ?? 0) }, (_, i) => `stamp:${i}`);
+    await pool.query(
+        `UPDATE pets SET next_eligible_roll_at = NOW() - INTERVAL '1 minute', places_since_find = $2::text[] WHERE id = $1`,
+        [petId, stamped],
+    );
 }
 
 async function latestClaimableNotificationId(userId: string): Promise<string | null> {

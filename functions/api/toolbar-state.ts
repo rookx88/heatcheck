@@ -12,9 +12,13 @@
 //
 // This endpoint is also the trigger surface for Pet Random Event Discovery
 // (lib/pages-functions/discovery.ts): the roll check runs as a side effect of this
-// ambient read, so there is no isolated player action that "is the check". The common
-// case costs zero extra queries; when a roll actually grants, balance + notifications
-// are re-read so the find (and its claimable notification) land in this same response.
+// ambient read, so there is no isolated player action that "is the check". The chrome
+// passes the page it's on as `?place=<pathname>` so the pet's footprints (the
+// exploration gate) accumulate from the same call - the server derives the place key
+// from an allowlist, and an unknown path is simply ignored. The common case costs zero
+// extra queries (one UPDATE only when the place is new for the pet); when a roll
+// actually grants, balance + notifications are re-read so the find (and its claimable
+// notification) land in this same response.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
@@ -83,7 +87,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const [petRows, cfgRows, balanceRows, notificationRows] = await sql.transaction([
         sql`
             SELECT id, user_id, color, render_mode, render_config, name, is_captain,
-                   satisfaction_at_last_feed, last_fed_at, next_eligible_roll_at
+                   satisfaction_at_last_feed, last_fed_at, next_eligible_roll_at, places_since_find
             FROM pets WHERE user_id = ${session.userId} LIMIT 1
         `,
         sql`SELECT config FROM game_config WHERE key = 'feeding' AND active = true LIMIT 1`,
@@ -98,8 +102,10 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     let notifications = mapNotifications(notificationRows as unknown as NotificationRow[]);
 
     // Petless accounts no-op inside maybeDiscover before it touches anything - the
-    // precondition lives in the module so every trigger surface inherits it.
-    const outcome = await maybeDiscover(sql, { userId: session.userId, pet, feedingCfg });
+    // precondition lives in the module so every trigger surface inherits it. The raw
+    // ?place= goes through untouched: normalization and the allowlist are the module's.
+    const placePath = new URL(context.request.url).searchParams.get('place');
+    const outcome = await maybeDiscover(sql, { userId: session.userId, pet, feedingCfg, placePath });
     if (outcome.kind === 'found_ember' || outcome.kind === 'found_food' || outcome.kind === 'found_collectible') {
         // Rare path: a find just landed - re-read so this response already carries the
         // new balance and the claimable notification instead of them popping in a

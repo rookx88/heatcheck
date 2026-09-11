@@ -349,12 +349,16 @@ async function run(): Promise<void> {
         // short cooldown window (45-60m per add_pet_discovery.sql's seed + suites/
         // discovery.ts's own "sustained-satisfied" precedent test). The cushion absorbs
         // request latency around the exact instant, which can't be hit deterministically.
+        // Both rolls below also stamp the footprints gate open (add_pet_footprints.sql):
+        // this section is about the cooldown class, not the walk.
+        const stamped = Array.from({ length: Number(dCfg.min_new_places) }, (_, i) => `stamp:${i}`);
         await pool.query(
             `UPDATE pets SET satisfaction_at_last_feed = $2,
                               last_fed_at = NOW() - ($3 * INTERVAL '1 hour') - INTERVAL '2 seconds',
-                              next_eligible_roll_at = NOW() - INTERVAL '1 minute'
+                              next_eligible_roll_at = NOW() - INTERVAL '1 minute',
+                              places_since_find = $4::text[]
              WHERE id = $1`,
-            [petId, max, sustainedHours],
+            [petId, max, sustainedHours, stamped],
         );
         await api('GET', '/api/toolbar-state', { cookie: roller.cookie });
         const { rows: shortRows } = await pool.query(`SELECT EXTRACT(EPOCH FROM (next_eligible_roll_at - NOW())) / 60 AS mins FROM pets WHERE id = $1`, [petId]);
@@ -371,9 +375,10 @@ async function run(): Promise<void> {
         await pool.query(
             `UPDATE pets SET satisfaction_at_last_feed = $2,
                               last_fed_at = NOW() - (($3 * 60 - 2) * INTERVAL '1 minute'),
-                              next_eligible_roll_at = NOW() - INTERVAL '1 minute'
+                              next_eligible_roll_at = NOW() - INTERVAL '1 minute',
+                              places_since_find = $4::text[]
              WHERE id = $1`,
-            [petId, max, sustainedHours],
+            [petId, max, sustainedHours, stamped],
         );
         await api('GET', '/api/toolbar-state', { cookie: roller.cookie });
         const { rows: longRows } = await pool.query(`SELECT EXTRACT(EPOCH FROM (next_eligible_roll_at - NOW())) / 60 AS mins FROM pets WHERE id = $1`, [petId]);

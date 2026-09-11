@@ -7,6 +7,18 @@
 // due requests serialize on the pets row (the claim UPDATE in each grant statement),
 // so exactly one wins and the loser writes nothing.
 //
+// Two gates, both quals on that same claim UPDATE (add_pet_footprints.sql):
+//   time       - next_eligible_roll_at <= NOW(), the cooldown.
+//   footprints - cardinality(places_since_find) >= min_new_places: the pet must have
+//                visited that many DISTINCT places since its last find. The chrome
+//                sends the page path with every toolbar-state call; placeFromPath()
+//                below turns it into a place key (an allowlist - unknown paths are
+//                ignored, never an error), and a NEW place costs one UPDATE that
+//                appends it. A known place costs nothing. Footprints accumulate whether
+//                or not the clock is due, and the claim resets them to '{}'. Without
+//                this, polling one URL until the clock came due farmed forever; with
+//                it, the reward follows the owner actually moving around the site.
+//
 // No Ember is written here - the ember branch delegates to ledger.discoveryFindEmber()
 // (ledger.ts is the one sanctioned Ember write path). The food and collectible
 // branches write inventory_items directly, precedent pets.ts feed(); the collectible
@@ -27,17 +39,66 @@ export interface DiscoveryConfig {
     long_cooldown_minutes_max: number;
     sustained_hours: number;
     food_weight_price_exponent: number;
+    min_new_places: number;
 }
 
-// The pet row as toolbar-state reads it: the feed/hatch shape plus the discovery clock.
+// The pet row as toolbar-state reads it: the feed/hatch shape plus the discovery clock
+// and the footprints since the last find.
 export interface DiscoveryPetRow extends PetRow {
     next_eligible_roll_at: string | null;
+    places_since_find: string[];
+}
+
+// Hard ceiling on places_since_find so a pet row can't grow without bound between
+// finds (a tour of every article would otherwise keep appending). Enforced in the
+// write's WHERE, mirrored in JS to skip the round-trip.
+const MAX_FOOTPRINTS = 64;
+
+// A place the pet can be taken to. `check` names the existence predicate the footprint
+// write must pass before the key counts: article slugs and ticker keys come from the
+// URL, so they're verified against tank_pages / tickers inside the UPDATE (no extra
+// round-trip, and only when the place is new) - a made-up slug never satisfies the gate.
+export interface Place {
+    key: string;
+    check: 'none' | 'article' | 'tankdaq';
+    ref: string;
+}
+
+const STATIC_PLACES = new Set([
+    'the-tank', 'the-tank-hq', 'the-hatchery', 'champions-terrace',
+    'quickboost-delicacies', 'tankdaq', 'account', 'my-portfolio',
+]);
+const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,120}$/;
+const TICKER_RE = /^[a-z0-9-]{1,40}$/;
+
+// Pure: a raw pathname (the client sends location.pathname verbatim) to a Place, or null
+// for anything outside the allowlist. Never throws. Trailing slash is stripped once (the
+// static site serves /the-tank/ and /the-tank/articles/<slug>/ as directories), case is
+// folded, and everything else - extra segments, dot segments, legacy routes, login pages
+// - is simply not a place.
+export function placeFromPath(raw: string | null): Place | null {
+    if (!raw || raw.length > 200 || raw[0] !== '/') return null;
+    let p = raw.toLowerCase();
+    if (p.length > 1 && p.endsWith('/')) p = p.slice(0, -1);
+    if (p === '/') return { key: 'home', check: 'none', ref: '' };
+    const segs = p.slice(1).split('/');
+    if (segs.length === 1 && STATIC_PLACES.has(segs[0])) return { key: segs[0], check: 'none', ref: '' };
+    if (segs.length === 3 && segs[0] === 'the-tank' && segs[1] === 'articles' && SLUG_RE.test(segs[2])) {
+        return { key: `article:${segs[2]}`, check: 'article', ref: segs[2] };
+    }
+    if (segs.length === 2 && segs[0] === 'tankdaq') {
+        if (segs[1] === 'indexes') return { key: 'tankdaq:indexes', check: 'none', ref: '' };
+        if (TICKER_RE.test(segs[1])) return { key: `tankdaq:${segs[1]}`, check: 'tankdaq', ref: segs[1] };
+    }
+    return null;
 }
 
 export type DiscoveryOutcome =
     | { kind: 'no_pet' }
     | { kind: 'not_due' }
     | { kind: 'initialized' }
+    // Due, but the pet hasn't been taken to enough new places since its last find.
+    | { kind: 'not_explored'; places: number; needed: number }
     | { kind: 'lost_race' }
     | { kind: 'found_ember'; amount: number }
     | { kind: 'found_food'; catalogKey: string; name: string }
@@ -68,13 +129,44 @@ interface CollectibleSkuRow {
 // pet row they have (or null) and never need to know the feature's rules.
 export async function maybeDiscover(
     sql: NeonQueryFunction<false, false>,
-    input: { userId: string; pet: DiscoveryPetRow | null; feedingCfg: FeedingConfig }
+    input: { userId: string; pet: DiscoveryPetRow | null; feedingCfg: FeedingConfig; placePath: string | null }
 ): Promise<DiscoveryOutcome> {
-    const { userId, pet, feedingCfg } = input;
+    const { userId, pet, feedingCfg, placePath } = input;
 
     // Hard precondition: a petless account triggers NOTHING in this system - no
     // cooldown read, no reward logic, no error. Checked first, before any query.
     if (!pet) return { kind: 'no_pet' };
+
+    // Footprint: record the place this call came from, if it's new for the pet. Runs
+    // before the due check on purpose - footprints have to accumulate WHILE the clock
+    // runs, or nobody could ever satisfy the gate. The WHERE re-checks membership and
+    // the cap against the committed row, so two simultaneous loads of the same new
+    // place append it once (the loser matches zero rows), and the CASE folds the
+    // article/ticker existence check into the same statement. Zero rows back means
+    // either an invalid ref or a lost same-place race; both keep the array we already
+    // have (at worst one page-load stale - the claim UPDATE's own cardinality qual is
+    // what's authoritative). Explicit ::text casts throughout: the Neon HTTP driver
+    // binds params untyped, and array_append / = ANY are ambiguous without them.
+    let places = pet.places_since_find;
+    const place = placeFromPath(placePath);
+    if (place && !places.includes(place.key) && places.length < MAX_FOOTPRINTS) {
+        const rows = await sql`
+            UPDATE pets
+            SET places_since_find = array_append(places_since_find, ${place.key}::text)
+            WHERE id = ${pet.id} AND user_id = ${userId}
+              AND NOT (${place.key}::text = ANY(places_since_find))
+              AND cardinality(places_since_find) < ${MAX_FOOTPRINTS}::int
+              AND CASE ${place.check}::text
+                    WHEN 'article' THEN EXISTS (
+                        SELECT 1 FROM tank_pages
+                        WHERE slug = ${place.ref}::text AND status = 'published' AND visibility = 'app')
+                    WHEN 'tankdaq' THEN EXISTS (
+                        SELECT 1 FROM tickers WHERE key = ${place.ref}::text AND active)
+                    ELSE true END
+            RETURNING places_since_find
+        `;
+        if (rows.length) places = (rows[0] as unknown as { places_since_find: string[] }).places_since_find;
+    }
 
     // The ~100% path: not due yet. Zero extra queries - the timestamp rides along in
     // the pet SELECT the endpoint already does. Always `new Date(x).getTime()`, never
@@ -101,6 +193,12 @@ export async function maybeDiscover(
         `;
         return { kind: 'initialized' };
     }
+
+    // Due, but not explored: the footprints gate. Read after the config (the threshold
+    // lives there) and before any roll, so an unexplored pet costs nothing past the
+    // config read. The claim UPDATE below re-checks the same qual atomically.
+    const minPlaces = cfg.min_new_places;
+    if (places.length < minPlaces) return { kind: 'not_explored', places: places.length, needed: minPlaces };
 
     // Due. Roll everything in JS first, then claim-and-grant in one atomic statement.
     //
@@ -172,9 +270,12 @@ export async function maybeDiscover(
         // doctrine. No Ember moves, so ledger.ts stays untouched.
         const rows = await sql`
             WITH claimed AS (
-                UPDATE pets SET next_eligible_roll_at = NOW() + (${cooldownMinutes}::float8 * INTERVAL '1 minute')
+                UPDATE pets
+                SET next_eligible_roll_at = NOW() + (${cooldownMinutes}::float8 * INTERVAL '1 minute'),
+                    places_since_find = '{}'
                 WHERE id = ${pet.id} AND user_id = ${userId}
                   AND next_eligible_roll_at IS NOT NULL AND next_eligible_roll_at <= NOW()
+                  AND cardinality(places_since_find) >= ${minPlaces}::int
                 RETURNING id
             ), minted AS (
                 UPDATE collectible_pools
@@ -239,12 +340,16 @@ export async function maybeDiscover(
             // pushed-out timestamp and matches zero rows), and both grant legs select
             // FROM it, so a lost race writes nothing. The consumed window IS the
             // idempotency for the stack upsert (no natural key on a quantity bump);
-            // the notification key is the deduped backstop.
+            // the notification key is the deduped backstop. The footprints qual and
+            // reset ride in the same UPDATE, so time and exploration are one gate.
             const rows = await sql`
                 WITH claimed AS (
-                    UPDATE pets SET next_eligible_roll_at = NOW() + (${cooldownMinutes}::float8 * INTERVAL '1 minute')
+                    UPDATE pets
+                    SET next_eligible_roll_at = NOW() + (${cooldownMinutes}::float8 * INTERVAL '1 minute'),
+                        places_since_find = '{}'
                     WHERE id = ${pet.id} AND user_id = ${userId}
                       AND next_eligible_roll_at IS NOT NULL AND next_eligible_roll_at <= NOW()
+                      AND cardinality(places_since_find) >= ${minPlaces}::int
                     RETURNING id
                 ), granted AS (
                     INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
@@ -273,6 +378,7 @@ export async function maybeDiscover(
         userId,
         petId: pet.id,
         cooldownMinutes,
+        minPlaces,
         windowScope,
         buildMessage: (amount) =>
             `I was poking around while you were gone and dug up ${amount} Ember! Snuck it straight into the stash.`,

@@ -98,7 +98,9 @@ async function runCsrfSection() {
     // a logged-in victim's browser to consume their pet's due discovery roll on the
     // attacker's timing, which is a minor griefing vector worth flagging even though it
     // cannot grant anything to the attacker or exfiltrate anything a normal page load
-    // wouldn't already see.
+    // wouldn't already see. The `?place=` footprint param (add_pet_footprints.sql) is
+    // the same class: a hostile GET can at most stamp an allowlisted place onto the
+    // victim's own pet, which only ever helps the victim.
     const probe = await createSessionUser(`${PREFIX}csrf-toolbar-probe@example.com`);
     const hostileGet = await api('GET', '/api/toolbar-state', {
         cookie: probe.cookie,
@@ -491,8 +493,11 @@ async function runNoPetNoRollSection() {
         );
 
         const haver = await createSessionUser(`${PREFIX}nopet-haver@example.com`);
+        // Genuinely due on BOTH gates (clock + footprints, add_pet_footprints.sql) so the
+        // only thing standing between this pet and a roll is the deactivated config.
         await pool.query(
-            `INSERT INTO pets (user_id, color, next_eligible_roll_at) VALUES ($1, 'slate', NOW() - INTERVAL '1 minute')`,
+            `INSERT INTO pets (user_id, color, next_eligible_roll_at, places_since_find)
+             VALUES ($1, 'slate', NOW() - INTERVAL '1 minute', ARRAY['stamp:0','stamp:1','stamp:2','stamp:3','stamp:4','stamp:5','stamp:6','stamp:7']::text[])`,
             [haver.userId],
         );
         const haverRes = await api('GET', '/api/toolbar-state', { cookie: haver.cookie });
