@@ -54,7 +54,7 @@ export function generateTankdaqTickerPageHtml(baseUrl: string, ticker: TankdaqTi
 <body>
     <main class="hc-page hc-tq-page">
         ${topbar(null)}
-        <div id="tankdaq-ticker-root" data-ticker-key="${ticker.key}">
+        <div id="tankdaq-ticker-root" class="hc-tq-board" data-ticker-key="${ticker.key}">
             <!-- Crawlable fallback, replaced when the island mounts. -->
             <section class="hc-tq-fallback">
                 <h1>${escapeHtml(ticker.indexLabel)} (${escapeHtml(ticker.displayName)})</h1>
@@ -78,6 +78,33 @@ function tankdaqTickerStyles(): string {
     return `
         .hc-page.hc-tq-page { max-width: 1080px; }
         .hc-tq-fallback a { color: var(--hc-gold); }
+
+        /* The board: everything the island renders - header, quote, chart, trade
+           panel, results, news - sits on ONE opaque matte panel. The shared head
+           paints a starfield behind every page, and the ticker's running copy
+           (description, notes, news hooks and excerpts) was set straight onto it;
+           stars behind body text is what made the page tiring to read. Opaque on
+           purpose: a translucent surface still lets the constellations through, and
+           backdrop-filter / transform would make the board the containing block for
+           PetWidget's fixed overlays (ContentChrome forbids that). Matte means no
+           sheen: a flat colour, not a gradient, with only a faint grain so it reads as
+           a surface rather than a hole in the page - the portfolio scoreboard's
+           finish. The class lives on the island's root, which mount() keeps (it only
+           replaces the children), so the loading/error states and the crawlable
+           fallback sit on the same board. */
+        .hc-tq-board {
+            position: relative;
+            margin: 0.85rem 0 0;
+            padding: 0.9rem 1.4rem 1.6rem;
+            border-radius: 18px;
+            background-color: #0f0a19;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+        @media (max-width: 420px) {
+            .hc-tq-board { padding: 0.75rem 1rem 1.25rem; border-radius: 14px; }
+        }
 
         .hc-tq-back {
             display: inline-block; margin: 0.75rem 0 0;
