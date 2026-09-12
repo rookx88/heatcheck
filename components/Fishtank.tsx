@@ -1048,6 +1048,37 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
 // front-facing wall is computed instead of hardcoded, so any wall can open at this angle.
 const OPEN_TILT_DEG = 25;
 
+// The gold action pill, shared by all three action surfaces on the cube - the Call
+// wall's story link, the logged-out "read the story" wall, and the promo wall's CTA -
+// so the three cannot drift apart. Matches Tank HQ's .tank-modal-view-story button.
+const goldPillStyle: React.CSSProperties = {
+    display: 'inline-block',
+    background: 'var(--hc-gold, #ffc72c)',
+    color: '#1a1200',
+    fontFamily: "'Baloo 2', 'Nunito', sans-serif",
+    fontWeight: 800,
+    fontSize: '0.95rem',
+    textDecoration: 'none',
+    padding: '0.55rem 1.5rem',
+    borderRadius: 12,
+    boxShadow: '0 4px 0 var(--hc-gold-dark, #e8a800), 0 8px 18px rgba(0,0,0,0.4)',
+};
+
+// "View Story" under the pick flow, for surfaces that show the Call wall away from
+// the article itself (the homepage showcase). Without it a signed-in reader could
+// make a pick but had no route from the artifact to the story behind it - the
+// logged-out wall has had its own link all along (LinkCallContent below). Not
+// rendered on the article page's own deck, which is already the story.
+const StoryLink: React.FC<{ href: string }> = ({ href }) => (
+    <a
+        href={href}
+        onClick={(e) => e.stopPropagation()}
+        style={{ ...goldPillStyle, fontSize: '0.85rem', padding: '0.45rem 1.2rem', marginTop: '0.9rem' }}
+    >
+        View Story <span aria-hidden="true">&rarr;</span>
+    </a>
+);
+
 // Discovery-surface variant of the Call wall (the homepage showcase): a plain
 // "read the story" link instead of <CallContent>'s interactive pick flow, so the
 // showcase never fires CallContent's pick/session API calls and picking stays on
@@ -1056,21 +1087,7 @@ const OPEN_TILT_DEG = 25;
 const LinkCallContent: React.FC<{ call: DeckPayload['call']; linkCall: LinkCall }> = ({ call, linkCall }) => (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.9rem' }}>
         <p style={{ margin: 0, fontWeight: 700, fontSize: '0.95rem', color: '#f1f5f9' }}>{call.question}</p>
-        <a
-            href={linkCall.href}
-            style={{
-                display: 'inline-block',
-                background: 'var(--hc-gold, #ffc72c)',
-                color: '#1a1200',
-                fontFamily: "'Baloo 2', 'Nunito', sans-serif",
-                fontWeight: 800,
-                fontSize: '0.95rem',
-                textDecoration: 'none',
-                padding: '0.55rem 1.5rem',
-                borderRadius: 12,
-                boxShadow: '0 4px 0 var(--hc-gold-dark, #e8a800), 0 8px 18px rgba(0,0,0,0.4)',
-            }}
-        >
+        <a href={linkCall.href} style={goldPillStyle}>
             {linkCall.label ?? 'Read the story'} <span aria-hidden="true">&rarr;</span>
         </a>
     </div>
@@ -1165,7 +1182,7 @@ const TurnArrow: React.FC<{ direction: 1 | -1; offset: number; onTurn: (directio
 // UI is a smaller cube inside the same reserved space (a proportionally smaller box
 // would keep the same relative spill). Geometry constants stay untouched - wall copy
 // is rem-sized and would overflow shrunken walls.
-export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?: LinkCall; promoWall?: PromoWall; openWall?: 'call' | 'promo'; scale?: number }> = ({ payload, slug, linkCall, promoWall, openWall = 'call', scale = 1 }) => {
+export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?: LinkCall; promoWall?: PromoWall; openWall?: 'call' | 'promo'; scale?: number; storyHref?: string }> = ({ payload, slug, linkCall, promoWall, openWall = 'call', scale = 1, storyHref }) => {
     const walls = buildWalls(payload, promoWall);
     // Which wall greets the viewer. Default: the Call wall (prop bets sell the
     // artifact). Logged-out surfaces can instead open on the promo/signup wall
@@ -1185,9 +1202,16 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
         if (wall.kind === 'hook') return <p style={{ margin: 0, fontWeight: 600, fontSize: '1rem', color: '#f1f5f9' }}>{payload.hook}</p>;
         if (wall.kind === 'promo') return promoWall ? <PromoWallContent promoWall={promoWall} /> : null;
         if (wall.kind === 'call') {
-            return linkCall
-                ? <LinkCallContent call={payload.call} linkCall={linkCall} />
-                : <CallContent call={payload.call} slug={slug} kickoff={payload.kickoff} />;
+            if (linkCall) return <LinkCallContent call={payload.call} linkCall={linkCall} />;
+            // The story link rides alongside the pick flow rather than inside it, so
+            // it shows in every one of CallContent's states - already picked, game
+            // started, daily cap used up - from one place.
+            return (
+                <>
+                    <CallContent call={payload.call} slug={slug} kickoff={payload.kickoff} />
+                    {storyHref && <StoryLink href={storyHref} />}
+                </>
+            );
         }
         const cardIndex = index - 1; // hook occupies index 0
         return <p style={{ margin: 0 }}>{cards[cardIndex]}</p>;

@@ -125,7 +125,12 @@ function renderSportRow(slots: SportSlot[]): string {
             <h2 id="hc-tanks-heading">Sports Tanks Available</h2>
             <p class="hc-section-sub hc-section-sub--tanks">Tanks are Heatcheck&rsquo;s most important invention. With the wisdom of the user, it unlocks embers, the currency of the world that allows you to grow your mud puppy. Make your pick on a tank. Get it right. Earn Ember.</p>
             <div class="hc-tanks-layout">
-                <div id="hc-showcase-root" aria-hidden="true"></div>
+                <!-- Not aria-hidden. It was, back when the artifact was decoration,
+                     but it now holds real controls a keyboard reaches: the cube's
+                     turn arrows, the sibling-tank pager, the story link, and (signed
+                     in) the whole pick flow. Focusable content inside aria-hidden is
+                     the worse defect. -->
+                <div id="hc-showcase-root"></div>
                 <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
                     ${buttons}
                 </div>
@@ -245,13 +250,18 @@ function homepageStyles(): string {
         #hc-showcase-root:empty { display: none; }
         #hc-showcase-root { margin: 0 0 1.25rem; }
 
-        /* Side-by-side at EVERY width: artifact left, symbol buttons in a vertical
-           column to its right (the round icon buttons are narrow enough to hold this
-           layout on phones). */
+        /* Phones STACK: artifact first, sport buttons in a row beneath it. They used
+           to sit side by side at every width, and on a phone that put the buttons in
+           the strip the artifact's own turn arrows occupy - Fishtank pins those a
+           fixed distance in from the VIEWPORT edge (it has to: the cube is a
+           fixed-pixel 3D scene that paints outside its container), so the right arrow
+           landed on the icon column no matter how the artifact was sized. Stacking
+           gives the cube the full width and moves the icons clear of it. From 760px
+           up there is room for both, and the side-by-side layout returns. */
         /* position:relative (z-index left 'auto') so this paints above
            .hc-tanks-backdrop - see that rule's comment for why. */
-        .hc-tanks-layout { position: relative; display: flex; flex-direction: row; align-items: center; gap: 0.75rem; }
-        .hc-tanks-layout #hc-showcase-root { flex: 1 1 auto; margin: 0; min-width: 0; }
+        .hc-tanks-layout { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
+        .hc-tanks-layout #hc-showcase-root { flex: 1 1 auto; margin: 0; min-width: 0; width: 100%; }
         /* Ember Dash teaser - a sibling BELOW the whole tanks panel, not a child of
            it, so it reads as its own card under the panel rather than another element
            inside the cave. .hc-tanks-column is the wrapper both share, so the banner
@@ -264,13 +274,25 @@ function homepageStyles(): string {
             border-radius: 12px;
             box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(47, 230, 217, 0.25);
         }
+        /* A centred row under the artifact on phones; the column beside it at 760px. */
         .hc-sport-row {
             margin: 0; padding: 0; flex: 0 0 auto;
-            display: flex; flex-direction: column; gap: 0.6rem; align-items: center;
+            display: flex; flex-direction: row; flex-wrap: wrap; gap: 0.6rem;
+            align-items: center; justify-content: center;
         }
         @media (min-width: 760px) {
-            .hc-tanks-layout { gap: 1.5rem; }
-            .hc-tanks-layout #hc-showcase-root { flex: 0 1 560px; }
+            .hc-tanks-layout { flex-direction: row; gap: 1.5rem; }
+            .hc-tanks-layout #hc-showcase-root { flex: 0 1 560px; width: auto; }
+            .hc-sport-row { flex-direction: column; flex-wrap: nowrap; }
+        }
+        /* The sibling-tank pager under the artifact (homepage-client's TankPager).
+           Its arrows and counter are Tank HQ's own .tank-modal-nav controls, which
+           this bundle already carries; only the surrounding block is local. */
+        .hc-tank-nav { margin: 0.25rem 0 0; text-align: center; }
+        .hc-tank-nav-matchup {
+            margin: 0.35rem 0 0;
+            font-family: 'Nunito', sans-serif; font-size: 0.78rem;
+            color: rgba(255, 255, 255, 0.62);
         }
         /* Round navy-glass symbol buttons in the house teal grammar (selected =
            committed glow). Sport name is on aria-label/title, not visible text. */
@@ -589,9 +611,16 @@ export function renderHomepage(options: RenderHomepageOptions): string {
         sports: data.sportSlots.map(slot => ({
             sport: slot.sport,
             live: Boolean(slot.card),
-            slug: slot.card?.slug ?? null,
-            href: slot.card?.href ?? null,
-            deck: slot.card?.deck ?? null,
+            // Every live tank in the sport, soonest first: the showcase opens on the
+            // first and pages through the rest, so browsing siblings costs no extra
+            // request. Replaces the old single slug/href/deck trio; the island still
+            // reads that shape from a page cached across the deploy that added this.
+            tanks: slot.cards.map(card => ({
+                slug: card.slug,
+                href: card.href,
+                matchup: card.matchup,
+                deck: card.deck,
+            })),
         })),
     };
     const payloadJson = JSON.stringify(payload).replace(/</g, '\\u003c');

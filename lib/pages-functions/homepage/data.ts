@@ -40,6 +40,7 @@ export interface SportCardViewModel {
     firstBeat: string; // cards[0] verbatim; '' when the model returned no cards
     propTag: string;   // "O 268.5 Passing Yards" / market label alone for yes-no markets
     league: string;
+    matchup: string;   // "Away @ Home" - names a tank in the showcase's sibling pager
     deck: DeckPayload; // full 4-wall deck; the client drops a card wall when it swaps in the logged-out promo wall
 }
 
@@ -48,6 +49,10 @@ export interface SportCardViewModel {
 export interface SportSlot {
     sport: Sport;
     card: SportCardViewModel | null;
+    // Every live tank in this sport, soonest kickoff first - cards[0] IS card. The
+    // showcase pages through these; the sport row and the no-JS fallback read only
+    // `card`, so both are unaffected by the list.
+    cards: SportCardViewModel[];
 }
 
 export interface HomepageData {
@@ -56,7 +61,7 @@ export interface HomepageData {
 }
 
 export function emptyHomepageData(): HomepageData {
-    return { sportSlots: SPORT_ORDER.map(sport => ({ sport, card: null })), marketMovers: emptyMarketMovers() };
+    return { sportSlots: SPORT_ORDER.map(sport => ({ sport, card: null, cards: [] })), marketMovers: emptyMarketMovers() };
 }
 
 // Same JS-side liveness rule as generate-static-site.ts's activeTankPages filter,
@@ -81,6 +86,7 @@ export function toSportCardViewModel(row: HomepageTankRow, sport: Sport): SportC
         firstBeat: row.model_output.cards?.[0] ?? '',
         propTag,
         league: row.league,
+        matchup: `${game.away} @ ${game.home}`,
         // Same DeckPayload construction as generate-static-site.ts's tankEntries
         // mapping (two card walls - the Fishtank cube's geometry needs exactly 4
         // walls to close), except the first card wall's header carries the prop tag
@@ -103,18 +109,30 @@ export function toSportCardViewModel(row: HomepageTankRow, sport: Sport): SportC
     };
 }
 
-// rows must already be live-filtered and kickoff-ASC sorted; the first row whose
-// league maps to a still-unclaimed sport claims that sport's slot (soonest game
-// wins). Sports left unclaimed keep card: null - the placeholder.
+// Bounds the homepage payload. Every tank is roughly a kilobyte of JSON inlined in
+// the HTML - which is edge-cached for anonymous visitors - and nobody pages through
+// more than a handful. The live corpus runs to about eight in the busiest sport.
+const MAX_TANKS_PER_SPORT = 5;
+
+// rows must already be live-filtered and kickoff-ASC sorted. Each sport keeps its
+// live tanks in that order, so cards[0] - the soonest game - is the one the showcase
+// opens on and the sport row describes. Sports with none keep card: null, the
+// placeholder. This used to stop at the first tank per sport; the rest were thrown
+// away, which is why browsing siblings needs no new query.
 export function pickLiveTankPerSport(rows: HomepageTankRow[]): SportSlot[] {
-    const claimed = new Map<Sport, SportCardViewModel>();
+    const bySport = new Map<Sport, SportCardViewModel[]>();
     for (const row of rows) {
         const sport = SPORT_BY_LEAGUE[row.league];
-        if (!sport || claimed.has(sport)) continue;
-        claimed.set(sport, toSportCardViewModel(row, sport));
-        if (claimed.size === SPORT_ORDER.length) break;
+        if (!sport) continue;
+        const claimed = bySport.get(sport) ?? [];
+        if (claimed.length >= MAX_TANKS_PER_SPORT) continue;
+        claimed.push(toSportCardViewModel(row, sport));
+        bySport.set(sport, claimed);
     }
-    return SPORT_ORDER.map(sport => ({ sport, card: claimed.get(sport) ?? null }));
+    return SPORT_ORDER.map(sport => {
+        const cards = bySport.get(sport) ?? [];
+        return { sport, card: cards[0] ?? null, cards };
+    });
 }
 
 // The live query shares the public-surface predicate (the one from

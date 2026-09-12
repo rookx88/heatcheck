@@ -6,7 +6,7 @@
 // behavior (click-to-select, roving-tabindex arrow keys, selection highlight). If the
 // payload is missing or malformed, nothing mounts and the page stays fully usable.
 
-import React, { useSyncExternalStore } from 'react';
+import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { createRoot } from 'react-dom/client';
 import { MotionConfig } from 'motion/react';
 import { Fishtank, formatTimeUntilReset, type DeckPayload } from './components/Fishtank';
@@ -23,13 +23,58 @@ import { WorldMap } from './components/WorldMap';
 import { WORLD_MAP_REGIONS, type WorldMapRegion } from './components/worldMapRegions';
 import type { Sport } from './sport-map';
 
+interface HomepageTank {
+    slug: string;
+    href: string;
+    matchup: string; // "Away @ Home"
+    deck: DeckPayload;
+}
+
 interface HomepageSportEntry {
     sport: Sport;
     live: boolean;
-    slug: string | null;
-    href: string | null;
-    deck: DeckPayload | null;
+    // Every live tank in the sport, soonest kickoff first (homepage/data.ts caps the
+    // list). The showcase opens on the first and pages through the rest.
+    tanks?: HomepageTank[];
+    // The pre-list payload shape: one tank per sport. An edge-cached page can outlive
+    // the deploy that added `tanks`, so this bundle still reads the old shape rather
+    // than rendering the "nothing live" placeholder at a visitor who has content.
+    slug?: string | null;
+    href?: string | null;
+    deck?: DeckPayload | null;
 }
+
+function tanksOf(entry: HomepageSportEntry): HomepageTank[] {
+    if (Array.isArray(entry.tanks)) return entry.tanks;
+    return entry.slug && entry.href && entry.deck
+        ? [{ slug: entry.slug, href: entry.href, matchup: '', deck: entry.deck }]
+        : [];
+}
+
+// Pager for the other tanks in the selected sport. Reuses Tank HQ's modal nav classes
+// (TankScreen.css is already in this bundle, via PetWidget) so the site has one
+// look for "browse the tanks" rather than two. Distinct from the cube's own arrows,
+// which turn the artifact: these sit below it and change which tank it shows.
+const TankPager: React.FC<{
+    sport: Sport;
+    index: number;
+    total: number;
+    matchup: string;
+    onStep: (delta: number) => void;
+}> = ({ sport, index, total, matchup, onStep }) => (
+    <div className="hc-tank-nav">
+        <div className="tank-modal-nav">
+            <button type="button" className="tank-modal-arrow" onClick={() => onStep(-1)} aria-label={`Previous ${sport.toLowerCase()} tank`}>
+                &lsaquo;
+            </button>
+            <span className="tank-modal-count">{index + 1} / {total}</span>
+            <button type="button" className="tank-modal-arrow" onClick={() => onStep(1)} aria-label={`Next ${sport.toLowerCase()} tank`}>
+                &rsaquo;
+            </button>
+        </div>
+        {matchup && <p className="hc-tank-nav-matchup" aria-live="polite">{matchup}</p>}
+    </div>
+);
 
 interface HomepagePayload {
     initialSport: Sport;
@@ -282,8 +327,15 @@ function mount() {
     const Showcase: React.FC = () => {
         const sport = useSyncExternalStore(subscribe, getSelected);
         const entry = entriesBySport.get(sport);
-        if (!entry || !entry.live || !entry.deck || !entry.slug || !entry.href) {
-            // Quiet placeholder - showcase root is aria-hidden, so purely visual.
+        const tanks = entry ? tanksOf(entry) : [];
+        // Paging is per sport, so switching sports returns to that sport's soonest
+        // game. Both hooks run before the early return below - never conditionally.
+        const [index, setIndex] = useState(0);
+        useEffect(() => { setIndex(0); }, [sport]);
+        // Clamped rather than indexed blindly: the list differs per sport.
+        const tank = tanks[index] ?? tanks[0];
+        if (!entry || !entry.live || !tank) {
+            // Quiet placeholder - no live tank in this sport today.
             return (
                 <div style={{
                     maxWidth: 480, margin: '0 auto', padding: '2.5rem 1rem', textAlign: 'center',
@@ -310,42 +362,56 @@ function mount() {
         // Deliberately NOT a CSS transform on a wrapper: that would turn the wrapper
         // into the containing block for the fixed PetWidget and its modal overlays.
         const showcaseScale = window.matchMedia('(min-width: 1024px)').matches ? 0.77 : 0.64;
+        const step = (delta: number) => setIndex((i) => (i + delta + tanks.length) % tanks.length);
+        // Only worth showing when this sport actually has siblings to page through.
+        const pager = tanks.length > 1 ? (
+            <TankPager sport={sport} index={tanks.indexOf(tank)} total={tanks.length} matchup={tank.matchup} onStep={step} />
+        ) : null;
         return (
             <MotionConfig reducedMotion="user">
                 {payload.loggedIn ? (
-                    <div style={{ position: 'relative', marginTop: '-4.25rem', marginBottom: '-2.5rem' }}>
-                        {/* The cave backdrop is no longer mounted here - it's the
-                            server-rendered .hc-tanks-backdrop behind the whole #tanks
-                            panel (homepage/render.ts). */}
-                        <Fishtank key={entry.slug} payload={entry.deck} slug={entry.slug} scale={showcaseScale} />
-                        {/* Fixed variant: rides the viewport, so the captain stays in
-                            view wherever the page is scrolled. */}
-                        <PetWidget variant="fixed" />
-                    </div>
+                    <>
+                        <div style={{ position: 'relative', marginTop: '-4.25rem', marginBottom: '-2.5rem' }}>
+                            {/* The cave backdrop is no longer mounted here - it's the
+                                server-rendered .hc-tanks-backdrop behind the whole #tanks
+                                panel (homepage/render.ts). */}
+                            <Fishtank key={tank.slug} payload={tank.deck} slug={tank.slug} scale={showcaseScale} storyHref={tank.href} />
+                            {/* Fixed variant: rides the viewport, so the captain stays in
+                                view wherever the page is scrolled. */}
+                            <PetWidget variant="fixed" />
+                        </div>
+                        {/* Outside the negative-margin wrapper deliberately: those margins
+                            claw back the cube's dead stage space, so anything inside them
+                            is overlapped by whatever follows the showcase. */}
+                        {pager}
+                    </>
                 ) : (
-                    <div style={{ position: 'relative', margin: '-2.5rem 0' }}>
-                        <Fishtank
-                            key={entry.slug}
-                            payload={entry.deck}
-                            slug={entry.slug}
-                            linkCall={{ href: entry.href }}
-                            promoWall={{
-                                label: 'Join HeatChecks',
-                                body: 'Experience a new way to enjoy the sports content you love. Make your picks, grow your Mud Puppy, and compete in a new sports world.',
-                                ctaHref: '/login/',
-                                ctaLabel: 'Sign Up',
-                                // Same register modal the header banner opens, so
-                                // signing up never leaves the page.
-                                onCtaClick: () => openAuthModal('register'),
-                            }}
-                            openWall="promo"
-                            scale={showcaseScale}
-                        />
-                        {/* Logged-out echo of the fixed PetWidget above - no real pet yet,
-                            so a click opens an info panel about Mud Puppies instead,
-                            ending in the register flow. */}
-                        <MudPuppyPromo variant="fixed" />
-                    </div>
+                    <>
+                        <div style={{ position: 'relative', margin: '-2.5rem 0' }}>
+                            <Fishtank
+                                key={tank.slug}
+                                payload={tank.deck}
+                                slug={tank.slug}
+                                linkCall={{ href: tank.href }}
+                                promoWall={{
+                                    label: 'Join HeatChecks',
+                                    body: 'Experience a new way to enjoy the sports content you love. Make your picks, grow your Mud Puppy, and compete in a new sports world.',
+                                    ctaHref: '/login/',
+                                    ctaLabel: 'Sign Up',
+                                    // Same register modal the header banner opens, so
+                                    // signing up never leaves the page.
+                                    onCtaClick: () => openAuthModal('register'),
+                                }}
+                                openWall="promo"
+                                scale={showcaseScale}
+                            />
+                            {/* Logged-out echo of the fixed PetWidget above - no real pet yet,
+                                so a click opens an info panel about Mud Puppies instead,
+                                ending in the register flow. */}
+                            <MudPuppyPromo variant="fixed" />
+                        </div>
+                        {pager}
+                    </>
                 )}
             </MotionConfig>
         );
