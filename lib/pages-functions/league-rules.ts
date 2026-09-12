@@ -2,8 +2,16 @@
 //
 // $CHALK and $DOGS score every game in every league. Their children score the same
 // thing for one league - $NBACHALK is $CHALK's NBA slice, $MLBDOGS is $DOGS's MLB
-// slice - and together the four children of each parent cover every league the sync
-// ingests, so a family partitions its parent exactly.
+// slice.
+//
+// PARTITION CAVEAT (measured 2026-09-11): the children were once said to cover every
+// league the sync ingests, so that a family partitioned its parent exactly. That is no
+// longer true. The global rules have no league gate at all, so the parents also score
+// the four Tank-less competitions in league-tags.ts (EFL Championship, MLS, DFB-Pokal,
+// Carabao Cup) - together ~25% of $CHALK's lifetime contribution magnitude - while no
+// child claims them. Closing that gap means widening the groups below, which silently
+// changes what a LIVE index measures, so it stays a deliberate decision rather than a
+// derived one. LEAGUE_GROUPS is hand-curated on purpose.
 //
 // This exists as one parser rather than six more hand-written cases because rule types
 // are enumerated in FOUR places (checkEligibility, index-slate's three functions, the
@@ -35,7 +43,9 @@ export interface LeagueRule {
 // rules below have no league gate at all), so leaving it out of this set would mean a
 // Champions League storyline sat in the parent index and in none of its four children -
 // the one thing that header promises can't happen.
-const LEAGUE_GROUPS: Record<string, string[]> = {
+// Exported so ticker-copy.ts can derive the soccer chips it renders from the same set
+// the rule actually gates on, rather than keeping a second copy in sync by hand.
+export const LEAGUE_GROUPS: Record<string, string[]> = {
     nba: ['NBA'],
     nfl: ['NFL'],
     mlb: ['MLB'],

@@ -12,54 +12,18 @@
 // ===================================================================================
 
 import type { Pool } from 'pg';
+import { LEAGUE_TAGS, SUPPORTED_LEAGUES } from './league-tags';
 
 const GAMMA_BASE_URL = 'https://gamma-api.polymarket.com';
 
-// Canonical league name -> Polymarket tag_slug(s) that carry that league's markets.
-// Soccer is split across its major leagues since Polymarket has no single umbrella tag
-// with full coverage; naming matches the league strings already used across the app.
-export const LEAGUE_TAGS: Record<string, string[]> = {
-    'NBA': ['nba'],
-    'NFL': ['nfl'],
-    'MLB': ['mlb'],
-    'EPL': ['epl'],
-    'La Liga': ['la-liga'],
-    'Serie A': ['serie-a'],
-    'Bundesliga': ['bundesliga'],
-    'Ligue 1': ['ligue-1'],
-    // The UEFA Champions League league phase. The tag is 'ucl', NOT 'champions-league'
-    // or 'uefa-champions-league' - both of those exist and both are the wrong thing:
-    // 'champions-league' carries only season futures (2027 Champion, Top Scorer, League
-    // Phase awards), and 'uefa-champions-league' carries *domestic* "team to qualify for
-    // next season's UCL" markets hanging off EPL/LaLiga/etc. Only 'ucl' has fixtures.
-    //
-    // Unlike the eight above, Polymarket publishes UCL fixtures only for the imminent
-    // matchday - probed 2026-09-09, the tag held MD1 (Sept 9-10) and nothing else, while
-    // EPL was posted 11 days out. Since the league phase runs ~8 matchdays between
-    // September and January, expect this league to be EMPTY on most days and to arrive in
-    // bursts. That is normal, not a broken tag.
-    'Champions League': ['ucl'],
-    // The four below are DISCORD PICK MENU ONLY - deliberately absent from
-    // functions/api/curate.ts's SPORT_GROUPS, sport-map.ts, tickers.ts, index-slate.ts
-    // and ticker-copy.ts, so they never produce a Tank page, a homepage slot or a
-    // ticker constituent. They exist because the eight leagues above all go dark
-    // together during international breaks and the NBA/NFL offseason, leaving /pvp and
-    // Community Pick search with nothing to offer; these keep playing through it (the
-    // EFL Championship alone carried 56 games inside 24h on the day this was added).
-    // Don't "fix" the asymmetry by adding them to curate - that spends Anthropic
-    // credits generating Tank articles for lower-profile matches.
-    'EFL Championship': ['efl-championship'],
-    'MLS': ['mls'],
-    'DFB-Pokal': ['dfb-pokal'],
-    'Carabao Cup': ['carabao-cup'],
-    // Coppa Italia is NOT here on purpose: Polymarket has no tag carrying it (probed
-    // 'coppa-italia' -> 0 events). Europa League is likewise absent: as of 2026-09-09
-    // 'europa-league' still carries only season futures, and 'conference-league' returns
-    // 0 events. Recheck both once their league phases start - if a fixture-carrying tag
-    // appears it slots in exactly like 'ucl' above.
-};
-
-export const SUPPORTED_LEAGUES = Object.keys(LEAGUE_TAGS);
+// The league catalog moved to league-tags.ts (2026-09-11) so reader-facing copy
+// (lib/pages-functions/ticker-copy.ts) can DERIVE the league chips it shows instead of
+// re-declaring the list by hand - the two had drifted silently, advertising 8 leagues
+// while the Exchange indexes were scoring 13.
+//
+// Re-exported here because backend.ts and tank-gamma-live.ts import these names from
+// this module; both keep working unchanged.
+export { LEAGUE_TAGS, SUPPORTED_LEAGUES };
 
 // --- Rate limiting -----------------------------------------------------------------
 
@@ -407,17 +371,6 @@ async function syncLeague(pool: Pool, league: string): Promise<void> {
         lastSyncResults[league] = {
             league, marketsUpserted, eventsSeen, error: null, syncedAt: new Date().toISOString(),
         };
-//
-// THIS SCHEDULER IS THE ONLY WRITER OF polymarket_props, AND IT RUNS ONLY WHERE THE
-// ADMIN BACKEND RUNS. The Exchange slate lock (functions/api/index-lock.ts, on the
-// curate cron) reads this table for every game it locks, and it can only lock games it
-// sees inside a 9-hour window - so if this process is down, the next lock pass finds
-// nothing and those games are never scored. That matters most for the Champions League,
-// which Polymarket lists only for the imminent matchday (see LEAGUE_TAGS). Decision
-// 2026-09-11: keep the sync here rather than on a Worker (the per-market upsert below
-// is ~900 statements for the UCL tag alone, far over a Pages Function's subrequest
-// budget, and the account's cron slots are all spent); scripts/acceptance/suites/
-// prop-sync.ts fails when any league's freshest sync is over an hour old.
         console.log(`[Polymarket] Synced ${league}: ${marketsUpserted} markets across ${eventsSeen} events`);
     } catch (error: any) {
         lastSyncResults[league] = {
@@ -454,6 +407,17 @@ export function isSyncInProgress(): boolean {
 // req/sec against ~1,000+ paginated requests for NFL/MLB's large market counts),
 // so a shorter interval would just mean every tick gets skipped by the single-flight
 // lock. 15 min keeps the cache fresh without the poller running continuously.
+//
+// THIS SCHEDULER IS THE ONLY WRITER OF polymarket_props, AND IT RUNS ONLY WHERE THE
+// ADMIN BACKEND RUNS. The Exchange slate lock (functions/api/index-lock.ts, on the
+// curate cron) reads this table for every game it locks, and it can only lock games it
+// sees inside a 9-hour window - so if this process is down, the next lock pass finds
+// nothing and those games are never scored. That matters most for the Champions League,
+// which Polymarket lists only for the imminent matchday (see LEAGUE_TAGS). Decision
+// 2026-09-11: keep the sync here rather than on a Worker (the per-market upsert below
+// is ~900 statements for the UCL tag alone, far over a Pages Function's subrequest
+// budget, and the account's cron slots are all spent); scripts/acceptance/suites/
+// prop-sync.ts fails when any league's freshest sync is over an hour old.
 const DEFAULT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
 export function startPolymarketScheduler(pool: Pool, intervalMs: number = DEFAULT_SYNC_INTERVAL_MS): NodeJS.Timeout {

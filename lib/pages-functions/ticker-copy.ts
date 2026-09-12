@@ -13,19 +13,28 @@
 // tickers.ts): retrospective only - describe what HAS moved an index, never imply
 // what will happen next - and never a take on any team, player, or side.
 //
-// Pure data + a lookup: no imports, no runtime deps, so this module is safe in a
-// Worker, in the static build, and inside a client bundle alike.
+// Imports only other dependency-free modules (league-tags.ts, league-rules.ts), so this
+// stays safe in a Worker, in the static build, and inside a client bundle alike.
+
+import { SUPPORTED_LEAGUES } from '../../league-tags';
+import { LEAGUE_GROUPS } from './league-rules';
 
 export interface TickerCopy {
     leagues: string[]; // rendered as chips; [] means "no league scope to show"
     blurb: string;     // 1-2 sentences, sentence case
 }
 
-// Every league the prop sync ingests (lib/pages-functions/polymarket.ts). The soccer
-// subset mirrors LEAGUE_GROUPS.soccer in league-rules.ts - the set $FOOTY and $SOCDOGS
-// actually gate on. Champions League is in both as of 2026-09-09.
-const ALL_LEAGUES = ['NFL', 'NBA', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League'];
-const SOCCER_LEAGUES = ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League'];
+// DERIVED, never hand-listed (2026-09-11). Both of these used to be literal arrays, and
+// both silently went stale: the global indexes score whatever the sync ingests (see
+// league-tags.ts's header - index-lock.ts applies no league predicate), so the chips
+// advertised 8 leagues while $CHALK was actually scoring 13, including three the copy
+// never mentioned. Deriving them means adding a league updates the reader-facing chips
+// on its own, which is the only version of this that stays true.
+//
+// ALL_LEAGUES tracks the global rules' real universe; SOCCER_LEAGUES tracks the exact
+// set $FOOTY and $SOCDOGS gate on, so a chip can never claim scope the rule won't honor.
+const ALL_LEAGUES = SUPPORTED_LEAGUES;
+const SOCCER_LEAGUES = LEAGUE_GROUPS.soccer;
 
 const COPY: Record<string, TickerCopy> = {
     underdog: {
