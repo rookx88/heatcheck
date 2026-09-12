@@ -52,7 +52,7 @@ export const SPORT_GROUPS: Record<string, string[]> = {
     // Includes the Discord-menu-only competitions (see polymarket.ts's LEAGUE_TAGS) so
     // a server that turns Soccer off turns ALL of them off - ALL_LEAGUES below, and
     // therefore disabled_sports, derives from this map.
-    soccer: ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup'],
+    soccer: ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League', 'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup'],
     basketball: ['NBA'],
     football: ['NFL'],
 };

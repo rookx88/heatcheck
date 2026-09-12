@@ -22,9 +22,10 @@ export interface TickerCopy {
 }
 
 // Every league the prop sync ingests (lib/pages-functions/polymarket.ts). The soccer
-// subset mirrors SOCCER_LEAGUES in tickers.ts - the set $FOOTY's rule actually uses.
-const ALL_LEAGUES = ['NFL', 'NBA', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
-const SOCCER_LEAGUES = ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
+// subset mirrors LEAGUE_GROUPS.soccer in league-rules.ts - the set $FOOTY and $SOCDOGS
+// actually gate on. Champions League is in both as of 2026-09-09.
+const ALL_LEAGUES = ['NFL', 'NBA', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League'];
+const SOCCER_LEAGUES = ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League'];
 
 const COPY: Record<string, TickerCopy> = {
     underdog: {
@@ -57,7 +58,7 @@ const COPY: Record<string, TickerCopy> = {
     },
     soccer_favorite: {
         leagues: SOCCER_LEAGUES,
-        blurb: "Tracks the favored side across Europe's big five. It climbs when the pecking order holds, and falls when a giant slips - draws included.",
+        blurb: "Tracks the favored side across Europe's top leagues and the Champions League. It climbs when the pecking order holds, and falls when a giant slips - draws included.",
     },
     // League slices of the two big indexes. Same measure as their parent, one league
     // only - together they cover every league on the board, so a family adds up to the
@@ -84,7 +85,7 @@ const COPY: Record<string, TickerCopy> = {
     },
     soccer_underdog: {
         leagues: SOCCER_LEAGUES,
-        blurb: "The soccer slice of the underdogs, across Europe's big five. Rides the longest price in each match, so a single giant-killing carries it.",
+        blurb: "The soccer slice of the underdogs, across Europe's top leagues and the Champions League. Rides the longest price in each match, so a single giant-killing carries it.",
     },
 };
 

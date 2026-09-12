@@ -29,6 +29,7 @@ const MANAGE_GUILD_PERMISSION = '32';
 // coupled to the Workers-oriented lib/pages-functions module graph).
 const SUPPORTED_SPORTS = [
     'NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
+    'Champions League',
     // Discord-pick-menu-only competitions - see polymarket.ts's LEAGUE_TAGS.
     'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup',
 ];

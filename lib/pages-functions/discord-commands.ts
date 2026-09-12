@@ -66,6 +66,7 @@ const MAX_SELECT_OPTIONS = 25;
 // (the slash-command choice list). Three copies, no compile-time link between them.
 export const SUPPORTED_SPORTS = [
     'NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
+    'Champions League',
     'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup',
 ];
 

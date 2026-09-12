@@ -27,11 +27,19 @@ export interface LeagueRule {
 
 // Keyed by the rule_type prefix. 'soccer' is the one group that spans several leagues;
 // the set mirrors the soccer slate the sync ingests (polymarket.ts's LEAGUE_TAGS).
+//
+// Champions League joined this set on 2026-09-09. Beyond it being the biggest club
+// competition there is, the partition argument in this file's header REQUIRES it: the
+// league-scoped children are supposed to cover every league the sync ingests, so a
+// family partitions its parent exactly. UCL Tanks already tag $CHALK/$DOGS (the global
+// rules below have no league gate at all), so leaving it out of this set would mean a
+// Champions League storyline sat in the parent index and in none of its four children -
+// the one thing that header promises can't happen.
 const LEAGUE_GROUPS: Record<string, string[]> = {
     nba: ['NBA'],
     nfl: ['NFL'],
     mlb: ['MLB'],
-    soccer: ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'],
+    soccer: ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League'],
 };
 
 /**
@@ -55,7 +63,9 @@ export function leagueRuleAccepts(rule: LeagueRule, league: string | null): bool
 
 // A readable name for the league group, for copy and rejection messages.
 export function leagueGroupLabel(rule: LeagueRule): string {
-    return rule.leagues.length === 1 ? rule.leagues[0] : "Europe's big five";
+    // "Europe's big five" stopped being accurate when Champions League joined the soccer
+    // group - this string reaches readers through checkEligibility's rejection reasons.
+    return rule.leagues.length === 1 ? rule.leagues[0] : 'top-flight European soccer';
 }
 
 /**

@@ -25,6 +25,7 @@ export const SPORT_BY_LEAGUE: Record<string, Sport> = {
     'Serie A': 'Soccer',
     'Ligue 1': 'Soccer',
     Bundesliga: 'Soccer',
+    'Champions League': 'Soccer',
     MLS: 'Soccer',
     Soccer: 'Soccer',
 };

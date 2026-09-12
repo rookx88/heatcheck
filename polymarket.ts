@@ -27,6 +27,18 @@ export const LEAGUE_TAGS: Record<string, string[]> = {
     'Serie A': ['serie-a'],
     'Bundesliga': ['bundesliga'],
     'Ligue 1': ['ligue-1'],
+    // The UEFA Champions League league phase. The tag is 'ucl', NOT 'champions-league'
+    // or 'uefa-champions-league' - both of those exist and both are the wrong thing:
+    // 'champions-league' carries only season futures (2027 Champion, Top Scorer, League
+    // Phase awards), and 'uefa-champions-league' carries *domestic* "team to qualify for
+    // next season's UCL" markets hanging off EPL/LaLiga/etc. Only 'ucl' has fixtures.
+    //
+    // Unlike the eight above, Polymarket publishes UCL fixtures only for the imminent
+    // matchday - probed 2026-09-09, the tag held MD1 (Sept 9-10) and nothing else, while
+    // EPL was posted 11 days out. Since the league phase runs ~8 matchdays between
+    // September and January, expect this league to be EMPTY on most days and to arrive in
+    // bursts. That is normal, not a broken tag.
+    'Champions League': ['ucl'],
     // The four below are DISCORD PICK MENU ONLY - deliberately absent from
     // functions/api/curate.ts's SPORT_GROUPS, sport-map.ts, tickers.ts, index-slate.ts
     // and ticker-copy.ts, so they never produce a Tank page, a homepage slot or a
@@ -41,8 +53,10 @@ export const LEAGUE_TAGS: Record<string, string[]> = {
     'DFB-Pokal': ['dfb-pokal'],
     'Carabao Cup': ['carabao-cup'],
     // Coppa Italia is NOT here on purpose: Polymarket has no tag carrying it (probed
-    // 'coppa-italia' -> 0 events). Champions/Europa League tags exist but currently
-    // carry only season futures, not fixtures - revisit when the group stage starts.
+    // 'coppa-italia' -> 0 events). Europa League is likewise absent: as of 2026-09-09
+    // 'europa-league' still carries only season futures, and 'conference-league' returns
+    // 0 events. Recheck both once their league phases start - if a fixture-carrying tag
+    // appears it slots in exactly like 'ucl' above.
 };
 
 export const SUPPORTED_LEAGUES = Object.keys(LEAGUE_TAGS);
@@ -134,11 +148,23 @@ export interface GammaEvent {
 // "subject" is a whole matchup, not a player.
 const PLAYER_PROP_PATTERN = /^(.+?):\s.*\bO\/U\b/i;
 
-// Real player-prop market types are always "<sport>_player_<stat>" (confirmed via
-// live inspection - "baseball_player_home_runs", "soccer_player_anytime_scorer",
-// etc.), while team/game-level types never contain "_player_" ("team_totals",
-// "soccer_team_total_corners", "first_half_totals"). This is the reliable signal;
-// the question-text regex is only a fallback for the rare row with no market type.
+// Real player-prop market types are "<sport>_player_<stat>" for the US leagues
+// (confirmed via live inspection - "baseball_player_home_runs",
+// "baseball_player_total_bases", etc.), while team/game-level types never contain
+// "_player_" ("team_totals", "soccer_team_total_corners", "first_half_totals"). This is
+// the signal; the question-text regex is only a fallback for the rare row with no
+// market type.
+//
+// KNOWN GAP, deliberate as of 2026-09-09: soccer's player props are typed
+// "soccer_anytime_goalscorer" (Polymarket renamed them from the
+// "soccer_player_anytime_scorer" this comment used to cite), which contains no
+// "_player_" and so classifies as NOT a player prop. Their questions are shaped
+// "Raphinha: Anytime Goalscorer", which the O/U-anchored PLAYER_PROP_PATTERN below
+// also misses, so tank-providers.ts's buildGamesFromFlatProps drops them. That is
+// currently WANTED - the Tank pipeline is scoped to moneylines, spreads and totals
+// only - but it means the drop is silent and league-wide (probed live: 132 such
+// markets under 'epl', 181 under 'ucl'). Widening the market scope to player props
+// means fixing detection here first, not just in the whitelist.
 const PLAYER_MARKET_TYPE_PATTERN = /_player_/;
 
 export function parsePropShape(question: string, sportsMarketType?: string | null): { isPlayerProp: boolean; subjectName: string | null } {
