@@ -45,7 +45,7 @@ dotenv.config();
 import { pool, initPool, setActiveSuite, printSummary, runTeardowns, type Suite } from './acceptance/harness';
 
 async function loadSuites(): Promise<Suite[]> {
-    const [tickers, discovery, settlement, pets, auth, homepage, concurrency, ledgerTrace, boundaries, security, kalshiLive, discordMultiGuildCap, communityPointsIsolation, shares, curation, marketMovement, indexResults, hallOfFame, indexQuotes] = await Promise.all([
+    const [tickers, discovery, settlement, pets, auth, homepage, concurrency, ledgerTrace, boundaries, security, kalshiLive, discordMultiGuildCap, communityPointsIsolation, shares, curation, marketMovement, indexResults, hallOfFame, indexQuotes, propSync] = await Promise.all([
         import('./acceptance/suites/tickers'),
         import('./acceptance/suites/discovery'),
         import('./acceptance/suites/settlement'),
@@ -65,13 +65,14 @@ async function loadSuites(): Promise<Suite[]> {
         import('./acceptance/suites/index-results'),
         import('./acceptance/suites/hall-of-fame'),
         import('./acceptance/suites/index-quotes'),
+        import('./acceptance/suites/prop-sync'),
     ]);
     return [
         tickers.suite, discovery.suite, settlement.suite, pets.suite, auth.suite,
         homepage.suite, concurrency.suite, ledgerTrace.suite, boundaries.suite, security.suite,
         kalshiLive.suite, discordMultiGuildCap.suite, communityPointsIsolation.suite,
         shares.suite, curation.suite, marketMovement.suite, indexResults.suite, hallOfFame.suite,
-        indexQuotes.suite,
+        indexQuotes.suite, propSync.suite,
     ];
 }
 

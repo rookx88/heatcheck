@@ -407,6 +407,17 @@ async function syncLeague(pool: Pool, league: string): Promise<void> {
         lastSyncResults[league] = {
             league, marketsUpserted, eventsSeen, error: null, syncedAt: new Date().toISOString(),
         };
+//
+// THIS SCHEDULER IS THE ONLY WRITER OF polymarket_props, AND IT RUNS ONLY WHERE THE
+// ADMIN BACKEND RUNS. The Exchange slate lock (functions/api/index-lock.ts, on the
+// curate cron) reads this table for every game it locks, and it can only lock games it
+// sees inside a 9-hour window - so if this process is down, the next lock pass finds
+// nothing and those games are never scored. That matters most for the Champions League,
+// which Polymarket lists only for the imminent matchday (see LEAGUE_TAGS). Decision
+// 2026-09-11: keep the sync here rather than on a Worker (the per-market upsert below
+// is ~900 statements for the UCL tag alone, far over a Pages Function's subrequest
+// budget, and the account's cron slots are all spent); scripts/acceptance/suites/
+// prop-sync.ts fails when any league's freshest sync is over an hour old.
         console.log(`[Polymarket] Synced ${league}: ${marketsUpserted} markets across ${eventsSeen} events`);
     } catch (error: any) {
         lastSyncResults[league] = {
