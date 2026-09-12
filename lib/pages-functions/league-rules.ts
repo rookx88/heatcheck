@@ -4,14 +4,21 @@
 // thing for one league - $NBACHALK is $CHALK's NBA slice, $MLBDOGS is $DOGS's MLB
 // slice.
 //
-// PARTITION CAVEAT (measured 2026-09-11): the children were once said to cover every
-// league the sync ingests, so that a family partitioned its parent exactly. That is no
-// longer true. The global rules have no league gate at all, so the parents also score
-// the four Tank-less competitions in league-tags.ts (EFL Championship, MLS, DFB-Pokal,
-// Carabao Cup) - together ~25% of $CHALK's lifetime contribution magnitude - while no
-// child claims them. Closing that gap means widening the groups below, which silently
-// changes what a LIVE index measures, so it stays a deliberate decision rather than a
-// derived one. LEAGUE_GROUPS is hand-curated on purpose.
+// PARTITION RESTORED (2026-09-12). It had lapsed: the global rules have no league gate,
+// so the parents were also scoring the four Tank-less competitions in league-tags.ts
+// (EFL Championship, MLS, DFB-Pokal, Carabao Cup) - together ~25% of $CHALK's lifetime
+// contribution magnitude - while no child claimed them. All four are soccer, so they
+// join the soccer group below and the families add up to their parents again: soccer's
+// ten plus nba/nfl/mlb is exactly the thirteen leagues in league-tags.ts.
+//
+// This DID change what two live indexes measure - $FOOTY and $SOCDOGS now score MLS,
+// EFL Championship and the domestic cups - which is why it was a deliberate call rather
+// than a derived one (Sammy, 2026-09-12). Settled positions are untouched; the change
+// applies to games locked from here on.
+//
+// LEAGUE_GROUPS stays hand-curated for that reason. Adding a 14th league to
+// league-tags.ts means adding it here too, or the parents will score it while no child
+// does - the same silent gap this comment used to describe.
 //
 // This exists as one parser rather than six more hand-written cases because rule types
 // are enumerated in FOUR places (checkEligibility, index-slate's three functions, the
@@ -49,7 +56,10 @@ export const LEAGUE_GROUPS: Record<string, string[]> = {
     nba: ['NBA'],
     nfl: ['NFL'],
     mlb: ['MLB'],
-    soccer: ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League'],
+    soccer: [
+        'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League',
+        'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup',
+    ],
 };
 
 /**
@@ -73,9 +83,11 @@ export function leagueRuleAccepts(rule: LeagueRule, league: string | null): bool
 
 // A readable name for the league group, for copy and rejection messages.
 export function leagueGroupLabel(rule: LeagueRule): string {
-    // "Europe's big five" stopped being accurate when Champions League joined the soccer
-    // group - this string reaches readers through checkEligibility's rejection reasons.
-    return rule.leagues.length === 1 ? rule.leagues[0] : 'top-flight European soccer';
+    // Just "soccer" - the group spans continents and tiers now (MLS is not European,
+    // the EFL Championship is not top flight, and two are domestic cups), so any tighter
+    // phrase is false. This string reaches readers through checkEligibility's rejection
+    // reasons, which is why it has now been wrong twice; the plain word cannot go stale.
+    return rule.leagues.length === 1 ? rule.leagues[0] : 'soccer';
 }
 
 /**

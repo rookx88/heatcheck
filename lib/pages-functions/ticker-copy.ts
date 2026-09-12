@@ -67,7 +67,7 @@ const COPY: Record<string, TickerCopy> = {
     },
     soccer_favorite: {
         leagues: SOCCER_LEAGUES,
-        blurb: "Tracks the favored side across Europe's top leagues and the Champions League. It climbs when the pecking order holds, and falls when a giant slips - draws included.",
+        blurb: 'Tracks the favored side across every soccer competition on the board - league games, domestic cups and the Champions League alike. It climbs when the pecking order holds, and falls when a giant slips - draws included.',
     },
     // League slices of the two big indexes. Same measure as their parent, one league
     // only - together they cover every league on the board, so a family adds up to the
@@ -94,7 +94,7 @@ const COPY: Record<string, TickerCopy> = {
     },
     soccer_underdog: {
         leagues: SOCCER_LEAGUES,
-        blurb: "The soccer slice of the underdogs, across Europe's top leagues and the Champions League. Rides the longest price in each match, so a single giant-killing carries it.",
+        blurb: 'The soccer slice of the underdogs, across every soccer competition on the board. Rides the longest price in each match, so a single giant-killing carries it.',
     },
 };
 
