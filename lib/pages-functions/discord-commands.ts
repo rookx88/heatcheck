@@ -28,6 +28,7 @@ import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage,
 import type { LeaderboardMessage } from './discord-leaderboard-card';
 import { computeSkillRatings } from './skill-rating';
 import { brandEmbed } from './discord-brand';
+import { SUPPORTED_LEAGUES } from '../../league-tags';
 // Pre-rendered branded headers (leaderboard-style navy/Orbitron plates, generated at
 // build time - zero runtime CPU), attached above the matching embeds.
 import BANNER_RESULTS from './art/banner-results.bin';
@@ -56,19 +57,17 @@ const BUTTON_STYLE_SECONDARY = 2;
 const BUTTON_STYLE_DANGER = 4;
 const MAX_SELECT_OPTIONS = 25;
 
-// A SUPERSET of curate.ts's SPORT_GROUPS: the eight leagues the whole pipeline knows
-// (which can produce Tank pages, homepage slots and ticker constituents) plus four
-// competitions that exist ONLY in Discord pick menus - see polymarket.ts's LEAGUE_TAGS
-// for why. Picking one of those four here yields a Community Pick or a PvP pick and
-// nothing else; no Tank will ever carry that league.
-// Must stay set-equal with discord-setup-wizard.ts's SPORT_GROUPS (its ALL_LEAGUES
-// drives disabled_sports) and with scripts/register-discord-commands.ts's own copy
-// (the slash-command choice list). Three copies, no compile-time link between them.
-export const SUPPORTED_SPORTS = [
-    'NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
-    'Champions League',
-    'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup',
-];
+// Every league the prop sync ingests - a SUPERSET of curate.ts's SPORT_GROUPS, because
+// several of these produce no Tank page at all (picking one here yields a Community
+// Pick or a PvP pick and nothing else).
+//
+// DERIVED as of 2026-09-12. This was one of three hand-kept copies - the others being
+// discord-setup-wizard.ts's SPORT_GROUPS (whose ALL_LEAGUES drives disabled_sports) and
+// scripts/register-discord-commands.ts's slash-command choice list - with no
+// compile-time link between them. All three now read league-tags.ts, so a new league
+// reaches every Discord surface in one edit. Note the choice list is registered WITH
+// Discord, so adding a league still means re-running that script.
+export const SUPPORTED_SPORTS = [...SUPPORTED_LEAGUES];
 
 type RequestContext = Parameters<PagesFunction<Env>>[0];
 

@@ -28,6 +28,8 @@ import BANNER_SETUP from './art/banner-setup.bin';
 import BANNER_SETTINGS from './art/banner-settings.bin';
 import { buildTankCardMessage, type TankCardModelOutput } from './discord-tank-card';
 import type { PropOdds } from '../../tank-types';
+import { SUPPORTED_LEAGUES } from '../../league-tags';
+import { SPORT_BY_LEAGUE, type Sport } from '../../sport-map';
 
 type RequestContext = Parameters<PagesFunction<Env>>[0];
 
@@ -47,14 +49,27 @@ const GUILD_TEXT = 0;
 
 // Friendly sport groups -> the per-league values disabled_sports actually stores.
 // Selecting groups ENABLES those leagues; everything not selected gets disabled.
+//
+// MEMBERSHIP IS DERIVED as of 2026-09-12. The four keys stay written out because they
+// must match the hardcoded select option values in the wz:sports and st:setsports menus
+// below one-for-one; only which leagues land in each group is computed. Every league
+// the sync ingests falls into exactly one group, so a server that turns Soccer off
+// still turns ALL soccer competitions off - including the ones that produce no Tank
+// page - and a league added to league-tags.ts reaches the Discord picker with no second
+// edit here.
+//
+// This is why sport-map.ts now lists the Tank-less competitions (EFL Championship,
+// DFB-Pokal, Carabao Cup) even though they claim no homepage slot: a soccer competition
+// missing from that map would fall out of every group and therefore out of ALL_LEAGUES,
+// which would drop it from disabled_sports and quietly re-enable it for every guild.
+const leaguesForSport = (sport: Sport): string[] =>
+    SUPPORTED_LEAGUES.filter((league) => SPORT_BY_LEAGUE[league] === sport);
+
 export const SPORT_GROUPS: Record<string, string[]> = {
-    baseball: ['MLB'],
-    // Includes the Discord-menu-only competitions (see polymarket.ts's LEAGUE_TAGS) so
-    // a server that turns Soccer off turns ALL of them off - ALL_LEAGUES below, and
-    // therefore disabled_sports, derives from this map.
-    soccer: ['EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League', 'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup'],
-    basketball: ['NBA'],
-    football: ['NFL'],
+    baseball: leaguesForSport('Baseball'),
+    soccer: leaguesForSport('Soccer'),
+    basketball: leaguesForSport('Basketball'),
+    football: leaguesForSport('Football'),
 };
 const ALL_LEAGUES = Object.values(SPORT_GROUPS).flat();
 

@@ -27,6 +27,14 @@ export const SPORT_BY_LEAGUE: Record<string, Sport> = {
     Bundesliga: 'Soccer',
     'Champions League': 'Soccer',
     MLS: 'Soccer',
+    // Carry no Tank coverage (curate.ts ignores them), so they never claim a homepage
+    // slot - this map only ever surfaces sports that have content. They are listed
+    // anyway because this is now the league -> sport authority that
+    // discord-setup-wizard.ts derives its sport groups from, and a soccer competition
+    // missing here would silently drop out of the Discord sports picker.
+    'EFL Championship': 'Soccer',
+    'DFB-Pokal': 'Soccer',
+    'Carabao Cup': 'Soccer',
     Soccer: 'Soccer',
 };
 

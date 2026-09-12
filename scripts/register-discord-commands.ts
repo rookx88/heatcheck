@@ -8,6 +8,7 @@
 // Run: npx tsx scripts/register-discord-commands.ts
 
 import dotenv from 'dotenv';
+import { SUPPORTED_LEAGUES } from '../league-tags';
 dotenv.config();
 
 const APPLICATION_COMMAND_TYPE_CHAT_INPUT = 1;
@@ -24,15 +25,12 @@ const CHANNEL_TYPE_GUILD_TEXT = 0;
 // (server-authoritative - never trust the UI-level gate alone).
 const MANAGE_GUILD_PERMISSION = '32';
 
-// Mirrors lib/pages-functions/discord-commands.ts's SUPPORTED_SPORTS (duplicated
-// rather than imported - this script stays a standalone Node/tsx entry point, not
-// coupled to the Workers-oriented lib/pages-functions module graph).
-const SUPPORTED_SPORTS = [
-    'NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1',
-    'Champions League',
-    // Discord-pick-menu-only competitions - see polymarket.ts's LEAGUE_TAGS.
-    'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup',
-];
+// The same set discord-commands.ts's SUPPORTED_SPORTS exposes. This used to be a
+// hand-kept copy, on the grounds that the script stays a standalone Node/tsx entry
+// point rather than coupling to the Workers-oriented lib/pages-functions module graph.
+// league-tags.ts sidesteps that objection entirely: it is a root-level pure data module
+// with no imports of its own, so reading it here costs the script nothing.
+const SUPPORTED_SPORTS = [...SUPPORTED_LEAGUES];
 const sportChoices = SUPPORTED_SPORTS.map((s) => ({ name: s, value: s }));
 
 // Mirrors lib/pages-functions/discord-commands.ts's SUPPORTED_LEAGUE_SPORTS -
