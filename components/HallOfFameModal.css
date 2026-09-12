@@ -60,6 +60,14 @@
   /* Room for the part of the wordmark that rises above the ribbon. */
   padding-top: 2.35em;
   margin-right: -2.4rem; /* re-center under the absolutely-sized close button */
+  /* Purely decorative, and it extends under the close button (the negative margin
+     above): being positioned it would otherwise paint over the X and eat its clicks. */
+  pointer-events: none;
+}
+
+.hof-modal .tank-modal-close {
+  position: relative;
+  z-index: 3; /* above the crest's wordmark (z-index 2) where the two overlap */
 }
 
 .hof-logo {
