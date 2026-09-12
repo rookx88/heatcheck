@@ -287,8 +287,17 @@ function homepageStyles(): string {
         }
         /* The sibling-tank pager under the artifact (homepage-client's TankPager).
            Its arrows and counter are Tank HQ's own .tank-modal-nav controls, which
-           this bundle already carries; only the surrounding block is local. */
-        .hc-tank-nav { margin: 0.25rem 0 0; text-align: center; }
+           this bundle already carries; only the surrounding block is local.
+
+           What actually fixed the dead taps was moving this ABOVE the artifact
+           (homepage-client's TankPager placement has the reasoning). position:relative
+           + z-index is kept as a guard, not as the fix: the artifact's wrapper is a
+           POSITIONED element whose negative TOP margin still reaches up into this
+           block, and its 420px drag stage hit-tests across its whole box, empty or
+           not. A static sibling loses to a positioned one whatever the DOM order, so
+           the arrows only clear it today because of where they land. Kept below the
+           turn arrows' own z-index 5, which sit level with the cube's middle. */
+        .hc-tank-nav { position: relative; z-index: 1; margin: 0 0 0.35rem; text-align: center; }
         .hc-tank-nav-matchup {
             margin: 0.35rem 0 0;
             font-family: 'Nunito', sans-serif; font-size: 0.78rem;

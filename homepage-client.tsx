@@ -371,6 +371,13 @@ function mount() {
             <MotionConfig reducedMotion="user">
                 {payload.loggedIn ? (
                     <>
+                        {/* Above the artifact, not below it. The captain rides fixed in
+                            the viewport's bottom-right corner, and below the cube the
+                            pager landed inside his box on a phone: his sprite took the
+                            taps and opened his own panel instead. Anything above the
+                            cube only ever scrolls further from that corner, never into
+                            it, so this placement is clear of him at any scroll offset. */}
+                        {pager}
                         <div style={{ position: 'relative', marginTop: '-4.25rem', marginBottom: '-2.5rem' }}>
                             {/* The cave backdrop is no longer mounted here - it's the
                                 server-rendered .hc-tanks-backdrop behind the whole #tanks
@@ -380,13 +387,11 @@ function mount() {
                                 view wherever the page is scrolled. */}
                             <PetWidget variant="fixed" />
                         </div>
-                        {/* Outside the negative-margin wrapper deliberately: those margins
-                            claw back the cube's dead stage space, so anything inside them
-                            is overlapped by whatever follows the showcase. */}
-                        {pager}
                     </>
                 ) : (
                     <>
+                        {/* Above the artifact - see the note in the signed-in branch. */}
+                        {pager}
                         <div style={{ position: 'relative', margin: '-2.5rem 0' }}>
                             <Fishtank
                                 key={tank.slug}
@@ -410,7 +415,6 @@ function mount() {
                                 ending in the register flow. */}
                             <MudPuppyPromo variant="fixed" />
                         </div>
-                        {pager}
                     </>
                 )}
             </MotionConfig>
