@@ -24,7 +24,9 @@
 // statement in the batch gathers the facts (lifetime Ember, counts, the user's
 // encounter/quest rows), evaluateEncounters() fires at most one new encounter, and the
 // response carries `encounter` - the oldest one the player hasn't watched yet - for the
-// EncounterStage to play. Same re-read rule when one fires.
+// EncounterStage to play. An encounter writes NO notification (the scene shows what it
+// hands over, so an inbox echo of it was redundant); it still shares the re-read below
+// because its Ember gift moves the balance in this same response.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';

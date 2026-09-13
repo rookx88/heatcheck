@@ -84,6 +84,14 @@ async function run() {
         check(`${e.key}: has dialogue with both speakers`,
             e.dialogue.length >= 2 && e.dialogue.some((d) => d.speaker === 'character') && e.dialogue.some((d) => d.speaker === 'pet'));
         check(`${e.key}: once === true`, e.once === true);
+        // The reveal marker names the line that hands something over, so it only makes
+        // sense on an encounter that actually grants, and only once.
+        const reveals = e.dialogue.filter((d) => d.reveal).length;
+        check(`${e.key}: at most one reveal step`, reveals <= 1, String(reveals));
+        check(`${e.key}: a reveal step only where something is granted`,
+            reveals === 0 || e.effects.some((f) => f.kind === 'grant_item' || f.kind === 'grant_ember'));
+        check(`${e.key}: an encounter that grants marks the line that hands it over`,
+            !e.effects.some((f) => f.kind === 'grant_item' || f.kind === 'grant_ember') || reveals === 1);
         for (const t of e.trigger) {
             if (t.kind === 'lifetime_earned_at_least') {
                 check(`${e.key}: configKey '${t.configKey}' present in active game_config['encounters']`, Number.isFinite(Number(encCfg[t.configKey])), JSON.stringify(encCfg));
@@ -97,8 +105,19 @@ async function run() {
         }
         for (const f of e.effects) {
             if (f.kind === 'grant_item') {
-                const { rows } = await pool.query(`SELECT item_type FROM items_catalog WHERE key = $1`, [f.catalogKey]);
+                const { rows } = await pool.query(`SELECT item_type, name, config FROM items_catalog WHERE key = $1`, [f.catalogKey]);
                 check(`${e.key}: grant_item '${f.catalogKey}' exists in items_catalog as '${f.itemType}'`, rows.length === 1 && rows[0].item_type === f.itemType);
+                // The stage renders whatever the fire statement resolved, so a SKU whose
+                // art was never imported has to trip HERE rather than as a broken image
+                // in front of a player. Same derivation as fireEncounter's CASE.
+                const art = rows[0] && (rows[0].item_type === 'food' ? `food/${f.catalogKey}.png`
+                    : rows[0].item_type === 'memorabilia' ? rows[0].config?.image
+                    : rows[0].item_type === 'collectible' ? rows[0].config?.cover_image : null);
+                if (art) {
+                    check(`${e.key}: reward art '${art}' exists on disk`, fs.existsSync(path.join(REPO_ROOT, 'assets/images', art)), art);
+                } else {
+                    check(`${e.key}: '${f.catalogKey}' is a type with no artwork (egg) - the reveal falls back to a shape`, rows[0]?.item_type === 'egg');
+                }
             }
             if (f.kind === 'grant_ember') {
                 const { rows } = await pool.query(`SELECT kind FROM ember_rules WHERE key = $1 AND active`, [f.ruleKey]);
@@ -200,7 +219,7 @@ async function run() {
     check('zero encounters rows', (await encounterRows(petless.userId)).length === 0);
 
     // --- Below threshold ---
-    section('Below threshold - no row, no notification');
+    section('Below threshold - no row, nothing granted');
     const player = await createSessionUser(`${EMAIL_PREFIX}player@example.com`);
     const petId = await insertPet(player.userId);
     const below = await api('GET', '/api/toolbar-state', { cookie: player.cookie });
@@ -209,7 +228,7 @@ async function run() {
 
     try {
         // --- Fire ---
-        section('Fire - threshold crossed: exactly one encounter, one grant, one quest, one notification, in the same response');
+        section('Fire - threshold crossed: exactly one encounter, one grant, one quest, NO inbox row, in the same response');
         await parkEarlyCharacters(player.userId);
         await flipConfig('encounters', { beaks_intro_ember: 1 });
         await seedLifetimeEarned(player.userId, 1);
@@ -217,8 +236,11 @@ async function run() {
         const rows1 = await encounterRows(player.userId);
         check('10 concurrent GETs -> exactly one encounters row (beaks_intro, offered)',
             rows1.length === 1 && rows1[0].encounter_key === 'beaks_intro' && rows1[0].status === 'offered', JSON.stringify(rows1));
-        check("grants records the item {catalogKey:'food_ribeye', itemType:'food'}",
-            rows1[0]?.grants?.item?.catalogKey === 'food_ribeye' && rows1[0]?.grants?.item?.itemType === 'food', JSON.stringify(rows1[0]?.grants));
+        check('grants.item carries catalogKey, itemType, the catalog name and the resolved art path',
+            rows1[0]?.grants?.item?.catalogKey === 'food_ribeye'
+            && rows1[0]?.grants?.item?.itemType === 'food'
+            && rows1[0]?.grants?.item?.name === 'Ribeye Steak'
+            && rows1[0]?.grants?.item?.art === 'food/food_ribeye.png', JSON.stringify(rows1[0]?.grants));
         const { rows: ribeye } = await pool.query(`SELECT quantity FROM inventory_items WHERE user_id = $1 AND catalog_key = 'food_ribeye' AND item_type = 'food'`, [player.userId]);
         check('exactly one Ribeye in inventory', ribeye.length === 1 && ribeye[0].quantity === 1, JSON.stringify(ribeye));
         const quests1 = await questRows(player.userId);
@@ -227,9 +249,8 @@ async function run() {
             && Number(quests1[0].baseline.feeds) === 0 && quests1[0].reward_encounter_key === 'beaks_quest_done' && quests1[0].completed_at === null,
             JSON.stringify(quests1));
         const { rows: notes1 } = await pool.query(
-            `SELECT type, ref_type, ref_id, mood, message FROM notifications WHERE user_id = $1 AND ref_type = 'encounter'`, [player.userId]);
-        check("exactly one 'informational' notification, ref_type 'encounter', ref_id 'beaks_intro', mood 'happy'",
-            notes1.length === 1 && notes1[0].type === 'informational' && notes1[0].ref_id === 'beaks_intro' && notes1[0].mood === 'happy', JSON.stringify(notes1));
+            `SELECT COUNT(*)::int AS n FROM notifications WHERE user_id = $1 AND ref_type = 'encounter'`, [player.userId]);
+        check('NO encounter notification is written (the reveal on stage is the acknowledgement)', notes1[0].n === 0, JSON.stringify(notes1));
         check('every response is 200', results.every((r) => r.status === 200));
         // Concurrency contract: the losers of the fire race took their facts snapshot
         // before the winner's row committed, so they legitimately answer `null` on THAT
@@ -240,14 +261,17 @@ async function run() {
             carrying.length >= 1 && results.every((r) => r.json?.encounter === null || r.json?.encounter?.id === rows1[0].id),
             `${carrying.length}/10 carried it`);
         const view = carrying[0]?.json?.encounter;
-        check('wire shape: id, character {key,name,title}, dialogue, grants.item',
+        check('wire shape: id, character {key,name,title}, dialogue, grants.item {name, art}',
             typeof view?.id === 'string' && view?.character?.key === 'beaks' && view?.character?.name === 'Beaks'
             && Array.isArray(view?.dialogue) && view.dialogue.length === ENCOUNTER_BY_KEY.beaks_intro.dialogue.length
-            && view?.grants?.item?.catalogKey === 'food_ribeye', JSON.stringify(view));
+            && view?.grants?.item?.catalogKey === 'food_ribeye'
+            && view?.grants?.item?.name === 'Ribeye Steak'
+            && view?.grants?.item?.art === 'food/food_ribeye.png', JSON.stringify(view));
         const again = await api('GET', '/api/toolbar-state', { cookie: player.cookie });
         check('a later GET still offers the same encounter (not yet seen)', again.json?.encounter?.id === rows1[0].id);
-        check('the inbox line is in the notifications feed of that response',
-            (again.json?.notifications ?? []).some((n: any) => n.refType === 'encounter' && n.refId === 'beaks_intro'));
+        check('the notifications feed of that response carries no encounter row',
+            !(again.json?.notifications ?? []).some((n: any) => n.refType === 'encounter'),
+            JSON.stringify(again.json?.notifications ?? []));
 
         // --- Seen ---
         section('Seen - closing the dialogue flips status; idempotent; scoped');
@@ -288,8 +312,9 @@ async function run() {
         const rows2 = await encounterRows(player.userId);
         const reward = rows2.find((r) => r.encounter_key === 'beaks_quest_done');
         check('quest completed_at set', quests2[0].completed_at !== null, JSON.stringify(quests2));
-        check("'beaks_quest_done' fired (offered) with grants.ember.amount === 25",
-            Boolean(reward) && reward!.status === 'offered' && Number(reward!.grants?.ember?.amount) === 25, JSON.stringify(rows2));
+        check("'beaks_quest_done' fired (offered) with grants.ember {amount:25} and no item leg",
+            Boolean(reward) && reward!.status === 'offered' && Number(reward!.grants?.ember?.amount) === 25
+            && reward!.grants?.item === undefined, JSON.stringify(rows2));
         check('that same response carries the reward encounter', done.json?.encounter?.key === 'beaks_quest_done', JSON.stringify(done.json?.encounter?.key));
         const { rows: gift } = await pool.query(
             `SELECT amount, entry_type FROM ember_ledger WHERE user_id = $1 AND rule_key = 'encounter_gift'`, [player.userId]);
@@ -299,7 +324,7 @@ async function run() {
         check('lifetime_earned unchanged by the gift, cache == recompute == 1 (the seed only)',
             after.lifetimeCache === 1 && after.lifetimeRecomputed === 1, JSON.stringify(after));
         const { rows: notes2 } = await pool.query(`SELECT COUNT(*)::int AS n FROM notifications WHERE user_id = $1 AND ref_type = 'encounter'`, [player.userId]);
-        check('two encounter notifications total', notes2[0].n === 2);
+        check('still zero encounter notifications after the reward encounter fired', notes2[0].n === 0);
         const doneAgain = await api('GET', '/api/toolbar-state', { cookie: player.cookie });
         const { rows: gift2 } = await pool.query(`SELECT COUNT(*)::int AS n FROM ember_ledger WHERE user_id = $1 AND rule_key = 'encounter_gift'`, [player.userId]);
         check('a further GET grants nothing more (still one gift row, still 2 encounters)', doneAgain.status === 200 && gift2[0].n === 1 && (await encounterRows(player.userId)).length === 2);

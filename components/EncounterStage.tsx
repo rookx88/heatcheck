@@ -24,6 +24,9 @@ import { NOTIFICATIONS_UPDATED_EVENT, dispatchNotificationsUpdated } from '../no
 import { ENCOUNTER_ADVANCE_EVENT, dispatchEncounterStep, markEncounterSeen } from '../encounters-client';
 import { CHARACTERS, portraitSrc } from '../lib/pages-functions/encounters';
 import type { EncounterView, Expression } from '../lib/pages-functions/encounters/types';
+// The canonical Ember glyph, already shared with the Hall of Fame - this is the third
+// consumer, not a third copy.
+import { EmberIcon } from './MapHud';
 import { petDisplayName } from './petRender';
 // The character bubble reuses the widget's manga bubble text rule (and its font warm).
 import './PetWidget.css';
@@ -113,6 +116,13 @@ export const EncounterStage: React.FC<EncounterStageProps> = ({ variant = 'card'
     // idiom). ~25KB each and at most three per character.
     useEffect(() => {
         if (!playing || !encounter) return;
+        // The reward art too, and BEFORE the character guard: it pops mid-scene, and a
+        // file landing a beat later would pop an empty box.
+        const art = encounter.grants?.item?.art;
+        if (art) {
+            const reward = new Image();
+            reward.src = `/assets/images/${art}`;
+        }
         const character = CHARACTERS[encounter.character.key];
         if (!character) return;
         for (const s of encounter.dialogue) {
@@ -131,8 +141,11 @@ export const EncounterStage: React.FC<EncounterStageProps> = ({ variant = 'card'
         setPlaying(false);
         setEncounter(null);
         setStep(0);
-        // Optimistic; idempotent server-side. The inbox line landed when the encounter
-        // fired, so the badge owners refetch once the seen write has settled.
+        // Optimistic; idempotent server-side. The dispatch below is NOT about a badge:
+        // an encounter writes no inbox row any more (the reveal on stage is the whole
+        // acknowledgement). It is how this component re-hydrates - the stage listens
+        // for NOTIFICATIONS_UPDATED_EVENT - so it is what plays the NEXT queued
+        // encounter and pulls the widget's new Ember total in. Do not remove it.
         markEncounterSeen(id)
             .catch(() => { /* next toolbar read reconciles */ })
             .finally(() => dispatchNotificationsUpdated());
@@ -178,6 +191,14 @@ export const EncounterStage: React.FC<EncounterStageProps> = ({ variant = 'card'
         }
     }
 
+    // The reward shows up on the line that hands it over (the marked step) and stays
+    // for the rest of the scene. No marker anywhere falls back to the last line.
+    const rewardItem = encounter.grants?.item ?? null;
+    const rewardEmber = encounter.grants?.ember?.amount ?? 0;
+    const hasReward = Boolean(rewardItem) || rewardEmber > 0;
+    const markedStep = encounter.dialogue.findIndex((s) => s.reveal);
+    const revealed = step >= (markedStep >= 0 ? markedStep : encounter.dialogue.length - 1);
+
     return (
         <>
             <div className="encounter-scrim" onClick={advance} aria-hidden="true" />
@@ -202,6 +223,40 @@ export const EncounterStage: React.FC<EncounterStageProps> = ({ variant = 'card'
                         )}
                     </div>
                 </div>
+                {hasReward && (
+                    // Rendered for the WHOLE scene and toggled by visibility, never
+                    // mounted mid-scene: .encounter-stage is pinned to the bottom, so
+                    // inserting a row here would shove the sprite and its speech
+                    // bubble upward by this element's height in a single frame.
+                    <div className={`encounter-stage__reward${revealed ? ' is-revealed' : ''}`}>
+                        {rewardItem && (
+                            <div className="encounter-stage__reward-chip">
+                                {rewardItem.art ? (
+                                    <img
+                                        className="encounter-stage__reward-art"
+                                        src={`/assets/images/${rewardItem.art}`}
+                                        alt=""
+                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                    />
+                                ) : (
+                                    // Eggs have no artwork at all, so the slot gets the
+                                    // inventory list's silhouette rather than a broken img.
+                                    <span
+                                        className={`encounter-stage__reward-art encounter-stage__reward-art--blank${rewardItem.itemType === 'egg' ? ' encounter-stage__reward-art--egg' : ''}`}
+                                        aria-hidden="true"
+                                    />
+                                )}
+                                <span className="encounter-stage__reward-name">{rewardItem.name || 'A gift'}</span>
+                            </div>
+                        )}
+                        {rewardEmber > 0 && (
+                            <div className="encounter-stage__reward-chip encounter-stage__reward-chip--ember">
+                                <EmberIcon />
+                                <span className="encounter-stage__reward-name">+{rewardEmber} Ember</span>
+                            </div>
+                        )}
+                    </div>
+                )}
                 <div className="encounter-stage__plate">
                     <span className="encounter-stage__name">{encounter.character.name}</span>
                     <span className="encounter-stage__title">{encounter.character.title}</span>

@@ -199,8 +199,95 @@
   outline: none;
 }
 
-.encounter-stage__next:active {
-  transform: scale(0.95);
+/* What he actually handed over, revealed on the line that hands it over (the step
+   marked `reveal` in the script, default the last one) and left up afterwards.
+   The tile is the inventory/food-shop recipe - translucent fill, teal hairline, soft
+   radius - on a darker ground: those live on a modal panel, this one sits on the
+   scrim, where a 4% white wash is invisible.
+   The wrapper is ALWAYS in flow when the encounter grants something and only toggles
+   visibility. .encounter-stage is pinned to the bottom, so mounting this mid-scene
+   would shove the sprite and its bubble up by this height in one frame.
+   max-width is the sprite's own box, which is what keeps the reward from ever
+   reaching the pet opposite - at every breakpoint, by construction. */
+.encounter-stage__reward {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+  margin-top: 0.4rem;
+  margin-left: 2px;
+  max-width: var(--stage-w);
+  visibility: hidden;
+  opacity: 0;
+}
+
+.encounter-stage__reward.is-revealed {
+  visibility: visible;
+  opacity: 1;
+  animation: encounter-reward-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes encounter-reward-pop {
+  from { opacity: 0; transform: scale(0.62) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.encounter-stage__reward-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  padding: 0.35rem 0.6rem;
+  background: rgba(7, 5, 11, 0.82);
+  border: 1.5px solid rgba(47, 230, 217, 0.35);
+  border-radius: 14px;
+  box-shadow: 0 0 14px rgba(47, 230, 217, 0.18);
+}
+
+/* Ember is the currency, not an object: the gold pill from .map-hud__ember, with
+   EmberIcon's flame taking currentColor. */
+.encounter-stage__reward-chip--ember {
+  color: var(--hc-gold, #ffc72c);
+  background: rgba(26, 18, 0, 0.85);
+  border-color: rgba(255, 199, 44, 0.45);
+  border-radius: 999px;
+  box-shadow: 0 0 14px rgba(255, 199, 44, 0.2);
+}
+
+/* Deliberately NOT composing var(--pet-tint, ): the tint doctrine (PetPortrait.css)
+   is for the PET's own sprite. A granted object must never hue-rotate with the pet. */
+.encounter-stage__reward-art {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.35));
+}
+
+.encounter-stage__reward-art--blank {
+  border: 2px solid rgba(47, 230, 217, 0.45);
+  border-radius: 10px;
+  background: rgba(47, 230, 217, 0.1);
+}
+
+/* The .pet-inv-egg-dot silhouette: eggs have no artwork to show. */
+.encounter-stage__reward-art--egg {
+  width: 30px;
+  height: 38px;
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  border-color: rgba(255, 255, 255, 0.7);
+}
+
+.encounter-stage__reward-name {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.8rem;
+  line-height: 1.2;
+  color: inherit;
+}
+
+.encounter-stage__reward-chip:not(.encounter-stage__reward-chip--ember) .encounter-stage__reward-name {
+  color: #ffffff;
 }
 
 @media (min-width: 1024px) {
@@ -240,12 +327,40 @@
     font-size: 0.95rem;
     padding: 0.55rem 1.3rem;
   }
+
+  /* Top rung of the app's item-art ladder, matching .pet-widget__bubble-art. */
+  .encounter-stage__reward-art {
+    width: 56px;
+    height: 56px;
+  }
+
+  .encounter-stage__reward-art--egg {
+    width: 42px;
+    height: 52px;
+  }
+
+  .encounter-stage__reward-chip {
+    padding: 0.45rem 0.8rem;
+  }
+
+  .encounter-stage__reward-name {
+    font-size: 0.95rem;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .encounter-scrim,
   .encounter-stage__sprite,
   .encounter-stage__bubble {
+    animation: none;
+  }
+
+  /* Two classes on purpose: a single-class selector loses to
+     `.encounter-stage__reward.is-revealed` and this rule would silently do nothing.
+     Plain `none` is safe here, unlike .pet-widget__coins - nothing unmounts on
+     animationend, and .is-revealed sets visibility/opacity itself rather than leaning
+     on the keyframe's fill, so the reward is simply already there. */
+  .encounter-stage__reward.is-revealed {
     animation: none;
   }
 }

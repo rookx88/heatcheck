@@ -1,11 +1,13 @@
 // Charles Thomas Evans - fourth rung, and the emotional turn of the ladder. Everyone
-// before him is glad to see you. Charles is glad to see you AND aware that the water
-// got bigger and faster than he did: he played when the competition was thinner and
-// knows he would not make a roster in the game as it is now.
+// before him is glad to see the pet. Charles is glad to see it AND aware that the game
+// got bigger and faster than he did: he played when there were fewer of them and knows
+// he could not make a team now.
 //
 // He has no happy portrait, which suits him - both of his downbeats land on 'sad' and
 // the rest is composure. He is also the hand-off: his goodbye is the only thing that
 // unlocks Vic, so the tease arrives from someone who cannot take the offer himself.
+//
+// See characters/beaks.ts for the house rules the copy follows.
 
 import type { Character, Encounter } from '../types';
 
@@ -18,7 +20,7 @@ export const CHARLES: Character = {
         sad: '/assets/images/characters/charles_sad.webp',
     },
     alt: 'Charles Thomas Evans, a purple athlete with locs and a tentacle tail in a green number ten jersey',
-    voice: 'Measured, tired, generous. Talks about the work and the arithmetic, never the glory. Never bitter, and says so out loud.',
+    voice: 'Calm and honest. A retired athlete talking to a young one. Says the hard thing plainly and without self-pity.',
 };
 
 export const CHARLES_ENCOUNTERS: Encounter[] = [
@@ -30,6 +32,8 @@ export const CHARLES_ENCOUNTERS: Encounter[] = [
             { kind: 'lifetime_earned_at_least', configKey: 'charles_intro_ember' },
             { kind: 'picks_at_least', count: 10 },
         ],
+        // No item and no Ember here - the quest IS the ask, and the reward comes when
+        // he returns. Nothing to reveal, so no step is marked.
         effects: [
             {
                 kind: 'start_quest',
@@ -37,14 +41,13 @@ export const CHARLES_ENCOUNTERS: Encounter[] = [
             },
         ],
         dialogue: [
-            { speaker: 'character', text: 'They told me there was a puppy out here taking real calls. I wanted to see one for myself.' },
-            { speaker: 'pet', mood: 'happy', text: "You're PURPLE. And enormous. And you have a TAIL." },
-            { speaker: 'character', text: 'Charles Thomas Evans. Ten. I played when this water was smaller and the competition was thinner.' },
+            { speaker: 'character', text: 'They told me there was a puppy out here taking real calls. I wanted to see for myself.' },
+            { speaker: 'pet', mood: 'happy', text: "You're purple. And enormous. And you have a tail." },
+            { speaker: 'character', text: 'Charles Evans. Number ten. I played back when this place was smaller and there were fewer of us.' },
             { speaker: 'pet', mood: 'happy', text: 'Is it good? Being the guy?' },
-            { speaker: 'character', expression: 'sad', text: "It was. The world's grown since. More of them every season, every one faster than I was at my best. I'd not make a roster now. That isn't bitterness, it's arithmetic." },
-            { speaker: 'character', text: "Which is why I came down. Keep going. A hundred and fifty more Ember, earned the hard way. You've got the years for it and I haven't." },
+            { speaker: 'character', expression: 'sad', text: "It was. But the game got bigger and everyone got faster. I couldn't make a team now, and I've made my peace with that." },
+            { speaker: 'character', text: 'So keep going while you can. Earn another hundred and fifty and I’ll introduce you to someone.' },
         ],
-        inboxLine: 'A giant purple footballer came to see US. Number ten. He said the world got faster than he did. He wants us to keep going.',
     },
     {
         key: 'charles_quest_done',
@@ -56,12 +59,11 @@ export const CHARLES_ENCOUNTERS: Encounter[] = [
         ],
         effects: [{ kind: 'grant_ember', ruleKey: 'encounter_gift_large' }],
         dialogue: [
-            { speaker: 'character', text: "You did it without asking me how. That's the part nobody can teach and the part that lasts." },
+            { speaker: 'character', text: 'You did that without asking me how. Most people ask.' },
             { speaker: 'pet', mood: 'happy', text: 'We just kept going. Like you said.' },
-            { speaker: 'character', text: "A hundred Ember. From me, not the house. I've no roster to spend it on any more." },
-            { speaker: 'character', expression: 'sad', text: 'Funny thing. I spent fifteen years wanting this water to get bigger. It did. Just late.' },
-            { speaker: 'character', text: "There's a man who's been watching your column. Runs a front office. When he comes he won't say much, he never does. Let him look." },
+            { speaker: 'character', reveal: true, text: "A hundred Ember. From me, not the club. I don't have a team to spend it on any more." },
+            { speaker: 'character', expression: 'sad', text: 'I spent years wishing this place would get bigger. It did. Just a bit too late for me.' },
+            { speaker: 'character', text: "There's a man who's been watching your record. He runs a front office. He doesn't say much, so don't take it personally." },
         ],
-        inboxLine: 'Charles gave us 100 Ember and said someone from a FRONT OFFICE has been watching our column. He told us to let the man look.',
     },
 ];

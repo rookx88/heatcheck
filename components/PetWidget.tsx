@@ -106,6 +106,11 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
             if (detail) {
                 setExpanded(false);
                 setBubble(null);
+                // The $$$ chip renders under `!scripted`, so an in-flight pop would be
+                // unmounted without ever reaching animationend - and would then REPLAY
+                // when the scene ends and it remounts. Clear the state, not just the
+                // bubble.
+                setCoins(null);
             }
         };
         window.addEventListener(ENCOUNTER_STEP_EVENT, onStep);

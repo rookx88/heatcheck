@@ -143,9 +143,12 @@ export function toEncounterView(row: EncounterRow): EncounterView | null {
 // encounter_key)); every other leg selects FROM it, so a concurrent loser writes
 // nothing. Item legs are gated by the itemType param so one statement covers every
 // effect shape; the quest leg snapshots its baseline with subqueries so the numbers
-// are the DB's at insert time, not the request's. `grants` is written in the INSERT
-// itself (a CTE cannot UPDATE a row a sibling CTE inserted) and only names the item -
-// the Ember gift is a separate statement (ledger.encounterGiftEmber) that patches it.
+// are the DB's at insert time, not the request's. `grants` is BUILT in the INSERT from
+// items_catalog and read back via RETURNING (a CTE cannot UPDATE a row a sibling CTE
+// inserted): the catalog is the single resolver for the item's display name and art
+// path, so the stored jsonb and the in-memory row cannot drift, and the reveal on
+// stage needs no second query. The Ember gift is a separate statement
+// (ledger.encounterGiftEmber) that patches the same object.
 async function fireEncounter(
     sql: NeonQueryFunction<false, false>,
     input: { userId: string; petId: string; encounter: Encounter }
@@ -161,15 +164,31 @@ async function fireEncounter(
     const questKey = hasQuest ? quest.quest.key : '';
     const objective = hasQuest ? JSON.stringify(quest.quest.objective) : '{}';
     const rewardKey = hasQuest ? quest.quest.rewardEncounter : '';
-    const grants: EncounterGrants = item?.kind === 'grant_item' ? { item: { catalogKey, itemType } } : {};
-    const notificationKey = `encounter:${encounter.key}:${userId}`;
-
     const rows = await sql`
         WITH ins AS (
             INSERT INTO encounters (user_id, encounter_key, character_key, status, grants)
-            VALUES (${userId}, ${encounter.key}::text, ${encounter.character}::text, 'offered', ${JSON.stringify(grants)}::jsonb)
+            VALUES (${userId}, ${encounter.key}::text, ${encounter.character}::text, 'offered',
+                    -- name + art come from the catalog because no endpoint exposes an
+                    -- UNOWNED catalog row: this payload is the only way the stage can
+                    -- learn them. art is the notifications.art contract - a subpath
+                    -- under /assets/images/, NULL for a type with no artwork (eggs are
+                    -- drawn procedurally). An unknown key already fails the grant legs
+                    -- below on the inventory_items FK, so this never silently blanks.
+                    COALESCE((SELECT jsonb_build_object('item', jsonb_build_object(
+                                  'catalogKey', c.key,
+                                  'itemType',   c.item_type,
+                                  'name',       c.name,
+                                  'art', CASE c.item_type
+                                             WHEN 'food'        THEN 'food/' || c.key || '.png'
+                                             WHEN 'memorabilia' THEN c.config->>'image'
+                                             WHEN 'collectible' THEN c.config->>'cover_image'
+                                             ELSE NULL
+                                         END))
+                              FROM items_catalog c
+                              WHERE ${itemType}::text <> 'none' AND c.key = ${catalogKey}::text),
+                             '{}'::jsonb))
             ON CONFLICT (user_id, encounter_key) DO NOTHING
-            RETURNING id
+            RETURNING id, grants
         ), quest AS (
             INSERT INTO quests (user_id, quest_key, encounter_id, objective, baseline, reward_encounter_key)
             SELECT ${userId}, ${questKey}::text, ins.id, ${objective}::jsonb,
@@ -196,24 +215,21 @@ async function fireEncounter(
         ), card AS (
             INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity, serial_number)
             SELECT ${userId}, ${catalogKey}::text, 'collectible', 1, m.serial FROM minted m
-        ), note AS (
-            INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
-            SELECT ${userId}, 'informational', ${encounter.inboxLine}::text, 'encounter', ${encounter.key}::text,
-                   ${notificationKey}::text, 'happy'
-            FROM ins
-            ON CONFLICT (idempotency_key) DO NOTHING
         )
-        SELECT (SELECT id FROM ins) AS id, (SELECT serial FROM minted) AS serial
+        SELECT (SELECT id FROM ins) AS id, (SELECT grants FROM ins) AS grants,
+               (SELECT serial FROM minted) AS serial
     `;
-    const out = rows[0] as unknown as { id: string | null; serial: number | null };
+    const out = rows[0] as unknown as { id: string | null; grants: EncounterGrants | null; serial: number | null };
     if (!out.id) return null; // lost the race - the winner's row is already in facts next load
 
-    const row: EncounterRow = { id: out.id, key: encounter.key, status: 'offered', grants };
+    const row: EncounterRow = { id: out.id, key: encounter.key, status: 'offered', grants: out.grants ?? {} };
     if (itemType === 'collectible' && out.serial === null) {
         // Pool sold out between the registry and the mint: the visit still happens,
-        // the card just isn't in it.
+        // the card just isn't in it. Drop ONLY `item` - a blanket {} would also throw
+        // away any sibling key (the Ember gift merges into this same object below).
         await sql`UPDATE encounters SET grants = grants - 'item' WHERE id = ${out.id} AND user_id = ${userId}`;
-        row.grants = {};
+        const { item: _soldOut, ...rest } = row.grants;
+        row.grants = rest;
     }
     if (gift?.kind === 'grant_ember') {
         const credited = await encounterGiftEmber(sql, {

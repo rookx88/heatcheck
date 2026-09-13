@@ -77,6 +77,11 @@ export interface DialogueStep {
     // holds the last character expression across the pet's turns, so a face set here
     // stays up until the character says something else.
     expression?: Expression;
+    // The step at which this encounter's grants appear on stage - mark the line that
+    // actually hands the thing over. At most one per encounter; none anywhere means
+    // the last step. The reveal is `step >= revealAt`, so once it is out it STAYS out
+    // for the rest of the scene instead of blinking away on the next line.
+    reveal?: true;
 }
 
 export interface Encounter {
@@ -85,14 +90,17 @@ export interface Encounter {
     trigger: Trigger[];
     effects: Effect[];
     dialogue: DialogueStep[];
-    // The inbox row, in the PET's voice (the widget bubble speaks it later).
-    inboxLine: string;
     once: true;
 }
 
-// What an encounter actually handed over (encounters.grants).
+// What an encounter actually handed over (encounters.grants), and everything the
+// stage needs to SHOW it. `name` and `art` are resolved from items_catalog by the
+// fire statement, because no endpoint exposes an UNOWNED catalog row - the payload is
+// the only way the client can learn them. `art` follows the notifications.art
+// contract (add_art_to_notifications.sql): a subpath under /assets/images/, or null
+// when the type has no artwork at all (eggs are drawn procedurally, never from a file).
 export interface EncounterGrants {
-    item?: { catalogKey: string; itemType: string };
+    item?: { catalogKey: string; itemType: string; name: string; art: string | null };
     ember?: { amount: number };
 }
 

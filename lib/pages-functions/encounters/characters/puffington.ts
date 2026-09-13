@@ -1,7 +1,9 @@
-// Puffington - second rung. He is the only character who arrives because of how you
-// treat the PET rather than how you play, which is why his trigger is feeds and his
-// quest is a tour of both food counters. It doubles as the thing that teaches a new
-// Captain that the Terrace and Quickboost exist.
+// Puffington - second rung. He is the only character who arrives because of how the
+// pet is looked after rather than how it plays, which is why his trigger is feeds and
+// his quest is a tour of both food counters. It doubles as the thing that teaches a
+// new player that the Terrace and Quickboost exist.
+//
+// See characters/beaks.ts for the house rules the copy follows.
 
 import type { Character, Encounter } from '../types';
 
@@ -15,7 +17,7 @@ export const PUFFINGTON: Character = {
         sad: '/assets/images/characters/puffington_sad.webp',
     },
     alt: 'Puffington, a large pufferfish in a white sports shirt and navy shorts',
-    voice: 'Smug and unhurried. Treats eating as a competitive discipline. Respects a good feeder and says so like a verdict.',
+    voice: 'Blunt and comfortable. Cares about food above everything and assumes everyone else does too.',
 };
 
 export const PUFFINGTON_ENCOUNTERS: Encounter[] = [
@@ -36,13 +38,12 @@ export const PUFFINGTON_ENCOUNTERS: Encounter[] = [
             },
         ],
         dialogue: [
-            { speaker: 'character', text: "You feed that thing properly. I notice. It's mostly the only thing I notice." },
+            { speaker: 'character', text: "I'm Puffington. You eat well. I can always tell just by looking." },
             { speaker: 'pet', mood: 'happy', text: "He's looking at my bowl." },
-            { speaker: 'character', text: 'Puffington. I hold the Terrace record and I intend to die holding it. A well fed asset is a serious asset.' },
-            { speaker: 'pet', mood: 'happy', text: 'I AM a serious asset.' },
-            { speaker: 'character', text: "Worm delicacy. Don't thank me, thank the chef. Go and see both counters, the Terrace and Quickboost. Then we'll talk about a real meal." },
+            { speaker: 'character', text: 'I eat at the Terrace most days. I hold the record there.' },
+            { speaker: 'pet', mood: 'happy', text: 'What record?' },
+            { speaker: 'character', reveal: true, text: 'Most plates in one sitting. Here, take a worm delicacy. Check out a couple of the restaurants around Tank HQ. They got some goodies.' },
         ],
-        inboxLine: 'A pufferfish in gym clothes inspected my bowl and approved. He left a worm delicacy. He wants us to go and see the food.',
     },
     {
         key: 'puffington_quest_done',
@@ -54,10 +55,9 @@ export const PUFFINGTON_ENCOUNTERS: Encounter[] = [
         ],
         effects: [{ kind: 'grant_item', catalogKey: 'food_ribeye', itemType: 'food' }],
         dialogue: [
-            { speaker: 'character', expression: 'happy', text: "Both counters. In one lifetime. You've seen more of the menu than most fish see of the ocean." },
-            { speaker: 'pet', mood: 'happy', text: 'The Terrace smells like BUTTER.' },
-            { speaker: 'character', expression: 'happy', text: 'Ribeye. The good one. Eat it slowly and think about me.' },
+            { speaker: 'character', expression: 'happy', text: 'Both counters. Good. Most people only ever try the one nearest them.' },
+            { speaker: 'pet', mood: 'happy', text: 'The Terrace smells like butter.' },
+            { speaker: 'character', expression: 'happy', reveal: true, text: "It does. Here's a ribeye, the good one. Eat it slowly." },
         ],
-        inboxLine: 'Puffington gave us a RIBEYE for touring the food shops. He said to eat it slowly and think about him.',
     },
 ];
