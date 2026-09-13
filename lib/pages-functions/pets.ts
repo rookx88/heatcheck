@@ -157,7 +157,9 @@ export async function feed(sql: NeonQueryFunction<false, false>, input: FeedInpu
             -- type is an ambiguous unknown-plus-unknown operator without them.
             satisfaction_at_last_feed = LEAST(${input.max}::real, GREATEST(0::real, ${input.currentSatisfaction}::real + ${input.points}::real)),
             last_fed_at = NOW(),
-            last_feed_token = ${input.feedToken}
+            last_feed_token = ${input.feedToken},
+            -- Lifetime feed counter for NPC encounter triggers/quests (create_encounters.sql).
+            feed_count = feed_count + 1
         WHERE user_id = ${input.userId} AND EXISTS (SELECT 1 FROM consumed)
         RETURNING id, color, render_mode, render_config, name, is_captain, satisfaction_at_last_feed, last_fed_at
     `,

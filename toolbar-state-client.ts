@@ -12,6 +12,7 @@
 import type { SessionInfo } from './tank-pick-client';
 import type { PetInfo } from './egg-shop-client';
 import type { NotificationItem } from './notifications-client';
+import type { EncounterView } from './lib/pages-functions/encounters/types';
 
 export interface ToolbarState {
     session: SessionInfo;
@@ -22,6 +23,9 @@ export interface ToolbarState {
     // session.onboarded.
     pet: PetInfo | null;
     notifications: NotificationItem[] | null;
+    // The oldest NPC encounter the player hasn't watched yet (EncounterStage plays
+    // it); null when there is nothing pending, or when un-onboarded / petless.
+    encounter: EncounterView | null;
 }
 
 // Announces an Ember balance change made on the SAME page - a TANKDAQ trade, a shop

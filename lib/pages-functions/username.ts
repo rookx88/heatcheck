@@ -33,6 +33,10 @@ const RESERVED = new Set([
     'mclaren',
     'smclaren',
     'mudpuppy',
+    // NPC encounters (lib/pages-functions/encounters/characters/).
+    'beaks',
+    'beaksthebroker',
+    'thebroker',
 ]);
 
 // Folded, letters-only substrings. Keep each entry unlikely to occur inside an

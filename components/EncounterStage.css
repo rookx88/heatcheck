@@ -1,0 +1,215 @@
+/* Encounter stage: the visiting character, bottom-LEFT - the mirror of the captain
+   widget's bottom-right docking (PetWidget.css). Same two modes:
+   - --card: hugs the aspect-fit map card's bottom-left corner (the frame math from
+     PetWidget.css with right -> left).
+   - --fixed: viewport-fixed for scrolling pages.
+   Layering: scrim 1600 sits above the widget's resting 1500 and below the modals
+   (2000); the stage is 1650; the widget lifts to 1700 while it speaks a scripted
+   line (.pet-widget.is-scripted) so the pet stays bright and tappable. */
+
+.encounter-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  background: rgba(3, 5, 12, 0.6);
+  cursor: pointer;
+  animation: encounter-fade-in 0.25s ease-out;
+}
+
+@keyframes encounter-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.encounter-stage {
+  position: absolute;
+  z-index: 1650;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  /* The portrait frame's rendered height; width follows so the tall crop (the
+     seahorse is ~2.5x taller than wide) shows head and torso. One variable so the
+     bubble can aim its tail at the frame's centre at every size. */
+  --stage-h: 170px;
+  --stage-w: calc(var(--stage-h) * 0.6);
+}
+
+.encounter-stage--card {
+  left: calc(max(0px, (100vw - min(100vw, min(56.25vh, 640px))) / 2) + 8px);
+  bottom: max(4px, calc(100vh - min(100vh, calc(100vw / 0.5625)) - 45px));
+}
+
+.encounter-stage--fixed {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+}
+
+/* Rounded portrait frame: the tank-modal palette (deep purple ground, teal glow)
+   with the manga bubble's black outline, so the crop reads as a framed guest
+   rather than a pasted rectangle. */
+.encounter-stage__frame {
+  position: relative;
+  width: var(--stage-w);
+  height: var(--stage-h);
+  border-radius: 18px;
+  overflow: hidden;
+  border: 3px solid #000000;
+  background: linear-gradient(180deg, #160c27 0%, #0b0713 100%);
+  box-shadow: 0 0 0 3px rgba(47, 230, 217, 0.45), 0 14px 30px rgba(0, 0, 0, 0.6), 0 0 28px rgba(47, 230, 217, 0.25);
+  cursor: pointer;
+  animation: encounter-stage-in 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+@keyframes encounter-stage-in {
+  from { opacity: 0; transform: translateX(-24px) scale(0.96); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+.encounter-stage__portrait {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Favour the head: the crop's face sits in its upper fifth. */
+  object-position: 50% 12%;
+}
+
+.encounter-stage__portrait--missing {
+  background: repeating-linear-gradient(45deg, #160c27 0 12px, #0b0713 12px 24px);
+}
+
+.encounter-stage__plate {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  margin-top: 0.25rem;
+  margin-left: 4px;
+  pointer-events: none;
+}
+
+.encounter-stage__name {
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 1.15rem;
+  line-height: 1.1;
+  color: #ffffff;
+  text-shadow: -2px -2px 0 rgba(7, 5, 11, 0.8), 2px -2px 0 rgba(7, 5, 11, 0.8),
+               -2px 2px 0 rgba(7, 5, 11, 0.8), 2px 2px 0 rgba(7, 5, 11, 0.8);
+}
+
+.encounter-stage__title {
+  font-family: 'Montserrat', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #2fe6d9;
+  text-shadow: 0 0 8px rgba(47, 230, 217, 0.5), 0 1px 0 #000000;
+}
+
+/* Character bubble: the widget's manga bubble with the tail on the LEFT, aimed at
+   the frame's centre (the tail apex is 51px in from the bubble's left edge:
+   ::before left 39px + 12px half-width). */
+.encounter-stage__bubble {
+  position: absolute;
+  bottom: calc(100% - 2.6rem);
+  left: max(0px, calc(var(--stage-w) * 0.5 - 51px));
+  width: max-content;
+  max-width: min(340px, 84vw);
+  padding: 0.85rem 1rem;
+  background: #ffffff;
+  border: 3px solid #000000;
+  border-radius: 16px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
+  z-index: 3;
+  cursor: pointer;
+  animation: encounter-fade-in 0.15s ease-out;
+}
+
+.encounter-stage__bubble::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 39px;
+  border: 12px solid transparent;
+  border-top-color: #000000;
+}
+
+.encounter-stage__bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 44px;
+  margin-top: -4px;
+  border: 7px solid transparent;
+  border-top-color: #ffffff;
+}
+
+/* Next / Done chip: the widget's action pill, teal to read as "the scene's control"
+   rather than a pet action. */
+.encounter-stage__next {
+  margin-top: 0.45rem;
+  margin-left: 2px;
+  font-family: 'Montserrat', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #2fe6d9;
+  text-shadow:
+    1px 0 0 #000000, -1px 0 0 #000000, 0 1px 0 #000000, 0 -1px 0 #000000,
+    1px 1px 0 #000000, -1px -1px 0 #000000, 1px -1px 0 #000000, -1px 1px 0 #000000;
+  background: rgba(7, 5, 11, 0.8);
+  border: 2px solid #2fe6d9;
+  border-radius: 999px;
+  padding: 0.4rem 1.1rem;
+  cursor: pointer;
+  box-shadow: 0 0 14px rgba(47, 230, 217, 0.3);
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.encounter-stage__next:hover,
+.encounter-stage__next:focus-visible {
+  background: rgba(47, 230, 217, 0.18);
+  outline: none;
+}
+
+.encounter-stage__next:active {
+  transform: scale(0.95);
+}
+
+@media (min-width: 1024px) {
+  .encounter-stage--fixed {
+    --stage-h: 350px;
+  }
+
+  .encounter-stage--card {
+    --stage-h: 400px;
+    /* Mirror of the widget's desktop card placement: straddling the card's LEFT
+       edge near the bottom. */
+    left: max(8px, calc((100vw - min(100vw, min(56.25vh, 640px))) / 2 - 40px));
+    bottom: max(14px, calc(100vh - min(100vh, calc(100vw / 0.5625)) + 14px));
+  }
+
+  .encounter-stage__name {
+    font-size: 1.6rem;
+  }
+
+  .encounter-stage__title {
+    font-size: 0.85rem;
+  }
+
+  .encounter-stage__next {
+    font-size: 0.95rem;
+    padding: 0.55rem 1.3rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .encounter-scrim,
+  .encounter-stage__frame,
+  .encounter-stage__bubble {
+    animation: none;
+  }
+}

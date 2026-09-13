@@ -39,6 +39,17 @@
   bottom: 12px;
 }
 
+/* An NPC encounter is playing (components/EncounterStage.tsx): its scrim sits at
+   1600, so the widget lifts above it while the pet has a scripted line - the pet
+   stays bright and its bubble tappable. */
+.pet-widget.is-scripted {
+  z-index: 1700;
+}
+
+.pet-widget__bubble--scripted {
+  cursor: pointer;
+}
+
 .pet-widget__row {
   display: flex;
   align-items: center;

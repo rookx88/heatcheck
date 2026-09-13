@@ -133,6 +133,29 @@ export async function seedBalance(userId: string, amount: number, note = 'fixtur
     );
 }
 
+// Gives a fixture account EARNED Ember - the Hall of Fame kind. Same one-statement CTE
+// as seedBalance but entry_type 'earn' under an active LIFETIME_EARNED_RULE_KEYS key,
+// folding BOTH balance and lifetime_earned exactly like settleCall() does, so the
+// ledger-trace invariant (cache == recompute) holds and encounter thresholds on
+// lifetime_earned can be crossed on purpose. Use seedBalance for spendable-only Ember.
+export async function seedLifetimeEarned(userId: string, amount: number, note = 'fixture earned'): Promise<void> {
+    const idempotencyKey = `acceptance-earned:${userId}:${crypto.randomUUID()}`;
+    await pool.query(
+        `WITH ins AS (
+            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
+            VALUES ($1, $2, 'earn', 'participation', 1, $3, $4::jsonb)
+            RETURNING amount
+        )
+        INSERT INTO ember_balances (user_id, balance, lifetime_earned, updated_at)
+        SELECT $1, amount, amount, NOW() FROM ins
+        ON CONFLICT (user_id) DO UPDATE
+            SET balance = ember_balances.balance + EXCLUDED.balance,
+                lifetime_earned = ember_balances.lifetime_earned + EXCLUDED.lifetime_earned,
+                updated_at = NOW()`,
+        [userId, amount, idempotencyKey, JSON.stringify({ acceptance: note })],
+    );
+}
+
 export async function ledgerTotals(userId: string): Promise<LedgerTotals> {
     const { rows } = await pool.query(
         `SELECT
@@ -258,6 +281,10 @@ export async function insertTank(f: TankFixture): Promise<string> {
 export async function cleanupUsersByEmailPrefix(prefix: string): Promise<void> {
     const { rows: users } = await pool.query(`SELECT id FROM waitlist WHERE email LIKE $1`, [`${prefix}%@example.com`]);
     for (const u of users) {
+        // NPC encounters: quests FK encounters (ON DELETE CASCADE, but explicit keeps
+        // the order legible); both cascade from waitlist too.
+        await pool.query(`DELETE FROM quests WHERE user_id = $1`, [u.id]);
+        await pool.query(`DELETE FROM encounters WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM notifications WHERE user_id = $1`, [u.id]);
         // TANKDAQ share trading: trades FK the ledger row that paid for them, so they go
         // before ember_ledger; holdings only FK the user.

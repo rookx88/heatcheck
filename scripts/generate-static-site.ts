@@ -214,6 +214,10 @@ const NEW_SITE_IMAGES = [
     // /assets/images/<cover_image>).
     'collectibles/gold_plated_card.jpg',
     'collectibles/neon_og_card.jpg',
+    // NPC portraits for the encounter stage (components/EncounterStage.tsx; paths
+    // declared in lib/pages-functions/encounters/characters/*.ts). Built by
+    // scripts/make-character-art.ts.
+    'characters/beaks.webp',
 ];
 
 // Videos follow the images' allowlist-copy model (assets/videos/ -> both output
@@ -1631,6 +1635,7 @@ async function generateAllPages(): Promise<void> {
                 indexLabel: indexLabelOf(t.ruleType),
                 description: t.description,
                 ruleType: t.ruleType, // keys the friendly page copy (ticker-copy.ts)
+                value: t.value,       // the fallback's all-time read line (ticker-copy.ts)
             }));
             writeHtmlFile('tankdaq/indexes/index.html', generateTankdaqIndexesPageHtml(baseUrl, tickerRows));
             for (const ticker of tickerRows) {

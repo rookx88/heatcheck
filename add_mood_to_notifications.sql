@@ -2,9 +2,10 @@
 -- row ('happy' | 'sad' | NULL = the normal face). Set by the producers, never
 -- inferred from the copy: settlement (win happy / loss sad, lib/pages-functions/
 -- ledger.ts), every pet find (happy, ledger.ts + discovery.ts), the hungry reminder
--- (sad, functions/api/notify-sweep.ts) and the welcome message (happy,
--- functions/api/onboarding/complete.ts). The daily drop digest and newsletter rows
--- leave it NULL. Sprites: assets/images/pets/mud_puppy_{happy,sad}.png via
+-- (sad, functions/api/notify-sweep.ts), the welcome message (happy,
+-- functions/api/onboarding/complete.ts) and every NPC encounter's inbox line (happy,
+-- lib/pages-functions/encounters/evaluate.ts). The daily drop digest and newsletter
+-- rows leave it NULL. Sprites: assets/images/pets/mud_puppy_{happy,sad}.png via
 -- scripts/make-pet-expressions.ts; components/PetPortrait.tsx swaps them in.
 --
 -- DEPLOY ORDER: apply this BEFORE deploying the code that writes it. The find

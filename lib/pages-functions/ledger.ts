@@ -26,6 +26,8 @@ export type EntryType = 'earn' | 'spend' | 'reversal' | 'adjustment';
 // adjustment must never put an account on the Hall of Fame. TANKDAQ profit is the other
 // half of the definition and comes from share_trades.realized_pnl, not from a rule key:
 // 'shares_sell' rows are proceeds (the trader's own Ember coming back), not earnings.
+// 'encounter_gift' (NPC encounters, encounterGiftEmber below) is an 'earn' row that is
+// intentionally NOT listed: a character's gift is not something the Captain earned.
 export const LIFETIME_EARNED_RULE_KEYS = ['correct_call', 'participation', 'discovery_find'] as const;
 
 interface RuleRow {
@@ -641,6 +643,62 @@ export async function discoveryFindEmber(
         SELECT EXISTS (SELECT 1 FROM claimed) AS claimed
     `;
     return { claimed: Boolean((rows[0] as unknown as { claimed: boolean }).claimed), amount };
+}
+
+export interface EncounterGiftEmberInput {
+    userId: string;
+    encounterId: string;
+    // Scope of the idempotency key - one gift per (rule, user, encounter).
+    encounterKey: string;
+    // An ember_rules 'source' key whose config.amount is the gift (e.g. 'encounter_gift').
+    ruleKey: string;
+}
+
+export interface EncounterGiftEmberResult {
+    // false = this encounter's gift was already credited (nothing written).
+    credited: boolean;
+    amount: number;
+}
+
+// A character's Ember gift (NPC encounters - create_encounters.sql). A GIFT, not game
+// earnings: written as an 'earn' row so the rule kind stays honest, but the rule key is
+// deliberately NOT in LIFETIME_EARNED_RULE_KEYS, so this folds `balance` only (post()'s
+// shape) and never moves the Hall of Fame. One statement: the encounters UPDATE is the
+// guard (its `NOT (grants ? 'ember')` qual re-evaluates against the winner's version
+// under the row lock, so a concurrent heal matches nothing), the ledger insert selects
+// FROM it and carries its own idempotency key as the backstop, and the balance fold
+// selects FROM the ledger insert. Called right after the encounter is created and again
+// by evaluate.ts's heal loop for any encounter whose grants lack `ember`.
+export async function encounterGiftEmber(
+    sql: NeonQueryFunction<false, false>,
+    input: EncounterGiftEmberInput
+): Promise<EncounterGiftEmberResult> {
+    const rule = await getActiveRule(sql, input.ruleKey);
+    const amount = Number(rule.config.amount);
+    const idempotencyKey = buildIdempotencyKey(input.ruleKey, input.userId, input.encounterKey);
+    const rows = await sql`
+        WITH enc AS (
+            UPDATE encounters
+            SET grants = grants || jsonb_build_object('ember', jsonb_build_object('amount', ${amount}::int))
+            WHERE id = ${input.encounterId} AND user_id = ${input.userId} AND NOT (grants ? 'ember')
+            RETURNING id
+        ), led AS (
+            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
+            SELECT ${input.userId}, ${amount}::int, 'earn', ${input.ruleKey}, ${rule.version},
+                   ${idempotencyKey}, ${JSON.stringify({ encounterId: input.encounterId, encounterKey: input.encounterKey })}::jsonb
+            FROM enc
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING amount
+        ), bal AS (
+            INSERT INTO ember_balances (user_id, balance, updated_at)
+            SELECT ${input.userId}, amount, NOW() FROM led
+            ON CONFLICT (user_id) DO UPDATE
+                SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
+            RETURNING user_id
+        )
+        SELECT EXISTS (SELECT 1 FROM led) AS credited
+    `;
+    return { credited: Boolean((rows[0] as unknown as { credited: boolean }).credited), amount };
 }
 
 // Fast-path read of the cached balance.

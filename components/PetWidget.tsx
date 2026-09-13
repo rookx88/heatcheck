@@ -21,6 +21,7 @@ import {
     NOTIFICATIONS_UPDATED_EVENT,
     type NotificationItem,
 } from '../notifications-client';
+import { ENCOUNTER_STEP_EVENT, dispatchEncounterAdvance, type EncounterStepDetail } from '../encounters-client';
 // The Feed/Inventory modals render the shared .tank-modal-* chrome. Imported HERE,
 // not left to the host bundle, so every page that mounts the widget (including the
 // homepage, which never renders TankScreen) gets the modal styling.
@@ -44,6 +45,10 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     // The notification currently being "spoken" in the pet's bubble.
     const [bubble, setBubble] = useState<NotificationItem | null>(null);
+    // A line the EncounterStage asked the pet to say (NPC encounters). Takes precedence
+    // over the notification bubble, hides the badge, and lifts the widget above the
+    // stage's scrim (PetWidget.css .is-scripted). Tapping it advances the scene.
+    const [scripted, setScripted] = useState<EncounterStepDetail | null>(null);
 
     // One consolidated fetch for both facts this widget owns (pet + notifications) -
     // /api/toolbar-state replaced the separate /api/pets + /api/notifications pair.
@@ -86,9 +91,25 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
         return () => window.removeEventListener(NOTIFICATIONS_UPDATED_EVENT, onUpdated);
     }, [hydrateAll]);
 
+    // Scripted lines from the encounter stage (window event - the stage is a sibling,
+    // not a parent). A line arriving collapses the action row so the bubble is clear.
+    useEffect(() => {
+        const onStep = (e: Event) => {
+            const detail = (e as CustomEvent<EncounterStepDetail | null>).detail ?? null;
+            setScripted(detail);
+            if (detail) {
+                setExpanded(false);
+                setBubble(null);
+            }
+        };
+        window.addEventListener(ENCOUNTER_STEP_EVENT, onStep);
+        return () => window.removeEventListener(ENCOUNTER_STEP_EVENT, onStep);
+    }, []);
+
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key !== 'Escape' || openModal) return;
+            // While an encounter plays, Escape belongs to the stage (it closes the scene).
+            if (e.key !== 'Escape' || openModal || scripted) return;
             // Escape peels back one layer at a time: bubble first, then the row.
             if (bubble) setBubble(null);
             else if (expanded) setExpanded(false);
@@ -96,7 +117,7 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
         if (!expanded && !bubble) return;
         document.addEventListener('keydown', onKeyDown);
         return () => document.removeEventListener('keydown', onKeyDown);
-    }, [expanded, openModal, bubble]);
+    }, [expanded, openModal, bubble, scripted]);
 
     // Feed is newest-first, so the oldest unread is the LAST unread element.
     const unread = notifications.filter((n) => n.readAt === null);
@@ -131,7 +152,7 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
     const name = petDisplayName(pet.name, pet.color);
 
     return (
-        <div className={`pet-widget pet-widget--${variant}${expanded ? ' is-expanded' : ''}`}>
+        <div className={`pet-widget pet-widget--${variant}${expanded ? ' is-expanded' : ''}${scripted ? ' is-scripted' : ''}`}>
             <div className="pet-widget__row">
                 {expanded && (
                     <div className="pet-widget__actions">
@@ -176,10 +197,11 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                 >
                     {/* No size prop: PetWidget.css's responsive .pet-portrait__img
                         rules own the body's dimensions here. The face follows the
-                        bubble: happy/sad while it speaks a mood, normal otherwise. */}
-                    <PetPortrait pet={pet} mood={bubble?.mood ?? null} />
+                        bubble: happy/sad while it speaks a mood, normal otherwise. A
+                        scripted encounter line wins over a notification. */}
+                    <PetPortrait pet={pet} mood={scripted ? scripted.mood : (bubble?.mood ?? null)} />
                 </button>
-                {unread.length > 0 && !bubble && (
+                {unread.length > 0 && !bubble && !scripted && (
                     // The alert sits over the pet but is its own button (sibling, not
                     // child, of .pet-widget__pet - nested buttons are invalid HTML and
                     // the click must not toggle the action row).
@@ -195,7 +217,22 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                         !
                     </button>
                 )}
-                {bubble && (
+                {scripted && (
+                    // The pet's turn in an encounter: no dismiss control - the whole
+                    // bubble is the "next" tap and the stage owns Escape.
+                    <div
+                        className="pet-widget__bubble pet-widget__bubble--scripted"
+                        role="status"
+                        aria-live="polite"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            dispatchEncounterAdvance();
+                        }}
+                    >
+                        <span className="pet-widget__bubble-text">{scripted.text}</span>
+                    </div>
+                )}
+                {bubble && !scripted && (
                     <div className="pet-widget__bubble" role="status">
                         <span className="pet-widget__bubble-text">{bubble.message}</span>
                         <button

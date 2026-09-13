@@ -23,6 +23,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MapHud } from './MapHud';
 import { PetWidget } from './PetWidget';
+import { EncounterStage } from './EncounterStage';
 import { NotificationsHost } from './NotificationsHost';
 import './ContentChrome.css';
 
@@ -45,6 +46,8 @@ export const ContentChrome: React.FC = () => {
                 ? createPortal(<MapHud />, topbarSlot)
                 : <div className="hc-chrome-hud"><MapHud /></div>}
             <PetWidget variant="fixed" />
+            {/* NPC encounters: the visiting character, bottom-left, opposite the pet. */}
+            <EncounterStage variant="fixed" />
             <NotificationsHost />
         </>
     );

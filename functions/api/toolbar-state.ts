@@ -19,12 +19,19 @@
 // extra queries (one UPDATE only when the place is new for the pet); when a roll
 // actually grants, balance + notifications are re-read so the find (and its claimable
 // notification) land in this same response.
+//
+// NPC encounters (lib/pages-functions/encounters/) ride the same read: one extra
+// statement in the batch gathers the facts (lifetime Ember, counts, the user's
+// encounter/quest rows), evaluateEncounters() fires at most one new encounter, and the
+// response carries `encounter` - the oldest one the player hasn't watched yet - for the
+// EncounterStage to play. Same re-read rule when one fires.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { getSession } from '../../lib/pages-functions/session';
 import { petPublic, type FeedingConfig } from '../../lib/pages-functions/pets';
 import { maybeDiscover, type DiscoveryPetRow } from '../../lib/pages-functions/discovery';
+import { encounterFactsStatement, evaluateEncounters, type EncounterFactsRow } from '../../lib/pages-functions/encounters/evaluate';
 
 interface NotificationRow {
     id: string;
@@ -67,7 +74,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     };
     if (!session.onboarded) {
         return jsonResponse(
-            { session: sessionInfo, balance: null, pet: null, notifications: null },
+            { session: sessionInfo, balance: null, pet: null, notifications: null, encounter: null },
             { headers: authHeaders }
         );
     }
@@ -83,20 +90,21 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     `;
 
     // Independent reads, so the batched array form is right here - one Neon HTTP
-    // round-trip instead of four.
-    const [petRows, cfgRows, balanceRows, notificationRows] = await sql.transaction([
+    // round-trip instead of five.
+    const [petRows, cfgRows, balanceRows, notificationRows, factsRows] = await sql.transaction([
         sql`
             SELECT id, user_id, color, render_mode, render_config, name, is_captain,
-                   satisfaction_at_last_feed, last_fed_at, next_eligible_roll_at, places_since_find
+                   satisfaction_at_last_feed, last_fed_at, next_eligible_roll_at, places_since_find, feed_count
             FROM pets WHERE user_id = ${session.userId} LIMIT 1
         `,
         sql`SELECT config FROM game_config WHERE key = 'feeding' AND active = true LIMIT 1`,
         balanceStatement(),
         notificationsStatement(),
+        encounterFactsStatement(sql, session.userId),
     ]);
     if (cfgRows.length === 0) throw new Error('No active game_config row for key "feeding"');
     const feedingCfg = (cfgRows[0] as unknown as { config: FeedingConfig }).config;
-    const pet = petRows.length ? (petRows[0] as unknown as DiscoveryPetRow) : null;
+    const pet = petRows.length ? (petRows[0] as unknown as DiscoveryPetRow & { feed_count: number }) : null;
 
     let balanceValue = balanceRows.length ? (balanceRows[0] as unknown as { balance: number }).balance : 0;
     let notifications = mapNotifications(notificationRows as unknown as NotificationRow[]);
@@ -106,10 +114,20 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     // ?place= goes through untouched: normalization and the allowlist are the module's.
     const placePath = new URL(context.request.url).searchParams.get('place');
     const outcome = await maybeDiscover(sql, { userId: session.userId, pet, feedingCfg, placePath });
-    if (outcome.kind === 'found_ember' || outcome.kind === 'found_food' || outcome.kind === 'found_collectible') {
-        // Rare path: a find just landed - re-read so this response already carries the
-        // new balance and the claimable notification instead of them popping in a
-        // fetch later.
+    const found = outcome.kind === 'found_ember' || outcome.kind === 'found_food' || outcome.kind === 'found_collectible';
+
+    // Encounters: petless no-ops before any query, same as discovery.
+    const encounters = await evaluateEncounters(sql, {
+        userId: session.userId,
+        pet: pet ? { id: pet.id, feedCount: Number(pet.feed_count ?? 0) } : null,
+        placePath,
+        facts: factsRows.length ? (factsRows[0] as unknown as EncounterFactsRow) : null,
+    });
+
+    if (found || encounters.fired) {
+        // Rare path: a find or an encounter just landed - re-read so this response
+        // already carries the new balance and the notification instead of them
+        // popping in a fetch later.
         const [freshBalance, freshNotifications] = await sql.transaction([
             balanceStatement(),
             notificationsStatement(),
@@ -124,6 +142,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             balance: balanceValue,
             pet: pet ? petPublic(pet, feedingCfg) : null,
             notifications,
+            encounter: encounters.pending,
         },
         { headers: authHeaders }
     );

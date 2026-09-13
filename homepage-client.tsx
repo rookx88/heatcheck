@@ -11,6 +11,7 @@ import { createRoot } from 'react-dom/client';
 import { MotionConfig } from 'motion/react';
 import { Fishtank, formatTimeUntilReset, type DeckPayload } from './components/Fishtank';
 import { PetWidget } from './components/PetWidget';
+import { EncounterStage } from './components/EncounterStage';
 import { MudPuppyPromo } from './components/MudPuppyPromo';
 import { RegisterModal, type AuthModalVariant } from './components/RegisterModal';
 import { NotificationsHost } from './components/NotificationsHost';
@@ -371,13 +372,6 @@ function mount() {
             <MotionConfig reducedMotion="user">
                 {payload.loggedIn ? (
                     <>
-                        {/* Above the artifact, not below it. The captain rides fixed in
-                            the viewport's bottom-right corner, and below the cube the
-                            pager landed inside his box on a phone: his sprite took the
-                            taps and opened his own panel instead. Anything above the
-                            cube only ever scrolls further from that corner, never into
-                            it, so this placement is clear of him at any scroll offset. */}
-                        {pager}
                         <div style={{ position: 'relative', marginTop: '-4.25rem', marginBottom: '-2.5rem' }}>
                             {/* The cave backdrop is no longer mounted here - it's the
                                 server-rendered .hc-tanks-backdrop behind the whole #tanks
@@ -386,12 +380,16 @@ function mount() {
                             {/* Fixed variant: rides the viewport, so the captain stays in
                                 view wherever the page is scrolled. */}
                             <PetWidget variant="fixed" />
+                            {/* NPC encounters: bottom-left, opposite the pet. */}
+                            <EncounterStage variant="fixed" />
                         </div>
+                        {/* Below the artifact. Two things used to swallow taps here:
+                            the cube's own drag surface, and the captain's fixed corner
+                            on a phone. Both are handled in .hc-tank-nav's rules. */}
+                        {pager}
                     </>
                 ) : (
                     <>
-                        {/* Above the artifact - see the note in the signed-in branch. */}
-                        {pager}
                         <div style={{ position: 'relative', margin: '-2.5rem 0' }}>
                             <Fishtank
                                 key={tank.slug}
@@ -415,6 +413,7 @@ function mount() {
                                 ending in the register flow. */}
                             <MudPuppyPromo variant="fixed" />
                         </div>
+                        {pager}
                     </>
                 )}
             </MotionConfig>

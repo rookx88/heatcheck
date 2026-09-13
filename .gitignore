@@ -97,6 +97,12 @@ assets/images/*
 !assets/images/pets/
 # Genesis Collection card cover art (components/CollectibleCard.tsx, inventory grid).
 !assets/images/collectibles/
+# NPC portraits for the encounter stage (components/EncounterStage.tsx; the paths are
+# declared in lib/pages-functions/encounters/characters/*.ts). Built from the scene art
+# by scripts/make-character-art.ts, which - like optimize-landing-images.ts - is a
+# manual one-off and NOT part of build:static, so the output must be committed or
+# Cloudflare's from-source build ships a missing portrait.
+!assets/images/characters/
 
 # Retired prediction-app content, relocated out of public/ so Cloudflare Pages
 # doesn't upload it and it stays out of the live site's build. Preserved here

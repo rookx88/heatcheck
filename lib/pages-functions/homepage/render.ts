@@ -289,15 +289,25 @@ function homepageStyles(): string {
            Its arrows and counter are Tank HQ's own .tank-modal-nav controls, which
            this bundle already carries; only the surrounding block is local.
 
-           What actually fixed the dead taps was moving this ABOVE the artifact
-           (homepage-client's TankPager placement has the reasoning). position:relative
-           + z-index is kept as a guard, not as the fix: the artifact's wrapper is a
-           POSITIONED element whose negative TOP margin still reaches up into this
-           block, and its 420px drag stage hit-tests across its whole box, empty or
-           not. A static sibling loses to a positioned one whatever the DOM order, so
-           the arrows only clear it today because of where they land. Kept below the
-           turn arrows' own z-index 5, which sit level with the cube's middle. */
-        .hc-tank-nav { position: relative; z-index: 1; margin: 0 0 0.35rem; text-align: center; }
+           Two separate things used to swallow every tap on these arrows, one per
+           breakpoint, and this rule plus the phone rule below are what keep them
+           reachable. Do not drop either without re-testing with real pointer input:
+           element.click() cannot see an element sitting on top and will pass anyway.
+
+           The artifact's wrapper is a POSITIONED element whose negative bottom margin
+           pulls it over this block, and its 420px drag stage hit-tests across its whole
+           box whether or not the cube paints there. A static sibling loses to a
+           positioned one whatever the DOM order, so the tap went to the grab surface.
+
+           The z-index is 1550 rather than 1 because of the phone half: this row also
+           lands inside the captain's FIXED bottom-right corner (PetWidget.css, resting
+           z-index 1500), and his sprite was taking the taps and opening his own panel.
+           Layering over him beats moving the row, because BOTH bottom corners are
+           occupied - the encounter guest holds the bottom-left (EncounterStage.css) -
+           and the gap between them is narrower than this row. 1550 clears the resting
+           captain while staying under the encounter scrim (1600) and stage (1650), so
+           a live encounter still blocks the page the way it should. */
+        .hc-tank-nav { position: relative; z-index: 1550; margin: 0.25rem 0 0; text-align: center; }
         .hc-tank-nav-matchup {
             margin: 0.35rem 0 0;
             font-family: 'Nunito', sans-serif; font-size: 0.78rem;

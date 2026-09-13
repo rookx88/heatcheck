@@ -45,7 +45,7 @@ dotenv.config();
 import { pool, initPool, setActiveSuite, printSummary, runTeardowns, type Suite } from './acceptance/harness';
 
 async function loadSuites(): Promise<Suite[]> {
-    const [tickers, discovery, settlement, pets, auth, homepage, concurrency, ledgerTrace, boundaries, security, kalshiLive, discordMultiGuildCap, communityPointsIsolation, shares, curation, marketMovement, indexResults, hallOfFame, indexQuotes, propSync] = await Promise.all([
+    const [tickers, discovery, settlement, pets, auth, homepage, concurrency, ledgerTrace, boundaries, security, kalshiLive, discordMultiGuildCap, communityPointsIsolation, shares, curation, marketMovement, indexResults, hallOfFame, indexQuotes, propSync, indexOverlay, encounters] = await Promise.all([
         import('./acceptance/suites/tickers'),
         import('./acceptance/suites/discovery'),
         import('./acceptance/suites/settlement'),
@@ -66,13 +66,15 @@ async function loadSuites(): Promise<Suite[]> {
         import('./acceptance/suites/hall-of-fame'),
         import('./acceptance/suites/index-quotes'),
         import('./acceptance/suites/prop-sync'),
+        import('./acceptance/suites/index-overlay'),
+        import('./acceptance/suites/encounters'),
     ]);
     return [
         tickers.suite, discovery.suite, settlement.suite, pets.suite, auth.suite,
         homepage.suite, concurrency.suite, ledgerTrace.suite, boundaries.suite, security.suite,
         kalshiLive.suite, discordMultiGuildCap.suite, communityPointsIsolation.suite,
         shares.suite, curation.suite, marketMovement.suite, indexResults.suite, hallOfFame.suite,
-        indexQuotes.suite, propSync.suite,
+        indexQuotes.suite, propSync.suite, indexOverlay.suite, encounters.suite,
     ];
 }
 
@@ -91,7 +93,7 @@ async function printResolvedConfig(): Promise<void> {
     console.log('\n' + '#'.repeat(72));
     console.log('RESOLVED CONFIG (this run) - so no phase has to guess what was actually in force');
     console.log('#'.repeat(72));
-    for (const key of ['feeding', 'discovery', 'tickers']) {
+    for (const key of ['feeding', 'discovery', 'tickers', 'encounters']) {
         try {
             const { rows } = await pool.query(`SELECT version, config FROM game_config WHERE key = $1 AND active`, [key]);
             console.log(`  game_config['${key}'] v${rows[0]?.version} = ${JSON.stringify(rows[0]?.config)}`);
@@ -99,7 +101,7 @@ async function printResolvedConfig(): Promise<void> {
             console.log(`  game_config['${key}'] - could not read (${(err as Error).message})`);
         }
     }
-    for (const key of ['correct_call', 'participation', 'discovery_find', 'shares_buy', 'shares_sell']) {
+    for (const key of ['correct_call', 'participation', 'discovery_find', 'shares_buy', 'shares_sell', 'encounter_gift']) {
         try {
             const { rows } = await pool.query(`SELECT version, config FROM ember_rules WHERE key = $1 AND active`, [key]);
             console.log(`  ember_rules['${key}'] v${rows[0]?.version} = ${JSON.stringify(rows[0]?.config)}`);

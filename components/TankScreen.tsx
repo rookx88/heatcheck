@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Fishtank, type DeckPayload } from './Fishtank';
 import { PetWidget } from './PetWidget';
+import { EncounterStage } from './EncounterStage';
 import { MapHud } from './MapHud';
 import { NotificationsHost } from './NotificationsHost';
 import { trackEvent } from '../tank-analytics-client';
@@ -159,6 +160,8 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks }) => {
       {/* Captain widget, bottom-right. Outside the transformed frame so its fixed
           modal overlays aren't containing-block-trapped. */}
       <PetWidget />
+      {/* NPC encounters: bottom-left, opposite the pet. */}
+      <EncounterStage />
       <NotificationsHost />
 
       {isOpen && (
