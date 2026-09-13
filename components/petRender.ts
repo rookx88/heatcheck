@@ -25,6 +25,11 @@ export const PET_MOOD_IMAGE_SRC: Record<PetMood, string> = {
 
 const BASE_ART_HUE = 93;
 
+// Returns a single filter FUNCTION, not a whole filter value - PetPortrait feeds it
+// to the --pet-tint custom property so each stylesheet can compose it with its own
+// drop-shadows (see PetPortrait.css). Callers that set it as an inline `filter`
+// outright (HallOfFameModal's avatar disc) must own no stylesheet `filter` of their
+// own, or the inline one wins and theirs is dropped.
 export function petImageFilter(renderMode: string | null | undefined, renderConfig: Record<string, unknown> | null | undefined): string | undefined {
     if (renderMode !== 'filter') return undefined;
     const hue = Number(renderConfig?.hue);

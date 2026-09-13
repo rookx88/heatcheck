@@ -99,8 +99,11 @@
   height: var(--pet-size);
   object-fit: contain;
   /* Layered depth: a tight dark cast for weight + a teal rim glow lifting the
-     silhouette off the background. */
-  filter: drop-shadow(0 10px 8px rgba(0, 0, 0, 0.5))
+     silhouette off the background. The pet's tint leads the chain (see
+     PetPortrait.css) - it has to be applied to the sprite, not to these shadows,
+     and it cannot live in an inline `filter` without wiping this rule out. */
+  filter: var(--pet-tint, )
+          drop-shadow(0 10px 8px rgba(0, 0, 0, 0.5))
           drop-shadow(0 0 16px rgba(47, 230, 217, 0.35));
 }
 

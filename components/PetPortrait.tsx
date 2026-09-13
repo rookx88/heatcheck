@@ -31,19 +31,29 @@ export const PetPortrait: React.FC<{
     // omitted/null draws the normal face. Same <img>, different src, so the tint
     // filter, the widget's drop-shadow rule and the aura layering all carry over.
     mood?: PetMood | null;
-}> = ({ pet, size, className, alt = '', mood = null }) => (
-    <span className={`pet-portrait${className ? ` ${className}` : ''}`}>
-        {pet.state === 'satisfied' && (
-            <img className="pet-portrait__aura" src={AURA_IMAGE_SRC} alt="" aria-hidden="true" />
-        )}
-        <img
-            className="pet-portrait__img"
-            src={mood ? PET_MOOD_IMAGE_SRC[mood] : PET_IMAGE_SRC}
-            style={{ filter: petImageFilter(pet.render_mode, pet.render_config) }}
-            alt={alt}
-            {...(size !== undefined ? { width: size, height: size } : {})}
-        />
-    </span>
-);
+}> = ({ pet, size, className, alt = '', mood = null }) => {
+    // The per-pet tint rides a CUSTOM PROPERTY, not `filter` itself. An inline
+    // `filter: hue-rotate(...)` beat every stylesheet's own `filter` on this img,
+    // so a tinted pet silently lost the widget's drop-shadows and the feed modal's
+    // - while an untinted custom_asset pet (petImageFilter returns undefined, no
+    // inline style) kept them. Each stylesheet now composes `var(--pet-tint, )`
+    // into the front of its own filter chain; PetPortrait.css supplies the bare
+    // tint for the consumers that decorate nothing.
+    const tint = petImageFilter(pet.render_mode, pet.render_config);
+    return (
+        <span className={`pet-portrait${className ? ` ${className}` : ''}`}>
+            {pet.state === 'satisfied' && (
+                <img className="pet-portrait__aura" src={AURA_IMAGE_SRC} alt="" aria-hidden="true" />
+            )}
+            <img
+                className="pet-portrait__img"
+                src={mood ? PET_MOOD_IMAGE_SRC[mood] : PET_IMAGE_SRC}
+                style={tint ? ({ '--pet-tint': tint } as React.CSSProperties) : undefined}
+                alt={alt}
+                {...(size !== undefined ? { width: size, height: size } : {})}
+            />
+        </span>
+    );
+};
 
 export default PetPortrait;

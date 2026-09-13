@@ -22,10 +22,20 @@
     pet-aura-shimmer 5.1s ease-in-out infinite;
 }
 
+/* --pet-tint carries the per-pet hue-rotate, set inline by PetPortrait.tsx and left
+   unset for untinted (custom_asset) pets. It is a custom property rather than an
+   inline `filter` because an inline filter outranks every stylesheet: a tinted pet
+   used to lose the widget's and the feed modal's drop-shadows outright. A consumer
+   that adds its own filter must compose the tint into the FRONT of its chain -
+   `filter: var(--pet-tint, ) drop-shadow(...)` - so the tint applies to the sprite
+   and not to the shadows it casts (a hue-rotate after drop-shadow would spin the
+   widget's teal rim glow to a different colour per pet). The empty fallback is
+   deliberate: `none` cannot be concatenated with other filter functions. */
 .pet-portrait__img {
   position: relative;
   z-index: 1;
   object-fit: contain;
+  filter: var(--pet-tint, none);
 }
 
 @keyframes pet-aura-breathe {
