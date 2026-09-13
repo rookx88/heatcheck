@@ -18,8 +18,9 @@ import { BASE_URL, check, near, section, warn, registerTeardown, type Suite } fr
 import {
     cleanupIndexFixtures, insertIndexPositionDirect, insertSlateCloseDirect, sqlViaPool, INDEX_FIXTURE_PREFIX,
 } from '../fixtures';
-import { getTickerResults, type TickerResultItem } from '../../../lib/pages-functions/tickers';
+import { getTickerMovers, getTickerResults, type TickerResultItem } from '../../../lib/pages-functions/tickers';
 import { buildResultSentence, toResultSentences } from '../../../lib/pages-functions/market-movers';
+import { topMoversSince } from '../../../lib/pages-functions/ticker-window';
 import {
     isDrawMarket,
     parseYesNoQuestion,
@@ -191,6 +192,41 @@ async function run() {
         { locksMinProb: 0.8, moonshotMaxProb: 0.2 });
     check('positionsForGame never references the draw market', specs.length === 3 && specs.every((s) => s.row.market_id !== 'draw'),
         JSON.stringify(specs.map((s) => [s.tickerKey, s.row.market_id])));
+
+    // A league-scoped TOTALS child ($NFLO/$NFLU) must read the same canonical totals row
+    // its parent does, take the same side, and be filtered by league. The NFL total below
+    // is priced Over 0.55 / Under 0.45, so the Under is the CHEAPER side - which is what
+    // makes this a real test of the side rule rather than of argmin by coincidence.
+    const nflTotal = slateRow({
+        market_id: 'nfltot', league: 'NFL', market_type: 'totals', market_line: 44.5,
+        outcomes: ['Over', 'Under'], outcome_prices: [0.55, 0.45], volume: 4000,
+    });
+    const nflTickers = [
+        { key: 'overs', rule_type: 'total_over' }, { key: 'unders', rule_type: 'total_under' },
+        { key: 'nflo', rule_type: 'nfl_total_over' }, { key: 'nflu', rule_type: 'nfl_total_under' },
+    ];
+    const nflSpecs = positionsForGame([nflTotal], nflTickers, { locksMinProb: 0.8, moonshotMaxProb: 0.2 });
+    const sideOf = (key: string) => nflSpecs.find((s) => s.tickerKey === key);
+    check('an NFL total gives all four totals indexes a position', nflSpecs.length === 4,
+        JSON.stringify(nflSpecs.map((s) => [s.tickerKey, s.sideLabel])));
+    check('$NFLO takes the Over, exactly as $OVERS does',
+        sideOf('nflo')?.sideIndex === 0 && sideOf('nflo')?.sideIndex === sideOf('overs')?.sideIndex,
+        `nflo=${sideOf('nflo')?.sideLabel} overs=${sideOf('overs')?.sideLabel}`);
+    check('$NFLU takes the Under and NOT merely the cheaper side',
+        sideOf('nflu')?.sideIndex === 1 && sideOf('nflu')?.sideLabel === 'Under',
+        `nflu=${sideOf('nflu')?.sideLabel}`);
+    check('child and parent hold the same market and the same entry price',
+        sideOf('nflo')?.row.market_id === sideOf('overs')?.row.market_id
+        && sideOf('nflo')?.entryProb === sideOf('overs')?.entryProb);
+    // Same game in a league the child does not cover: parents still score it, child does not.
+    const mlbTotal = slateRow({
+        market_id: 'mlbtot', league: 'MLB', market_type: 'totals', market_line: 8.5,
+        outcomes: ['Over', 'Under'], outcome_prices: [0.52, 0.48], volume: 4000,
+    });
+    const mlbSpecs = positionsForGame([mlbTotal], nflTickers, { locksMinProb: 0.8, moonshotMaxProb: 0.2 });
+    check('an MLB total scores the global pair only - the NFL children sit it out',
+        mlbSpecs.length === 2 && mlbSpecs.every((s) => s.tickerKey === 'overs' || s.tickerKey === 'unders'),
+        JSON.stringify(mlbSpecs.map((s) => s.tickerKey)));
     check('positionShareOfClose(0.6, N=6, k=4, scale=10) = 0.6', near(positionShareOfClose(0.6, { positionsCounted: 6, smoothing: 4, scalePct: 10 }) ?? NaN, 0.6));
     check('positionShareOfClose is null on a degenerate denominator', positionShareOfClose(0.6, { positionsCounted: 0, smoothing: 0, scalePct: 10 }) === null);
 
@@ -237,6 +273,30 @@ async function run() {
     check('at most limitPerTicker rows per index', Object.values(byKey).every((list) => list.length <= 6));
     check('every row is a win or loss with a settled timestamp', Object.values(byKey).flat().every((r) => typeof r.won === 'boolean' && !isNaN(new Date(r.occurredAt).getTime())));
 
+    // --- 4b. The movers reader + the pure ranking -----------------------------------
+    section('getTickerMovers - the window\'s closes, ranked client-side by |points|');
+    // The fixture close's occurred_at defaulted to NOW(), so a 1-day window holds both.
+    const moverRows = await getTickerMovers(sqlViaPool, 'overs', { since: new Date(nowMs - 24 * 3600_000), limit: 200 });
+    const fixtureMovers = moverRows.filter((m) => m.away === AWAY);
+    check('movers holds both overs fixtures with their close time', fixtureMovers.length === 2
+        && fixtureMovers.every((m) => !isNaN(Date.parse(m.closedAt)) && Date.parse(m.closedAt) >= nowMs - 120_000),
+        JSON.stringify(fixtureMovers.map((m) => [m.marketLine, m.closedAt])));
+    check('mover delta is the same share-of-close the results reader computes',
+        near(fixtureMovers.find((m) => m.won)?.delta ?? NaN, expectShare(oversWin.contrib))
+        && near(fixtureMovers.find((m) => !m.won)?.delta ?? NaN, expectShare(oversLoss.contrib)));
+    check('a window that starts after the close is empty',
+        (await getTickerMovers(sqlViaPool, 'overs', { since: new Date(nowMs + 3600_000), limit: 200 })).length === 0);
+    const ranked = topMoversSince(fixtureMovers, 0, 6);
+    check('topMoversSince ranks the larger |points| first regardless of sign (win 0.6 > loss 0.5)',
+        ranked.length === 2 && ranked[0].won === true && ranked[1].won === false, JSON.stringify(ranked.map((m) => m.delta)));
+    check('topMoversSince drops closes before the cutoff', topMoversSince(fixtureMovers, nowMs + 3600_000, 6).length === 0);
+    check('topMoversSince honours the limit', topMoversSince(fixtureMovers, 0, 1).length === 1);
+    const tie = [
+        { delta: 0.5, closedAt: '2026-01-01T00:00:00.000Z' },
+        { delta: -0.5, closedAt: '2026-01-02T00:00:00.000Z' },
+    ];
+    check('topMoversSince breaks a |points| tie newer-first', topMoversSince(tie, 0, 2)[0].closedAt === '2026-01-02T00:00:00.000Z');
+
     // --- 5. The API -----------------------------------------------------------------
     section('/api/tickers/detail - fixture sentences composed server-side');
     const oversDetail = await fetch(`${BASE_URL}/api/tickers/detail?key=overs`).then((r) => r.json()) as any;
@@ -245,6 +305,13 @@ async function run() {
     check('detail overs results[1] is the fixture loss sentence', oversResults[1]?.text === OVERS_LOSS_SENTENCE && oversResults[1]?.won === false, oversResults[1]?.text ?? '(none)');
     check('detail overs has at most 6 results', oversResults.length <= 6);
     check('no detail result carries money-flow language', oversResults.every((r) => !MONEY_FLOW.test(r.text)));
+    const oversMovers: Array<{ text: string; won: boolean; delta: number; closedAt: string }> = oversDetail?.movers ?? [];
+    check('detail overs movers carry both fixture sentences with their points',
+        oversMovers.some((m) => m.text === OVERS_WIN_SENTENCE && m.won && near(m.delta, expectShare(oversWin.contrib)))
+        && oversMovers.some((m) => m.text === OVERS_LOSS_SENTENCE && !m.won && near(m.delta, expectShare(oversLoss.contrib))),
+        JSON.stringify(oversMovers.filter((m) => m.text.includes(AWAY))));
+    check('the fixture win outranks the fixture loss in the client ranking',
+        (() => { const r = topMoversSince(oversMovers.filter((m) => m.text.includes(AWAY)), 0, 6); return r[0]?.text === OVERS_WIN_SENTENCE; })());
     const chalkDetail = await fetch(`${BASE_URL}/api/tickers/detail?key=chalk`).then((r) => r.json()) as any;
     const chalkResults: Array<{ text: string; won: boolean }> = chalkDetail?.results ?? [];
     check('detail chalk results[0] is the fixture team-win sentence', chalkResults[0]?.text === CHALK_WIN_SENTENCE && chalkResults[0]?.won === true, chalkResults[0]?.text ?? '(none)');

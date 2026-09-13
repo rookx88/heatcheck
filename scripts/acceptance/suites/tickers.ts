@@ -49,17 +49,26 @@ async function run() {
     check('GET /api/tickers returns 200 with note', list.status === 200 && typeof list.json?.note === 'string');
     const keys = (list.json?.tickers ?? []).map((t: any) => t.key);
     const EXPECTED_KEYS = ['dogs', 'chalk', 'locks', 'moonshot', 'overs', 'unders', 'gridiron', 'footy',
-        'nbachalk', 'mlbchalk', 'nbadogs', 'mlbdogs', 'nfldogs', 'socdogs'];
-    check('all fourteen tickers present, ordered by tab_order (add_tickers_batch2/3.sql are deploy prerequisites)',
+        'nbachalk', 'mlbchalk', 'nbadogs', 'mlbdogs', 'nfldogs', 'socdogs', 'nflo', 'nflu'];
+    check('all sixteen tickers present, ordered by tab_order (add_tickers_batch2/3/4.sql are deploy prerequisites)',
         JSON.stringify(keys.filter((k: string) => EXPECTED_KEYS.includes(k))) === JSON.stringify(EXPECTED_KEYS));
-    // Each family partitions its parent by league, so a child must name a parent that
-    // is itself top-level - a child of a child would double-count on the nested board.
+    // Each family slices its parent by league, so a child must name a parent that is
+    // itself top-level - a child of a child would double-count on the nested board.
+    // The chalk/dogs families partition their parents exactly (their children cover every
+    // league the sync ingests); the overs/unders family is NFL-only and deliberately
+    // partial, which the board renders the same way - the tile is just not fully
+    // subdivided. See add_tickers_batch4.sql.
     const EXPECTED_FAMILIES: Record<string, string> = {
         gridiron: 'chalk', footy: 'chalk', nbachalk: 'chalk', mlbchalk: 'chalk',
         nbadogs: 'dogs', mlbdogs: 'dogs', nfldogs: 'dogs', socdogs: 'dogs',
+        nflo: 'overs', nflu: 'unders',
     };
-    check('the eight league sub-indexes point at chalk/dogs, and no other ticker has a parent',
+    check('the ten league sub-indexes point at chalk/dogs/overs/unders, and no other ticker has a parent',
         (list.json?.tickers ?? []).every((t: any) => (t.parentKey ?? null) === (EXPECTED_FAMILIES[t.key] ?? null)));
+    // Every parent named above must itself be top-level, or the board nests a tile inside
+    // a tile that is already nested.
+    check('no sub-index points at another sub-index',
+        Object.values(EXPECTED_FAMILIES).every((parent) => !(parent in EXPECTED_FAMILIES)));
     check('values are numeric (not NUMERIC strings)', (list.json?.tickers ?? []).every((t: any) => typeof t.value === 'number'));
     check('fallback pcts seeded: dogs/chalk symmetric 5/5, locks 5/15, moonshot 20/5, batch-2 all 5/5',
         ['dogs:5:5', 'chalk:5:5', 'locks:5:15', 'moonshot:20:5', 'overs:5:5', 'unders:5:5', 'gridiron:5:5', 'footy:5:5'].every((spec) => {
@@ -77,6 +86,14 @@ async function run() {
         && Array.isArray(detail.json?.series) && Array.isArray(detail.json?.news) && Array.isArray(detail.json?.results));
     check('detail results carry composed sentences when present',
         (detail.json?.results ?? []).every((r: any) => typeof r.text === 'string' && r.text.length > 0 && typeof r.won === 'boolean'));
+    // What moved it: the week's closes, each a composed sentence plus its signed points
+    // and the close time the client windows on.
+    check('detail ships a movers array', Array.isArray(detail.json?.movers));
+    check('every mover carries text, won, numeric delta and an ISO closedAt',
+        (detail.json?.movers ?? []).every((m: any) => typeof m.text === 'string' && m.text.length > 0 && typeof m.won === 'boolean'
+            && typeof m.delta === 'number' && Number.isFinite(m.delta) && !isNaN(Date.parse(m.closedAt))));
+    check('every mover closed inside the last 7 days (the widest chart window)',
+        (detail.json?.movers ?? []).every((m: any) => Date.parse(m.closedAt) >= Date.now() - 7 * 24 * 3600_000 - 60_000));
     const unknownDetail = await api('GET', '/api/tickers/detail?key=nope');
     check('detail with unknown key -> 404', unknownDetail.status === 404);
     const noKeyDetail = await api('GET', '/api/tickers/detail');

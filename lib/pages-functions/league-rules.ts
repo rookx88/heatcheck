@@ -30,7 +30,23 @@
 // Pure and dependency-free: no imports, so it runs in a Worker, the static build, a
 // client bundle, and the Express admin alike.
 
-export type RuleSide = 'favorite' | 'underdog';
+// The side a league-scoped rule takes. The two totals sides joined on 2026-09-13 with
+// $NFLO/$NFLU, the first children of $OVERS/$UNDERS - every child before them was a slice
+// of $CHALK or $DOGS and therefore a moneyline.
+//
+// These are deliberately spelled 'total_over'/'total_under' and NOT 'over'/'under', to
+// match the GLOBAL rule_types of the same meaning. ticker-copy.ts's READ_CLAUSES is keyed
+// by rule_type for the global indexes and by rule.side for the children, so sharing the
+// spelling means a league child inherits its parent's read line with no new copy and no
+// second lookup table.
+export type RuleSide = 'favorite' | 'underdog' | 'total_over' | 'total_under';
+
+const SIDES = new Set<string>(['favorite', 'underdog', 'total_over', 'total_under']);
+
+/** Does this rule take a side of a totals market rather than a moneyline? */
+export function isTotalsSide(side: RuleSide): boolean {
+    return side === 'total_over' || side === 'total_under';
+}
 
 export interface LeagueRule {
     /** The rule_type prefix that named the group: 'nba' | 'nfl' | 'mlb' | 'soccer'. */
@@ -63,18 +79,31 @@ export const LEAGUE_GROUPS: Record<string, string[]> = {
 };
 
 /**
- * `'nba_favorite'` -> `{ leagues: ['NBA'], side: 'favorite' }`; null for anything that
- * isn't a league-scoped rule (the global ones - favorite, underdog, heavy_favorite,
- * longshot, total_over, total_under - keep their own explicit cases).
+ * `'nba_favorite'` -> `{ leagues: ['NBA'], side: 'favorite' }`;
+ * `'nfl_total_over'` -> `{ leagues: ['NFL'], side: 'total_over' }`;
+ * null for anything that isn't a league-scoped rule (the global ones - favorite,
+ * underdog, heavy_favorite, longshot, total_over, total_under - keep their own explicit
+ * cases).
+ *
+ * Splits on the FIRST underscore, not the last, because a side may now contain one
+ * ('nfl_total_over' is group 'nfl' + side 'total_over'). That is safe for every rule type
+ * precisely because no LEAGUE_GROUPS key contains an underscore, so the two splits agree
+ * wherever both apply, and the group lookup rejects the rest:
+ *   nfl_favorite / soccer_underdog -> identical split either way
+ *   heavy_favorite -> group 'heavy' is not a league group        -> null
+ *   total_over     -> side 'over' is not a side, AND group       -> null
+ *                     'total' is not a league group (two guards)
+ *   favorite / underdog / longshot -> no underscore, sep <= 0    -> null
+ * so each of those still falls through to its own explicit case downstream.
  */
 export function parseLeagueRule(ruleType: string): LeagueRule | null {
-    const sep = ruleType.lastIndexOf('_');
+    const sep = ruleType.indexOf('_');
     if (sep <= 0) return null;
     const prefix = ruleType.slice(0, sep);
     const suffix = ruleType.slice(sep + 1);
-    if (suffix !== 'favorite' && suffix !== 'underdog') return null;
+    if (!SIDES.has(suffix)) return null;
     const leagues = LEAGUE_GROUPS[prefix];
-    return leagues ? { group: prefix, leagues, side: suffix } : null;
+    return leagues ? { group: prefix, leagues, side: suffix as RuleSide } : null;
 }
 
 export function leagueRuleAccepts(rule: LeagueRule, league: string | null): boolean {

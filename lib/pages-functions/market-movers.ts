@@ -488,10 +488,16 @@ export function renderTickerChartSvg(vm: MarketMoverVM): string {
 
 const BOARD_W = 100;
 // Nearly 6:5. Taller than the flat board's old 100x70 (and than TANKDAQ's 16:10)
-// because the same box now carries fourteen tiles rather than eight: every league
-// sub-index is drawn inside its parent, so the two family tiles each hold a header
-// plus four children. This board sits in a ~540px column, not full width, and extra
-// height is the cheapest way to buy the smallest child area.
+// because the same box carries sixteen tiles rather than eight: every league sub-index
+// is drawn inside its parent, so $CHALK and $DOGS each hold a header plus four children
+// and $OVERS/$UNDERS each hold a header plus one ($NFLO/$NFLU, added 2026-09-13). This
+// board sits in a ~540px column, not full width, and extra height is the cheapest way to
+// buy the smallest child area.
+//
+// The two newest families are the cheap kind to add: a parent with a single child spends
+// its header once and gives the rest of the tile to that child, so nothing else on the
+// board shrinks much. A THIRD child under either of them is the one to re-measure - see
+// MIN_LEGIBLE_SIZE below for what starts dropping first.
 const BOARD_H = 84;
 const BOARD_GUTTER = 0.7;
 // Children sit inside an already-inset parent, so they get a tighter gutter - the

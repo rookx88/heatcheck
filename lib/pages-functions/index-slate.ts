@@ -19,7 +19,7 @@
 // rather than guessed at. Volume is present for 100% of games within 24h of kickoff
 // and only 35% beyond three days, which is why locking runs late (see index-lock.ts).
 
-import { leagueRuleAccepts, parseLeagueRule } from './league-rules';
+import { isTotalsSide, leagueRuleAccepts, parseLeagueRule } from './league-rules';
 
 export interface SlateMarketRow {
     event_id: string;
@@ -140,9 +140,13 @@ export function marketTypeForRule(ruleType: string): string | null {
         case 'heavy_favorite':
         case 'longshot':
             return MONEYLINE_MARKET_TYPE;
-        default:
-            // League-scoped children read the same moneyline their parent does.
-            return parseLeagueRule(ruleType) ? MONEYLINE_MARKET_TYPE : null;
+        default: {
+            // League-scoped children read the same market their parent does - a
+            // moneyline for a $CHALK/$DOGS slice, a total for an $OVERS/$UNDERS one.
+            const rule = parseLeagueRule(ruleType);
+            if (!rule) return null;
+            return isTotalsSide(rule.side) ? TOTALS_MARKET_TYPE : MONEYLINE_MARKET_TYPE;
+        }
     }
 }
 
@@ -185,12 +189,21 @@ export function sideForRule(
         }
         default: {
             // A league child holds the same side its parent would on this game -
-            // favorites take the argmax, underdogs the argmin - so a child's position
-            // is literally a filtered view of the parent's, which is what makes the
-            // family partition the parent exactly. leagueQualifies has already
-            // screened the league by the time we get here.
+            // favorites take the argmax, underdogs the argmin, and a totals child takes
+            // the same Over or Under - so a child's position is literally a filtered
+            // view of the parent's, which is what makes the family partition the parent
+            // exactly. leagueQualifies has already screened the league by the time we
+            // get here.
+            //
+            // The totals arm is load-bearing rather than cosmetic: falling through to
+            // argmin for 'total_under' would take the CHEAPEST side of the totals market
+            // rather than the Under. On a total priced 0.52/0.48 those are the same side
+            // only by luck, and the mistake is a wrong position that settles real Ember
+            // - never an error anyone would see.
             const rule = parseLeagueRule(ruleType);
             if (!rule) return null;
+            if (rule.side === 'total_over') return overUnderIndex(row, 'over');
+            if (rule.side === 'total_under') return overUnderIndex(row, 'under');
             return rule.side === 'favorite' ? argmaxIndex(p) : argminIndex(p);
         }
     }

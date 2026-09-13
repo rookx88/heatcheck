@@ -1,0 +1,36 @@
+-- TANKDAQ tradeable prices, v2: the $NFLO/$NFLU pair added by add_tickers_batch4.sql.
+--
+-- Everything in seed_ticker_prices_v1.sql still applies and is not restated here - the
+-- scale rule (scale ~= daily_sd / 0.12), the baseline of 100, the measurement query, and
+-- above all the mirror-pair contract. This file exists rather than an edit to v1 so the
+-- versioned trail matches how the ticker config flips are done.
+--
+-- WHY 65, WHICH IS $GRIDIRON/$NFLDOGS' SCALE AND NOT $OVERS/$UNDERS' 100. Scale tracks an
+-- index's DAILY volatility, and what drives that is slate cadence, not which side of a
+-- market it holds. $OVERS averages over every league every day, so its days are smooth
+-- and 100 suits it. An NFL-only index is near-empty midweek and then settles a dozen
+-- games at once, which is the same lumpiness the existing NFL pair was tuned for. Sharing
+-- their number also keeps the four NFL indexes reading on one footing.
+--
+-- PROVISIONAL, by v1's own rule: two settled games is far under a week, so this pair
+-- inherits a sibling's scale rather than being measured. It joins the re-tune v1 already
+-- schedules for the NFL indexes after week 4 - Sundays are lumpy, and one Sunday of real
+-- data will say more than the retro can.
+--
+-- One paired UPDATE, the idiom v1 uses at its line 54: a mirror pair must share
+-- (baseline, scale) or ln(p_nflo) + ln(p_nflu) stops being constant and buying one stops
+-- being a clean short of the other. Writing them in a single statement is what makes
+-- editing them apart by accident impossible. scripts/acceptance/suites/shares.ts asserts
+-- the drift is ~0.
+--
+-- Add to v1's pair roster (its line 14) when that file is next touched:
+--   (overs, unders) (mlbchalk, mlbdogs) (gridiron, nfldogs) (footy, socdogs)
+--   (nbachalk, nbadogs) (nflo, nflu)
+--
+-- CHANGING A SCALE RE-PRICES EVERY OPEN HOLDING. Nothing holds these two yet, which is
+-- the cheapest moment this decision will ever be made.
+--
+-- Re-runnable: a plain UPDATE. Run immediately after add_tickers_batch4.sql.
+-- Execute: psql "$DATABASE_URL" -f seed_ticker_prices_v2.sql
+
+UPDATE tickers SET price_baseline = 100, price_scale = 65 WHERE key IN ('nflo', 'nflu');

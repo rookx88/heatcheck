@@ -39,7 +39,7 @@ import {
     SUPPORTED_LEAGUES,
 } from './polymarket';
 import { getPropProvider } from './tank-providers';
-import { leagueRuleAccepts, parseLeagueRule } from './lib/pages-functions/league-rules';
+import { isTotalsSide, leagueRuleAccepts, parseLeagueRule } from './lib/pages-functions/league-rules';
 import {
     ensureKalshiTable,
     startKalshiScheduler,
@@ -247,6 +247,12 @@ async function tagPublishedTankOnTickers(slug: string, gameSnapshot: any): Promi
         const leagueRule = parseLeagueRule(ruleType);
         if (leagueRule) {
             if (!leagueRuleAccepts(leagueRule, league)) return false;
+            // Totals children ($NFLO/$NFLU) apply the same two gates the global
+            // total_over/total_under lines above apply, one league only.
+            if (isTotalsSide(leagueRule.side)) {
+                if (market === null || !['totals', 'team_totals'].includes(market)) return false;
+                return overUnderSide(side) === (leagueRule.side === 'total_over' ? 'over' : 'under');
+            }
             return leagueRule.side === 'favorite' ? isMarketFavorite(side) : isMarketUnderdog(side);
         }
         return false;

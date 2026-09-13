@@ -17,7 +17,7 @@
 // stays safe in a Worker, in the static build, and inside a client bundle alike.
 
 import { SUPPORTED_LEAGUES } from '../../league-tags';
-import { LEAGUE_GROUPS } from './league-rules';
+import { LEAGUE_GROUPS, leagueGroupLabel, parseLeagueRule } from './league-rules';
 
 export interface TickerCopy {
     leagues: string[]; // rendered as chips; [] means "no league scope to show"
@@ -35,6 +35,7 @@ export interface TickerCopy {
 // set $FOOTY and $SOCDOGS gate on, so a chip can never claim scope the rule won't honor.
 const ALL_LEAGUES = SUPPORTED_LEAGUES;
 const SOCCER_LEAGUES = LEAGUE_GROUPS.soccer;
+const NFL_LEAGUES = LEAGUE_GROUPS.nfl;
 
 const COPY: Record<string, TickerCopy> = {
     underdog: {
@@ -96,12 +97,114 @@ const COPY: Record<string, TickerCopy> = {
         leagues: SOCCER_LEAGUES,
         blurb: 'The soccer slice of the underdogs, across every soccer competition on the board. Rides the longest price in each match, so a single giant-killing carries it.',
     },
+    // League slices of the totals pair - the first children $OVERS/$UNDERS have. NFL is
+    // the natural place to start: one slate a week, and a league where the total is the
+    // number most games are argued over.
+    nfl_total_over: {
+        leagues: NFL_LEAGUES,
+        blurb: 'The NFL slice of the overs. Shootouts and a late score that nobody needed lift it; a defensive Sunday in the wind weighs it down.',
+    },
+    nfl_total_under: {
+        leagues: NFL_LEAGUES,
+        blurb: 'The NFL slice of the unders. Field goals, punts and a running clock lift it; a track meet in a dome weighs it down.',
+    },
 };
 
 // null for an unknown rule_type: every caller falls back to the ticker's own
 // description, so a ticker on a brand-new strategy renders plainly rather than blank.
 export function tickerCopyFor(ruleType: string): TickerCopy | null {
     return COPY[ruleType] ?? null;
+}
+
+// -----------------------------------------------------------------------------------
+// The read line - one sentence under the price that says, in words, what the number
+// beside it means: what the settled results in the window looked like, and how far the
+// index moved on them. Same neutrality contract as the blurbs above: past tense, what
+// HAS happened, never a lean on where it goes next, and no probability language.
+//
+// Keyed on the rule FAMILY (the six global rules); a league child borrows its parent's
+// clause with the league named up front, so a new <league>_favorite ticker reads
+// correctly with no edit here. An unknown rule type gets a generic clause rather than
+// nothing, matching tickerCopyFor's fallback posture.
+// -----------------------------------------------------------------------------------
+
+interface ReadClauses {
+    up: string;   // what the results looked like on a window the index rose
+    down: string; // ...and on one it fell
+}
+
+const READ_CLAUSES: Record<string, ReadClauses> = {
+    underdog: {
+        up: 'the overlooked sides came through more often than not',
+        down: 'the overlooked sides mostly missed',
+    },
+    favorite: {
+        up: 'the favored sides mostly took care of business',
+        down: 'favorites got rolled more often than not',
+    },
+    heavy_favorite: {
+        up: 'the heaviest favorites on the board held',
+        down: 'at least one heavy favorite got stunned',
+    },
+    longshot: {
+        up: 'at least one long-priced side came in',
+        down: 'the long-priced sides missed',
+    },
+    total_over: {
+        up: 'more games cleared their totals than stayed under',
+        down: 'more games stayed under their totals than cleared them',
+    },
+    total_under: {
+        up: 'more games stayed under their totals than cleared them',
+        down: 'more games cleared their totals than stayed under',
+    },
+};
+
+const GENERIC_CLAUSES: ReadClauses = {
+    up: 'the results this index tracks went its way',
+    down: 'the results this index tracks went against it',
+};
+
+// Below half a tenth of a point the sentence would print "0.0 points" - that is a quiet
+// window, and it says so instead (same rounding threshold the result sentences use).
+function readPoints(deltaPoints: number): string | null {
+    const fixed = Math.abs(deltaPoints).toFixed(1);
+    return fixed === '0.0' ? null : fixed;
+}
+
+/**
+ * `readLineFor('underdog', '$DOGS', 1.2, 'the past 3 days')` ->
+ * "Over the past 3 days the overlooked sides came through more often than not; $DOGS is
+ * up 1.2 points." windowLabel reads inside "over ..." ('the past 24 hours', 'its whole
+ * history'). deltaPoints is the index's POINTS moved in that window (the cumulative
+ * series' delta, not the price return).
+ */
+export function readLineFor(ruleType: string, displayName: string, deltaPoints: number, windowLabel: string): string {
+    const points = readPoints(deltaPoints);
+    if (points === null) {
+        return `No settled results have moved ${displayName} over ${windowLabel}.`;
+    }
+    const up = deltaPoints > 0;
+    const move = `${displayName} is ${up ? 'up' : 'down'} ${points} points.`;
+
+    const global = READ_CLAUSES[ruleType];
+    if (global) {
+        const clause = up ? global.up : global.down;
+        return `Over ${windowLabel} ${clause}; ${move}`;
+    }
+    const rule = parseLeagueRule(ruleType);
+    if (rule) {
+        // A child reads its parent's clause, which is why RuleSide is spelled with the
+        // same strings as the global rule_types above ('total_over', not 'over'). The
+        // fallback is a guard, not a feature: this lookup used to be unguarded, so a side
+        // added to league-rules.ts without a clause here threw a TypeError on the index's
+        // own detail page rather than degrading to the generic line.
+        const parent = READ_CLAUSES[rule.side] ?? GENERIC_CLAUSES;
+        const clause = up ? parent.up : parent.down;
+        return `In ${leagueGroupLabel(rule)} over ${windowLabel}, ${clause}; ${move}`;
+    }
+    const clause = up ? GENERIC_CLAUSES.up : GENERIC_CLAUSES.down;
+    return `Over ${windowLabel} ${clause}; ${move}`;
 }
 
 // "underdog" -> "Underdog Index"; league acronyms stay uppercase ("nfl_favorite" ->

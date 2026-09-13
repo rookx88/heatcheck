@@ -275,25 +275,40 @@ async function run(): Promise<void> {
     check('holdings without a session -> 401', (await holdingsReq(null)).status === 401);
 
     // =================================================================================
-    section('10. $OVERS/$UNDERS mirror holds in price space');
+    section('10. Mirror pairs hold in price space');
     // =================================================================================
-    const overs = tickers.find((t) => t.key === 'overs');
-    const unders = tickers.find((t) => t.key === 'unders');
-    if (overs && unders) {
-        check('mirror pair shares identical baseline and scale', overs.priceBaseline === unders.priceBaseline && overs.priceScale === unders.priceScale);
-        check('cumulative values are exact negatives', near(overs.value + unders.value, 0, 1e-3), `${overs.value} + ${unders.value}`);
+    // Each pair holds opposite sides of the SAME canonical market, so their cumulative
+    // values are exact negatives and their prices move inversely in log space.
+    //
+    // $NFLO/$NFLU is the sharpest of these, and not only as a price check. They are the
+    // first children of the totals pair, and the side each takes is chosen by
+    // sideForRule's league branch - which, before 2026-09-13, fell through to
+    // argmax/argmin and would have handed $NFLU the CHEAPEST side of the total rather
+    // than the Under. On a total priced 0.52/0.48 that is a wrong position that settles
+    // real Ember and raises no error anywhere. This check is what catches it: pick the
+    // wrong side and the two stop being negatives.
+    for (const [aKey, bKey] of [['overs', 'unders'], ['nflo', 'nflu']] as const) {
+        const a = tickers.find((t) => t.key === aKey);
+        const b = tickers.find((t) => t.key === bKey);
+        if (!a || !b) {
+            warn(`${aKey}/${bKey} not both active - mirror check skipped`);
+            continue;
+        }
+        check(`$${aKey.toUpperCase()}/$${bKey.toUpperCase()} share identical baseline and scale`,
+            a.priceBaseline === b.priceBaseline && a.priceScale === b.priceScale,
+            `${a.priceBaseline}/${a.priceScale} vs ${b.priceBaseline}/${b.priceScale}`);
+        check(`$${aKey.toUpperCase()}/$${bKey.toUpperCase()} cumulative values are exact negatives`,
+            near(a.value + b.value, 0, 1e-3), `${a.value} + ${b.value}`);
         // The API's prices are ROUNDED to PRICE_DECIMALS (priceFromValue), so each log
         // carries up to (0.5 * 10^-PRICE_DECIMALS) / p of rounding error and the sum
         // up to 10^-PRICE_DECIMALS / min(p). At p ~ 58 that is ~1.7e-6 - a fixed 1e-6
         // tolerance passed only while the pair sat near baseline and failed the night
         // a slate close moved them. The bound below is exactly the rounding budget;
         // anything beyond it is a real drift in the mirror.
-        const logDriftBound = (10 ** -PRICE_DECIMALS) / Math.min(overs.price, unders.price) + 1e-9;
-        const logDrift = Math.abs((Math.log(overs.price) + Math.log(unders.price)) - 2 * Math.log(overs.priceBaseline));
-        check(`ln(p_overs) + ln(p_unders) = 2 ln(baseline) within the 4-dp rounding budget (${logDriftBound.toExponential(2)}) - inverse moves in log space`,
-            logDrift <= logDriftBound, `drift=${logDrift.toExponential(3)} p_overs=${overs.price} p_unders=${unders.price}`);
-    } else {
-        warn('overs/unders not both active - mirror check skipped');
+        const logDriftBound = (10 ** -PRICE_DECIMALS) / Math.min(a.price, b.price) + 1e-9;
+        const logDrift = Math.abs((Math.log(a.price) + Math.log(b.price)) - 2 * Math.log(a.priceBaseline));
+        check(`ln(p_${aKey}) + ln(p_${bKey}) = 2 ln(baseline) within the 4-dp rounding budget (${logDriftBound.toExponential(2)}) - inverse moves in log space`,
+            logDrift <= logDriftBound, `drift=${logDrift.toExponential(3)} p_${aKey}=${a.price} p_${bKey}=${b.price}`);
     }
 
     // =================================================================================

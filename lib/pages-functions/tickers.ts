@@ -24,7 +24,7 @@ import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { fetchMarket, safeJsonParse } from './gamma';
 import { fetchMarket as fetchKalshiMarket, fetchKalshiTradesPage } from './kalshi';
 import { getGameConfig } from './pets';
-import { leagueGroupLabel, leagueRuleAccepts, parseLeagueRule } from './league-rules';
+import { isTotalsSide, leagueGroupLabel, leagueRuleAccepts, parseLeagueRule } from './league-rules';
 import { priceFromValue } from './ticker-price';
 import { positionShareOfClose } from './index-slate';
 import type { WindowSums } from './ticker-window';
@@ -117,6 +117,32 @@ export interface EligibilityContext {
     league: string | null;    // tank_pages.league ('NFL', 'EPL', ...)
     market: string | null;    // game_snapshot.prop.market ('totals', 'moneyline', canonical prop keys, ...)
     outcomes: string[] | null; // game_snapshot.prop.odds.outcomes labels, positional with probs
+}
+
+// The one way an EligibilityContext is built from a Tank row - the same four snapshot
+// columns the tag endpoint, the tag sweep and the portfolio overlay all SELECT
+// (game_snapshot.prop.market / odds.outcomePrices / odds.outcomes plus tank_pages.league).
+// Shared so a surface that classifies a side by rule (a user's pick, say) can never
+// drift from how the tag rules read the same snapshot. null when the snapshot carries no
+// usable outcomePrices - callers skip, never guess.
+export interface SnapshotContextRow {
+    league: string | null;
+    market: string | null;
+    outcome_prices: unknown; // JSONB array
+    outcome_labels: unknown; // JSONB array
+}
+
+export function snapshotEligibilityContext(row: SnapshotContextRow, side: number): EligibilityContext | null {
+    const probs = Array.isArray(row.outcome_prices) ? (row.outcome_prices as unknown[]).map(Number) : [];
+    if (probs.length === 0 || probs.some((p) => !Number.isFinite(p))) return null;
+    if (!Number.isInteger(side) || side < 0 || side >= probs.length) return null;
+    return {
+        side,
+        probs,
+        league: row.league ?? null,
+        market: row.market ?? null,
+        outcomes: Array.isArray(row.outcome_labels) ? (row.outcome_labels as unknown[]).map(String) : null,
+    };
 }
 
 // League/market sets are definitional, like DOGS_CHALK_PIVOT - not tunables. The soccer
@@ -227,6 +253,20 @@ export function checkEligibility(ruleType: string, ctx: EligibilityContext, cfg:
             if (!rule) return { ok: false, reason: `unknown rule_type "${ruleType}"` };
             if (!leagueRuleAccepts(rule, ctx.league)) {
                 return { ok: false, reason: `requires a ${leagueGroupLabel(rule)} market; this Tank's league is "${ctx.league ?? 'unknown'}"` };
+            }
+            // A totals child ($NFLO/$NFLU) applies its parent's test, one league only -
+            // the same two gates as the global total_over/total_under cases above, which
+            // is why the side names are spelled identically. Checked before the
+            // favorite/underdog fallthrough: without this, $NFLU would accept whichever
+            // NFL side happened to be the least-favored, on any market type at all.
+            if (isTotalsSide(rule.side)) {
+                if (!ctx.market || !TOTALS_MARKETS.has(ctx.market)) {
+                    return { ok: false, reason: `requires a totals market; this market is "${ctx.market ?? 'unknown'}"` };
+                }
+                const want = rule.side === 'total_over' ? 'over' : 'under';
+                return overUnderSide(ctx) === want
+                    ? { ok: true }
+                    : { ok: false, reason: `requires the ${want === 'over' ? 'Over' : 'Under'} side of the total` };
             }
             const wantFavorite = rule.side === 'favorite';
             const isFav = isMarketFavorite(ctx);
@@ -728,30 +768,83 @@ export async function getTickerResults(sql: SqlReader, limitPerTicker = 3): Prom
     `;
     const results: Record<string, TickerResultItem[]> = {};
     for (const row of rows) {
-        const contrib = row.contrib as number;
-        const meta = (row.close_metadata ?? null) as { positionsCounted?: unknown; smoothing?: unknown; scalePct?: unknown } | null;
-        const share = meta
-            && typeof meta.positionsCounted === 'number'
-            && typeof meta.smoothing === 'number'
-            && typeof meta.scalePct === 'number'
-            ? positionShareOfClose(contrib, { positionsCounted: meta.positionsCounted, smoothing: meta.smoothing, scalePct: meta.scalePct })
-            : null;
-        (results[row.ticker_key as string] ??= []).push({
-            tickerKey: row.ticker_key as string,
-            won: row.result === 'win',
-            delta: share ?? contrib,
-            occurredAt: String(row.settled_at),
-            marketType: (row.market_type as string | null) ?? '',
-            marketLine: typeof row.market_line === 'number' ? row.market_line : null,
-            sideLabel: (row.side_label as string | null) ?? '',
-            sideIndex: row.side_index as number,
-            away: (row.away as string | null) ?? null,
-            home: (row.home as string | null) ?? null,
-            league: (row.league as string | null) ?? '',
-            question: (row.question as string | null) ?? null,
-        });
+        (results[row.ticker_key as string] ??= []).push(resultItemFromRow(row));
     }
     return results;
+}
+
+// One index_positions row (joined to its close's metadata and the props question) ->
+// a TickerResultItem. Shared by getTickerResults and getTickerMovers so the two readers
+// can never compute a game's share of its close differently.
+function resultItemFromRow(row: Record<string, unknown>): TickerResultItem {
+    const contrib = row.contrib as number;
+    const meta = (row.close_metadata ?? null) as { positionsCounted?: unknown; smoothing?: unknown; scalePct?: unknown } | null;
+    const share = meta
+        && typeof meta.positionsCounted === 'number'
+        && typeof meta.smoothing === 'number'
+        && typeof meta.scalePct === 'number'
+        ? positionShareOfClose(contrib, { positionsCounted: meta.positionsCounted, smoothing: meta.smoothing, scalePct: meta.scalePct })
+        : null;
+    return {
+        tickerKey: row.ticker_key as string,
+        won: row.result === 'win',
+        delta: share ?? contrib,
+        occurredAt: String(row.settled_at),
+        marketType: (row.market_type as string | null) ?? '',
+        marketLine: typeof row.market_line === 'number' ? row.market_line : null,
+        sideLabel: (row.side_label as string | null) ?? '',
+        sideIndex: row.side_index as number,
+        away: (row.away as string | null) ?? null,
+        home: (row.home as string | null) ?? null,
+        league: (row.league as string | null) ?? '',
+        question: (row.question as string | null) ?? null,
+    };
+}
+
+// A settled game plus the timestamp of the daily close it rolled into.
+export interface TickerMoverItem extends TickerResultItem {
+    closedAt: string; // ticker_events.occurred_at of the close - the chart's time axis
+}
+
+// The "What moved it" source for ONE index: every settled win/loss position whose daily
+// close landed at or after `since`, newest first, capped at `limit`. The detail page
+// fetches the widest chart window once and ranks per window client-side
+// (topMoversSince, ticker-window.ts), so a window switch never refetches.
+//
+// Windowed on the CLOSE event's occurred_at, not the position's settled_at, on purpose:
+// the chart plots closes at their occurred_at, so "inside the 3D window" has to mean
+// the same thing for the list as for the line - a position settled at 23:50 whose close
+// wrote at 00:10 belongs to the later day on both. Same query shape as getTickerResults
+// (ranked subquery, props LEFT JOIN outside it) and the same row mapper, so the points
+// a game shows here are byte-identical to its Recent Results / homepage sentence.
+export async function getTickerMovers(sql: SqlReader, key: string, opts: { since: Date; limit: number }): Promise<TickerMoverItem[]> {
+    const rows = await sql`
+        SELECT r.ticker_key, r.away, r.home, r.league, r.market_type, r.market_line,
+               r.side_index, r.side_label, r.result, r.contrib, r.settled_at,
+               r.close_metadata, r.closed_at, pp.question
+        FROM (
+            SELECT ip.ticker_key, ip.market_id, ip.away, ip.home, ip.league, ip.market_type,
+                   ip.market_line::float8 AS market_line,
+                   ip.side_index, ip.side_label, ip.result,
+                   ip.contrib::float8 AS contrib,
+                   ip.settled_at,
+                   ce.metadata AS close_metadata,
+                   ce.occurred_at AS closed_at
+            FROM index_positions ip
+            JOIN ticker_events ce ON ce.id = ip.close_id
+            WHERE ip.ticker_key = ${key}
+              AND ip.result IN ('win', 'loss') AND ip.close_id IS NOT NULL
+              AND ce.occurred_at >= ${opts.since.toISOString()}
+            ORDER BY ip.settled_at DESC, ip.id
+            LIMIT ${opts.limit}
+        ) r
+        LEFT JOIN polymarket_props pp ON pp.market_id = r.market_id
+        ORDER BY r.settled_at DESC
+    `;
+    return rows.map((row) => ({
+        ...resultItemFromRow(row),
+        closedAt: new Date(row.closed_at as string).toISOString(),
+    }));
 }
 
 // -----------------------------------------------------------------------------------
@@ -816,16 +909,14 @@ export async function sweepUntaggedTanks(
         const slug = row.slug as string;
         const provider = row.provider as string;
         const marketId = row.market_id as string;
-        const league = (row.league as string | null) ?? null;
-        const market = (row.market as string | null) ?? null;
-        const outcomes = Array.isArray(row.outcome_labels) ? (row.outcome_labels as unknown[]).map(String) : null;
-        const probs = Array.isArray(row.outcome_prices) ? (row.outcome_prices as unknown[]).map(Number) : [];
-        if (probs.length === 0 || probs.some((p) => !Number.isFinite(p))) {
+        const snapshot = row as unknown as SnapshotContextRow;
+        const probs = Array.isArray(snapshot.outcome_prices) ? (snapshot.outcome_prices as unknown[]).map(Number) : [];
+        if (snapshotEligibilityContext(snapshot, 0) === null) {
             report.failures.push({ slug, side: -1, code: 'missing_snapshot_odds', message: 'No usable outcomePrices in the frozen snapshot.' });
             continue;
         }
         for (let side = 0; side < probs.length; side++) {
-            const ctx: EligibilityContext = { side, probs, league, market, outcomes };
+            const ctx = snapshotEligibilityContext(snapshot, side)!;
             const eligible = activeTickers.filter((t) => checkEligibility(t.rule_type, ctx, cfg).ok);
             if (eligible.length === 0) continue;
             if (sidesProcessed >= maxSides) {

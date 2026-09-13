@@ -153,10 +153,29 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const closes: Array<{ tickerKey: string; delta: number; counted: number; won: number }> = [];
 
     if (typeof scalePct === 'number' && typeof smoothing === 'number') {
+        // Everything that belongs in today's close - the newly settled positions AND the
+        // ones an earlier run today already attached to it.
+        //
+        // Including the already-attached rows is the whole point. The write below upserts
+        // on (ticker_key, close_date) with DO UPDATE SET delta = EXCLUDED.delta, which
+        // REPLACES the day's delta rather than adding to it. Selecting only
+        // `close_id IS NULL` therefore made each run overwrite the day with just its own
+        // batch, silently discarding every earlier batch that day - and since MAX_MARKETS
+        // caps a run at 30 markets, any slate bigger than that settles across several
+        // runs by construction. Measured 2026-09-13: 5 of $OVERS' 12 closes were wrong,
+        // two with the sign flipped, and $MLBCHALK read +1.160 when its own linked
+        // positions summed to -2.545.
+        //
+        // Re-reading them makes EXCLUDED.delta the whole day, so the replace is correct.
+        // Re-stamping close_id on rows that already carry it is a no-op.
         const openRows = await sql`
-            SELECT ticker_key, id, contrib::float8 AS contrib, result
-            FROM index_positions
-            WHERE settled_at IS NOT NULL AND close_id IS NULL AND result IN ('win', 'loss')
+            SELECT ip.ticker_key, ip.id, ip.contrib::float8 AS contrib, ip.result
+            FROM index_positions ip
+            LEFT JOIN ticker_events te ON te.id = ip.close_id
+            WHERE ip.settled_at IS NOT NULL
+              AND ip.result IN ('win', 'loss')
+              AND (ip.close_id IS NULL
+                   OR (te.source = 'slate' AND te.close_date = CURRENT_DATE))
         `;
         const byTicker = new Map<string, Array<{ id: string; contrib: number; won: boolean }>>();
         for (const r of openRows) {
@@ -184,9 +203,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
 
         if (planned.length > 0) {
-            // Still idempotent by the (ticker_key, close_date) unique index: a second run
-            // the same day updates each existing close in place rather than appending a
-            // second one, so re-running settlement can never double-count a day.
+            // Idempotent by the (ticker_key, close_date) unique index: a second run the
+            // same day updates the existing close in place rather than appending a second
+            // one, so re-running settlement can never double-count a day. What makes the
+            // in-place UPDATE correct rather than lossy is that the query above reads the
+            // whole day, not just this run's batch - a replace of a total, never of a
+            // partial sum.
             const closeRows = await sql`
                 INSERT INTO ticker_events (ticker_key, event_type, source, close_date, delta, metadata)
                 SELECT k, 'close', 'slate', CURRENT_DATE, d, m::jsonb
