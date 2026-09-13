@@ -31,15 +31,30 @@ import {
     type PositionSpec,
     type SlateMarketRow,
 } from '../../lib/pages-functions/index-slate';
+import { resolvePositionTeams } from '../../lib/pages-functions/team-identity';
 
 // Matches the gap between worker-curate's sweep slots (10:00 / 18:00 / 02:00 UTC), with
 // an hour of overlap so a game can't fall between two runs.
 const LOCK_LOOKAHEAD_HOURS = 9;
 
-function teamName(teams: unknown, ordering: 'away' | 'home'): string | null {
-    if (!Array.isArray(teams)) return null;
-    const match = teams.find((t: any) => t?.ordering === ordering);
-    return typeof match?.name === 'string' ? match.name : null;
+// One side of a fixture as Gamma publishes it. The abbreviation is read as well as the
+// name because it is the stable half: present on 100% of 183,696 team entries measured
+// 2026-09-12, a strict bijection with name inside a league, and unaffected by a rename
+// (Polymarket already shortened 'Oakland Athletics' to 'Athletics'). It is frozen onto
+// the row so a registry correction can re-resolve without polymarket_props, which is a
+// cache of OPEN markets and cannot be relied on for a game that finished weeks ago.
+//
+// The positional fallback matches tank-providers.ts:211-214. teamName() had none, so an
+// event where Gamma omits `ordering` wrote away/home as NULL with no counter and no
+// guard. That has not happened in 996 locked rows, but it is a silent failure by
+// construction, and a position with no teams can never be attributed or described.
+function teamAt(teams: unknown, ordering: 'away' | 'home'): { name: string | null; abbr: string | null } {
+    if (!Array.isArray(teams)) return { name: null, abbr: null };
+    const positional = ordering === 'away' ? teams[0] : teams[1];
+    const match = teams.find((t: any) => t?.ordering === ordering) ?? positional;
+    const name = typeof match?.name === 'string' ? match.name : null;
+    const abbr = typeof match?.abbreviation === 'string' ? match.abbreviation.toLowerCase() : null;
+    return { name, abbr };
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -72,7 +87,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // Group by game, then let the (pure, tested) selector decide each index's position.
     const byEvent = new Map<string, SlateMarketRow[]>();
+    // Abbreviations are a property of the GAME, not of a market, so they are kept beside
+    // the grouped rows rather than widening SlateMarketRow (which index-slate owns).
+    const abbrByEvent = new Map<string, { away: string | null; home: string | null }>();
     for (const r of rows) {
+        const away = teamAt(r.event_teams, 'away');
+        const home = teamAt(r.event_teams, 'home');
         const row: SlateMarketRow = {
             event_id: r.event_id as string,
             league: (r.league as string) ?? '',
@@ -88,12 +108,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             // "... GMT-0700 (Pacific Daylight Time)" which Postgres rejects on the way
             // back in. Always round-trip through ISO.
             kickoff: r.event_start_time ? new Date(r.event_start_time as string | Date).toISOString() : null,
-            away: teamName(r.event_teams, 'away'),
-            home: teamName(r.event_teams, 'home'),
+            away: away.name,
+            home: home.name,
             // The selector reads this to keep "end in a draw?" markets out of the
             // moneyline pick (isDrawMarket, index-slate.ts).
             question: (r.question as string | null) ?? null,
         };
+        if (!abbrByEvent.has(row.event_id)) abbrByEvent.set(row.event_id, { away: away.abbr, home: home.abbr });
         const list = byEvent.get(row.event_id);
         if (list) list.push(row); else byEvent.set(row.event_id, [row]);
     }
@@ -109,6 +130,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         specs.push(...picked);
     }
 
+    // Canonical club identity, resolved HERE and frozen onto the row - the same reasoning
+    // as entry_prob one level up (see add_team_identity_to_index_positions.sql). Resolving
+    // at read time would mean a regex over another table's free text on an unenforced
+    // join, and an unmapped club would vanish from a team's totals with nobody watching.
+    // Here it lands in `unmappedTeams` below instead.
+    const teams = specs.map((s) =>
+        resolvePositionTeams({
+            league: s.row.league,
+            away: s.row.away,
+            home: s.row.home,
+            marketType: s.row.market_type,
+            sideLabel: s.sideLabel,
+            question: s.row.question,
+        }),
+    );
+
     let created = 0;
     if (specs.length > 0) {
         // One bulk insert via unnest - the position count must not become a subrequest
@@ -118,7 +155,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 ticker_key, provider, market_id, condition_id, league, event_id,
                 away, home, kickoff, market_type, market_line,
                 side_index, side_label, entry_prob,
-                sel_volume, sel_liquidity, sel_runner_up_line, sel_median_agreed
+                sel_volume, sel_liquidity, sel_runner_up_line, sel_median_agreed,
+                away_team_id, home_team_id, subject_team_id, subject_src,
+                away_abbr, home_abbr
             )
             SELECT * FROM unnest(
                 ${specs.map((s) => s.tickerKey)}::text[],
@@ -138,7 +177,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 ${specs.map((s) => s.selVolume)}::numeric[],
                 ${specs.map((s) => s.selLiquidity)}::numeric[],
                 ${specs.map((s) => s.selRunnerUpLine)}::numeric[],
-                ${specs.map((s) => s.selMedianAgreed)}::boolean[]
+                ${specs.map((s) => s.selMedianAgreed)}::boolean[],
+                ${teams.map((t) => t.awayTeamId)}::text[],
+                ${teams.map((t) => t.homeTeamId)}::text[],
+                ${teams.map((t) => t.subjectTeamId)}::text[],
+                ${teams.map((t) => t.subjectSource)}::text[],
+                ${specs.map((s) => abbrByEvent.get(s.row.event_id)?.away ?? null)}::text[],
+                ${specs.map((s) => abbrByEvent.get(s.row.event_id)?.home ?? null)}::text[]
             )
             ON CONFLICT (ticker_key, event_id) DO NOTHING
             RETURNING id
@@ -152,6 +197,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const byTicker: Record<string, number> = {};
     for (const s of specs) byTicker[s.tickerKey] = (byTicker[s.tickerKey] ?? 0) + 1;
 
+    // Clubs that arrived with a name team-identity.ts has never seen. This is the ONLY
+    // place the gap is visible: the rows still lock (a missing club costs the index
+    // nothing), but those games are absent from a team page until the name is mapped.
+    // Expect this to fire when a league is added or a club is promoted into one.
+    const unmappedTeams = [...new Set(teams.flatMap((t) => t.unmapped))].sort();
+
+    // Why each side did or didn't get a club. The bug classes below must stay at zero;
+    // the acceptance suite asserts it, and this is where a regression shows up first.
+    const subjectsBySrc: Record<string, number> = {};
+    for (const t of teams) subjectsBySrc[t.subjectSource] = (subjectsBySrc[t.subjectSource] ?? 0) + 1;
+    const BUG_SOURCES = ['unmapped_team', 'unreadable_question', 'label_matches_neither', 'missing_teams'];
+    const attributionBugs = BUG_SOURCES.reduce((n, k) => n + (subjectsBySrc[k] ?? 0), 0);
+
     return jsonResponse({
         lookaheadHours: LOCK_LOOKAHEAD_HOURS,
         gamesConsidered: byEvent.size,
@@ -160,5 +218,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         positionsCreated: created,
         alreadyLocked: specs.length - created,
         byTicker,
+        unmappedTeams,
+        subjectsBySrc,
+        attributionBugs,
+        positionsWithSubjectTeam: teams.filter((t) => t.subjectTeamId !== null).length,
     });
 };
