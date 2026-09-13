@@ -1,5 +1,5 @@
 // The pet widget's Inventory: everything the account owns, read-only at a glance,
-// in three tabs - Eggs, Food, Collectibles. Actions live where they belong (hatch at
+// in four tabs - Eggs, Food, Memorabilia, Collectibles. Actions live where they belong (hatch at
 // the Hatchery's incubator, feed from the widget's Feed modal); this is the ledger
 // of stuff. Collectibles are serialized cards found by the pet (discovery drops);
 // clicking one opens the full-screen CollectibleCard viewer overlay ABOVE this panel
@@ -8,19 +8,22 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { colorwayFromCatalog } from './Egg3D';
 import CollectibleCard from './CollectibleCard';
+import ItemTooltip from './ItemTooltip';
 import {
     getOwnedCollectibles,
     getOwnedEggs,
     getOwnedFood,
+    getOwnedMemorabilia,
     type OwnedCollectible,
     type OwnedEgg,
     type OwnedFood,
+    type OwnedMemorabilia,
 } from '../egg-shop-client';
 import './HatcheryModal.css';
 import './FoodShopModal.css';
 import './PetInventoryModal.css';
 
-type InvTab = 'eggs' | 'food' | 'collectibles';
+type InvTab = 'eggs' | 'food' | 'memorabilia' | 'collectibles';
 
 function formatAcquired(iso: string): string {
     const d = new Date(iso);
@@ -40,7 +43,11 @@ export const PetInventoryModal: React.FC<PetInventoryModalProps> = ({ onClose })
     const [eggs, setEggs] = useState<OwnedEgg[]>([]);
     const [food, setFood] = useState<OwnedFood[]>([]);
     const [collectibles, setCollectibles] = useState<OwnedCollectible[]>([]);
+    const [memorabilia, setMemorabilia] = useState<OwnedMemorabilia[]>([]);
     const [viewedCard, setViewedCard] = useState<OwnedCollectible | null>(null);
+    // At most ONE description tooltip open at a time, held here rather than per row so
+    // opening one closes the last with no cross-talk. Keyed by catalogKey/egg id.
+    const [openTip, setOpenTip] = useState<string | null>(null);
 
     const closeButtonRef = useRef<HTMLButtonElement>(null);
     // The document-level Escape handler must see the CURRENT viewer state without
@@ -51,10 +58,16 @@ export const PetInventoryModal: React.FC<PetInventoryModalProps> = ({ onClose })
     const hydrate = useCallback(async () => {
         setLoadError(null);
         try {
-            const [e, f, c] = await Promise.all([getOwnedEggs(), getOwnedFood(), getOwnedCollectibles()]);
+            const [e, f, c, m] = await Promise.all([
+                getOwnedEggs(),
+                getOwnedFood(),
+                getOwnedCollectibles(),
+                getOwnedMemorabilia(),
+            ]);
             setEggs(e ?? []);
             setFood(f ?? []);
             setCollectibles(c ?? []);
+            setMemorabilia(m ?? []);
             setLoading(false);
         } catch (err: any) {
             setLoadError(err?.message || 'Something went wrong.');
@@ -90,14 +103,22 @@ export const PetInventoryModal: React.FC<PetInventoryModalProps> = ({ onClose })
             </div>
         ) : (
             <ul className="pet-inv-list">
-                {eggs.map((egg) => (
+                {eggs.map((egg, i) => (
                     <li key={egg.id} className="pet-inv-item">
-                        <span
-                            className="pet-inv-egg-dot"
-                            style={{ backgroundColor: colorwayFromCatalog(egg).hex }}
-                            aria-hidden="true"
-                        />
-                        <span className="pet-inv-name">{egg.name}</span>
+                        <ItemTooltip
+                            description={egg.description}
+                            label={egg.name}
+                            below={i === 0}
+                            open={openTip === egg.id}
+                            onToggle={(o) => setOpenTip(o ? egg.id : null)}
+                        >
+                            <span
+                                className="pet-inv-egg-dot"
+                                style={{ backgroundColor: colorwayFromCatalog(egg).hex }}
+                                aria-hidden="true"
+                            />
+                            <span className="pet-inv-name">{egg.name}</span>
+                        </ItemTooltip>
                         <span className="pet-inv-meta">Acquired {formatAcquired(egg.acquiredAt)}</span>
                     </li>
                 ))}
@@ -112,19 +133,68 @@ export const PetInventoryModal: React.FC<PetInventoryModalProps> = ({ onClose })
             </div>
         ) : (
             <ul className="pet-inv-list">
-                {food.map((item) => (
+                {food.map((item, i) => (
                     <li key={item.catalogKey} className="pet-inv-item">
-                        <img
-                            className="pet-inv-thumb"
-                            src={`/assets/images/food/${item.catalogKey}.png`}
-                            alt=""
-                            width={48}
-                            height={48}
-                            loading="lazy"
-                            onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
-                        />
-                        <span className="pet-inv-name">{item.name}</span>
+                        <ItemTooltip
+                            description={item.description}
+                            label={item.name}
+                            below={i === 0}
+                            open={openTip === item.catalogKey}
+                            onToggle={(o) => setOpenTip(o ? item.catalogKey : null)}
+                        >
+                            <img
+                                className="pet-inv-thumb"
+                                src={`/assets/images/food/${item.catalogKey}.png`}
+                                alt=""
+                                width={48}
+                                height={48}
+                                loading="lazy"
+                                onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
+                            />
+                            <span className="pet-inv-name">{item.name}</span>
+                        </ItemTooltip>
                         <span className="pet-inv-meta">×{item.quantity}</span>
+                    </li>
+                ))}
+            </ul>
+        );
+
+    // Stacked trinkets, so the FOOD row shape rather than the collectible one - but the
+    // art path comes from the catalog (config.image), the collectibles' contract, so a
+    // renamed file never needs a code change here.
+    const renderMemorabilia = () =>
+        memorabilia.length === 0 ? (
+            <div className="tank-modal-empty">
+                <p>The trophy shelf is bare.</p>
+                <p>Odds and ends your pet drags home land here.</p>
+            </div>
+        ) : (
+            <ul className="pet-inv-list">
+                {memorabilia.map((item, i) => (
+                    <li key={item.catalogKey} className="pet-inv-item">
+                        <ItemTooltip
+                            description={item.description}
+                            label={item.name}
+                            below={i === 0}
+                            open={openTip === item.catalogKey}
+                            onToggle={(o) => setOpenTip(o ? item.catalogKey : null)}
+                        >
+                            {item.image && (
+                                <img
+                                    className="pet-inv-thumb"
+                                    src={`/assets/images/${item.image}`}
+                                    alt=""
+                                    width={48}
+                                    height={48}
+                                    loading="lazy"
+                                    onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
+                                />
+                            )}
+                            <span className="pet-inv-name">{item.name}</span>
+                        </ItemTooltip>
+                        <span className="pet-inv-meta">
+                            ×{item.quantity} &middot; {formatAcquired(item.acquiredAt)}
+                        </span>
                     </li>
                 ))}
             </ul>
@@ -208,12 +278,13 @@ export const PetInventoryModal: React.FC<PetInventoryModalProps> = ({ onClose })
                     {([
                         ['eggs', `Eggs${eggs.length ? ` (${eggs.length})` : ''}`],
                         ['food', `Food${food.length ? ` (${food.reduce((n, f) => n + f.quantity, 0)})` : ''}`],
+                        ['memorabilia', `Memorabilia${memorabilia.length ? ` (${memorabilia.reduce((n, m) => n + m.quantity, 0)})` : ''}`],
                         ['collectibles', `Collectibles${collectibles.length ? ` (${collectibles.length})` : ''}`],
                     ] as [InvTab, string][]).map(([t, label]) => (
                         <button
                             key={t}
                             className={`tank-modal-filter${tab === t ? ' is-active' : ''}`}
-                            onClick={() => setTab(t)}
+                            onClick={() => { setTab(t); setOpenTip(null); }}
                             aria-pressed={tab === t}
                         >
                             {label}
@@ -222,6 +293,7 @@ export const PetInventoryModal: React.FC<PetInventoryModalProps> = ({ onClose })
                 </div>
                 {tab === 'eggs' && renderEggs()}
                 {tab === 'food' && renderFood()}
+                {tab === 'memorabilia' && renderMemorabilia()}
                 {tab === 'collectibles' && renderCollectibles()}
                 <div className="hatchery-caption">Hatch at the Hatchery &middot; Feed from your pet widget</div>
             </>

@@ -32,6 +32,14 @@ import { discoveryFindEmber } from './ledger';
 export interface DiscoveryConfig {
     weight_ember: number;
     weight_food: number;
+    // OPTIONAL on purpose, and always read as `?? 0`. The memorabilia category arrives
+    // in config v3 (add_discovery_config_v3.sql), which is flipped active AFTER this
+    // code deploys - so during the deploy window the running code reads a v2 config
+    // that has no such key. The coalesce is what makes that window inert: weight 0 ->
+    // category never selected -> discovery behaves exactly as it did before. Without
+    // it the roll's arithmetic sums an undefined, every band comparison against NaN is
+    // false, and the whole feature collapses into one arbitrary category.
+    weight_memorabilia?: number;
     weight_collectible: number;
     short_cooldown_minutes_min: number;
     short_cooldown_minutes_max: number;
@@ -102,6 +110,7 @@ export type DiscoveryOutcome =
     | { kind: 'lost_race' }
     | { kind: 'found_ember'; amount: number }
     | { kind: 'found_food'; catalogKey: string; name: string }
+    | { kind: 'found_memorabilia'; catalogKey: string; name: string }
     | { kind: 'found_collectible'; catalogKey: string; name: string; serial: number; mintSize: number }
     // Last-copy race: the pool sold out between the pre-roll eligibility check and the
     // grant statement. The window is consumed and nothing is granted - by design (see
@@ -119,9 +128,22 @@ interface FoodSkuRow {
     price: number;
 }
 
+interface MemorabiliaSkuRow {
+    key: string;
+    name: string;
+    // Relative pick weight WITHIN the category. Explicit (not derived from a price)
+    // because memorabilia is never sold - there's no amount to invert.
+    weight: number;
+    // Subpath under /assets/images/, straight from the catalog - same contract as a
+    // collectible's cover_image, so the notification carries a ready-to-render path
+    // and no renderer has to know how memorabilia art is named.
+    image: string | null;
+}
+
 interface CollectibleSkuRow {
     key: string;
     name: string;
+    cover_image: string | null;
     mint_size: number;
 }
 
@@ -232,7 +254,7 @@ export async function maybeDiscover(
     // a held-back edition activated later for some other channel (shop, airdrop) must
     // not silently start dropping here.
     const collectibleSkus = (await sql`
-        SELECT c.key, c.name, p.mint_size
+        SELECT c.key, c.name, c.config->>'cover_image' AS cover_image, p.mint_size
         FROM items_catalog c
         JOIN collectible_pools p ON p.catalog_key = c.key
         WHERE c.item_type = 'collectible' AND c.active = true
@@ -242,13 +264,51 @@ export async function maybeDiscover(
           AND p.minted_count < p.mint_size
     `) as unknown as CollectibleSkuRow[];
 
+    // Droppable memorabilia (add_memorabilia_items.sql). Same droppable gate and the
+    // same zero-if-empty treatment as collectibles - no pool to check, because these
+    // stack and have no mint cap, so the only way the category empties is an operator
+    // deactivating every SKU.
+    const memorabiliaSkus = (await sql`
+        SELECT c.key, c.name,
+               COALESCE((c.config->>'discovery_weight')::int, 1) AS weight,
+               c.config->>'image' AS image
+        FROM items_catalog c
+        WHERE c.item_type = 'memorabilia' AND c.active = true
+          AND (c.config->>'discovery_droppable')::boolean IS TRUE
+          AND (c.available_from IS NULL OR c.available_from <= NOW())
+          AND (c.available_until IS NULL OR c.available_until > NOW())
+    `) as unknown as MemorabiliaSkuRow[];
+
+    // The category bands, in order. Written as a cumulative walk rather than chained
+    // comparisons because there are four of them now: a zero weight (no eligible SKU,
+    // or a config version that predates the category) simply owns no interval and can
+    // never be selected, and the remaining weights renormalize on their own - which is
+    // what has always kept a missing category from failing the roll.
     const weightEmber = cfg.weight_ember;
     const weightFood = cfg.weight_food;
+    const weightMemorabilia = memorabiliaSkus.length > 0 ? (cfg.weight_memorabilia ?? 0) : 0;
     const weightCollectible = collectibleSkus.length > 0 ? cfg.weight_collectible : 0;
-    const roll = Math.random() * (weightEmber + weightFood + weightCollectible);
+    const bands: Array<['ember' | 'food' | 'memorabilia' | 'collectible', number]> = [
+        ['ember', weightEmber],
+        ['food', weightFood],
+        ['memorabilia', weightMemorabilia],
+        ['collectible', weightCollectible],
+    ];
+    const totalWeight = bands.reduce((sum, [, w]) => sum + w, 0);
+    let bandRoll = Math.random() * totalWeight;
+    // Ember is the fallback if every weight is 0 (a misconfigured catalog) - it's the
+    // one branch that needs no SKU to exist.
+    let category: 'ember' | 'food' | 'memorabilia' | 'collectible' = 'ember';
+    for (const [name, weight] of bands) {
+        if (weight <= 0) continue;
+        bandRoll -= weight;
+        if (bandRoll < 0) {
+            category = name;
+            break;
+        }
+    }
 
-    let category: 'ember' | 'food' = roll < weightEmber ? 'ember' : 'food';
-    if (roll >= weightEmber + weightFood) {
+    if (category === 'collectible') {
         // Collectible rolled: mint one serialized copy. Uniform over eligible SKUs
         // (one today - Genesis Neon - but nothing here assumes that).
         const picked = collectibleSkus[Math.floor(Math.random() * collectibleSkus.length)];
@@ -289,8 +349,8 @@ export async function maybeDiscover(
                 FROM minted m
                 RETURNING id
             ), note AS (
-                INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
-                SELECT ${userId}, 'claimable', ${msgPre} || m.serial::text || ${msgPost}, 'pet', ${pet.id}::text, ${notificationKey}, 'happy'
+                INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood, art)
+                SELECT ${userId}, 'claimable', ${msgPre} || m.serial::text || ${msgPost}, 'pet', ${pet.id}::text, ${notificationKey}, 'happy', ${picked.cover_image}
                 FROM minted m
                 ON CONFLICT (idempotency_key) DO NOTHING
             )
@@ -309,16 +369,76 @@ export async function maybeDiscover(
         };
     }
 
+    if (category === 'memorabilia') {
+        // Weighted pick within the category, same cumulative walk the food branch uses
+        // below - just reading an explicit config weight instead of inverting a price,
+        // because memorabilia is never sold and has no price to invert.
+        const weights = memorabiliaSkus.map((r) => r.weight);
+        let pickRoll = Math.random() * weights.reduce((a, b) => a + b, 0);
+        let picked = memorabiliaSkus[memorabiliaSkus.length - 1];
+        for (let i = 0; i < memorabiliaSkus.length; i++) {
+            pickRoll -= weights[i];
+            if (pickRoll < 0) {
+                picked = memorabiliaSkus[i];
+                break;
+            }
+        }
+        const message = `Look what I dragged back — a ${picked.name}! No idea whose it was. It's ours now.`;
+        const notificationKey = `discovery:${pet.id}:${windowScope}`;
+        // The food branch's statement shape exactly, NOT the collectible one: these
+        // stack, so there's no pool to decrement and no serial to allocate. The claim
+        // UPDATE is still the race guard and still resets the footprints, and the
+        // consumed window is still the idempotency for the quantity bump.
+        //
+        // The `WHERE item_type = 'memorabilia'` on the conflict target is MANDATORY,
+        // not decorative: inventory_items now carries two partial unique indexes over
+        // (user_id, catalog_key) - one for food, one for memorabilia - and a bare
+        // ON CONFLICT (user_id, catalog_key) cannot pick an arbiter between them.
+        const rows = await sql`
+            WITH claimed AS (
+                UPDATE pets
+                SET next_eligible_roll_at = NOW() + (${cooldownMinutes}::float8 * INTERVAL '1 minute'),
+                    places_since_find = '{}'
+                WHERE id = ${pet.id} AND user_id = ${userId}
+                  AND next_eligible_roll_at IS NOT NULL AND next_eligible_roll_at <= NOW()
+                  AND cardinality(places_since_find) >= ${minPlaces}::int
+                RETURNING id
+            ), granted AS (
+                INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
+                SELECT ${userId}, ${picked.key}, 'memorabilia', 1
+                FROM claimed
+                ON CONFLICT (user_id, catalog_key) WHERE item_type = 'memorabilia'
+                    DO UPDATE SET quantity = inventory_items.quantity + 1
+                RETURNING id
+            ), note AS (
+                INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood, art)
+                SELECT ${userId}, 'claimable', ${message}, 'pet', ${pet.id}::text, ${notificationKey}, 'happy', ${picked.image}
+                FROM claimed
+                ON CONFLICT (idempotency_key) DO NOTHING
+            )
+            SELECT EXISTS (SELECT 1 FROM claimed) AS claimed
+        `;
+        const claimed = Boolean((rows[0] as unknown as { claimed: boolean }).claimed);
+        return claimed ? { kind: 'found_memorabilia', catalogKey: picked.key, name: picked.name } : { kind: 'lost_race' };
+    }
+
     if (category === 'food') {
-        // Active food SKUs with live prices (shop.ts's join), weighted toward cheap:
-        // weight = (1/price)^exponent, so the catalog re-weights itself as SKUs come,
-        // go, or get repriced - no per-SKU map to maintain, and free finds skew away
-        // from undercutting the shop's expensive tier.
+        // The DROPPABLE food SKUs, weighted toward cheap: weight = (1/price)^exponent,
+        // so the pool re-weights itself as SKUs come, go, or get repriced - no per-SKU
+        // map to maintain.
+        //
+        // discovery_droppable is what splits the drop pool from the shop menu
+        // (add_discovery_foods.sql). The shop foods are flagged false, so a find never
+        // hands you something you could have bought two clicks away; the seven
+        // vendorless concession foods are flagged true and are the whole pool. For
+        // those, `price` is not a shelf price at all - nothing sells them - it is
+        // purely the rarity dial this weighting reads.
         const foodRows = (await sql`
             SELECT c.key, c.name, (r.config->>'amount')::int AS price
             FROM items_catalog c
             JOIN ember_rules r ON r.key = c.price_rule_key AND r.active = true
             WHERE c.active = true AND c.item_type = 'food'
+              AND (c.config->>'discovery_droppable')::boolean IS TRUE
               AND (c.available_from IS NULL OR c.available_from <= NOW())
               AND (c.available_until IS NULL OR c.available_until > NOW())
         `) as unknown as FoodSkuRow[];
@@ -359,8 +479,8 @@ export async function maybeDiscover(
                         DO UPDATE SET quantity = inventory_items.quantity + 1
                     RETURNING id
                 ), note AS (
-                    INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
-                    SELECT ${userId}, 'claimable', ${message}, 'pet', ${pet.id}::text, ${notificationKey}, 'happy'
+                    INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood, art)
+                    SELECT ${userId}, 'claimable', ${message}, 'pet', ${pet.id}::text, ${notificationKey}, 'happy', ${`food/${picked.key}.png`}
                     FROM claimed
                     ON CONFLICT (idempotency_key) DO NOTHING
                 )
@@ -369,9 +489,8 @@ export async function maybeDiscover(
             const claimed = Boolean((rows[0] as unknown as { claimed: boolean }).claimed);
             return claimed ? { kind: 'found_food', catalogKey: picked.key, name: picked.name } : { kind: 'lost_race' };
         }
-        // No purchasable food exists at all (catalog emptied) - degrade to ember
-        // rather than fail the roll.
-        category = 'ember';
+        // No droppable food exists at all (every SKU deactivated or un-flagged) -
+        // fall through to ember rather than fail the roll.
     }
 
     const result = await discoveryFindEmber(sql, {
@@ -382,6 +501,12 @@ export async function maybeDiscover(
         windowScope,
         buildMessage: (amount) =>
             `I was poking around while you were gone and dug up ${amount} Ember! Snuck it straight into the stash.`,
+        // The one sentinel value of notifications.art: there is no Ember image, so the
+        // widget answers it with the $$$ flourish over the pet's head instead of an
+        // <img> in the bubble. Passed from here rather than baked into
+        // discoveryFindEmber() - that function is a generic ledger primitive, and the
+        // presentation choice belongs to the caller that knows this was a pet find.
+        art: 'ember',
     });
     return result.claimed ? { kind: 'found_ember', amount: result.amount } : { kind: 'lost_race' };
 }

@@ -1,6 +1,6 @@
 // GET /api/inventory - the account's owned items with display metadata. Empty arrays for
-// a new account (a legitimate zero-state, not a 404). Three shapes, matching how the
-// three kinds are owned:
+// a new account (a legitimate zero-state, not a 404). Four shapes, matching how the
+// four kinds are owned:
 //   items        - stacked consumables (food) plus persistent equipment (declared type,
 //                  no shipped SKUs yet).
 //   eggs         - one entry PER OWNED EGG, newest-first. Eggs are never
@@ -12,6 +12,15 @@
 //                  stack): each row carries its serial_number, and the catalog config
 //                  supplies the display metadata (edition, mint size, cover art, the
 //                  match text inside the card).
+//   memorabilia  - stacked trinkets the pet digs up (add_memorabilia_items.sql). The
+//                  FOOD model, not the collectible one: no serial, no mint cap, just a
+//                  quantity - scarcity is the drop weight, not a supply ledger. Art
+//                  comes from config.image (the collectibles' cover_image contract), so
+//                  the client never derives a path from the key.
+//
+// Every shape carries `description` off config.description - the hover copy rendered by
+// components/ItemTooltip.tsx. One key name across all item types, so the tooltip needs
+// no per-type branch.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
@@ -21,9 +30,18 @@ interface InventoryRow {
     catalog_key: string;
     item_type: string;
     name: string;
+    config: Record<string, unknown>;
     quantity: number;
     is_equipped: boolean;
     slot: string | null;
+}
+
+interface MemorabiliaRow {
+    catalog_key: string;
+    name: string;
+    config: Record<string, unknown>;
+    quantity: number;
+    created_at: string;
 }
 
 interface EggRow {
@@ -52,7 +70,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(context.env);
     const rows = await sql`
-        SELECT i.catalog_key, i.item_type, c.name, i.quantity, i.is_equipped, i.slot
+        SELECT i.catalog_key, i.item_type, c.name, c.config, i.quantity, i.is_equipped, i.slot
         FROM inventory_items i
         JOIN items_catalog c ON c.key = i.catalog_key
         WHERE i.user_id = ${session.userId}
@@ -66,6 +84,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         quantity: r.quantity,
         isEquipped: r.is_equipped,
         slot: r.slot,
+        description: (r.config.description as string) ?? null,
     }));
 
     // Newest-first is the contract the inventory/incubator UI shuffles in. id DESC
@@ -85,6 +104,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         renderMode: (r.config.render_mode as string) ?? null,
         hue: (r.config.hue as number) ?? null,
         assetKey: (r.config.asset_key as string) ?? null,
+        description: (r.config.description as string) ?? null,
         acquiredAt: r.created_at,
     }));
 
@@ -106,8 +126,27 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         coverImage: (r.config.cover_image as string) ?? null,
         matchTitle: (r.config.match_title as string) ?? null,
         matchCaption: (r.config.match_caption as string) ?? null,
+        description: (r.config.description as string) ?? null,
         acquiredAt: r.created_at,
     }));
 
-    return jsonResponse({ items, eggs, collectibles }, { headers: authHeaders });
+    // Stacked like food, so one row per SKU with a quantity - created_at is when the
+    // stack STARTED, which is the honest "first found" date and what the tab shows.
+    const memorabiliaRows = await sql`
+        SELECT i.catalog_key, c.name, c.config, i.quantity, i.created_at
+        FROM inventory_items i
+        JOIN items_catalog c ON c.key = i.catalog_key
+        WHERE i.user_id = ${session.userId} AND i.item_type = 'memorabilia' AND i.quantity > 0
+        ORDER BY i.created_at DESC, i.catalog_key
+    `;
+    const memorabilia = (memorabiliaRows as unknown as MemorabiliaRow[]).map((r) => ({
+        catalogKey: r.catalog_key,
+        name: r.name,
+        quantity: r.quantity,
+        image: (r.config.image as string) ?? null,
+        description: (r.config.description as string) ?? null,
+        acquiredAt: r.created_at,
+    }));
+
+    return jsonResponse({ items, eggs, collectibles, memorabilia }, { headers: authHeaders });
 };

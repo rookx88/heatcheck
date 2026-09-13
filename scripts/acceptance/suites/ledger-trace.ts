@@ -113,6 +113,11 @@ async function cheapestActiveSku(itemType: 'egg' | 'food'): Promise<SkuInfo> {
          FROM items_catalog c
          JOIN ember_rules r ON r.key = c.price_rule_key AND r.active = true
          WHERE c.item_type = $1 AND c.active = true
+           -- Buyable, not merely active: the discovery-only concession foods
+           -- (add_discovery_foods.sql) have no config.vendor, price below every shop
+           -- food, and are rejected by /api/shop/buy. Mirrors the server's predicate;
+           -- same qual as scripts/acceptance/fixtures.ts.
+           AND (c.item_type <> 'food' OR c.config ? 'vendor')
            AND (c.available_from IS NULL OR c.available_from <= NOW())
            AND (c.available_until IS NULL OR c.available_until > NOW())
          ORDER BY (r.config->>'amount')::int ASC

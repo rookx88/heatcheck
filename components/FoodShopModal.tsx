@@ -10,6 +10,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { trackEvent } from '../tank-analytics-client';
+import ItemTooltip from './ItemTooltip';
 import { dispatchBalanceUpdated } from '../toolbar-state-client';
 import {
     getShopFood,
@@ -44,6 +45,8 @@ export const FoodShopModal: React.FC<FoodShopModalProps> = ({ title, vendor, onC
     // retries of that same intent (double-submit debits once), discarded on dismiss.
     const [confirming, setConfirming] = useState<{ catalogKey: string; token: string } | null>(null);
     const [buying, setBuying] = useState(false);
+    // At most one description tooltip open at a time (components/ItemTooltip.tsx).
+    const [openTip, setOpenTip] = useState<string | null>(null);
     const [buyError, setBuyError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
 
@@ -167,26 +170,37 @@ export const FoodShopModal: React.FC<FoodShopModalProps> = ({ title, vendor, onC
                     Ember: <strong>{balance ?? '—'}</strong>
                 </div>
                 <ul className="food-shop-list">
-                    {items.map((item) => {
+                    {items.map((item, i) => {
                         const owned = ownedByKey[item.catalogKey] ?? 0;
                         const isConfirming = confirming?.catalogKey === item.catalogKey;
                         return (
                             <li key={item.catalogKey} className="food-shop-item">
-                                <img
-                                    className="food-shop-thumb"
-                                    src={`/assets/images/food/${item.catalogKey}.png`}
-                                    alt=""
-                                    width={72}
-                                    height={72}
-                                    loading="lazy"
-                                />
-                                <div className="food-shop-info">
-                                    <div className="food-shop-name">{item.name}</div>
-                                    <div className="food-shop-meta">
-                                        {item.satisfactionPoints != null && <span>+{item.satisfactionPoints} satisfaction</span>}
-                                        {owned > 0 && <span className="food-shop-owned">Owned: {owned}</span>}
+                                {/* Trigger wraps the item's identity only - Buy stays
+                                    outside it, so on touch a tap to read about a dish
+                                    can't be confused with spending Ember on it. */}
+                                <ItemTooltip
+                                    description={item.description}
+                                    label={item.name}
+                                    below={i === 0}
+                                    open={openTip === item.catalogKey}
+                                    onToggle={(o) => setOpenTip(o ? item.catalogKey : null)}
+                                >
+                                    <img
+                                        className="food-shop-thumb"
+                                        src={`/assets/images/food/${item.catalogKey}.png`}
+                                        alt=""
+                                        width={72}
+                                        height={72}
+                                        loading="lazy"
+                                    />
+                                    <div className="food-shop-info">
+                                        <div className="food-shop-name">{item.name}</div>
+                                        <div className="food-shop-meta">
+                                            {item.satisfactionPoints != null && <span>+{item.satisfactionPoints} satisfaction</span>}
+                                            {owned > 0 && <span className="food-shop-owned">Owned: {owned}</span>}
+                                        </div>
                                     </div>
-                                </div>
+                                </ItemTooltip>
                                 <div className="food-shop-action">
                                     <div className="food-shop-price">{item.price} Ember</div>
                                     {!isConfirming ? (

@@ -28,6 +28,9 @@ export interface OwnedEgg {
     renderMode: string | null;
     hue: number | null;
     assetKey: string | null;
+    // A couple of sentences about the item, from items_catalog config.description.
+    // Rendered as a hover/tap tooltip (components/ItemTooltip.tsx); null = no tooltip.
+    description: string | null;
     acquiredAt: string;
 }
 
@@ -37,12 +40,26 @@ export interface ShopFood {
     price: number;
     satisfactionPoints: number | null;
     vendor: string | null;
+    description: string | null;
 }
 
 export interface OwnedFood {
     catalogKey: string;
     name: string;
     quantity: number;
+    description: string | null;
+}
+
+// One stack of sports memorabilia. The FOOD model, not the collectible one: these are
+// trinkets the pet digs up, so duplicates bump a quantity rather than minting a serial.
+// `image` is the catalog's own path (config.image) - never derived from the key.
+export interface OwnedMemorabilia {
+    catalogKey: string;
+    name: string;
+    quantity: number;
+    image: string | null; // subpath under /assets/images/
+    description: string | null;
+    acquiredAt: string;
 }
 
 // One owned serialized card - one row per copy (the egg model), never stacked. All
@@ -59,6 +76,7 @@ export interface OwnedCollectible {
     coverImage: string | null; // subpath under /assets/images/
     matchTitle: string | null;
     matchCaption: string | null;
+    description: string | null;
     acquiredAt: string;
 }
 
@@ -191,6 +209,14 @@ export async function getOwnedCollectibles(): Promise<OwnedCollectible[] | null>
     const data = await parseJsonSafe(res);
     if (!res.ok) throw new Error(data.message || `GET /api/inventory failed: ${res.status}`);
     return (data.collectibles ?? []) as OwnedCollectible[];
+}
+
+export async function getOwnedMemorabilia(): Promise<OwnedMemorabilia[] | null> {
+    const res = await fetch('/api/inventory');
+    if (res.status === 401 || res.status === 403) return null;
+    const data = await parseJsonSafe(res);
+    if (!res.ok) throw new Error(data.message || `GET /api/inventory failed: ${res.status}`);
+    return (data.memorabilia ?? []) as OwnedMemorabilia[];
 }
 
 export async function getEmberBalance(): Promise<number | null> {

@@ -97,6 +97,11 @@ assets/images/*
 !assets/images/pets/
 # Genesis Collection card cover art (components/CollectibleCard.tsx, inventory grid).
 !assets/images/collectibles/
+# Sports memorabilia art (item_type='memorabilia'; the path comes from the catalog's
+# config.image, same contract as the collectibles' config.cover_image). Built from the
+# new_items/ drop by scripts/import-item-art.ts - another manual one-off, so the output
+# must be committed or the Memorabilia tab renders nothing but names.
+!assets/images/memorabilia/
 # NPC portraits for the encounter stage (components/EncounterStage.tsx; the paths are
 # declared in lib/pages-functions/encounters/characters/*.ts). Built from the scene art
 # by scripts/make-character-art.ts, which - like optimize-landing-images.ts - is a

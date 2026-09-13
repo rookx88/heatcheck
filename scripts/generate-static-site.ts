@@ -199,8 +199,13 @@ const NEW_SITE_IMAGES = [
     // expression-*-src.png heads by scripts/make-pet-expressions.ts.
     'pets/mud_puppy_happy.png',
     'pets/mud_puppy_sad.png',
-    // Food-shop item art, one per items_catalog food key (FoodShopModal/FeedModal/
+    // Food item art, one per items_catalog food key (FoodShopModal/FeedModal/
     // PetInventoryModal build the URL as /assets/images/food/<catalog_key>.png).
+    // NOTE: verifyReferencedImages() below cannot check these - the URL is a
+    // template literal, and its regex stops at the `${`. This list is the ONLY
+    // thing standing between a new food SKU and a silent 404 in production.
+    // Built from new_items/ by scripts/import-item-art.ts.
+    // Stocked by the Tank Land shops:
     'food/food_banana_shake.png',
     'food/food_breakfast.png',
     'food/food_fresh_salad.png',
@@ -209,6 +214,28 @@ const NEW_SITE_IMAGES = [
     'food/food_stadium_dog.png',
     'food/food_worm_delicacy.png',
     'food/food_yogurt_parfait.png',
+    // Discovery-only (no config.vendor): the pet's find pool, never sold.
+    'food/food_caramel_popcorn.png',
+    'food/food_chicken_wings.png',
+    'food/food_cotton_candy.png',
+    'food/food_craft_beer.png',
+    'food/food_loaded_nachos.png',
+    'food/food_mint_julep.png',
+    'food/food_sampler_platter.png',
+    // Sports memorabilia (item_type='memorabilia'). Addressed by the catalog's
+    // config.image rather than by key - same contract as config.cover_image below.
+    'memorabilia/away_kit_soccer_cleats.png',
+    'memorabilia/broken_hockey_stick.png',
+    'memorabilia/broken_trophy.png',
+    'memorabilia/game_worn_football_cleats.png',
+    'memorabilia/game_worn_soccer_cleats.png',
+    'memorabilia/homerun_baseball.png',
+    'memorabilia/red_card.png',
+    'memorabilia/used_whistle.png',
+    'memorabilia/worn_basketball.png',
+    'memorabilia/worn_football.png',
+    'memorabilia/worn_soccer_ball.png',
+    'memorabilia/yellow_card.png',
     // Genesis Collection card cover art (items_catalog config.cover_image;
     // CollectibleCard + the inventory Collectibles grid build the URL as
     // /assets/images/<cover_image>).

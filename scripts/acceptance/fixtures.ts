@@ -634,6 +634,13 @@ export function sqlViaPoolTx(): NeonQueryFunction<false, false> {
 // deactivated/replaced), so a suite that hardcodes a SKU key silently starts testing a
 // 404 instead of a purchase the moment that key goes inactive - query for a real one
 // instead, exactly like suites/ledger-trace.ts already does for the same reason.
+//
+// BUYABLE, not merely active. Food splits two ways now: shop SKUs carry config.vendor,
+// while the discovery-only concession foods (add_discovery_foods.sql) are active and
+// feedable but stocked by nobody, and /api/shop/buy rejects them. They also price below
+// the cheapest shop food, so without the `config ? 'vendor'` qual below this helper
+// hands every purchase suite a SKU that 404s - which is a real product rule being
+// correctly enforced, not a bug in the suite. Mirrors the server's own predicate.
 // ---------------------------------------------------------------------------------
 
 export interface SkuInfo { catalogKey: string; priceRuleKey: string; price: number; config: Record<string, unknown> }
@@ -644,6 +651,7 @@ export async function cheapestActiveSku(itemType: 'egg' | 'food'): Promise<SkuIn
          FROM items_catalog c
          JOIN ember_rules r ON r.key = c.price_rule_key AND r.active = true
          WHERE c.item_type = $1 AND c.active = true
+           AND (c.item_type <> 'food' OR c.config ? 'vendor')
            AND (c.available_from IS NULL OR c.available_from <= NOW())
            AND (c.available_until IS NULL OR c.available_until > NOW())
          ORDER BY (r.config->>'amount')::int ASC
@@ -667,6 +675,7 @@ export async function secondActiveSku(itemType: 'egg' | 'food', excludeKey: stri
          FROM items_catalog c
          JOIN ember_rules r ON r.key = c.price_rule_key AND r.active = true
          WHERE c.item_type = $1 AND c.active = true AND c.key != $2
+           AND (c.item_type <> 'food' OR c.config ? 'vendor')
            AND (c.available_from IS NULL OR c.available_from <= NOW())
            AND (c.available_until IS NULL OR c.available_until > NOW())
          ORDER BY (r.config->>'amount')::int ASC

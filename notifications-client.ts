@@ -18,6 +18,14 @@ export interface NotificationItem {
     createdAt: string;
     // The face the pet pulls while the widget bubble speaks this row (null = normal).
     mood: 'happy' | 'sad' | null;
+    // What the bubble SHOWS while speaking this row (add_art_to_notifications.sql).
+    // Exactly two shapes, and the widget switches on the first:
+    //   'ember'   - the one sentinel: the currency. No image; the widget floats a $$$
+    //               chip over the pet's head and pops it.
+    //   <subpath> - anything else is a path under /assets/images/ (e.g.
+    //               'food/food_chicken_wings.png'), rendered as an <img> in the bubble.
+    //   null      - text only. The default, and what every non-find row carries.
+    art: string | null;
 }
 
 // Window events, mirroring PetNameForm's PET_UPDATED_EVENT idiom:

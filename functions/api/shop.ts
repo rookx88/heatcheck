@@ -32,6 +32,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         JOIN ember_rules r ON r.key = c.price_rule_key AND r.active = true
         WHERE c.active = true
           AND c.item_type IN ('egg', 'food')
+          -- A food with no config.vendor is stocked by no shop: it's a discovery-only
+          -- SKU (add_discovery_foods.sql), active and feedable but never for sale.
+          -- The vendor FILTER is client-side (egg-shop-client getShopFood), so without
+          -- this the seven concession foods would still be listed here with
+          -- vendor: null and be buyable by key. Eggs have no vendor and are unaffected.
+          AND (c.item_type <> 'food' OR c.config ? 'vendor')
           AND (c.available_from IS NULL OR c.available_from <= NOW())
           AND (c.available_until IS NULL OR c.available_until > NOW())
         ORDER BY c.item_type, price, c.name
@@ -50,6 +56,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         satisfactionPoints: (r.config.satisfaction_points as number) ?? null,
         // Food: which Tank Land shop stocks it ('quickboost' | 'champions').
         vendor: (r.config.vendor as string) ?? null,
+        // A couple of sentences about the item, shown as a hover/tap tooltip
+        // (components/ItemTooltip.tsx). Same config key on every item type.
+        description: (r.config.description as string) ?? null,
         availableUntil: r.available_until,
     }));
     return jsonResponse({ items }, { headers: authHeaders });

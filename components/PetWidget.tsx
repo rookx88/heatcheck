@@ -45,6 +45,12 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     // The notification currently being "spoken" in the pet's bubble.
     const [bubble, setBubble] = useState<NotificationItem | null>(null);
+    // A one-shot $$$ flourish over the pet's head, for an Ember find. Ember is the one
+    // thing a find can produce that has no item art (notifications.art === 'ember'), so
+    // instead of an image in the bubble it gets money floating up and popping. Keyed by
+    // notification id so replaying the same row restarts the animation rather than
+    // being swallowed as "already showing".
+    const [coins, setCoins] = useState<string | null>(null);
     // A line the EncounterStage asked the pet to say (NPC encounters). Takes precedence
     // over the notification bubble, hides the badge, and lifts the widget above the
     // stage's scrim (PetWidget.css .is-scripted). Tapping it advances the scene.
@@ -126,6 +132,7 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
         const oldest = unread[unread.length - 1];
         if (!oldest) return;
         setBubble(oldest);
+        setCoins(oldest.art === 'ember' ? oldest.id : null);
         // Mark read the moment it's shown (user decision). Optimistic; the write is
         // idempotent and chrome-quiet on failure.
         setNotifications((prev) =>
@@ -146,6 +153,16 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
         const img = new Image();
         img.src = PET_MOOD_IMAGE_SRC[nextMood];
     }, [nextMood]);
+
+    // Same trick for the item art the next "!" click will reveal: warm it now so the
+    // bubble opens with the thing already drawn, instead of a beat of empty box while
+    // the PNG lands. 'ember' is the sentinel, not a path - nothing to fetch.
+    const nextArt = unread[unread.length - 1]?.art ?? null;
+    useEffect(() => {
+        if (!nextArt || nextArt === 'ember') return;
+        const img = new Image();
+        img.src = `/assets/images/${nextArt}`;
+    }, [nextArt]);
 
     if (!pet) return null;
 
@@ -232,8 +249,40 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                         <span className="pet-widget__bubble-text">{scripted.text}</span>
                     </div>
                 )}
+                {coins && !scripted && (
+                    // The Ember flourish: a sibling of the pet in the same relative row
+                    // the "!" badge uses, never a child of .pet-widget__pet (that's a
+                    // button, and nesting inside it is invalid HTML).
+                    //
+                    // Unmount hangs off animationend rather than a timer so the element
+                    // leaves exactly when the keyframe finishes and the two can't drift.
+                    // The catch: under prefers-reduced-motion the animation is
+                    // suppressed and animationend NEVER FIRES - which would leave the
+                    // chip parked over the pet's head forever. PetWidget.css handles
+                    // that by giving the reduced-motion case a near-instant animation
+                    // instead of none, so the event still arrives and this still cleans
+                    // up. Don't "simplify" that rule to animation: none.
+                    <span
+                        className="pet-widget__coins"
+                        aria-hidden="true"
+                        onAnimationEnd={() => setCoins(null)}
+                    >
+                        $$$
+                    </span>
+                )}
                 {bubble && !scripted && (
                     <div className="pet-widget__bubble" role="status">
+                        {bubble.art && bubble.art !== 'ember' && (
+                            // What the pet found, so the bubble shows the thing rather
+                            // than only describing it. alt="" - the message already says
+                            // what it is, so a screen reader reading both would stutter.
+                            <img
+                                className="pet-widget__bubble-art"
+                                src={`/assets/images/${bubble.art}`}
+                                alt=""
+                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                        )}
                         <span className="pet-widget__bubble-text">{bubble.message}</span>
                         <button
                             type="button"

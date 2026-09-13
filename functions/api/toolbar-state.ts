@@ -43,6 +43,7 @@ interface NotificationRow {
     claimed_at: string | null;
     created_at: string;
     mood: 'happy' | 'sad' | null;
+    art: string | null;
 }
 
 // Same wire mapping as functions/api/notifications.ts.
@@ -57,6 +58,7 @@ function mapNotifications(rows: NotificationRow[]) {
         claimedAt: r.claimed_at,
         createdAt: r.created_at,
         mood: r.mood,
+        art: r.art,
     }));
 }
 
@@ -83,7 +85,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const balanceStatement = () =>
         sql`SELECT balance FROM ember_balances WHERE user_id = ${session.userId} LIMIT 1`;
     const notificationsStatement = () => sql`
-        SELECT id, type, message, ref_type, ref_id, read_at, claimed_at, created_at, mood
+        SELECT id, type, message, ref_type, ref_id, read_at, claimed_at, created_at, mood, art
         FROM notifications WHERE user_id = ${session.userId}
         ORDER BY created_at DESC
         LIMIT 100
@@ -114,7 +116,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     // ?place= goes through untouched: normalization and the allowlist are the module's.
     const placePath = new URL(context.request.url).searchParams.get('place');
     const outcome = await maybeDiscover(sql, { userId: session.userId, pet, feedingCfg, placePath });
-    const found = outcome.kind === 'found_ember' || outcome.kind === 'found_food' || outcome.kind === 'found_collectible';
+    // Every find kind, matched by prefix rather than listed: a new reward category
+    // (memorabilia was one) must not be able to ship with the re-read silently
+    // skipped, which would leave that drop invisible until the NEXT poll - rare
+    // enough to pass a casual test and confusing when it happens.
+    const found = outcome.kind.startsWith('found_');
 
     // Encounters: petless no-ops before any query, same as discovery.
     const encounters = await evaluateEncounters(sql, {

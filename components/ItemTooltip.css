@@ -1,0 +1,119 @@
+/* Item description tooltip (components/ItemTooltip.tsx). Styled as a small sibling of
+   the pet's speech bubble - white fill, hard black outline, tail pointing at the item -
+   so a description reads as the same world as the pet talking, without this file
+   depending on PetWidget.css (the shop and inventory modals never import it). */
+
+.item-tooltip {
+  /* The positioning context for the bubble. `contents` would collapse this box and
+     take the anchor with it, so it stays a real flex child that fills the row. */
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: inherit;
+  flex: 1;
+  min-width: 0;
+}
+
+/* The trigger wraps the item's identity (thumb + name) and must look like the row it
+   replaced - a button's default chrome, padding and centering would otherwise reflow
+   every list this lands in. */
+.item-tooltip__trigger {
+  appearance: none;
+  background: none;
+  border: 0;
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: help;
+  display: flex;
+  align-items: center;
+  /* Chains up to .item-tooltip's own `gap: inherit`, so the trigger reproduces
+     whichever row gap it landed in (0.7rem in the inventory, 0.8rem in the shops)
+     rather than pinning one and subtly reflowing the other. */
+  gap: inherit;
+  flex: 1;
+  min-width: 0;
+}
+
+.item-tooltip__trigger:focus-visible {
+  outline: 2px solid #2fe6d9;
+  outline-offset: 3px;
+  border-radius: 8px;
+}
+
+.item-tooltip__bubble {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 5;
+  width: max-content;
+  max-width: min(260px, 70vw);
+  padding: 0.6rem 0.7rem;
+  background: #ffffff;
+  color: #14202b;
+  border: 2.5px solid #000000;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 600;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  text-align: left;
+  /* The bubble sits over its own trigger; without this, crossing onto it fires
+     mouseleave and the thing flickers shut under the cursor. */
+  pointer-events: none;
+}
+
+/* Tail: a black triangle with a white one pulled up over it, the two-triangle trick
+   that gives an outlined bubble a seamless point (same construction as the pet's). */
+.item-tooltip__bubble::before,
+.item-tooltip__bubble::after {
+  content: '';
+  position: absolute;
+  border: 9px solid transparent;
+}
+
+.item-tooltip__bubble::before {
+  top: 100%;
+  left: 22px;
+  border-top-color: #000000;
+}
+
+.item-tooltip__bubble::after {
+  top: 100%;
+  left: 25px;
+  margin-top: -4px;
+  border: 6px solid transparent;
+  border-top-color: #ffffff;
+}
+
+/* Flipped for the first row in a scrolling list, which has no room above it. */
+.item-tooltip__bubble--below {
+  bottom: auto;
+  top: calc(100% + 10px);
+}
+
+.item-tooltip__bubble--below::before {
+  top: auto;
+  bottom: 100%;
+  border-top-color: transparent;
+  border-bottom-color: #000000;
+}
+
+.item-tooltip__bubble--below::after {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: -4px;
+  border-top-color: transparent;
+  border-bottom-color: #ffffff;
+}
+
+@media (max-width: 600px) {
+  .item-tooltip__bubble {
+    font-size: 0.78rem;
+    max-width: min(240px, 78vw);
+  }
+}

@@ -6,6 +6,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { petDisplayName } from './petRender';
 import { PetPortrait } from './PetPortrait';
+import ItemTooltip from './ItemTooltip';
 import {
     getPet,
     getOwnedFood,
@@ -34,6 +35,8 @@ export const FeedModal: React.FC<FeedModalProps> = ({ onClose, onPetChange }) =>
     const [feeding, setFeeding] = useState<string | null>(null); // catalogKey in flight
     const [notice, setNotice] = useState<string | null>(null);
     const [feedError, setFeedError] = useState<string | null>(null);
+    // At most one description tooltip open at a time (components/ItemTooltip.tsx).
+    const [openTip, setOpenTip] = useState<string | null>(null);
 
     const closeButtonRef = useRef<HTMLButtonElement>(null);
 
@@ -144,25 +147,36 @@ export const FeedModal: React.FC<FeedModalProps> = ({ onClose, onPetChange }) =>
                     </div>
                 ) : (
                     <ul className="food-shop-list">
-                        {food.map((item) => (
+                        {food.map((item, i) => (
                             <li key={item.catalogKey} className="food-shop-item">
-                                <img
-                                    className="food-shop-thumb"
-                                    src={`/assets/images/food/${item.catalogKey}.png`}
-                                    alt=""
-                                    width={72}
-                                    height={72}
-                                    loading="lazy"
-                                    // Retired SKUs (food_basic/premium) have no sticker art.
-                                    onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
-                                />
-                                <div className="food-shop-info">
-                                    <div className="food-shop-name">{item.name}</div>
-                                    <div className="food-shop-meta">
-                                        {pointsByKey[item.catalogKey] != null && <span>+{pointsByKey[item.catalogKey]} satisfaction</span>}
-                                        <span className="food-shop-owned">×{item.quantity}</span>
+                                {/* Trigger wraps the item's identity only - the Feed
+                                    button stays outside it, so on touch a tap to read
+                                    about a dish can't be confused with feeding it. */}
+                                <ItemTooltip
+                                    description={item.description}
+                                    label={item.name}
+                                    below={i === 0}
+                                    open={openTip === item.catalogKey}
+                                    onToggle={(o) => setOpenTip(o ? item.catalogKey : null)}
+                                >
+                                    <img
+                                        className="food-shop-thumb"
+                                        src={`/assets/images/food/${item.catalogKey}.png`}
+                                        alt=""
+                                        width={72}
+                                        height={72}
+                                        loading="lazy"
+                                        // Retired SKUs (food_basic/premium) have no sticker art.
+                                        onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
+                                    />
+                                    <div className="food-shop-info">
+                                        <div className="food-shop-name">{item.name}</div>
+                                        <div className="food-shop-meta">
+                                            {pointsByKey[item.catalogKey] != null && <span>+{pointsByKey[item.catalogKey]} satisfaction</span>}
+                                            <span className="food-shop-owned">×{item.quantity}</span>
+                                        </div>
                                     </div>
-                                </div>
+                                </ItemTooltip>
                                 <div className="food-shop-action">
                                     <button
                                         className="food-shop-buy"

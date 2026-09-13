@@ -584,6 +584,12 @@ export interface DiscoveryFindEmberInput {
     // The notification copy needs the rolled amount, and the amount is rolled here
     // (this file owns the discovery_find rule), so the caller passes a builder.
     buildMessage: (amount: number) => string;
+    // What the PetWidget bubble shows while it speaks the row (notifications.art -
+    // see add_art_to_notifications.sql). The caller supplies it because presentation
+    // is the caller's business, not this primitive's: discovery.ts passes the 'ember'
+    // sentinel, which the widget answers with a $$$ flourish over the pet's head.
+    // Omitted = NULL = a text-only bubble.
+    art?: string | null;
 }
 
 export interface DiscoveryFindEmberResult {
@@ -635,8 +641,8 @@ export async function discoveryFindEmber(
                     updated_at = NOW()
             RETURNING user_id
         ), note AS (
-            INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
-            SELECT ${input.userId}, 'claimable', ${message}, 'pet', ${input.petId}::text, ${notificationKey}, 'happy'
+            INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood, art)
+            SELECT ${input.userId}, 'claimable', ${message}, 'pet', ${input.petId}::text, ${notificationKey}, 'happy', ${input.art ?? null}
             FROM led
             ON CONFLICT (idempotency_key) DO NOTHING
         )

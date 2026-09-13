@@ -43,6 +43,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         WHERE key = ${catalogKey}
           AND active = true
           AND item_type IN ('egg', 'food')
+          -- Must mirror the same qual in functions/api/shop.ts: a vendorless food is
+          -- discovery-only and not for sale. The shop modals filter by vendor
+          -- client-side, so this is the half that actually enforces it - without it a
+          -- hand-rolled POST with a discovery-only catalogKey buys a SKU no shop
+          -- lists, which is exactly the client-asserted grant this file refuses.
+          AND (item_type <> 'food' OR config ? 'vendor')
           AND (available_from IS NULL OR available_from <= NOW())
           AND (available_until IS NULL OR available_until > NOW())
         LIMIT 1

@@ -37,12 +37,13 @@ async function insertPet(userId: string): Promise<string> {
 }
 
 // Every way this feature can have granted anything to a user, as one number.
-async function grantTotals(userId: string): Promise<{ ledgerRows: number; ledgerSum: number; foodUnits: number; cardRows: number; total: number }> {
+async function grantTotals(userId: string): Promise<{ ledgerRows: number; ledgerSum: number; foodUnits: number; memoUnits: number; cardRows: number; total: number }> {
     const { rows } = await pool.query(
         `SELECT
             (SELECT COUNT(*)::int FROM ember_ledger WHERE user_id = $1 AND rule_key = 'discovery_find') AS ledger_rows,
             (SELECT COALESCE(SUM(amount), 0)::int FROM ember_ledger WHERE user_id = $1 AND rule_key = 'discovery_find') AS ledger_sum,
             (SELECT COALESCE(SUM(quantity), 0)::int FROM inventory_items WHERE user_id = $1 AND item_type = 'food') AS food_units,
+            (SELECT COALESCE(SUM(quantity), 0)::int FROM inventory_items WHERE user_id = $1 AND item_type = 'memorabilia') AS memo_units,
             (SELECT COUNT(*)::int FROM inventory_items WHERE user_id = $1 AND item_type = 'collectible') AS card_rows`,
         [userId],
     );
@@ -51,8 +52,11 @@ async function grantTotals(userId: string): Promise<{ ledgerRows: number; ledger
         ledgerRows: r.ledger_rows,
         ledgerSum: r.ledger_sum,
         foodUnits: r.food_units,
+        memoUnits: r.memo_units,
         cardRows: r.card_rows,
-        total: r.ledger_rows + r.food_units + r.card_rows,
+        // Every category a roll can grant. Miss one here and "exactly one grant per
+        // roll" quietly becomes "sometimes zero", which reads as a lost race.
+        total: r.ledger_rows + r.food_units + r.memo_units + r.card_rows,
     };
 }
 
@@ -294,8 +298,12 @@ async function run() {
     const distEnd = await grantTotals(roller.userId);
     const emberRolls = distEnd.ledgerRows - distBase.ledgerRows;
     const foodRolls = distEnd.foodUnits - distBase.foodUnits;
+    const memoRolls = distEnd.memoUnits - distBase.memoUnits;
     const cardRolls = distEnd.cardRows - distBase.cardRows;
-    check(`every roll granted (${ROLLS} rolls -> ${emberRolls} ember + ${foodRolls} food + ${cardRolls} cards)`, emberRolls + foodRolls + cardRolls === ROLLS);
+    check(
+        `every roll granted (${ROLLS} rolls -> ${emberRolls} ember + ${foodRolls} food + ${memoRolls} memorabilia + ${cardRolls} cards)`,
+        emberRolls + foodRolls + memoRolls + cardRolls === ROLLS,
+    );
     const { rows: eligibleSkus } = await pool.query(
         `SELECT c.key FROM items_catalog c
          JOIN collectible_pools p ON p.catalog_key = c.key
@@ -348,18 +356,69 @@ async function run() {
     check('zero-mint pool is excluded from the eligible set', exhausted.length === 0);
     await pool.query(`DELETE FROM collectible_pools WHERE catalog_key = 'collectible_acceptance_test'`);
     await pool.query(`DELETE FROM items_catalog WHERE key = 'collectible_acceptance_test'`);
+    // Weight is (1/price)^exponent, so cheap SKUs must dominate the haul. The split
+    // point is the DROPPABLE pool's own median rather than a hardcoded number: the
+    // pool used to be the shop menu (where 20 sat mid-ladder) and is now the
+    // discovery-only foods, and the next repricing will move it again. A literal here
+    // decays silently - land every SKU on one side of it and the assertion either
+    // fails for no real reason or passes without testing anything.
+    const { rows: splitRows } = await pool.query(
+        `SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY (r.config->>'amount')::int) AS median
+         FROM items_catalog c
+         JOIN ember_rules r ON r.key = c.price_rule_key AND r.active = true
+         WHERE c.item_type = 'food' AND c.active = true
+           AND (c.config->>'discovery_droppable')::boolean IS TRUE`,
+    );
+    const split = Number(splitRows[0]?.median ?? 20);
     const { rows: foodDist } = await pool.query(
-        `SELECT (r.config->>'amount')::int <= 20 AS cheap, SUM(i.quantity)::int AS units
+        `SELECT (r.config->>'amount')::int <= $2 AS cheap, SUM(i.quantity)::int AS units
          FROM inventory_items i
          JOIN items_catalog c ON c.key = i.catalog_key
          JOIN ember_rules r ON r.key = c.price_rule_key AND r.active = true
          WHERE i.user_id = $1 AND i.item_type = 'food'
          GROUP BY 1`,
-        [roller.userId],
+        [roller.userId, split],
     );
     const cheapUnits = foodDist.find((r) => r.cheap === true)?.units ?? 0;
     const expensiveUnits = foodDist.find((r) => r.cheap === false)?.units ?? 0;
-    check(`food skews cheap (price<=20: ${cheapUnits} vs >20: ${expensiveUnits})`, cheapUnits > expensiveUnits);
+    check(`food skews cheap (price<=${split}: ${cheapUnits} vs >${split}: ${expensiveUnits})`, cheapUnits > expensiveUnits);
+
+    // The pool swap itself: a find must never hand over something a shop sells. This
+    // is the product promise (a find is not a coupon), and it is one predicate in
+    // discovery.ts away from silently regressing.
+    const { rows: shopLeak } = await pool.query(
+        `SELECT c.key FROM inventory_items i
+         JOIN items_catalog c ON c.key = i.catalog_key
+         WHERE i.user_id = $1 AND i.item_type = 'food' AND c.config ? 'vendor'`,
+        [roller.userId],
+    );
+    check(
+        `no find granted a shop-stocked food (${shopLeak.length} leaked)`,
+        shopLeak.length === 0,
+        shopLeak.map((r) => r.key).join(', '),
+    );
+
+    // Memorabilia stacks rather than minting rows - a second find of the same SKU must
+    // bump a quantity, not add a duplicate (the partial unique index is what enforces
+    // this, and a bare ON CONFLICT would have thrown instead).
+    const { rows: memoRows } = await pool.query(
+        `SELECT COUNT(*)::int AS rows, COUNT(DISTINCT catalog_key)::int AS distinct_keys
+         FROM inventory_items WHERE user_id = $1 AND item_type = 'memorabilia'`,
+        [roller.userId],
+    );
+    check(
+        `memorabilia stacks (${memoRows[0].rows} rows for ${memoRows[0].distinct_keys} distinct SKUs)`,
+        memoRows[0].rows === memoRows[0].distinct_keys,
+    );
+
+    // Every find carries bubble art: a path for the item kinds, the 'ember' sentinel
+    // for currency. A NULL here is a find whose bubble would open empty.
+    const { rows: artRows } = await pool.query(
+        `SELECT COUNT(*)::int AS missing FROM notifications
+         WHERE user_id = $1 AND idempotency_key LIKE 'discovery:%' AND art IS NULL`,
+        [roller.userId],
+    );
+    check(`every find notification carries art (${artRows[0].missing} missing)`, artRows[0].missing === 0);
     const { rows: amountBounds } = await pool.query(
         `SELECT MIN(amount)::int AS lo, MAX(amount)::int AS hi FROM ember_ledger WHERE user_id = $1 AND rule_key = 'discovery_find'`, [roller.userId]);
     check('all ember finds within configured 1-5', amountBounds[0].lo >= 1 && amountBounds[0].hi <= 5, JSON.stringify(amountBounds[0]));
