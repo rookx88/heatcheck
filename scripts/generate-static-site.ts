@@ -236,6 +236,14 @@ const NEW_SITE_IMAGES = [
     'memorabilia/worn_football.png',
     'memorabilia/worn_soccer_ball.png',
     'memorabilia/yellow_card.png',
+    // Whitelist passes: catalogued and droppable, but discovery_weight 0 until
+    // someone turns them on. The art ships now so switching them on is a config
+    // change, not a deploy.
+    'memorabilia/gm_whitelist_gold.png',
+    'memorabilia/gm_whitelist_silver.png',
+    // The one egg sprite, tinted per SKU by components/eggRender.ts (EGG_IMAGE_SRC
+    // is a literal, so verifyReferencedImages below DOES police this one).
+    'eggs/axo_pet_egg.png',
     // Genesis Collection card cover art (items_catalog config.cover_image;
     // CollectibleCard + the inventory Collectibles grid build the URL as
     // /assets/images/<cover_image>).

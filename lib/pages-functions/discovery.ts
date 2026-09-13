@@ -268,6 +268,14 @@ export async function maybeDiscover(
     // same zero-if-empty treatment as collectibles - no pool to check, because these
     // stack and have no mint cap, so the only way the category empties is an operator
     // deactivating every SKU.
+    //
+    // discovery_weight > 0 is excluded HERE, in the query, and that placement is the
+    // point: weight 0 means "catalogued, art shipped, not obtainable yet" (the
+    // whitelist passes), and it has to be an exact off, not a very small chance. The
+    // weighted walk below falls back to its last row when the accumulator doesn't go
+    // negative - which floating-point summation permits - so a 0-weight SKU left in
+    // the list could be picked, rarely and unrepeatably. Filtering first makes that
+    // unreachable instead of unlikely. Turning one on is a weight change, no deploy.
     const memorabiliaSkus = (await sql`
         SELECT c.key, c.name,
                COALESCE((c.config->>'discovery_weight')::int, 1) AS weight,
@@ -275,6 +283,7 @@ export async function maybeDiscover(
         FROM items_catalog c
         WHERE c.item_type = 'memorabilia' AND c.active = true
           AND (c.config->>'discovery_droppable')::boolean IS TRUE
+          AND COALESCE((c.config->>'discovery_weight')::int, 1) > 0
           AND (c.available_from IS NULL OR c.available_from <= NOW())
           AND (c.available_until IS NULL OR c.available_until > NOW())
     `) as unknown as MemorabiliaSkuRow[];

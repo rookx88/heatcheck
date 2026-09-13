@@ -20,12 +20,24 @@
   border-radius: 12px;
 }
 
-.pet-inv-egg-dot {
+/* The egg's shell art. Sized to match .pet-inv-thumb so the Eggs tab and the Food /
+   Memorabilia tabs share one row rhythm - before this the egg was a 26x32 CSS blob and
+   its rows sat visibly shorter than every other tab's. */
+.pet-inv-egg-thumb {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* Only applied by the <img> onError handler: the art didn't load, so the element is
+   re-dressed as the flat colour blob it replaced (the inline backgroundColor carries
+   the colourway). Never used on the happy path. */
+.pet-inv-egg-thumb--fallback {
   width: 26px;
   height: 32px;
   border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
   border: 2px solid rgba(255, 255, 255, 0.7);
-  flex-shrink: 0;
 }
 
 .pet-inv-thumb {

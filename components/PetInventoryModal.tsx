@@ -7,6 +7,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { colorwayFromCatalog } from './Egg3D';
+import { EGG_IMAGE_SRC, eggImageFilter } from './eggRender';
 import CollectibleCard from './CollectibleCard';
 import ItemTooltip from './ItemTooltip';
 import {
@@ -112,10 +113,26 @@ export const PetInventoryModal: React.FC<PetInventoryModalProps> = ({ onClose })
                             open={openTip === egg.id}
                             onToggle={(o) => setOpenTip(o ? egg.id : null)}
                         >
-                            <span
-                                className="pet-inv-egg-dot"
-                                style={{ backgroundColor: colorwayFromCatalog(egg).hex }}
-                                aria-hidden="true"
+                            {/* The real shell art, hue-rotated to this SKU's colour
+                                (components/eggRender.ts) - one sprite for every
+                                colourway, same mechanism as the pet body. */}
+                            <img
+                                className="pet-inv-egg-thumb"
+                                src={EGG_IMAGE_SRC}
+                                style={{ filter: eggImageFilter(egg) }}
+                                alt=""
+                                width={48}
+                                height={48}
+                                loading="lazy"
+                                // If the sprite ever fails to load, fall back to the
+                                // flat colour blob this replaced rather than a gap:
+                                // the row still reads as "an egg, this colour".
+                                onError={(e) => {
+                                    const el = e.target as HTMLImageElement;
+                                    el.classList.add('pet-inv-egg-thumb--fallback');
+                                    el.style.filter = '';
+                                    el.style.backgroundColor = colorwayFromCatalog(egg).hex;
+                                }}
                             />
                             <span className="pet-inv-name">{egg.name}</span>
                         </ItemTooltip>

@@ -95,6 +95,18 @@ const JOBS: Job[] = [
     { source: 'red_card.png', out: 'memorabilia/red_card.png' },
     { source: 'yellow_card.png', out: 'memorabilia/yellow_card.png' },
     { source: 'used_whistle.png', out: 'memorabilia/used_whistle.png' },
+
+    // --- Whitelist passes. In the catalog and flagged droppable, but carrying
+    // discovery_weight 0, so they cannot be rolled until someone picks a real
+    // weight (add_whitelist_items.sql).
+    { source: 'GM_whitelist_gold.png', out: 'memorabilia/gm_whitelist_gold.png' },
+    { source: 'GM_whitelist_silver.png', out: 'memorabilia/gm_whitelist_silver.png' },
+
+    // --- The egg the inventory draws for every owned egg, tinted per SKU by
+    // components/eggRender.ts. ONE piece of art for every colourway: the shell is
+    // peach (~28deg) and a CSS hue-rotate carries it to the catalog's absolute hue,
+    // exactly how the pet body works (components/petRender.ts).
+    { source: 'axo_pet_egg.png', out: 'eggs/axo_pet_egg.png' },
 ];
 
 const transparent = { r: 0, g: 0, b: 0, alpha: 0 };
@@ -154,8 +166,14 @@ async function main(): Promise<void> {
         // `contain` on a transparent background: never crop the item, never
         // letterbox it onto a colour. Square output keeps every thumb's
         // object-fit:contain box predictable.
+        //
+        // withoutEnlargement: a source SMALLER than OUT_SIZE is left at its own
+        // size rather than upscaled into a blurrier file. Not every drop is
+        // 1024px - the whitelist passes and the egg arrived at 200px - and
+        // blowing those up to 256 would cost sharpness and bytes for nothing,
+        // since 200px is still ~4x the largest thumbnail that shows them.
         const output = await sharp(input)
-            .resize(OUT_SIZE, OUT_SIZE, { fit: 'contain', background: transparent })
+            .resize(OUT_SIZE, OUT_SIZE, { fit: 'contain', background: transparent, withoutEnlargement: true })
             .png({ compressionLevel: 9 })
             .toBuffer();
 

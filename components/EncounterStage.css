@@ -270,7 +270,9 @@
   background: rgba(47, 230, 217, 0.1);
 }
 
-/* The .pet-inv-egg-dot silhouette: eggs have no artwork to show. */
+/* An egg silhouette, kept as CSS here. The inventory now draws real shell art
+   (components/eggRender.ts) - this reward chip could too, but the two never appear
+   together and the chip has no catalog row to read a hue from. */
 .encounter-stage__reward-art--egg {
   width: 30px;
   height: 38px;

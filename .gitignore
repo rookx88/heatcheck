@@ -102,6 +102,10 @@ assets/images/*
 # new_items/ drop by scripts/import-item-art.ts - another manual one-off, so the output
 # must be committed or the Memorabilia tab renders nothing but names.
 !assets/images/memorabilia/
+# The egg sprite the inventory draws for every owned egg - one shell, hue-rotated per
+# SKU by components/eggRender.ts. Same manual-one-off rule as the art above: untracked
+# means every egg row renders an empty box.
+!assets/images/eggs/
 # NPC portraits for the encounter stage (components/EncounterStage.tsx; the paths are
 # declared in lib/pages-functions/encounters/characters/*.ts). Built from the scene art
 # by scripts/make-character-art.ts, which - like optimize-landing-images.ts - is a
