@@ -71,10 +71,19 @@ const EXPRESSIONS: Expression[] = [
         // chin let the base's throat shading bleed through and read as a double
         // jaw). The base is cut two rows lower than for happy so none of its own
         // chin outline peeks past the narrower sad jaw.
-        crop: { left: 372, top: 13, width: 275, height: 280 },
-        // Chin centred over the base neck (~48px right of where the source drew
-        // it; the face ends up a hair off the body's axis, which reads as the slump).
-        place: { left: 418, top: 63 },
+        // Crop is the source head's full alpha bounds (x 372..647, y 12..293) plus
+        // a row of margin; the stray speck sits at x~796, well outside it.
+        crop: { left: 371, top: 11, width: 278, height: 284 },
+        // Registered against the base head by alpha overlap, same as happy: this is
+        // the translation that best fits the base silhouette (IoU 0.90 - not 0.97
+        // like happy, because the pose really is drooped), nudged 3px lower so the
+        // head fully covers the base's flat cut row. An earlier hand-tune sat 23px
+        // right and 3px high of this, which slid the whole head off the body's axis
+        // and left the chin sitting on the collarbone with no neck under it - the
+        // head read as pasted on rather than attached. Keep any future nudge inside
+        // a couple of px of this registration; the slump has to come from the drawn
+        // face, not from displacing the head.
+        place: { left: 394, top: 71 },
         neckY: 317,
         featherFrom: 1,
     },
