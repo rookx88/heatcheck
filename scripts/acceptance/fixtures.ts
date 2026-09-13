@@ -156,6 +156,26 @@ export async function seedLifetimeEarned(userId: string, amount: number, note = 
     );
 }
 
+// NPC encounters fire off ORDINARY progress - a first pick, three feeds, earned Ember
+// crossing a threshold - and they hand over food and Ember when they do. That means any
+// suite which generates progress will trip them and then count their grants as its own:
+// a 150-roll discovery run earns past Beaks's threshold partway through and gets handed
+// a ribeye, so "every roll granted" sees 151 items from 150 rolls. Park every registry
+// encounter as already-seen for a fixture account whose totals must stay attributable to
+// the feature under test. (suites/encounters.ts parks only the two that would interfere
+// with the arc IT drives - it needs the rest live.)
+export async function parkAllEncounters(userId: string): Promise<void> {
+    const { ENCOUNTERS } = await import('../../lib/pages-functions/encounters');
+    for (const e of ENCOUNTERS) {
+        await pool.query(
+            `INSERT INTO encounters (user_id, encounter_key, character_key, status, seen_at)
+             VALUES ($1, $2, $3, 'seen', NOW())
+             ON CONFLICT (user_id, encounter_key) DO NOTHING`,
+            [userId, e.key, e.character],
+        );
+    }
+}
+
 export async function ledgerTotals(userId: string): Promise<LedgerTotals> {
     const { rows } = await pool.query(
         `SELECT

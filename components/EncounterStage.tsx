@@ -4,7 +4,8 @@
 // granted whatever it grants; this is purely the scene).
 //
 // Staging: a scrim dims the page (z 1600 - above the widget's resting 1500, below the
-// modals' 2000); the character sits in a portrait frame on the left with a
+// modals' 2000); the character stands on the left as a transparent full-body sprite
+// (same treatment as the pet - drop shadow, ground ellipse, no frame) with a
 // left-tailed bubble for HIS lines; the PET's lines go out over ENCOUNTER_STEP_EVENT
 // and the PetWidget speaks them in its own bubble with its own face (and lifts itself
 // above the scrim while it does - PetWidget.css .is-scripted). Tap anywhere (scrim,
@@ -21,8 +22,8 @@ import { getToolbarState } from '../toolbar-state-client';
 import { PET_UPDATED_EVENT } from './PetNameForm';
 import { NOTIFICATIONS_UPDATED_EVENT, dispatchNotificationsUpdated } from '../notifications-client';
 import { ENCOUNTER_ADVANCE_EVENT, dispatchEncounterStep, markEncounterSeen } from '../encounters-client';
-import { CHARACTERS } from '../lib/pages-functions/encounters';
-import type { EncounterView } from '../lib/pages-functions/encounters/types';
+import { CHARACTERS, portraitSrc } from '../lib/pages-functions/encounters';
+import type { EncounterView, Expression } from '../lib/pages-functions/encounters/types';
 import { petDisplayName } from './petRender';
 // The character bubble reuses the widget's manga bubble text rule (and its font warm).
 import './PetWidget.css';
@@ -107,6 +108,20 @@ export const EncounterStage: React.FC<EncounterStageProps> = ({ variant = 'card'
         if (playing) nextRef.current?.focus();
     }, [playing, step]);
 
+    // Warm every face this scene will show, so a mid-scene expression change swaps
+    // instantly instead of blanking while the webp lands (the PetWidget mood-sprite
+    // idiom). ~25KB each and at most three per character.
+    useEffect(() => {
+        if (!playing || !encounter) return;
+        const character = CHARACTERS[encounter.character.key];
+        if (!character) return;
+        for (const s of encounter.dialogue) {
+            if (s.speaker !== 'character') continue;
+            const img = new Image();
+            img.src = portraitSrc(character, s.expression ?? 'main');
+        }
+    }, [playing, encounter]);
+
     const close = useCallback(() => {
         if (!encounter) return;
         const id = encounter.id;
@@ -152,6 +167,17 @@ export const EncounterStage: React.FC<EncounterStageProps> = ({ variant = 'card'
     const characterTurn = current?.speaker === 'character';
     const isLast = step + 1 >= encounter.dialogue.length;
 
+    // He keeps the face from his most recent line while the pet answers, rather than
+    // snapping back to neutral every other step.
+    let expression: Expression = 'main';
+    for (let i = step; i >= 0; i--) {
+        const s = encounter.dialogue[i];
+        if (s.speaker === 'character') {
+            expression = s.expression ?? 'main';
+            break;
+        }
+    }
+
     return (
         <>
             <div className="encounter-scrim" onClick={advance} aria-hidden="true" />
@@ -160,19 +186,21 @@ export const EncounterStage: React.FC<EncounterStageProps> = ({ variant = 'card'
                 role="dialog"
                 aria-label={`${encounter.character.name} is talking to ${petName}`}
             >
-                {characterTurn && current && (
-                    <div className="encounter-stage__bubble" onClick={advance}>
-                        <span className="pet-widget__bubble-text" aria-live="polite">
-                            {fillPetName(current.text, petName)}
-                        </span>
-                    </div>
-                )}
-                <div className="encounter-stage__frame" onClick={advance}>
-                    {character ? (
-                        <img className="encounter-stage__portrait" src={character.portrait.src} alt={character.portrait.alt} />
-                    ) : (
-                        <div className="encounter-stage__portrait encounter-stage__portrait--missing" aria-hidden="true" />
+                <div className="encounter-stage__row">
+                    {characterTurn && current && (
+                        <div className="encounter-stage__bubble" onClick={advance}>
+                            <span className="pet-widget__bubble-text" aria-live="polite">
+                                {fillPetName(current.text, petName)}
+                            </span>
+                        </div>
                     )}
+                    <div className="encounter-stage__sprite" onClick={advance}>
+                        {character ? (
+                            <img className="encounter-stage__portrait" src={portraitSrc(character, expression)} alt={character.alt} />
+                        ) : (
+                            <div className="encounter-stage__portrait encounter-stage__portrait--missing" aria-hidden="true" />
+                        )}
+                    </div>
                 </div>
                 <div className="encounter-stage__plate">
                     <span className="encounter-stage__name">{encounter.character.name}</span>

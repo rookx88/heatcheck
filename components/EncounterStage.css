@@ -3,6 +3,9 @@
    - --card: hugs the aspect-fit map card's bottom-left corner (the frame math from
      PetWidget.css with right -> left).
    - --fixed: viewport-fixed for scrolling pages.
+   The characters are transparent full-body sprites, same treatment as the pet: no
+   frame, no crop, a drop shadow and a ground ellipse so they stand in the scene
+   rather than sitting in a picture of one.
    Layering: scrim 1600 sits above the widget's resting 1500 and below the modals
    (2000); the stage is 1650; the widget lifts to 1700 while it speaks a scripted
    line (.pet-widget.is-scripted) so the pet stays bright and tappable. */
@@ -27,11 +30,11 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  /* The portrait frame's rendered height; width follows so the tall crop (the
-     seahorse is ~2.5x taller than wide) shows head and torso. One variable so the
-     bubble can aim its tail at the frame's centre at every size. */
+  /* The sprite's rendered box. The art is a 1000x1000 canvas with the figure
+     centred, so the box is SQUARE and --stage-w exists only to keep the bubble's
+     tail formula readable. One variable so the tail aims at the head at every size. */
   --stage-h: 170px;
-  --stage-w: calc(var(--stage-h) * 0.6);
+  --stage-w: var(--stage-h);
 }
 
 .encounter-stage--card {
@@ -45,18 +48,17 @@
   bottom: 12px;
 }
 
-/* Rounded portrait frame: the tank-modal palette (deep purple ground, teal glow)
-   with the manga bubble's black outline, so the crop reads as a framed guest
-   rather than a pasted rectangle. */
-.encounter-stage__frame {
+/* Anchor for the absolutely-positioned bubble, so its `bottom: 100%` measures the
+   SPRITE and not the sprite plus the nameplate and chip below it (the exact mirror
+   of .pet-widget__row). */
+.encounter-stage__row {
+  position: relative;
+}
+
+.encounter-stage__sprite {
   position: relative;
   width: var(--stage-w);
   height: var(--stage-h);
-  border-radius: 18px;
-  overflow: hidden;
-  border: 3px solid #000000;
-  background: linear-gradient(180deg, #160c27 0%, #0b0713 100%);
-  box-shadow: 0 0 0 3px rgba(47, 230, 217, 0.45), 0 14px 30px rgba(0, 0, 0, 0.6), 0 0 28px rgba(47, 230, 217, 0.25);
   cursor: pointer;
   animation: encounter-stage-in 0.35s cubic-bezier(0.22, 0.61, 0.36, 1);
 }
@@ -66,17 +68,36 @@
   to { opacity: 1; transform: translateX(0) scale(1); }
 }
 
+/* Grounding, copied from .pet-widget__pet::after: a soft ellipse under the feet so
+   the character stands in front of the scene instead of floating over it. */
+.encounter-stage__sprite::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 2px;
+  width: 60%;
+  height: 16px;
+  transform: translateX(-50%);
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0) 70%);
+  z-index: -1;
+  pointer-events: none;
+}
+
 .encounter-stage__portrait {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  /* Favour the head: the crop's face sits in its upper fifth. */
-  object-position: 50% 12%;
+  /* contain, never cover: these are whole figures on transparent canvases and a crop
+     would cut feet or head off depending on the character. */
+  object-fit: contain;
+  /* Same two-layer lift the pet gets (PetWidget.css .pet-portrait__img). */
+  filter: drop-shadow(0 10px 8px rgba(0, 0, 0, 0.5))
+          drop-shadow(0 0 16px rgba(47, 230, 217, 0.35));
 }
 
 .encounter-stage__portrait--missing {
   background: repeating-linear-gradient(45deg, #160c27 0 12px, #0b0713 12px 24px);
+  border-radius: 18px;
 }
 
 .encounter-stage__plate {
@@ -109,11 +130,14 @@
 }
 
 /* Character bubble: the widget's manga bubble with the tail on the LEFT, aimed at
-   the frame's centre (the tail apex is 51px in from the bubble's left edge:
-   ::before left 39px + 12px half-width). */
+   the head. Measured across all five sprites, the head centre sits between 47.4%
+   and 51.4% of the canvas width, so half the (square) box is the right target; the
+   tail apex is 51px in from the bubble's left edge (::before left 39px + 12px
+   half-width). The 8% vertical pull matches the tallest hair in the set - the pet's
+   own bubble uses 5% against its sprite for the same reason. */
 .encounter-stage__bubble {
   position: absolute;
-  bottom: calc(100% - 2.6rem);
+  bottom: calc(100% + 18px - var(--stage-h) * 0.08);
   left: max(0px, calc(var(--stage-w) * 0.5 - 51px));
   width: max-content;
   max-width: min(340px, 84vw);
@@ -184,12 +208,24 @@
     --stage-h: 350px;
   }
 
+  .encounter-stage--fixed .encounter-stage__sprite::after {
+    height: 34px;
+    bottom: 6px;
+  }
+
   .encounter-stage--card {
     --stage-h: 400px;
-    /* Mirror of the widget's desktop card placement: straddling the card's LEFT
-       edge near the bottom. */
-    left: max(8px, calc((100vw - min(100vw, min(56.25vh, 640px))) / 2 - 40px));
+    /* Mirror of the widget's desktop card placement: straddling the card's LEFT edge
+       near the bottom. The offset accounts for the now-square 400px sprite (it was
+       240px wide when the art was a tall crop), keeping roughly the same 200px of
+       overlap onto the map as before. */
+    left: max(8px, calc((100vw - min(100vw, min(56.25vh, 640px))) / 2 - 200px));
     bottom: max(14px, calc(100vh - min(100vh, calc(100vw / 0.5625)) + 14px));
+  }
+
+  .encounter-stage--card .encounter-stage__sprite::after {
+    height: 40px;
+    bottom: 8px;
   }
 
   .encounter-stage__name {
@@ -208,7 +244,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .encounter-scrim,
-  .encounter-stage__frame,
+  .encounter-stage__sprite,
   .encounter-stage__bubble {
     animation: none;
   }

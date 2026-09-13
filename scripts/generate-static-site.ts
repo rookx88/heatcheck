@@ -214,10 +214,24 @@ const NEW_SITE_IMAGES = [
     // /assets/images/<cover_image>).
     'collectibles/gold_plated_card.jpg',
     'collectibles/neon_og_card.jpg',
-    // NPC portraits for the encounter stage (components/EncounterStage.tsx; paths
-    // declared in lib/pages-functions/encounters/characters/*.ts). Built by
-    // scripts/make-character-art.ts.
-    'characters/beaks.webp',
+    // NPC portraits for the encounter stage (components/EncounterStage.tsx), one per
+    // character per expression - the sets are ragged on purpose (Blobby has no sad,
+    // Charles no happy, Vic only main). Paths are declared in
+    // lib/pages-functions/encounters/characters/*.ts and built from the tracked
+    // masters by scripts/make-character-art.ts, which is a manual one-off: these
+    // derived files must stay committed or a fresh Cloudflare build ships nothing.
+    'characters/beaks_main.webp',
+    'characters/beaks_happy.webp',
+    'characters/beaks_sad.webp',
+    'characters/blobby_main.webp',
+    'characters/blobby_happy.webp',
+    'characters/blobby_ecstatic.webp',
+    'characters/puffington_main.webp',
+    'characters/puffington_happy.webp',
+    'characters/puffington_sad.webp',
+    'characters/charles_main.webp',
+    'characters/charles_sad.webp',
+    'characters/vic_main.webp',
 ];
 
 // Videos follow the images' allowlist-copy model (assets/videos/ -> both output

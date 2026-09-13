@@ -5,27 +5,50 @@
 // game_config so the suite never has to earn 500 real Ember.
 
 import crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'node:url';
 import { pool, api, check, section, type Suite } from '../harness';
 import {
     createSessionUser, cleanupUsersByEmailPrefix, seedLifetimeEarned, ledgerTotals,
     flipConfig, restoreConfig, activeConfig, insertTank, cleanupTanksBySlugPrefix,
 } from '../fixtures';
-import { CHARACTERS, ENCOUNTERS, ENCOUNTER_BY_KEY } from '../../../lib/pages-functions/encounters';
+import { CHARACTERS, ENCOUNTERS, ENCOUNTER_BY_KEY, portraitSrc } from '../../../lib/pages-functions/encounters';
 import { triggerSatisfied, questComplete, placeMatches, type Facts, type QuestRow } from '../../../lib/pages-functions/encounters/evaluate';
 import { LIFETIME_EARNED_RULE_KEYS } from '../../../lib/pages-functions/ledger';
 
 const EMAIL_PREFIX = 'acceptance-encounters-';
 const TANK_SLUG_PREFIX = 'acceptance-encounters-';
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+
+// This suite drives the BEAKS arc end to end, and along the way it makes picks and
+// feeds a pet - which legitimately triggers Blobby (first pick) and Puffington (three
+// feeds) mid-run and would wreck every "exactly one/two encounters" count. Those two
+// are parked as already-seen for the test account (parkEarlyCharacters) and excluded
+// from encounterRows, so the arc under test runs alone. Their own trigger logic is
+// covered by the pure-rules section and the registry sanity section.
+const PARKED = ['blobby_intro', 'puffington_intro'];
 
 async function insertPet(userId: string): Promise<string> {
     const { rows } = await pool.query(`INSERT INTO pets (user_id, color) VALUES ($1, 'slate') RETURNING id`, [userId]);
     return rows[0].id as string;
 }
 
+async function parkEarlyCharacters(userId: string): Promise<void> {
+    await pool.query(
+        `INSERT INTO encounters (user_id, encounter_key, character_key, status, seen_at)
+         VALUES ($1, 'blobby_intro', 'blobby', 'seen', NOW()),
+                ($1, 'puffington_intro', 'puffington', 'seen', NOW())
+         ON CONFLICT (user_id, encounter_key) DO NOTHING`,
+        [userId],
+    );
+}
+
 async function encounterRows(userId: string) {
     const { rows } = await pool.query(
-        `SELECT id, encounter_key, character_key, status, grants FROM encounters WHERE user_id = $1 ORDER BY created_at`,
-        [userId],
+        `SELECT id, encounter_key, character_key, status, grants FROM encounters
+         WHERE user_id = $1 AND encounter_key <> ALL($2::text[]) ORDER BY created_at`,
+        [userId, PARKED],
     );
     return rows as Array<{ id: string; encounter_key: string; character_key: string; status: string; grants: Record<string, any> }>;
 }
@@ -89,9 +112,59 @@ async function run() {
             }
         }
     }
+    // --- Portraits: declared, allowlisted, and actually on disk ---
+    section('Portraits - every expression is a shipped, allowlisted, on-disk webp');
+    const EXPRESSIONS = ['main', 'happy', 'sad', 'ecstatic'];
+    // Parsed out of the build script rather than hardcoded, so art added to a
+    // character without being allowlisted trips HERE instead of in a Cloudflare build
+    // log (the source-read idiom from suites/security.ts).
+    const buildSrc = fs.readFileSync(path.join(REPO_ROOT, 'scripts/generate-static-site.ts'), 'utf8');
+    const allowlistBody = buildSrc.match(/const NEW_SITE_IMAGES = \[([\s\S]*?)\n\];/)?.[1] ?? '';
+    // Match only lines that are ENTIRELY one quoted entry. A bare /'([^']+)'/g over the
+    // block silently mis-pairs on the apostrophes inside the comments between entries
+    // ("heatchecks-logo.webp's lettering...") and finds a third of the real list.
+    const allowlisted = new Set(
+        allowlistBody.split(/\r?\n/)
+            .map((line) => line.match(/^\s*'([^']+)',?\s*$/)?.[1])
+            .filter((v): v is string => Boolean(v)),
+    );
+    check('NEW_SITE_IMAGES parsed out of generate-static-site.ts', allowlisted.size > 40, `${allowlisted.size} entries`);
     for (const c of Object.values(CHARACTERS)) {
-        check(`${c.key}: portrait src is a literal /assets/images/ path`, /^\/assets\/images\/[A-Za-z0-9._/-]+\.(webp|png|jpe?g|svg)$/.test(c.portrait.src), c.portrait.src);
+        check(`${c.key}: has a main portrait`, typeof c.portraits.main === 'string' && c.portraits.main.length > 0);
+        check(`${c.key}: has an alt description`, typeof c.alt === 'string' && c.alt.length > 10, c.alt);
+        for (const [exp, src] of Object.entries(c.portraits)) {
+            check(`${c.key}/${exp}: is a known expression`, EXPRESSIONS.includes(exp));
+            check(`${c.key}/${exp}: literal /assets/images/characters/*.webp`,
+                /^\/assets\/images\/characters\/[A-Za-z0-9._-]+\.webp$/.test(src as string), src as string);
+            const rel = (src as string).replace('/assets/images/', '');
+            check(`${c.key}/${exp}: '${rel}' is allowlisted in NEW_SITE_IMAGES`, allowlisted.has(rel), rel);
+            check(`${c.key}/${exp}: exists on disk`, fs.existsSync(path.join(REPO_ROOT, 'assets/images', rel)));
+        }
     }
+    // The pet's Mood and a character's Expression are separate vocabularies on
+    // purpose: Mood also names the pet's sprites and shares its values with
+    // notifications.mood's CHECK constraint. A step must never carry the other one's.
+    for (const e of ENCOUNTERS) {
+        const c = CHARACTERS[e.character];
+        if (!c) continue;
+        for (const [i, s] of e.dialogue.entries()) {
+            if (s.speaker === 'pet') {
+                check(`${e.key}[${i}]: pet step carries no character expression`, s.expression === undefined);
+                check(`${e.key}[${i}]: pet mood is happy|sad or absent`,
+                    s.mood === undefined || s.mood === 'happy' || s.mood === 'sad', String(s.mood));
+            } else {
+                check(`${e.key}[${i}]: character step carries no pet mood`, s.mood === undefined);
+                check(`${e.key}[${i}]: expression '${s.expression ?? 'main'}' resolves to a shipped webp`,
+                    portraitSrc(c, s.expression ?? 'main').endsWith('.webp'));
+            }
+        }
+    }
+    // The ragged sets: asking for a face a character does not own must fall back, not
+    // yield undefined and a broken <img>.
+    check('fallback: an expression a character lacks resolves to main',
+        portraitSrc(CHARACTERS.blobby, 'sad') === CHARACTERS.blobby.portraits.main
+        && portraitSrc(CHARACTERS.charles, 'happy') === CHARACTERS.charles.portraits.main
+        && portraitSrc(CHARACTERS.vic, 'ecstatic') === CHARACTERS.vic.portraits.main);
 
     // --- Pure rules ---
     section('Pure rules - triggerSatisfied / questComplete / placeMatches');
@@ -137,6 +210,7 @@ async function run() {
     try {
         // --- Fire ---
         section('Fire - threshold crossed: exactly one encounter, one grant, one quest, one notification, in the same response');
+        await parkEarlyCharacters(player.userId);
         await flipConfig('encounters', { beaks_intro_ember: 1 });
         await seedLifetimeEarned(player.userId, 1);
         const results = await Promise.all(Array.from({ length: 10 }, () => api('GET', '/api/toolbar-state', { cookie: player.cookie })));

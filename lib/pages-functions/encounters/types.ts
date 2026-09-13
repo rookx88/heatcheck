@@ -11,16 +11,31 @@
 // effects, one leg in the fire statement - the types here are the single source of
 // which kinds exist.
 
+// The PET's face while it speaks a line. Deliberately NOT the same type as a
+// character's Expression: this one also names the pet's mood sprites
+// (components/petRender.ts PET_MOOD_IMAGE_SRC) and shares its vocabulary with
+// notifications.mood, whose CHECK constraint allows only these two values. Widening
+// it would break both.
 export type Mood = 'happy' | 'sad';
+
+// A CHARACTER's face. Client-side only - it never reaches the database. Sets are
+// ragged on purpose (Blobby has no sad, Charles no happy, Vic only main), so always
+// resolve through portraitSrc(), which falls back to main.
+export type Expression = 'main' | 'happy' | 'sad' | 'ecstatic';
+
+export type CharacterPortraits = { main: string } & Partial<Record<Exclude<Expression, 'main'>, string>>;
 
 export interface Character {
     key: string;
     name: string;
     title: string;
-    // src MUST be a literal '/assets/images/...' string wherever it is defined: the
-    // static build scans shipped bundles for those literals to prove the art was
-    // copied (scripts/generate-static-site.ts verifyReferencedImages).
-    portrait: { src: string; alt: string; framed: true };
+    // EVERY value MUST be a literal '/assets/images/...' string: the static build
+    // scans shipped bundles for those literals to prove the art was copied
+    // (scripts/generate-static-site.ts verifyReferencedImages), and each one must
+    // also be listed in NEW_SITE_IMAGES. Built by scripts/make-character-art.ts.
+    portraits: CharacterPortraits;
+    // One description of who this is; the expression doesn't change it.
+    alt: string;
     // Tone notes for whoever writes this character's next lines. Docs, not data.
     voice?: string;
 }
@@ -56,9 +71,12 @@ export type Effect =
 export interface DialogueStep {
     speaker: 'character' | 'pet';
     text: string;
-    // Pet steps: the face the pet pulls (PetPortrait mood). Character steps: reserved
-    // for portrait variants.
+    // PET steps only: the face the pet pulls (PetPortrait mood).
     mood?: Mood;
+    // CHARACTER steps only: which portrait to show. Absent means 'main'. The stage
+    // holds the last character expression across the pet's turns, so a face set here
+    // stays up until the character says something else.
+    expression?: Expression;
 }
 
 export interface Encounter {

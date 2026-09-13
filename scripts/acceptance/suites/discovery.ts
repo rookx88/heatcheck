@@ -5,7 +5,7 @@
 // into the consolidated runner.
 
 import { pool, api, check, section, type Suite } from '../harness';
-import { createSessionUser, cleanupUsersByEmailPrefix, activeConfig, insertTank, cleanupTanksBySlugPrefix } from '../fixtures';
+import { createSessionUser, cleanupUsersByEmailPrefix, activeConfig, insertTank, cleanupTanksBySlugPrefix, parkAllEncounters } from '../fixtures';
 import { placeFromPath } from '../../../lib/pages-functions/discovery';
 
 const EMAIL_PREFIX = 'acceptance-discovery-';
@@ -100,6 +100,12 @@ async function run() {
     section('Initialization - NULL next_eligible_roll_at schedules without granting');
     const roller = await createSessionUser(`${EMAIL_PREFIX}roller@example.com`);
     const petId = await insertPet(roller.userId);
+    // The distribution loop below earns real Ember through discovery_find, which counts
+    // toward lifetime_earned and so crosses an NPC encounter threshold partway through -
+    // and that encounter hands over FOOD, which lands in this suite's own food tally and
+    // turns "150 rolls granted 150 items" into 151. Park the cast for this account so
+    // every grant counted here came from a roll.
+    await parkAllEncounters(roller.userId);
     await api('GET', '/api/toolbar-state', { cookie: roller.cookie });
     const initMins = await windowMinutes(petId);
     check('first check schedules into the long range (90-120m)', initMins > 88 && initMins <= 120.5, `got ${initMins.toFixed(1)}m`);
