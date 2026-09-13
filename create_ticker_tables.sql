@@ -55,7 +55,14 @@ CREATE TABLE IF NOT EXISTS ticker_tags (
     tagged_at     TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     calculated_at TIMESTAMP WITH TIME ZONE,      -- NULL until the settle event fires
     retroactive   BOOLEAN NOT NULL DEFAULT false,
-    UNIQUE (tank_id, ticker_key)
+    -- PER SIDE, not per ticker (widened 2026-09-13, migrate_ticker_tags_per_side.sql).
+    -- One ticker can legitimately want both sides of one market: $CHALK's rule is
+    -- `p >= 0.5`, so an exact pick'em ([0.5, 0.5]) has two favorites, and a 3-way
+    -- moneyline can put two or three sides under $DOGS. Those pairs cancel by
+    -- construction, which is the point; the old (tank_id, ticker_key) unique silently
+    -- dropped every side past the first and turned the cancelling pair into a one-sided
+    -- bet.
+    UNIQUE (tank_id, ticker_key, relevant_side)
 );
 
 -- Append-only. Never updated or deleted. This table IS the chart data source.

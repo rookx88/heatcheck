@@ -109,11 +109,23 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         return reject(422, 'ineligible', `${ticker.display_name} ${eligibility.reason}`, { snapshotProb: sideProb });
     }
 
-    // Friendly pre-check; the UNIQUE (tank_id, ticker_key) constraint is the real
-    // guarantee - a concurrent double-POST loses on the insert below and also maps to 409.
-    const existing = await sql`SELECT 1 FROM ticker_tags WHERE tank_id = ${tank.id} AND ticker_key = ${tickerKey} LIMIT 1`;
+    // Friendly pre-check; the UNIQUE (tank_id, ticker_key, relevant_side) constraint is
+    // the real guarantee - a concurrent double-POST loses on the insert below and also
+    // maps to 409.
+    //
+    // Scoped to relevant_side, matching that constraint (widened 2026-09-13,
+    // migrate_ticker_tags_per_side.sql). One ticker legitimately wants both sides of one
+    // market whenever its rule matches both: $CHALK is `p >= 0.5`, so an exact pick'em
+    // has two favorites, and a 3-way moneyline can put several sides under $DOGS. Those
+    // pairs cancel by construction. While this check ignored the side, side 0's row made
+    // side 1's identical-but-for-side request a 409 - which the publish-time tagger logs
+    // as a benign skip, so $CHALK quietly held a one-sided bet on every pick'em.
+    const existing = await sql`
+        SELECT 1 FROM ticker_tags
+        WHERE tank_id = ${tank.id} AND ticker_key = ${tickerKey} AND relevant_side = ${relevantSide}
+        LIMIT 1`;
     if (existing.length > 0) {
-        return reject(409, 'already_tagged', `This Tank is already tagged to ${ticker.display_name}.`);
+        return reject(409, 'already_tagged', `This Tank's side ${relevantSide} is already tagged to ${ticker.display_name}.`);
     }
 
     let tagDelta;
@@ -152,7 +164,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         });
     } catch (err) {
         if ((err as { code?: string })?.code === '23505') {
-            return reject(409, 'already_tagged', `This Tank is already tagged to ${ticker.display_name}.`);
+            return reject(409, 'already_tagged', `This Tank's side ${relevantSide} is already tagged to ${ticker.display_name}.`);
         }
         throw err;
     }

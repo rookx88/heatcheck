@@ -227,10 +227,18 @@ async function tagPublishedTankOnTickers(slug: string, gameSnapshot: any): Promi
         if (lower === 'no') return side === 1 ? 'under' : null;
         return null;
     };
+    // STRICT, matching tickers.ts's isMarketFavorite/isMarketUnderdog: a market with no
+    // single shortest price has no favorite, and one with no single longest price has no
+    // underdog. These used to break ties by index, which on a true pick'em ([0.5, 0.5])
+    // made side 0 satisfy BOTH - so this mirror asked for side 0 as its league's favorite
+    // AND its underdog, pushing e.g. $MLBCHALK and $MLBDOGS the same way. tickers.ts was
+    // fixed for exactly that; this copy was not, and pick'ems are the one case that fires
+    // the drift. The endpoint re-validates and 422s both requests, so no wrong tag ever
+    // landed - the cost was two wasted round-trips and a misleading warning per pick'em.
     const isMarketFavorite = (side: number): boolean =>
-        probs.every((q, i) => i === side || q < probs[side] || (q === probs[side] && i > side));
+        probs.every((q, i) => i === side || q < probs[side]);
     const isMarketUnderdog = (side: number): boolean =>
-        probs.every((q, i) => i === side || q > probs[side] || (q === probs[side] && i > side));
+        probs.every((q, i) => i === side || q > probs[side]);
     const sideEligible = (ruleType: string, side: number): boolean => {
         const p = probs[side];
         if (ruleType === 'underdog') return p < 0.5;

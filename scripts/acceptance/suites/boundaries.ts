@@ -7,6 +7,8 @@
 //   2. Hungry/Satisfied == 40       - lib/pages-functions/pets.ts's petState()
 //   3. Daily pick cap (env-driven)  - functions/api/picks.ts + functions/api/picks/today.ts
 //   4. $DOGS/$CHALK pivot == 0.5    - lib/pages-functions/tickers.ts's DOGS_CHALK_PIVOT
+//      (incl. the pick'em case the pivot implies: at exactly 0.5 BOTH sides are favorites,
+//       so $CHALK must be able to hold both - per-side ticker_tags uniqueness)
 //   5. $LOCKS == locks_min_prob     - tickers.ts's checkEligibility('heavy_favorite')
 //   6. $MOONSHOT == moonshot_max_prob - tickers.ts's checkEligibility('longshot')
 //   7. Ticker tag delta cap         - tickers.ts's fetchTagDelta() clamp + capped flag
@@ -232,6 +234,65 @@ async function run(): Promise<void> {
         check('ABOVE 0.5 (0.501) - chalk -> 201 accepted', chalkAbove.status === 201, JSON.stringify(chalkAbove.json));
         const dogsAbove = await tag('dogs', 0.501);
         check('ABOVE 0.5 (0.501) - dogs -> 422 ineligible', dogsAbove.status === 422 && dogsAbove.json?.code === 'ineligible', JSON.stringify(dogsAbove.json));
+
+        // The consequence of accept-at-or-above that the checks above do not reach: on an
+        // exact pick'em, BOTH sides clear `p >= 0.5`, so both belong on $CHALK. One ticker
+        // holding two sides of one market is the design working - their tag deltas are
+        // mirror images and their settle deltas are +(1-p) and -p, exactly +/-5 at p=0.5 -
+        // so a pick'em nets ~0 instead of becoming a coin flip on the index.
+        //
+        // This was NOT the behaviour until 2026-09-13: ticker_tags was unique on
+        // (tank_id, ticker_key) with no side, so side 0's row blocked side 1's, which came
+        // back 409 and was logged as a benign skip by the publish-time tagger. Every one of
+        // the nine pick'ems published before the fix held a one-sided bet on $CHALK. Both
+        // halves are asserted here - side 1 accepted, and the SAME side still rejected - so
+        // neither a narrowed constraint nor a dropped one can regress unnoticed.
+        // See migrate_ticker_tags_per_side.sql.
+        const pickem = boundSlug('pivot-pickem');
+        await insertTank({ slug: pickem, marketId: markets.live.id, outcomes: markets.live.outcomes, outcomePrices: [0.5, 0.5] });
+        const pickemSide0 = await tagPost({ slug: pickem, tickerKey: 'chalk', relevantSide: 0 });
+        check('PICK\'EM [0.5, 0.5] - chalk on side 0 -> 201 accepted', pickemSide0.status === 201, JSON.stringify(pickemSide0.json));
+        const pickemSide1 = await tagPost({ slug: pickem, tickerKey: 'chalk', relevantSide: 1 });
+        check(
+            "PICK'EM [0.5, 0.5] - chalk on side 1 TOO -> 201 accepted (both sides are favorites; uniqueness is per side, so the pair cancels instead of betting)",
+            pickemSide1.status === 201,
+            JSON.stringify(pickemSide1.json),
+        );
+        const pickemRepeat = await tagPost({ slug: pickem, tickerKey: 'chalk', relevantSide: 0 });
+        check(
+            "PICK'EM [0.5, 0.5] - re-tagging chalk on side 0 -> 409 already_tagged (per-side uniqueness still holds)",
+            pickemRepeat.status === 409 && pickemRepeat.json?.code === 'already_tagged',
+            JSON.stringify(pickemRepeat.json),
+        );
+        const { rows: pickemRows } = await pool.query(
+            `SELECT relevant_side FROM ticker_tags tt JOIN tank_pages t ON t.id = tt.tank_id
+             WHERE t.slug = $1 AND tt.ticker_key = 'chalk' ORDER BY relevant_side`,
+            [pickem],
+        );
+        check(
+            "PICK'EM [0.5, 0.5] - exactly two chalk rows, one per side",
+            pickemRows.length === 2 && pickemRows[0].relevant_side === 0 && pickemRows[1].relevant_side === 1,
+            JSON.stringify(pickemRows),
+        );
+        const { rows: pickemEvents } = await pool.query(
+            `SELECT tt.relevant_side, e.delta FROM ticker_events e
+             JOIN ticker_tags tt ON tt.id = e.ticker_tag_id
+             JOIN tank_pages t ON t.id = e.tank_id
+             WHERE t.slug = $1 AND e.ticker_key = 'chalk' AND e.event_type = 'tag'
+             ORDER BY tt.relevant_side`,
+            [pickem],
+        );
+        // One tag event per side, each with its own side's real CLOB movement. Not asserting
+        // that the two deltas sum to zero: they should (the two tokens of a binary market
+        // are priced 1-p against each other, so the moves are mirror images), but that is
+        // fetchTagDelta's property against a LIVE market, not this fix's, and two
+        // independently-fetched histories can differ in point count. The structural half -
+        // two sides, two events - is what regresses if the constraint narrows again.
+        check(
+            "PICK'EM [0.5, 0.5] - one chalk tag event per side, both carrying a delta",
+            pickemEvents.length === 2 && pickemEvents.every((r: any) => r.delta !== null),
+            JSON.stringify(pickemEvents),
+        );
     }
 
     // =====================================================================================
