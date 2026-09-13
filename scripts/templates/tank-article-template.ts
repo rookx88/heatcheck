@@ -28,7 +28,15 @@ export interface TankPageRecord {
  * directly under the topbar - the plain-text header/body/cards below it are the
  * crawlable, no-JS fallback, same progressive-enhancement pattern as the Tank hub.
  */
-export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 'https://heatchecks.io'): string {
+export function generateTankArticlePage(
+    page: TankPageRecord,
+    baseUrl: string = 'https://heatchecks.io',
+    // Absolute URL of this article's own share card (scripts/generate-og-image.ts),
+    // rendered by the build. Optional because card generation is allowed to fail for a
+    // single row without costing the reader the page - renderHead then falls back to
+    // the site-wide world-map image, which is what every Tank article used to share.
+    ogImage?: string,
+): string {
     const { prop, game } = page.game_snapshot;
     const { seo, body, hook, cards, call } = page.model_output;
     // tagline is the one new field on TankArticle - already-published rows generated
@@ -69,6 +77,11 @@ export function generateTankArticlePage(page: TankPageRecord, baseUrl: string = 
         path: `/the-tank/articles/${page.slug}/`,
         baseUrl,
         ogType: 'article',
+        ogImage,
+        // Teams spelled out rather than the card's own "away @ home" shorthand, since
+        // this line is read aloud. Not built from prop.player: that field carries the
+        // matchup string itself on game-level markets, which would say the teams twice.
+        ogImageAlt: `${game.away} at ${game.home} - ${tagline}`,
         schemaOrg,
         articleMeta: {
             publishedTime,

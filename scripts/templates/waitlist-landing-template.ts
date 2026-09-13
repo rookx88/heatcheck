@@ -14,6 +14,11 @@ interface HeadOptions {
     baseUrl: string;
     schemaOrg?: any;
     ogType?: 'website' | 'article';
+    // Absolute URL of the image a crawler unfurls. Pages that have something specific
+    // to show (Tank articles pass their per-article card) override it; everything else
+    // falls back to the site-wide world-map art below.
+    ogImage?: string;
+    ogImageAlt?: string;
     articleMeta?: {
         publishedTime?: string;
         modifiedTime?: string;
@@ -25,7 +30,14 @@ export function renderHead(options: HeadOptions): string {
     const { title, description, path, baseUrl, schemaOrg, articleMeta } = options;
     const ogType = options.ogType || 'website';
     const url = `${baseUrl}${path}`;
-    const ogImage = `${baseUrl}/assets/images/og-share-world-map.jpg`;
+    // Every image reachable from here is 1200x630 - the world-map fallback and the
+    // generated per-article cards alike - so og:image:width/height below are safe to
+    // hardcode. Declaring them lets an unfurler commit to the wide-image layout before
+    // the file finishes downloading, instead of dropping to the small square card.
+    const ogImage = options.ogImage || `${baseUrl}/assets/images/og-share-world-map.jpg`;
+    // Generic by design: the fallback art is the site's world map, which isn't about
+    // any one page. Pages passing their own ogImage describe it in ogImageAlt.
+    const ogImageAlt = options.ogImageAlt || 'The HeatChecks world map';
     const schemaScript = schemaOrg
         ? `<script type="application/ld+json">\n${JSON.stringify(schemaOrg, null, 2)}\n</script>`
         : '';
@@ -57,6 +69,9 @@ export function renderHead(options: HeadOptions): string {
     <meta property="og:title" content="${escapeHtml(title)}">
     <meta property="og:description" content="${escapeHtml(description)}">
     <meta property="og:image" content="${escapeHtml(ogImage)}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="${escapeHtml(ogImageAlt)}">
     <meta property="og:url" content="${escapeHtml(url)}">
     <meta property="og:type" content="${ogType}">
     <meta property="og:site_name" content="HeatChecks">${articleMetaTags}
@@ -64,9 +79,12 @@ export function renderHead(options: HeadOptions): string {
     <link rel="icon" type="image/png" href="/assets/images/heatchecks-logo.png">
 
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@heatchecksio">
+    <meta name="twitter:creator" content="@heatchecksio">
     <meta name="twitter:title" content="${escapeHtml(title)}">
     <meta name="twitter:description" content="${escapeHtml(description)}">
     <meta name="twitter:image" content="${escapeHtml(ogImage)}">
+    <meta name="twitter:image:alt" content="${escapeHtml(ogImageAlt)}">
 
     ${schemaScript}
 
