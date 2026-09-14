@@ -27,6 +27,7 @@ import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { getActiveTickers, getTickerConfig } from '../../lib/pages-functions/tickers';
 import {
     MIN_SELECTION_VOLUME,
+    MIN_SELECTION_LIQUIDITY,
     positionsForGame,
     type PositionSpec,
     type SlateMarketRow,
@@ -66,8 +67,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const sql = getSql(context.env);
     const [cfg, tickers] = await Promise.all([getTickerConfig(sql), getActiveTickers(sql)]);
 
-    // Every open game-line market for games kicking off inside the window. The volume
+    // Every open game-line market for games kicking off inside the window. The selection
     // floor is applied here as well as in the selector so the payload stays small.
+    //
+    // THE FLOOR IS PER MARKET TYPE, and has to be. Moneylines and totals are gated on
+    // volume - the market's own vote for which line is the headline one. Spreads and
+    // both-teams-to-score carry real liquidity but frequently no volume at all (measured
+    // 2026-09-13: in a sampled NFL game nearly every spread market had volume NULL or 0
+    // while liquidity ran 12-920), so gating THEM on volume would silently drop both new
+    // market types on every game, forever. They gate on liquidity instead. Both floors
+    // live in index-slate.ts's SELECTION_POLICY so this predicate and the selector can
+    // never disagree about what qualifies.
     const rows = await sql`
         SELECT event_id, league, market_id, condition_id, market_type, question,
                market_line::float8 AS market_line,
@@ -76,12 +86,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                event_start_time, event_teams
         FROM polymarket_props
         WHERE closed IS DISTINCT FROM TRUE
-          AND market_type IN ('totals', 'moneyline')
+          AND market_type IN ('totals', 'moneyline', 'spreads', 'both_teams_to_score')
           AND event_id IS NOT NULL
           AND outcome_prices IS NOT NULL
           AND event_start_time > NOW()
           AND event_start_time < NOW() + (INTERVAL '1 hour' * ${LOCK_LOOKAHEAD_HOURS})
-          AND COALESCE(volume, 0) >= ${MIN_SELECTION_VOLUME}
+          AND (
+                (market_type IN ('totals', 'moneyline')
+                     AND COALESCE(volume, 0) >= ${MIN_SELECTION_VOLUME})
+             OR (market_type IN ('spreads', 'both_teams_to_score')
+                     AND COALESCE(liquidity, 0) >= ${MIN_SELECTION_LIQUIDITY})
+          )
         ORDER BY event_id
     `;
 

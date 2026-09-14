@@ -39,13 +39,59 @@
 // by rule_type for the global indexes and by rule.side for the children, so sharing the
 // spelling means a league child inherits its parent's read line with no new copy and no
 // second lookup table.
-export type RuleSide = 'favorite' | 'underdog' | 'total_over' | 'total_under';
+// The spread and both-teams-to-score sides joined on 2026-09-13, the first sides that
+// read a market type the Exchange had never scored. They are spelled with the same
+// strings as their global rule_types for the reason given above, so a future
+// $NFLCOVER or $EPLBTTS is a pure-SQL migration with no new copy.
+export type RuleSide =
+    | 'favorite' | 'underdog'
+    | 'total_over' | 'total_under'
+    | 'spread_favorite' | 'spread_underdog'
+    | 'btts_yes' | 'btts_no';
 
-const SIDES = new Set<string>(['favorite', 'underdog', 'total_over', 'total_under']);
+const SIDES = new Set<string>([
+    'favorite', 'underdog', 'total_over', 'total_under',
+    'spread_favorite', 'spread_underdog', 'btts_yes', 'btts_no',
+]);
 
 /** Does this rule take a side of a totals market rather than a moneyline? */
 export function isTotalsSide(side: RuleSide): boolean {
     return side === 'total_over' || side === 'total_under';
+}
+
+/** The market types an index rule can draw from. */
+export type MarketFamily = 'moneyline' | 'totals' | 'spreads' | 'both_teams_to_score';
+
+/**
+ * The market type a side reads.
+ *
+ * EXHAUSTIVE BY CONSTRUCTION - there is no default arm, so adding a RuleSide without a
+ * case here is a COMPILE ERROR. That is the whole point of the function existing.
+ *
+ * Before it did, the league-child arms of BOTH marketTypeForRule and sideForRule ended
+ * in a binary ternary - `isTotalsSide(side) ? totals : moneyline` and
+ * `side === 'favorite' ? argmax : argmin`. Widening RuleSide would therefore have routed
+ * every 'spread_favorite' at the MONEYLINE market and taken the argmin for every
+ * 'btts_no', silently, on real money. That is precisely the failure the totals comment
+ * in index-slate.ts's sideForRule describes: "a wrong position that settles real Ember -
+ * never an error anyone would see". A switch the compiler checks is the only version of
+ * this that cannot rot.
+ */
+export function marketFamilyForSide(side: RuleSide): MarketFamily {
+    switch (side) {
+        case 'favorite':
+        case 'underdog':
+            return 'moneyline';
+        case 'total_over':
+        case 'total_under':
+            return 'totals';
+        case 'spread_favorite':
+        case 'spread_underdog':
+            return 'spreads';
+        case 'btts_yes':
+        case 'btts_no':
+            return 'both_teams_to_score';
+    }
 }
 
 export interface LeagueRule {
@@ -68,6 +114,20 @@ export interface LeagueRule {
 // the one thing that header promises can't happen.
 // Exported so ticker-copy.ts can derive the soccer chips it renders from the same set
 // the rule actually gates on, rather than keeping a second copy in sync by hand.
+// GRAMMAR RULE, load-bearing: no key here may contain an underscore (parseLeagueRule
+// splits on the first one), and no key may ever be named 'spread', 'btts', 'heavy' or
+// 'total'. Those four are the prefixes of global rule_types whose suffix IS a valid side
+// ('spread_favorite', 'btts_yes', 'heavy_favorite'), so they stay global ONLY because the
+// group lookup below rejects them. Naming a league group after one would silently turn a
+// global index into a league-scoped one. Asserted in the tickers acceptance suite.
+//
+// TWO KINDS OF KEY since 2026-09-13. 'soccer' is an AGGREGATE - $FOOTY/$SOCDOGS score
+// every soccer league on the board. The single-league keys below it are LEAF groups: the
+// level-3 slices that sit under $FOOTY/$SOCDOGS. 'soccer' therefore keeps all ten leagues
+// and is NOT reduced to the leaves that happen to have a ticker - ticker-copy.ts derives
+// $FOOTY's league chips from it, and $CHALK's partition is at the level-1 -> level-2
+// boundary (nba + nfl + mlb + soccer = the thirteen in league-tags.ts), which is
+// untouched by anything below.
 export const LEAGUE_GROUPS: Record<string, string[]> = {
     nba: ['NBA'],
     nfl: ['NFL'],
@@ -76,6 +136,26 @@ export const LEAGUE_GROUPS: Record<string, string[]> = {
         'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1', 'Champions League',
         'EFL Championship', 'MLS', 'DFB-Pokal', 'Carabao Cup',
     ],
+    // Leaf soccer groups. The level-3 family under $FOOTY/$SOCDOGS is deliberately
+    // PARTIAL - add_tickers_batch4.sql established that a family need not cover its
+    // parent ("do NOT read batch3's header as requiring completeness here").
+    epl: ['EPL'],
+    laliga: ['La Liga'],
+    bundesliga: ['Bundesliga'],
+    ligue1: ['Ligue 1'],
+    mls: ['MLS'],
+    efl: ['EFL Championship'],
+    // Real competitions with no fixtures on the board right now. Their tickers ship with
+    // active=false so they lock nothing and draw nothing; flipping one on is a one-line
+    // UPDATE with no code deploy (see add_tickers_batch6.sql).
+    ucl: ['Champions League'],
+    carabao: ['Carabao Cup'],
+    dfb: ['DFB-Pokal'],
+    // Serie A deliberately has NO leaf group. Measured 2026-09-13: zero typed game
+    // markets EVER, zero moneylines ever, zero rows carrying event_start_time - only
+    // season-long futures (Top Goalscorer, 2027 Champion, relegation). It stays in the
+    // 'soccer' aggregate above because the RULE would honour it the moment a fixture
+    // appeared; what it does not get is a permanently dead tile of its own.
 };
 
 /**

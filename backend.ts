@@ -261,6 +261,13 @@ async function tagPublishedTankOnTickers(slug: string, gameSnapshot: any): Promi
                 if (market === null || !['totals', 'team_totals'].includes(market)) return false;
                 return overUnderSide(side) === (leagueRule.side === 'total_over' ? 'over' : 'under');
             }
+            // Spread and BTTS indexes take no news leg - they are scored purely from the
+            // game slate (see checkEligibility in tickers.ts for why: a tag context has no
+            // question, so the points-laying side of a spread is unknowable here).
+            // Refused BEFORE the favorite/underdog fallthrough, which would otherwise hand
+            // a future $NFLCOVER whichever side happened to be market-favored.
+            if (leagueRule.side === 'spread_favorite' || leagueRule.side === 'spread_underdog') return false;
+            if (leagueRule.side === 'btts_yes' || leagueRule.side === 'btts_no') return false;
             return leagueRule.side === 'favorite' ? isMarketFavorite(side) : isMarketUnderdog(side);
         }
         return false;

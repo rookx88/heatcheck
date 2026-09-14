@@ -108,12 +108,58 @@ const COPY: Record<string, TickerCopy> = {
         leagues: NFL_LEAGUES,
         blurb: 'The NFL slice of the unders. Field goals, punts and a running clock lift it; a track meet in a dome weighs it down.',
     },
+
+    // The spread and both-teams-to-score families. Both carry ALL_LEAGUES chips rather
+    // than a hand-listed subset, for the reason this file's header gives: the rules have
+    // no league gate at all, so they score a spread or a BTTS market wherever the board
+    // carries one. Which leagues that happens to be today is a property of Polymarket's
+    // coverage, not of the rule - and a fifth hand-maintained league list is exactly what
+    // went stale twice before.
+    spread_favorite: {
+        leagues: ALL_LEAGUES,
+        blurb: 'Rides the side laying the points, wherever the board prices a spread. It climbs when the better team wins by more than the number, and falls when a favorite wins ugly.',
+    },
+    spread_underdog: {
+        leagues: ALL_LEAGUES,
+        blurb: 'Rides the side taking the points. A loss that stays inside the number counts exactly like a win here, which is the whole idea of a spread.',
+    },
+    btts_yes: {
+        leagues: SOCCER_LEAGUES,
+        blurb: 'Follows both teams finding the net. Open games and late consolation goals lift it; a clean sheet anywhere weighs it down.',
+    },
+    btts_no: {
+        leagues: SOCCER_LEAGUES,
+        blurb: 'Follows the clean sheet. A back line that holds lifts it; an end-to-end draw weighs it down.',
+    },
+};
+
+// The noun a league slice borrows when it has no hand-written blurb of its own.
+const SIDE_NOUN: Record<string, string> = {
+    favorite: 'the favorites',
+    underdog: 'the underdogs',
+    total_over: 'the overs',
+    total_under: 'the unders',
+    spread_favorite: 'the sides laying the points',
+    spread_underdog: 'the sides taking the points',
+    btts_yes: 'both teams scoring',
+    btts_no: 'the clean sheets',
 };
 
 // null for an unknown rule_type: every caller falls back to the ticker's own
 // description, so a ticker on a brand-new strategy renders plainly rather than blank.
 export function tickerCopyFor(ruleType: string): TickerCopy | null {
-    return COPY[ruleType] ?? null;
+    const explicit = COPY[ruleType];
+    if (explicit) return explicit;
+    // A league-scoped rule with no hand-written entry still gets CORRECT chips, derived
+    // from the set the rule itself gates on. That is what lets add_tickers_batch6.sql's
+    // dormant rows ($UCLCHALK and the cup slices) be switched on with a one-line UPDATE
+    // when their competition comes back on the board - no code deploy, and no window
+    // where a live index renders blank.
+    const rule = parseLeagueRule(ruleType);
+    if (!rule) return null;
+    const noun = SIDE_NOUN[rule.side];
+    if (!noun) return null;
+    return { leagues: rule.leagues, blurb: `The ${leagueGroupLabel(rule)} slice of ${noun}.` };
 }
 
 // -----------------------------------------------------------------------------------
@@ -153,6 +199,22 @@ const READ_CLAUSES: Record<string, ReadClauses> = {
     total_over: {
         up: 'more games cleared their totals than stayed under',
         down: 'more games stayed under their totals than cleared them',
+    },
+    spread_favorite: {
+        up: 'the favorites mostly covered the number',
+        down: 'the favorites mostly failed to cover',
+    },
+    spread_underdog: {
+        up: 'the points held up more often than not',
+        down: 'the underdogs mostly failed to cover',
+    },
+    btts_yes: {
+        up: "more games saw both teams score than didn't",
+        down: 'more games ended with a side shut out',
+    },
+    btts_no: {
+        up: 'more games ended with a side shut out',
+        down: "more games saw both teams score than didn't",
     },
     total_under: {
         up: 'more games stayed under their totals than cleared them',
@@ -211,10 +273,22 @@ export function readLineFor(ruleType: string, displayName: string, deltaPoints: 
 // "NFL Favorite Index"). Lives here rather than in market-movers.ts so the client
 // bundles can use it without pulling in that module's SSR string builders;
 // market-movers.ts re-exports it for its existing callers.
-const ACRONYM_WORDS = new Set(['nfl', 'nba', 'mlb', 'epl']);
+const ACRONYM_WORDS = new Set(['nfl', 'nba', 'mlb', 'epl', 'mls', 'efl', 'ucl', 'dfb', 'btts']);
+// Leagues whose name is two words. LEAGUE_GROUPS keys may not contain an underscore
+// (parseLeagueRule splits on the first one), so 'La Liga' has to arrive here as 'laliga'
+// and be spelled back out. Without this the detail-page header and every board tooltip
+// read "Laliga Favorite Index" and "Ligue1 Underdog Index".
+const WORD_OVERRIDES: Record<string, string> = {
+    laliga: 'La Liga',
+    ligue1: 'Ligue 1',
+    seriea: 'Serie A',
+    carabao: 'Carabao',
+    bundesliga: 'Bundesliga',
+};
 export function indexLabelOf(ruleType: string): string {
     const words = ruleType.split('_')
-        .map((w) => (ACRONYM_WORDS.has(w) ? w.toUpperCase() : w ? w[0].toUpperCase() + w.slice(1) : w))
+        .map((w) => WORD_OVERRIDES[w]
+            ?? (ACRONYM_WORDS.has(w) ? w.toUpperCase() : w ? w[0].toUpperCase() + w.slice(1) : w))
         .join(' ');
     return `${words} Index`;
 }

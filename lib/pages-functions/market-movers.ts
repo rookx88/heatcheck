@@ -24,7 +24,7 @@ import { layoutNested } from './treemap';
 import { leagueShortCode, parseLeagueRule } from './league-rules';
 import { parseYesNoQuestion } from './index-slate';
 import { PRICE_NOTE, priceFromValue, priceReturnPct } from './ticker-price';
-import { formatEmber, formatQuote, formatSignedPct, signOf, type Sign } from './ticker-format';
+import { NEON_RGB, formatEmber, formatQuote, formatSignedPct, signOf, type Sign } from './ticker-format';
 import {
     RETROSPECTIVE_NOTE,
     type TickerNewsItem,
@@ -503,6 +503,9 @@ const BOARD_GUTTER = 0.7;
 // Children sit inside an already-inset parent, so they get a tighter gutter - the
 // parent's own inset is doing most of the separating work.
 const CHILD_GUTTER = 0.4;
+// Tighter again for the third ring, by the same argument - two insets are already
+// separating it from the board.
+const GRANDCHILD_GUTTER = 0.22;
 // Below this (viewBox units, ~1.5% of board width) a label is too small to read at the
 // panel's real width, so the tile drops its delta line and spends all its height on
 // the symbol instead of rendering two illegible rows.
@@ -514,6 +517,11 @@ const MIN_LEGIBLE_SIZE = 2.0;
 const MIN_SYMBOL_SIZE = 1.15;
 // A child never needs to shout louder than the family it belongs to.
 const CHILD_MAX_SIZE = 3.2;
+// Nor a league slice louder than the child holding it. At the measured level-3 tile size
+// (~5.4 x 5.8 units) the render is always the three-letter league code anyway - the full
+// symbol comes out around 0.41, well under MIN_SYMBOL_SIZE - so shortLabel is the
+// expected path here rather than a fallback.
+const GRANDCHILD_MAX_SIZE = 2.0;
 // Per-character width estimate for Montserrat 900 caps, in ems. Deliberately over the
 // true average - a symbol that fits with room to spare beats one that kisses the border.
 const CHAR_EM = 0.86;
@@ -524,8 +532,8 @@ const QUOTE_CHAR_EM = 0.62;
 // exactly at MIN_LEGIBLE_SIZE (0.72 of it).
 const MIN_QUOTE_SIZE = MIN_LEGIBLE_SIZE * 0.72;
 
-const neonFor = (delta: number): string =>
-    delta > 0 ? '61, 220, 100' : delta < 0 ? '255, 107, 87' : '148, 163, 184';
+// The one palette (ticker-format.ts) - a tile here must match a tile on every other board.
+const neonFor = (delta: number): string => NEON_RGB[signOf(delta)];
 
 // `window` is the section's window, chosen once in toMarketMovers - the same lens the
 // tape and the cards quote, so a tile's "(+1.2%)" is the tape's "(+1.2%)". Tile area,
@@ -539,18 +547,47 @@ export function renderIndexBoardSvg(movers: MarketMoverVM[], window: WindowInfo)
 
     // A ticker whose parent isn't on this board is drawn as a root rather than dropped -
     // an index is never silently missing because of a bad parent_key.
+    //
+    // THREE RINGS since 2026-09-13 ($CHALK -> $FOOTY -> $EPLCHALK). Depth is walked
+    // rather than inferred from parentKey alone, because "has a parent" no longer answers
+    // "which ring is it in". The walk is cycle-safe via `seen`: a parent_key loop
+    // resolves to a deep node and is drawn at ring 3 rather than hanging the render,
+    // which keeps the never-silently-missing promise even for malformed data.
     const present = new Set(movers.map((m) => m.key));
-    const isRoot = (m: MarketMoverVM) => !m.parentKey || !present.has(m.parentKey);
-    const roots = movers.filter(isRoot);
-    const kidsOf = (key: string) => movers.filter((m) => !isRoot(m) && m.parentKey === key);
+    const byKey = new Map(movers.map((m) => [m.key, m]));
+    const parentOf = (m: MarketMoverVM) => (m.parentKey && present.has(m.parentKey) ? m.parentKey : null);
+    const depthOf = (m: MarketMoverVM): number => {
+        let d = 1;
+        let cur = parentOf(m);
+        const seen = new Set([m.key]);
+        while (cur && !seen.has(cur)) { seen.add(cur); d++; cur = parentOf(byKey.get(cur)!); }
+        return d;
+    };
+    const roots = movers.filter((m) => depthOf(m) === 1);
+    const kidsOf = (key: string) => movers.filter((m) => depthOf(m) === 2 && m.parentKey === key);
+    // Anything at depth 4+ is drawn in ring 3 rather than dropped. The tickers acceptance
+    // suite forbids a fourth level existing at all, so this is a guard, not a feature.
+    const gkidsOf = (key: string) => movers.filter((m) => depthOf(m) >= 3 && m.parentKey === key);
     const families = roots.map((r) => kidsOf(r.key));
+    const gFamilies = families.map((kids) => kids.map((k) => gkidsOf(k.key)));
 
     const layout = layoutNested(
         roots.map((m) => retOf.get(m.key) ?? 0),
         families.map((kids) => kids.map((k) => retOf.get(k.key) ?? 0)),
         BOARD_W,
         BOARD_H,
-        { headerRatio: 0.3, headerMin: 5, headerMax: 11, padding: 0.9 },
+        {
+            headerRatio: 0.3, headerMin: 5, headerMax: 11, padding: 0.9,
+            grandchildHeaderRatio: 0.30, grandchildHeaderMin: 3, grandchildHeaderMax: 7,
+            grandchildPadding: 0.5,
+            // Measured against this exact geometry: a level-3 tile lands at 31-53 units^2
+            // (about 5.4 x 5.8), where a three-letter league code renders at ~1.63 against
+            // MIN_SYMBOL_SIZE 1.15 - legible - while the full symbol would come out at
+            // 0.41 and render bare. Below ~24 units^2 even the code stops fitting, so a
+            // family squeezed under that is drawn as a plain leaf instead.
+            grandchildMinArea: 24,
+        },
+        gFamilies.map((kids) => kids.map((gs) => gs.map((g) => retOf.get(g.key) ?? 0))),
     );
 
     // One tile body, sized to whatever rect it was given. Roots that have children pass
@@ -637,20 +674,56 @@ export function renderIndexBoardSvg(movers: MarketMoverVM[], window: WindowInfo)
                         const kw = Math.max(kr.w - 2 * CHILD_GUTTER, 0.1);
                         const kh = Math.max(kr.h - 2 * CHILD_GUTTER, 0.1);
                         const kt = titleOf(k, m);
+                        // The third ring. layoutNested returns an empty array both when a
+                        // child has no family AND when the legibility gate suppressed one,
+                        // so reading the LAYOUT (not the data) is what keeps `drawn` below
+                        // honest about what the reader can actually see.
+                        const gs = gFamilies[i][j];
+                        const gRects = layout.grandchildren[i][j];
+                        const drawnG = gRects.length > 0 ? gs : [];
+                        // A child holding its own ring is tinted and keeps only its header
+                        // strip as the clickable area - the same rule the root follows, one
+                        // level down, and for the same reason: one <a> may not contain
+                        // another, so the grandchildren are siblings in the SVG.
+                        const kFill = drawnG.length > 0 ? `rgba(${kneon}, 0.10)` : '#000000';
+                        const kOwn = drawnG.length > 0
+                            ? { x: kx, y: ky, w: kw, h: Math.max(layout.childHeaders[i][j] - CHILD_GUTTER, 0.1) }
+                            : { x: kx, y: ky, w: kw, h: kh };
                         return `
                     <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/${escapeHtml(k.key)}/" aria-label="${escapeHtml(kt)}">
                         <title>${escapeHtml(kt)}</title>
                         <rect x="${kx.toFixed(2)}" y="${ky.toFixed(2)}" width="${kw.toFixed(2)}" height="${kh.toFixed(2)}"
-                              rx="0.4" fill="#000000" stroke="rgba(${kneon}, ${(0.45 + 0.45 * kmag).toFixed(2)})" stroke-width="0.22"/>
-                        ${label(k, kd, { x: kx, y: ky, w: kw, h: kh }, CHILD_MAX_SIZE)}
+                              rx="0.4" fill="${kFill}" stroke="rgba(${kneon}, ${(0.45 + 0.45 * kmag).toFixed(2)})" stroke-width="0.22"/>
+                        ${label(k, kd, kOwn, CHILD_MAX_SIZE)}
+                    </a>${drawnG.map((g, q) => {
+                        const gr = gRects[q];
+                        const gd = retOf.get(g.key) ?? 0;
+                        const gmag = maxAbs > 0 ? Math.abs(gd) / maxAbs : 0;
+                        const gneon = neonFor(gd);
+                        const gx = gr.x + GRANDCHILD_GUTTER;
+                        const gy = gr.y + GRANDCHILD_GUTTER;
+                        const gw = Math.max(gr.w - 2 * GRANDCHILD_GUTTER, 0.1);
+                        const gh = Math.max(gr.h - 2 * GRANDCHILD_GUTTER, 0.1);
+                        const gt = titleOf(g, k);
+                        return `
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/${escapeHtml(g.key)}/" aria-label="${escapeHtml(gt)}">
+                        <title>${escapeHtml(gt)}</title>
+                        <rect x="${gx.toFixed(2)}" y="${gy.toFixed(2)}" width="${gw.toFixed(2)}" height="${gh.toFixed(2)}"
+                              rx="0.3" fill="#000000" stroke="rgba(${gneon}, ${(0.40 + 0.45 * gmag).toFixed(2)})" stroke-width="0.16"/>
+                        ${label(g, gd, { x: gx, y: gy, w: gw, h: gh }, GRANDCHILD_MAX_SIZE)}
                     </a>`;
+                    }).join('')}`;
                     }).join('')}
                 </g>`;
     }).join('');
 
-    const nested = movers.length - roots.length;
+    // Counted from what was actually LAID OUT, never from movers.length - the legibility
+    // gate can suppress a whole ring, and a caption that promised tiles the reader cannot
+    // see would be the board lying about itself.
+    const nested = layout.children.reduce((n, cs) => n + cs.length, 0)
+        + layout.grandchildren.reduce((n, gs) => n + gs.reduce((p, g) => p + g.length, 0), 0);
     const summary = `Index board: ${roots.length} indexes sized by their price move over ${info.label}`
-        + (nested > 0 ? `, with ${nested} league sub-indexes drawn inside the index each one slices` : '');
+        + (nested > 0 ? `, with ${nested} sub-indexes drawn inside the index each one slices` : '');
     return `
         <div class="hc-mmb">
             <h4 class="hc-mmb-heading">The Board</h4>
@@ -659,7 +732,7 @@ export function renderIndexBoardSvg(movers: MarketMoverVM[], window: WindowInfo)
                 <rect x="0" y="0" width="${BOARD_W}" height="${BOARD_H}" fill="#000000"/>
                 ${tiles}
             </svg>
-            <p class="hc-mmb-caption">Tile size tracks the price move over ${escapeHtml(info.label)}${info.widened ? ' (nothing moved in the last 24 hours)' : ''}${nested > 0 ? ' &middot; league slices sit inside the index they slice' : ''} &middot; <a href="/tankdaq/indexes/">Open the full board</a></p>
+            <p class="hc-mmb-caption">Tile size tracks the price move over ${escapeHtml(info.label)}${info.widened ? ' (nothing moved in the last 24 hours)' : ''}${nested > 0 ? ' &middot; slices sit inside the index they slice' : ''} &middot; <a href="/tankdaq/indexes/">Open the full board</a></p>
         </div>`;
 }
 

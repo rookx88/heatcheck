@@ -19,7 +19,7 @@
 // rather than guessed at. Volume is present for 100% of games within 24h of kickoff
 // and only 35% beyond three days, which is why locking runs late (see index-lock.ts).
 
-import { isTotalsSide, leagueRuleAccepts, parseLeagueRule } from './league-rules';
+import { marketFamilyForSide, leagueRuleAccepts, parseLeagueRule } from './league-rules';
 
 export interface SlateMarketRow {
     event_id: string;
@@ -86,9 +86,42 @@ export const MIN_SELECTION_VOLUME = 100;
 // make the odds-aware payout degenerate.
 export const MIN_ENTRY_PROB = 0.05;
 export const MAX_ENTRY_PROB = 0.95;
+// The floor that replaces volume on the market types that don't carry it. Spreads and
+// BTTS are quoted with real liquidity but frequently no volume at all (see
+// pickCanonicalMarket's header), so this is the "somebody is actually making a market
+// here" test for them. Median liquidity is 4164 across 793 open spread events and 13256
+// across 322 BTTS events, so 250 excludes the dead rungs without touching a real line.
+export const MIN_SELECTION_LIQUIDITY = 250;
 
+// Declared here rather than lower down because SELECTION_POLICY below keys off them -
+// an object literal's computed keys are evaluated when the const initialises, so a
+// forward reference would be a temporal-dead-zone ReferenceError at import time.
 const TOTALS_MARKET_TYPE = 'totals';
 const MONEYLINE_MARKET_TYPE = 'moneyline';
+const SPREADS_MARKET_TYPE = 'spreads';
+const BTTS_MARKET_TYPE = 'both_teams_to_score';
+
+interface SelectionPolicy {
+    volumeFloor: number;
+    liquidityFloor: number;
+    /** 'volume' = the headline-line rule; 'nearest_even' = the true-spread rule. */
+    rank: 'volume' | 'nearest_even';
+}
+
+// One row per market type, so a new family declares its selection rule in a single place
+// instead of growing an `if (marketType === ...)` inside the picker.
+//
+// moneyline and totals keep EXACTLY the behaviour they had before this table existed
+// (volumeFloor = MIN_SELECTION_VOLUME, liquidityFloor = 0, volume ranking), so no live
+// index changes which market it holds.
+const SELECTION_POLICY: Record<string, SelectionPolicy> = {
+    [MONEYLINE_MARKET_TYPE]: { volumeFloor: MIN_SELECTION_VOLUME, liquidityFloor: 0, rank: 'volume' },
+    [TOTALS_MARKET_TYPE]: { volumeFloor: MIN_SELECTION_VOLUME, liquidityFloor: 0, rank: 'volume' },
+    [SPREADS_MARKET_TYPE]: { volumeFloor: 0, liquidityFloor: MIN_SELECTION_LIQUIDITY, rank: 'nearest_even' },
+    // BTTS has exactly one market per game (322 of 322), so ranking never actually
+    // decides anything - but it keeps the volume rule for the day that stops being true.
+    [BTTS_MARKET_TYPE]: { volumeFloor: 0, liquidityFloor: MIN_SELECTION_LIQUIDITY, rank: 'volume' },
+};
 
 function prices(row: SlateMarketRow): number[] | null {
     const p = row.outcome_prices;
@@ -111,6 +144,57 @@ function overUnderIndex(row: SlateMarketRow, want: 'over' | 'under'): number | n
         }
     }
     return null;
+}
+
+// "Spread: Miami Dolphins (-7.5)". Verified against the live board 2026-09-13: outcome 0
+// is ALWAYS the team the question names, and market_line is ALWAYS NEGATIVE - 4398 of
+// 4398 open spread rows, range -21.5 to -0.5. So the named team is always the side LAYING
+// the points, which is what lets the side be decided structurally instead of by price.
+const SPREAD_QUESTION = /^Spread:\s*(.+?)\s*\(\s*([-+]?\d+(?:\.\d+)?)\s*\)\s*$/i;
+
+export function parseSpreadQuestion(q: string | null | undefined): { team: string; line: number } | null {
+    if (!q) return null;
+    const m = q.trim().match(SPREAD_QUESTION);
+    if (!m) return null;
+    const line = Number(m[2]);
+    return Number.isFinite(line) ? { team: m[1].trim(), line } : null;
+}
+
+/**
+ * Which outcome is the favourite laying the points, and which is the dog taking them.
+ *
+ * DELIBERATELY NOT argmax/argmin. The canonical spread is the market priced nearest a
+ * coin flip (that is how pickCanonicalMarket finds the true line), so the two sides sit
+ * at roughly 0.50 each and the argmax flips between them game to game on noise. $COVER
+ * would hold the favourite in one game and the underdog in the next, and the pair would
+ * stop being a mirror. The question names the team laying the points; that is a fact
+ * about the market, not about its current price, so it is stable.
+ *
+ * Every failure path returns null - positionsForGame reads that as "this index sits this
+ * game out", which is always correct and never a guessed side.
+ */
+function spreadSideIndex(row: SlateMarketRow, want: 'favorite' | 'underdog'): number | null {
+    const labels = row.outcomes;
+    if (!Array.isArray(labels) || labels.length !== 2) return null;
+    const parsed = parseSpreadQuestion(row.question);
+    // A non-negative line means the question is not naming a side that lays points, so
+    // "favorite" has no referent here. Refuse rather than guess.
+    if (!parsed || !(parsed.line < 0)) return null;
+    // Equality, not substring: softening this would hide a format drift rather than
+    // refuse it, and a mis-resolved side settles real Ember.
+    const named = labels.findIndex((l) => String(l).trim().toLowerCase() === parsed.team.toLowerCase());
+    if (named < 0) return null;
+    return want === 'favorite' ? named : 1 - named;
+}
+
+// Both-teams-to-score is a plain Yes/No market - 322 of 322 open rows carry exactly
+// ["Yes","No"] and exactly one market per game. Matched on the LABEL rather than the
+// index so that a reordering by Polymarket becomes a refusal, not an inverted position.
+function yesNoIndex(row: SlateMarketRow, want: 'yes' | 'no'): number | null {
+    const labels = row.outcomes;
+    if (!Array.isArray(labels) || labels.length !== 2) return null;
+    const i = labels.findIndex((l) => String(l).trim().toLowerCase() === want);
+    return i < 0 ? null : i;
 }
 
 // Strict: null when no single side is shortest (or longest). A tie used to fall through
@@ -140,12 +224,22 @@ export function marketTypeForRule(ruleType: string): string | null {
         case 'heavy_favorite':
         case 'longshot':
             return MONEYLINE_MARKET_TYPE;
+        case 'spread_favorite':
+        case 'spread_underdog':
+            return SPREADS_MARKET_TYPE;
+        case 'btts_yes':
+        case 'btts_no':
+            return BTTS_MARKET_TYPE;
         default: {
             // League-scoped children read the same market their parent does - a
             // moneyline for a $CHALK/$DOGS slice, a total for an $OVERS/$UNDERS one.
+            //
+            // Routed through marketFamilyForSide rather than a ternary on purpose: that
+            // switch is exhaustive over RuleSide, so a side added without a case here
+            // fails to compile instead of quietly resolving to a moneyline.
             const rule = parseLeagueRule(ruleType);
             if (!rule) return null;
-            return isTotalsSide(rule.side) ? TOTALS_MARKET_TYPE : MONEYLINE_MARKET_TYPE;
+            return marketFamilyForSide(rule.side);
         }
     }
 }
@@ -187,6 +281,14 @@ export function sideForRule(
             const i = argminIndex(p);
             return i !== null && p[i] < cfg.moonshotMaxProb ? i : null;
         }
+        case 'spread_favorite':
+            return spreadSideIndex(row, 'favorite');
+        case 'spread_underdog':
+            return spreadSideIndex(row, 'underdog');
+        case 'btts_yes':
+            return yesNoIndex(row, 'yes');
+        case 'btts_no':
+            return yesNoIndex(row, 'no');
         default: {
             // A league child holds the same side its parent would on this game -
             // favorites take the argmax, underdogs the argmin, and a totals child takes
@@ -195,30 +297,65 @@ export function sideForRule(
             // exactly. leagueQualifies has already screened the league by the time we
             // get here.
             //
-            // The totals arm is load-bearing rather than cosmetic: falling through to
+            // Every arm below is load-bearing rather than cosmetic: falling through to
             // argmin for 'total_under' would take the CHEAPEST side of the totals market
             // rather than the Under. On a total priced 0.52/0.48 those are the same side
             // only by luck, and the mistake is a wrong position that settles real Ember
             // - never an error anyone would see.
+            //
+            // Written as an EXHAUSTIVE switch over RuleSide with no default, so the next
+            // side added here fails to compile rather than falling into one of these.
+            // It used to end `rule.side === 'favorite' ? argmax : argmin`, which would
+            // have silently taken the argmin for every spread and every BTTS side the
+            // moment those joined RuleSide.
             const rule = parseLeagueRule(ruleType);
             if (!rule) return null;
-            if (rule.side === 'total_over') return overUnderIndex(row, 'over');
-            if (rule.side === 'total_under') return overUnderIndex(row, 'under');
-            return rule.side === 'favorite' ? argmaxIndex(p) : argminIndex(p);
+            switch (rule.side) {
+                case 'total_over': return overUnderIndex(row, 'over');
+                case 'total_under': return overUnderIndex(row, 'under');
+                case 'favorite': return argmaxIndex(p);
+                case 'underdog': return argminIndex(p);
+                case 'spread_favorite': return spreadSideIndex(row, 'favorite');
+                case 'spread_underdog': return spreadSideIndex(row, 'underdog');
+                case 'btts_yes': return yesNoIndex(row, 'yes');
+                case 'btts_no': return yesNoIndex(row, 'no');
+            }
         }
     }
 }
 
 /**
- * The one market that represents this game for this market type. Ranked by volume
- * (the market's own vote for the headline number), then liquidity, then distance from
- * a coin flip, then the lowest line - the last two purely so the choice is
- * deterministic rather than because they carry signal.
+ * The one market that represents this game for this market type. Moneylines and totals
+ * are ranked by volume (the market's own vote for the headline number), then liquidity,
+ * then distance from a coin flip, then the lowest line - the last two purely so the
+ * choice is deterministic rather than because they carry signal.
+ *
+ * SPREADS RANK DIFFERENTLY, and must. Two measurements from the live board (2026-09-13)
+ * break the volume rule there:
+ *
+ *   1. Volume is usually ABSENT on spreads. In a sampled NFL game nearly every spread
+ *      market had volume NULL or 0 while liquidity was populated (12-920). Gating on
+ *      MIN_SELECTION_VOLUME would reject the entire market type, every game.
+ *   2. "Lowest line" is actively WRONG when every line is negative (-21.5..-0.5, 4398 of
+ *      4398 rows). It would systematically select the most lopsided novelty rung on the
+ *      ladder - Dolphins -21.5 at 0.15 - rather than the real line.
+ *
+ * The true spread is the one priced nearest a coin flip; that is what a spread IS. So
+ * spreads rank on |p - 0.5| ascending, tie-broken by liquidity.
+ *
+ * THAT SORT IS ALSO THE MIRROR DEDUPE, and deliberately so. Polymarket lists a spread
+ * ladder from BOTH teams' perspective, so one NFL game carried both "Spread: 49ers
+ * (-8.5)" at [0.48, 0.52] and "Spread: Dolphins (-8.5)" at [0.19, 0.81] - the same
+ * number, opposite teams, only one of them the real market. The wrong-team mirror is by
+ * construction far from 50/50 (that is what makes it the wrong team), so it can never
+ * win this sort. Do not add a separate dedupe pass: it would be a second place for the
+ * rule to live and drift out of step with this one.
  */
 export function pickCanonicalMarket(
     rows: SlateMarketRow[],
     marketType: string,
 ): { row: SlateMarketRow; runnerUpLine: number | null; medianAgreed: boolean | null } | null {
+    const policy = SELECTION_POLICY[marketType] ?? SELECTION_POLICY[MONEYLINE_MARKET_TYPE];
     const candidates = rows.filter((r) => {
         if (r.market_type !== marketType) return false;
         // A draw market is not a game's line, whatever its volume says - $CHALK holding
@@ -228,26 +365,44 @@ export function pickCanonicalMarket(
         const p = prices(r);
         if (!p) return false;
         if ((r.liquidity ?? 0) <= 0) return false;
-        if ((r.volume ?? 0) < MIN_SELECTION_VOLUME) return false;
+        if ((r.volume ?? 0) < policy.volumeFloor) return false;
+        if ((r.liquidity ?? 0) < policy.liquidityFloor) return false;
         // Every side must be live; a decided side can't be an entry price.
         return p.every((v) => v >= MIN_ENTRY_PROB && v <= MAX_ENTRY_PROB);
     });
     if (candidates.length === 0) return null;
 
     const dist50 = (r: SlateMarketRow) => Math.abs((prices(r)![0]) - 0.5);
-    const ranked = [...candidates].sort((a, b) =>
-        (b.volume ?? 0) - (a.volume ?? 0)
-        || (b.liquidity ?? 0) - (a.liquidity ?? 0)
-        || dist50(a) - dist50(b)
-        || (a.market_line ?? 0) - (b.market_line ?? 0));
+    const ranked = [...candidates].sort(
+        policy.rank === 'nearest_even'
+            ? (a, b) =>
+                dist50(a) - dist50(b)
+                || (b.liquidity ?? 0) - (a.liquidity ?? 0)
+                // |line| and then market_id purely for determinism - a stable choice
+                // matters more than which of two equally-priced rungs wins.
+                || Math.abs(a.market_line ?? 0) - Math.abs(b.market_line ?? 0)
+                || (a.market_id < b.market_id ? -1 : a.market_id > b.market_id ? 1 : 0)
+            : (a, b) =>
+                (b.volume ?? 0) - (a.volume ?? 0)
+                || (b.liquidity ?? 0) - (a.liquidity ?? 0)
+                || dist50(a) - dist50(b)
+                || (a.market_line ?? 0) - (b.market_line ?? 0));
 
     const winner = ranked[0];
     const runnerUpLine = ranked.length > 1 ? ranked[1].market_line : null;
 
     // Audit only: did the ladder's middle line agree with the volume pick? Tracked so
     // selection drift is measurable later, never used to choose.
+    //
+    // Left NULL for anything not ranked by volume. The question it asks is "did the
+    // market's volume vote match the shape of the ladder", which has no meaning for a
+    // spread ladder quoted from both teams' perspectives (its median line is a mix of two
+    // opposing ladders), nor for BTTS, which lists exactly one market per game. Recording
+    // a boolean there would be inventing an audit signal rather than measuring one.
     let medianAgreed: boolean | null = null;
-    const lines = candidates.map((r) => r.market_line).filter((l): l is number => l !== null).sort((a, b) => a - b);
+    const lines = policy.rank === 'volume'
+        ? candidates.map((r) => r.market_line).filter((l): l is number => l !== null).sort((a, b) => a - b)
+        : [];
     if (lines.length > 0 && winner.market_line !== null) {
         const med = lines[Math.floor((lines.length - 1) / 2)];
         let nearest = candidates[0];

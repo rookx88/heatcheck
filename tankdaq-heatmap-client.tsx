@@ -28,7 +28,7 @@ import { chooseWindow, type WindowInfo, type WindowedEvent as SeriesEvent } from
 import { layoutNested } from './lib/pages-functions/treemap';
 import { leagueShortCode, parseLeagueRule } from './lib/pages-functions/league-rules';
 import { priceReturnPct } from './lib/pages-functions/ticker-price';
-import { formatEmber, formatQuote, formatSignedPct, signOf } from './lib/pages-functions/ticker-format';
+import { NEON_RGB, formatEmber, formatQuote, formatSignedPct, signOf } from './lib/pages-functions/ticker-format';
 import { ContentChrome } from './components/ContentChrome';
 
 interface TickerRow {
@@ -49,7 +49,12 @@ type TileKind =
     | 'leaf'       // a top-level index with no children - the whole tile is its link
     | 'container'  // a family's raised block; decorative, its children sit on top of it
     | 'header'     // the family's own symbol/value strip, and its only clickable area
-    | 'child';     // one league slice, inset on its parent's block
+    | 'child'      // one slice, inset on its parent's block
+    // Level three ($CHALK -> $FOOTY -> $EPLCHALK). A child that holds its own family
+    // plays the same container/header pair its root does, one level in.
+    | 'childcontainer'
+    | 'childheader'
+    | 'grandchild';
 
 interface Tile {
     key: string;
@@ -79,7 +84,9 @@ interface Tile {
 // ---------------------------------------------------------------------------------
 
 // Per-direction neon, as rgb triplets so border/glow alphas can scale with magnitude.
-const NEON = { pos: '61, 220, 100', neg: '255, 107, 87', zero: '148, 163, 184' } as const;
+// The one palette (ticker-format.ts): a green tile here is the same green as the
+// homepage board's and the league boards'.
+const NEON = NEON_RGB;
 
 const TankdaqBoard: React.FC = () => {
     const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -167,10 +174,25 @@ const TankdaqBoard: React.FC = () => {
 
                 // A ticker whose parent isn't on the board is laid out as a root rather
                 // than dropped - a bad parent_key can never make an index disappear.
+                // Depth is WALKED, not inferred from parentKey - since the league slices
+                // landed there are three rings, so "has a parent" no longer says which
+                // one a tile belongs to. Cycle-safe via `seen`, so a bad parent_key loop
+                // resolves deep instead of hanging the board.
                 const present = new Set(rows.map((r) => r.key));
-                const isRoot = (r: typeof rows[number]) => !r.parentKey || !present.has(r.parentKey);
-                const roots = rows.filter(isRoot);
-                const families = roots.map((p) => rows.filter((c) => !isRoot(c) && c.parentKey === p.key));
+                const byKey = new Map(rows.map((r) => [r.key, r]));
+                const parentOf = (r: typeof rows[number]) =>
+                    (r.parentKey && present.has(r.parentKey) ? r.parentKey : null);
+                const depthOf = (r: typeof rows[number]): number => {
+                    let d = 1;
+                    let cur = parentOf(r);
+                    const seen = new Set([r.key]);
+                    while (cur && !seen.has(cur)) { seen.add(cur); d++; cur = parentOf(byKey.get(cur)!); }
+                    return d;
+                };
+                const roots = rows.filter((r) => depthOf(r) === 1);
+                const families = roots.map((p) => rows.filter((c) => depthOf(c) === 2 && c.parentKey === p.key));
+                const gFamilies = families.map((f) =>
+                    f.map((c) => rows.filter((g) => depthOf(g) >= 3 && g.parentKey === c.key)));
 
                 // 100x62.5 mirrors the desktop board's 16:10 aspect so "squarified"
                 // is judged in roughly the shape the tiles actually render in.
@@ -179,7 +201,17 @@ const TankdaqBoard: React.FC = () => {
                     roots.map((r) => r.priceReturnPct),
                     families.map((f) => f.map((c) => c.priceReturnPct)),
                     100, BH,
-                    { headerRatio: 0.28, headerMin: 5, headerMax: 13, padding: 1.2 },
+                    {
+                        headerRatio: 0.28, headerMin: 5, headerMax: 13, padding: 1.2,
+                        grandchildHeaderRatio: 0.28, grandchildHeaderMin: 3, grandchildHeaderMax: 8,
+                        grandchildPadding: 0.6,
+                        // This board renders far wider than the homepage's (a full-width
+                        // panel rather than a ~540px column), so the same tile carries
+                        // roughly twice the pixels and the third ring stays readable at a
+                        // smaller share of the box. Still gated, for the phone case.
+                        grandchildMinArea: 14,
+                    },
+                    gFamilies.map((f) => f.map((gs) => gs.map((g) => g.priceReturnPct))),
                 );
 
                 const base = (r: TickerRow & { delta: number; priceReturnPct: number }) => {
@@ -220,7 +252,25 @@ const TankdaqBoard: React.FC = () => {
                         ...base(r), kind: 'header',
                         ...pct({ ...rect, h: layout.headers[i] }),
                     });
-                    kids.forEach((c, j) => next.push({ ...base(c), kind: 'child', ...pct(layout.children[i][j]) }));
+                    kids.forEach((c, j) => {
+                        const gkids = gFamilies[i][j];
+                        const gRects = layout.grandchildren[i][j];
+                        // Read the LAYOUT, not the data: an empty rect list means either
+                        // "no family" or "the legibility gate suppressed it", and both
+                        // must render as a plain child tile.
+                        if (gRects.length === 0) {
+                            next.push({ ...base(c), kind: 'child', ...pct(layout.children[i][j]) });
+                            return;
+                        }
+                        // Same container/header pair the root uses, one level in - pushed
+                        // first so they paint behind the slices sitting on them.
+                        next.push({ ...base(c), kind: 'childcontainer', ...pct(layout.children[i][j]) });
+                        next.push({
+                            ...base(c), kind: 'childheader',
+                            ...pct({ ...layout.children[i][j], h: layout.childHeaders[i][j] }),
+                        });
+                        gkids.forEach((g, q) => next.push({ ...base(g), kind: 'grandchild', ...pct(gRects[q]) }));
+                    });
                 });
                 setTiles(next);
                 setMaxAbs(biggest);
@@ -243,6 +293,8 @@ const TankdaqBoard: React.FC = () => {
     // Children sit on an already-inset parent block, so they need far less room around
     // them - the container's own gutter is doing most of the separating.
     const childGutter = Math.max(2, Math.round(gutter * 0.45));
+    // Tighter again for the third ring - two insets already separate it from the board.
+    const grandchildGutter = Math.max(1, Math.round(gutter * 0.22));
 
     // Fit a tile's symbol to the space it actually has, in real px from the measured
     // board. A tile too narrow for its full symbol falls back to its league tag, which
@@ -252,15 +304,24 @@ const TankdaqBoard: React.FC = () => {
         const natural = Math.sqrt((t.w * t.h) / 100) * 9 + 8;
         // Leaves keep their original width-only fit so the top-level board renders
         // exactly as it did; headers and children are short, so height binds there.
+        const heightShare = t.kind === 'header' || t.kind === 'childheader' ? 0.58
+            // A grandchild is the shortest tile on the board; giving it the child's 0.44
+            // leaves the symbol taller than the room under it.
+            : t.kind === 'grandchild' ? 0.38
+            : 0.44;
         const capped = t.kind === 'leaf'
             ? natural
-            : Math.min(natural, innerHpx * (t.kind === 'header' ? 0.58 : 0.44));
+            : Math.min(natural, innerHpx * heightShare);
         const sizeFor = (s: string) => Math.min(capped, innerWpx / (s.length * 0.8));
         let text = t.displayName;
         let px = sizeFor(text);
-        if (px < 9 && t.shortLabel) {
-            text = t.shortLabel;
-            px = sizeFor(text);
+        // At level three the short code is the EXPECTED render, not a fallback: measured
+        // on the real geometry a full symbol lands around 0.41 against a 1.15 floor, so
+        // reach for the code before the size test rather than after it.
+        if ((px < 9 || t.kind === 'grandchild') && t.shortLabel) {
+            const short = t.shortLabel;
+            const shortPx = sizeFor(short);
+            if (shortPx > px) { text = short; px = shortPx; }
         }
         return { text, px: Math.max(px, 7), show: px >= 7 };
     };
@@ -270,6 +331,10 @@ const TankdaqBoard: React.FC = () => {
     // nothing - the aria label and the pop-over always carry the full quote. Digits and
     // parentheses run ~0.62em/char in Montserrat 800 (an over-estimate, on purpose).
     const fitQuote = (t: Tile, innerWpx: number, symPx: number): string | null => {
+        // Never on a level-three tile. Two rows of type in a box that size collide, and
+        // the pop-over and aria-label already carry the full quote - so the slice spends
+        // all its height saying WHICH league, which is the one thing only it can say.
+        if (t.kind === 'grandchild') return null;
         if (symPx < 10) return null;
         const quotePx = symPx * 0.72;
         const fits = (s: string) => s.length * quotePx * 0.62 <= innerWpx;
@@ -302,7 +367,9 @@ const TankdaqBoard: React.FC = () => {
                     const dir = signOf(t.priceReturnPct);
                     const neon = NEON[dir];
                     const active = t.key === activeKey;
-                    const pad = t.kind === 'child' ? childGutter : gutter;
+                    const pad = t.kind === 'grandchild' ? grandchildGutter
+                        : t.kind === 'child' || t.kind === 'childcontainer' || t.kind === 'childheader' ? childGutter
+                        : gutter;
                     const box = {
                         left: `calc(${t.x}% + ${pad}px)`,
                         top: `calc(${t.y}% + ${pad}px)`,
@@ -318,8 +385,12 @@ const TankdaqBoard: React.FC = () => {
                     // The family's raised block. Decorative only: its header strip and
                     // its children carry every hover and every link, so it must not
                     // intercept a pointer heading for one of them.
-                    if (t.kind === 'container') {
-                        const depth = (2.5 + 4.5 * mag) * (active ? 1.4 : 1);
+                    // A child holding its own ring is the same decorative block one level
+                    // in - shallower, so it reads as sitting ON its parent rather than
+                    // competing with it.
+                    if (t.kind === 'container' || t.kind === 'childcontainer') {
+                        const lift = t.kind === 'childcontainer' ? 0.5 : 1;
+                        const depth = (2.5 + 4.5 * mag) * (active ? 1.4 : 1) * lift;
                         return (
                             <div key={`${t.key}-box`} className="hc-tqb-container" aria-hidden="true"
                                 style={{
@@ -342,7 +413,7 @@ const TankdaqBoard: React.FC = () => {
                     // The family's own symbol and value, and the only part of a parent
                     // that is clickable - a child sits on the same block and has to be
                     // able to take its own click.
-                    if (t.kind === 'header') {
+                    if (t.kind === 'header' || t.kind === 'childheader') {
                         return (
                             <a key={`${t.key}-head`} role="listitem" className={`hc-tqb-tile hc-tqb-head${active ? ' is-active' : ''}`}
                                 href={`/tankdaq/${t.key}/`}
@@ -366,16 +437,18 @@ const TankdaqBoard: React.FC = () => {
                     // A league slice, recessed into its parent's block: thin edge, no
                     // extrusion of its own. Standing a child as proud as the family it
                     // belongs to would flatten the nesting it exists to show.
-                    if (t.kind === 'child') {
+                    if (t.kind === 'child' || t.kind === 'grandchild') {
+                        const deep = t.kind === 'grandchild';
                         return (
-                            <a key={t.key} role="listitem" className={`hc-tqb-tile hc-tqb-child${active ? ' is-active' : ''}`}
+                            <a key={t.key} role="listitem"
+                                className={`hc-tqb-tile ${deep ? 'hc-tqb-grandchild' : 'hc-tqb-child'}${active ? ' is-active' : ''}`}
                                 href={`/tankdaq/${t.key}/`}
                                 style={{
-                                    ...box, borderRadius: 6, background: '#000',
-                                    border: `1px solid rgba(${neon}, ${active ? 1 : (0.45 + 0.5 * mag).toFixed(2)})`,
+                                    ...box, borderRadius: deep ? 4 : 6, background: '#000',
+                                    border: `1px solid rgba(${neon}, ${active ? 1 : ((deep ? 0.4 : 0.45) + 0.5 * mag).toFixed(2)})`,
                                     boxShadow: [
                                         `inset 0 1px 0 rgba(255, 255, 255, ${active ? 0.18 : 0.07})`,
-                                        `inset 0 0 ${Math.round(6 + 16 * mag)}px rgba(${neon}, ${(0.1 + 0.28 * mag).toFixed(2)})`,
+                                        `inset 0 0 ${Math.round((deep ? 4 : 6) + 16 * mag)}px rgba(${neon}, ${(0.1 + 0.28 * mag).toFixed(2)})`,
                                         active ? `0 0 18px rgba(${neon}, 0.55)` : '',
                                     ].filter(Boolean).join(', '),
                                     fontSize: `${fit.px.toFixed(1)}px`,

@@ -46,12 +46,35 @@ const MAX_MARKETS = 30;
 // Give the market time to actually resolve before asking about it.
 const SETTLE_GRACE_HOURS = 3;
 
+// After this long, a market that STILL won't resolve is written off as 'void' instead of
+// being asked about forever.
+//
+// Polymarket does not always close a market it has stopped trading. Measured 2026-09-13:
+// market 3809076 ("Will D.C. United SC win on 2026-09-05?") was still closed=false,
+// active=true, priced ["0.45","0.55"] EIGHT DAYS after kickoff, holding four positions
+// ($CHALK/$DOGS/$LOCKS/$MOONSHOT). resolveMarket returns 'not_closed_yet' for it on every
+// run, forever.
+//
+// That is not merely one stuck game. The pending query below orders by kickoff ASC and
+// takes the oldest MAX_MARKETS, so a market that can never resolve sits at the HEAD of
+// the queue permanently, spending one of the 30 slots on every single pass. Stuck markets
+// accumulate there and progressively starve the queue of real work - the failure is
+// silent and compounding.
+//
+// 72h is far beyond any real fixture (the longest thing on the board is a 9-inning
+// baseball game plus rain delay), so nothing legitimate is written off early. A void
+// contributes nothing: the close query below counts only result IN ('win','loss'), which
+// is exactly what create_index_positions_table.sql promises for 'void'.
+const STALE_VOID_HOURS = 72;
+
 interface PendingRow {
     id: string;
     ticker_key: string;
     market_id: string;
     side_index: number;
     entry_prob: number;
+    // Only used to decide whether an unresolvable market is old enough to write off.
+    stale: boolean;
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -78,7 +101,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // left half-settled across runs.
     const pending = (await sql`
         WITH due AS (
-            SELECT id, ticker_key, market_id, side_index, entry_prob::float8 AS entry_prob, kickoff
+            SELECT id, ticker_key, market_id, side_index, entry_prob::float8 AS entry_prob, kickoff,
+                   kickoff < NOW() - (INTERVAL '1 hour' * ${STALE_VOID_HOURS}) AS stale
             FROM index_positions
             WHERE settled_at IS NULL
               AND kickoff < NOW() - (INTERVAL '1 hour' * ${SETTLE_GRACE_HOURS})
@@ -89,7 +113,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             ORDER BY MIN(kickoff)
             LIMIT ${MAX_MARKETS}
         )
-        SELECT d.id, d.ticker_key, d.market_id, d.side_index, d.entry_prob
+        SELECT d.id, d.ticker_key, d.market_id, d.side_index, d.entry_prob, d.stale
         FROM due d
         JOIN markets m ON m.market_id = d.market_id
         ORDER BY d.kickoff
@@ -101,6 +125,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const resolutions = new Map<string, Awaited<ReturnType<typeof resolveMarket>>>();
     const settled: Array<{ id: string; result: 'win' | 'loss' | 'void'; winningIndex: number | null; contrib: number | null }> = [];
     const skipped: Record<string, number> = {};
+    // Written off rather than settled - reported separately so this stays visible instead
+    // of looking like a quiet run. A number that climbs here is a real signal (Polymarket
+    // leaving markets open, or our market ids drifting), not routine noise.
+    const voidedStale: Record<string, number> = {};
 
     for (const p of pending) {
         try {
@@ -109,6 +137,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             }
             const res = resolutions.get(p.market_id)!;
             if (res.status !== 'resolved') {
+                // Gamma gave a definite non-answer. If the game is also long past
+                // STALE_VOID_HOURS, stop asking: write the position off as void so it
+                // leaves the queue it would otherwise block (see STALE_VOID_HOURS above).
+                // Deliberately NOT done in the catch below - a thrown fetch is a transient
+                // network fault, and voiding on one would discard a game that is merely
+                // unreachable this minute.
+                if (p.stale) {
+                    settled.push({ id: p.id, result: 'void', winningIndex: null, contrib: null });
+                    voidedStale[res.status] = (voidedStale[res.status] ?? 0) + 1;
+                    continue;
+                }
                 skipped[res.status] = (skipped[res.status] ?? 0) + 1;
                 continue;
             }
@@ -248,13 +287,26 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
     }
 
+    // Voids ride the same bulk UPDATE as real results, so separate them back out here -
+    // "settled" should keep meaning "scored", or a run that only swept up stuck markets
+    // would read as productive.
+    const voidedCount = settled.filter((s) => s.result === 'void').length;
+
+    // The run is capped on markets, so that is what signals a remainder. Shipped as a
+    // BOOLEAN as well as the human string: worker-curate re-POSTs this endpoint until the
+    // queue drains, and a caller should not have to string-match prose to know whether to
+    // go round again.
+    const hasMore = marketsConsidered === MAX_MARKETS;
+
     return jsonResponse({
         pendingConsidered: pending.length,
         marketsConsidered,
-        settled: settled.length,
+        settled: settled.length - voidedCount,
+        voided: voidedCount,
+        voidedStale,
         skipped,
-        // The run is capped on markets now, so that is what signals a remainder.
-        deferred: marketsConsidered === MAX_MARKETS ? 'more may remain; next run continues' : 'none',
+        hasMore,
+        deferred: hasMore ? 'more may remain; next run continues' : 'none',
         closes,
     });
 };

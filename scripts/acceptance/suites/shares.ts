@@ -15,7 +15,8 @@
 //   - a sell for more than held is refused with nothing written; a full sell removes the
 //     row and a later buy starts a fresh position;
 //   - the $OVERS/$UNDERS mirror holds in price space (ln p_a + ln p_b = 2 ln baseline);
-//   - all fourteen indexes are tradeable.
+//   - every active index is tradeable (the count is read from the API, not hardcoded -
+//     it has been wrong at "fourteen" and "sixteen" already).
 // Every DB assertion reads the tables directly (ledger, balances, holdings, trades) -
 // a status code proves what one response said; the rows prove what was written.
 
@@ -287,7 +288,17 @@ async function run(): Promise<void> {
     // than the Under. On a total priced 0.52/0.48 that is a wrong position that settles
     // real Ember and raises no error anywhere. This check is what catches it: pick the
     // wrong side and the two stop being negatives.
-    for (const [aKey, bKey] of [['overs', 'unders'], ['nflo', 'nflu']] as const) {
+    // $COVER/$CUSHION joined 2026-09-13 and are the strongest case this check has: their
+    // side is chosen STRUCTURALLY (the question names the team laying the points), not by
+    // price, precisely because the canonical spread sits at ~50/50 where an argmax would
+    // flip between the two from game to game. If that rule ever regresses to a price
+    // comparison, the pair stops being exact negatives and this is what notices.
+    for (const [aKey, bKey] of [
+        ['overs', 'unders'], ['nflo', 'nflu'],
+        ['cover', 'cushion'], ['bothscore', 'cleansheet'],
+        ['mlschalk', 'mlsdogs'], ['laligachalk', 'laligadogs'], ['eflchalk', 'efldogs'],
+        ['eplchalk', 'epldogs'], ['bundeschalk', 'bundesdogs'], ['ligue1chalk', 'ligue1dogs'],
+    ] as const) {
         const a = tickers.find((t) => t.key === aKey);
         const b = tickers.find((t) => t.key === bKey);
         if (!a || !b) {
@@ -315,7 +326,11 @@ async function run(): Promise<void> {
     section('11. Every active index is tradeable');
     // =================================================================================
     const all = await createSessionUser(user('everything'));
-    await seedBalance(all.userId, 5000);
+    // Sized against the CURRENT index count, not a fixed number. 5,000 covered sixteen
+    // indexes near baseline 100; batch 5 and 6 took that to thirty-two, and an index that
+    // has run up costs well over its baseline - so a fixed seed silently turns this from
+    // "every index is tradeable" into "we ran out of Ember partway down the list".
+    await seedBalance(all.userId, Math.max(5000, tickers.length * 700));
     let bought = 0;
     for (const t of tickers) {
         const r = await buyReq(all.cookie, t.key, 1);

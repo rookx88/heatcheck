@@ -241,6 +241,28 @@ export function checkEligibility(ruleType: string, ctx: EligibilityContext, cfg:
                 ? { ok: true }
                 : { ok: false, reason: 'requires the Under side of the total' };
         }
+        // SLATE-ONLY INDEXES. $COVER/$CUSHION and $BOTHSCORE/$CLEANSHEET score games
+        // through index_positions and take no news leg at all, so a Tank can never be
+        // tagged to them. Spelled out here rather than left to the default arm because
+        // that arm would answer 'unknown rule_type "spread_favorite"', which is false and
+        // would send whoever read it looking for a missing case.
+        //
+        // The spread refusal is a real limitation, not a preference: EligibilityContext
+        // carries no question, and a spread's two outcomes are both just club names, so
+        // there is no way to tell which side is LAYING the points from a tag context. The
+        // slate path reads polymarket_props.question and can (see index-slate.ts's
+        // spreadSideIndex). Tagging these would need the question frozen into the Tank
+        // snapshot first.
+        //
+        // BTTS is refused for a plainer reason: curate's market whitelist is
+        // moneyline/spreads/totals, so no Tank ever carries a both-teams-to-score market
+        // to tag.
+        case 'spread_favorite':
+        case 'spread_underdog':
+            return { ok: false, reason: 'spread indexes are scored from the game slate, not from Tank tags' };
+        case 'btts_yes':
+        case 'btts_no':
+            return { ok: false, reason: 'both-teams-to-score indexes are scored from the game slate, not from Tank tags' };
         default: {
             // League-scoped children ($NBACHALK, $MLBDOGS, and the pre-existing
             // nfl_favorite/soccer_favorite): the parent's measure, one league only.
@@ -267,6 +289,17 @@ export function checkEligibility(ruleType: string, ctx: EligibilityContext, cfg:
                 return overUnderSide(ctx) === want
                     ? { ok: true }
                     : { ok: false, reason: `requires the ${want === 'over' ? 'Over' : 'Under'} side of the total` };
+            }
+            // Same refusal as the global spread/BTTS cases above, for the same reasons.
+            // Checked BEFORE the favorite/underdog fallthrough for the same reason the
+            // totals gate above is: without it, a future $NFLCOVER would accept whichever
+            // NFL side happened to be market-favored, on any market type at all - the
+            // wrong-position-that-settles-real-Ember failure this file keeps warning about.
+            if (rule.side === 'spread_favorite' || rule.side === 'spread_underdog') {
+                return { ok: false, reason: 'spread indexes are scored from the game slate, not from Tank tags' };
+            }
+            if (rule.side === 'btts_yes' || rule.side === 'btts_no') {
+                return { ok: false, reason: 'both-teams-to-score indexes are scored from the game slate, not from Tank tags' };
             }
             const wantFavorite = rule.side === 'favorite';
             const isFav = isMarketFavorite(ctx);

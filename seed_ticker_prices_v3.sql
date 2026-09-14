@@ -1,0 +1,45 @@
+-- TANKDAQ tradeable prices, v3: the two new families added by add_tickers_batch5.sql.
+--
+-- Everything in seed_ticker_prices_v1.sql still applies and is not restated here - the
+-- scale rule (scale ~= daily_sd / 0.12), the baseline of 100, the measurement query, and
+-- above all the mirror-pair contract.
+--
+-- PROVISIONAL, AND NOT YET MEASURABLE EVEN IN PRINCIPLE. v1's rule needs a daily standard
+-- deviation, and neither pair has one day of history - nor can either acquire any
+-- retroactively. Every earlier index could be back-filled because a parent had already
+-- locked the exact market at the right moment; nothing has ever locked a spread or a
+-- both-teams-to-score market, and polymarket_props keeps no price history, so there is
+-- nothing to copy. Both pairs genuinely start from zero on deploy day.
+--
+-- WHY 100, WHICH IS $OVERS/$UNDERS' SCALE. Of the indexes with a measured number, the
+-- totals pair is the closest structural analogue to both of these: broad daily coverage
+-- across every league that carries the market, so the days are smooth rather than lumpy,
+-- which is what scale actually tracks (see v2's header - cadence, not which side is
+-- held). $COVER/$CUSHION span nine leagues and $BOTHSCORE/$CLEANSHEET seven.
+--
+-- ONE REASON TO EXPECT THE RE-TUNE TO MOVE THIS DOWN. The canonical spread is chosen as
+-- the rung priced nearest a coin flip, so a $COVER contribution is ~+/-0.5 on every
+-- settled game - larger and far more symmetric than a moneyline index, where a heavy
+-- favorite winning pays only +0.25. If daily sd comes in above the totals pair's ~1.06,
+-- 100 is too flat and v5 should lower it. Measure after 30 days with v1's query rather
+-- than guessing now.
+--
+-- One paired UPDATE per mirror pair, the idiom v1 uses at its line 54: a mirror pair must
+-- share (baseline, scale) or ln(p_a) + ln(p_b) stops being constant and buying one stops
+-- being a clean short of the other. Writing each pair in a single statement is what makes
+-- editing them apart by accident impossible. Both pairs hold OPPOSITE SIDES OF ONE MARKET
+-- by construction, so they are exact mirrors in the way ($CHALK, $DOGS) is not.
+-- scripts/acceptance/suites/shares.ts asserts the drift is ~0.
+--
+-- Add to v1's pair roster (its line 14) when that file is next touched:
+--   (overs, unders) (mlbchalk, mlbdogs) (gridiron, nfldogs) (footy, socdogs)
+--   (nbachalk, nbadogs) (nflo, nflu) (cover, cushion) (bothscore, cleansheet)
+--
+-- CHANGING A SCALE RE-PRICES EVERY OPEN HOLDING. Nothing holds these four yet, which is
+-- the cheapest moment this decision will ever be made.
+--
+-- Re-runnable: plain UPDATEs. Run immediately after add_tickers_batch5.sql.
+-- Execute: psql "$DATABASE_URL" -f seed_ticker_prices_v3.sql
+
+UPDATE tickers SET price_baseline = 100, price_scale = 100 WHERE key IN ('cover', 'cushion');
+UPDATE tickers SET price_baseline = 100, price_scale = 100 WHERE key IN ('bothscore', 'cleansheet');

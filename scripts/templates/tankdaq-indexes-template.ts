@@ -58,6 +58,7 @@ export function generateTankdaqIndexesPageHtml(
                     ${fallbackLinks}
                 </ul>
                 <p><a href="/tankdaq/">Back to the TANKDAQ floor</a></p>
+                <p><a href="/teams/">Teams: how each club has run against its market price</a></p>
             </section>
         </div>
         ${footer()}
@@ -134,6 +135,10 @@ function tankdaqIndexesStyles(): string {
            proud as the family it belongs to. */
         .hc-tqb-head { background: none !important; }
         .hc-tqb-child { will-change: auto; }
+        /* Level three ($CHALK > $FOOTY > $EPLCHALK): recessed one step further again, and
+           it never animates - a dozen of these transitioning at once on a phone is the
+           one place this board can drop frames. */
+        .hc-tqb-grandchild { will-change: auto; transition: none; }
         .hc-tqb-sym {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; font-size: 1em;
             color: #ffffff; line-height: 1.1;
@@ -215,7 +220,7 @@ function tankdaqIndexesStyles(): string {
            information is not - drop the lift and the transitions, keep every colour,
            glow and depth cue exactly as-is. */
         @media (prefers-reduced-motion: reduce) {
-            .hc-tqb-tile, .hc-tqb-container { transition: none; }
+            .hc-tqb-tile, .hc-tqb-container, .hc-tqb-grandchild { transition: none; }
             .hc-tqb-tile:hover, .hc-tqb-tile:focus-visible, .hc-tqb-tile.is-active,
             .hc-tqb-container { transform: none !important; }
             .hc-tqb-detail { transition: none; }

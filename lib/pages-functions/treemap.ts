@@ -111,6 +111,11 @@ export const CONTAINER_CHILD_WEIGHT = 0.55;
 // and the border carry that - so evening the tiles out buys legibility cheaply.
 export const CHILD_WEIGHT_FLOOR_RATIO = 0.45;
 
+// Level three, floored harder again for the same reason one level down. Inside $FOOTY's
+// box a slice only has to say WHICH league, and at these tile sizes the three-letter
+// code is the whole render - so evening the tiles out buys legibility almost for free.
+export const GRANDCHILD_WEIGHT_FLOOR_RATIO = 0.60;
+
 export function floorContainerWeights(weights: number[], childCounts: number[]): number[] {
     const biggest = Math.max(...weights, 0);
     if (biggest <= 0) return weights;
@@ -131,6 +136,13 @@ export interface NestedLayout {
      * symbol and value. 0 for leaves, whose whole rect is theirs.
      */
     headers: number[];
+    /**
+     * Absolute rects per grandchild, aligned to grandchildDeltas[i][j]. Empty wherever
+     * a child has no family of its own - which is most of them.
+     */
+    grandchildren: Rect[][][];
+    /** Header strip inside each CHILD container. 0 where the child has no kids. */
+    childHeaders: number[][];
 }
 
 export interface NestOptions {
@@ -142,6 +154,24 @@ export interface NestOptions {
     padding?: number;
     /** Weight floor applied within a family (see CHILD_WEIGHT_FLOOR_RATIO). */
     childFloorRatio?: number;
+    /** The same four knobs again, one level down. */
+    grandchildHeaderRatio?: number;
+    grandchildHeaderMin?: number;
+    grandchildHeaderMax?: number;
+    grandchildPadding?: number;
+    grandchildFloorRatio?: number;
+    /**
+     * A child container whose inner area comes out below this (board units squared) is
+     * drawn as a plain leaf and its own family is DROPPED from the layout.
+     *
+     * This is a legibility gate, not an optimisation. On the 100x84 board a third-level
+     * tile lands near 9x9 units, where the widest thing that fits is a three-letter
+     * league code - and below that it renders bare, which is a tile carrying no
+     * information at all. Dropping the ring is honest; drawing unreadable slivers is not.
+     * The caller must count the tiles it ACTUALLY draws rather than assuming this ring
+     * exists (see renderIndexBoardSvg's `nested`).
+     */
+    grandchildMinArea?: number;
 }
 
 /**
@@ -158,23 +188,40 @@ export function layoutNested(
     childDeltas: number[][],
     width: number,
     height: number,
-    opts: NestOptions = {}
+    opts: NestOptions = {},
+    // Optional trailing argument so both existing callers compile untouched and opt in
+    // explicitly. Empty means "two levels", which is exactly what this did before.
+    grandchildDeltas: number[][][] = [],
 ): NestedLayout {
     const {
         headerRatio = 0.26, headerMin = 0, headerMax = Infinity, padding = 0,
         childFloorRatio = CHILD_WEIGHT_FLOOR_RATIO,
+        grandchildHeaderRatio = 0.30, grandchildHeaderMin = 0, grandchildHeaderMax = Infinity,
+        grandchildPadding = 0, grandchildFloorRatio = GRANDCHILD_WEIGHT_FLOOR_RATIO,
+        grandchildMinArea = 0,
     } = opts;
-    const childCounts = rootDeltas.map((_, i) => childDeltas[i]?.length ?? 0);
+    // Root area is floored against DESCENDANTS, not children. A root holding two
+    // containers of six has sixteen tiles to fit, and counting only its four children
+    // would size it as though it had four.
+    const childCounts = rootDeltas.map((_, i) => {
+        const kids = childDeltas[i] ?? [];
+        const grandkids = (grandchildDeltas[i] ?? []).reduce((n, g) => n + (g?.length ?? 0), 0);
+        return kids.length + grandkids;
+    });
     const rootWeights = floorContainerWeights(weightsFromDeltas(rootDeltas), childCounts);
     const roots = squarifyInto(rootWeights, { x: 0, y: 0, w: width, h: height });
 
     const children: Rect[][] = [];
     const headers: number[] = [];
+    const grandchildren: Rect[][][] = [];
+    const childHeaders: number[][] = [];
     roots.forEach((rect, i) => {
         const kids = childDeltas[i] ?? [];
         if (kids.length === 0) {
             children.push([]);
             headers.push(0);
+            grandchildren.push([]);
+            childHeaders.push([]);
             return;
         }
         const header = Math.min(Math.max(rect.h * headerRatio, headerMin), headerMax, rect.h);
@@ -185,7 +232,42 @@ export function layoutNested(
             h: Math.max(rect.h - header - padding, 0),
         };
         headers.push(header);
-        children.push(inner.w > 0 && inner.h > 0 ? squarifyInto(weightsFromDeltas(kids, childFloorRatio), inner) : []);
+        // Within a family, a child that is itself a container needs room for its own
+        // header plus its ring - the same argument floorContainerWeights makes for roots,
+        // applied one level down. Without it $FOOTY (six grandchildren) would be sized
+        // identically to $NBACHALK (a leaf) whenever the two moved by the same amount.
+        const kidCounts = kids.map((_, j) => (grandchildDeltas[i]?.[j]?.length ?? 0));
+        const kidWeights = floorContainerWeights(weightsFromDeltas(kids, childFloorRatio), kidCounts);
+        const kidRects = inner.w > 0 && inner.h > 0 ? squarifyInto(kidWeights, inner) : [];
+        children.push(kidRects);
+
+        // Third pass, mirroring the second exactly.
+        const gRects: Rect[][] = [];
+        const gHeaders: number[] = [];
+        kidRects.forEach((kidRect, j) => {
+            const gkids = grandchildDeltas[i]?.[j] ?? [];
+            if (gkids.length === 0 || kidRect.w * kidRect.h < grandchildMinArea) {
+                gRects.push([]);
+                gHeaders.push(0);
+                return;
+            }
+            const gHeader = Math.min(
+                Math.max(kidRect.h * grandchildHeaderRatio, grandchildHeaderMin),
+                grandchildHeaderMax, kidRect.h,
+            );
+            const gInner: Rect = {
+                x: kidRect.x + grandchildPadding,
+                y: kidRect.y + gHeader,
+                w: Math.max(kidRect.w - grandchildPadding * 2, 0),
+                h: Math.max(kidRect.h - gHeader - grandchildPadding, 0),
+            };
+            gHeaders.push(gHeader);
+            gRects.push(gInner.w > 0 && gInner.h > 0
+                ? squarifyInto(weightsFromDeltas(gkids, grandchildFloorRatio), gInner)
+                : []);
+        });
+        grandchildren.push(gRects);
+        childHeaders.push(gHeaders);
     });
-    return { roots, children, headers };
+    return { roots, children, headers, grandchildren, childHeaders };
 }

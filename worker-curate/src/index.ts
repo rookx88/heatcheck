@@ -110,14 +110,22 @@ async function runSweeps(env: Env): Promise<{ indexLock: string; indexSettle: st
     // spent), and worker-settle's single 09:00 slot could not keep up: one pass a day
     // settles fewer games than locking creates, so the backlog compounded until it was
     // days deep and the newest indexes, last in the kickoff-ordered queue, never settled
-    // at all. Riding the sweep slots too gives it four passes a day against a peak of
-    // ~36 markets, with room for the NFL and NBA seasons.
+    // at all. Riding the sweep slots too gives it four passes a day.
+    //
+    // That used to be sized against "a peak of ~36 markets". It isn't: measured
+    // 2026-09-13, 09-12 needed 107 distinct market settles and 09-13 needed 99, against a
+    // four-pass ceiling of 120 - and the coming weekend projects 164 and 144. Hence the
+    // drain loop below; four passes is now four DRAINS, not four batches of 30.
     //
     // Free to over-call: settlement is idempotent (closes upsert on
     // (ticker_key, close_date)) and a pass with nothing due costs two queries. Runs
     // after the lock for the usual reason - the lock is the only step whose window can
     // close permanently.
-    const indexSettle = await postSibling(env, '/api/index-settle');
+    //
+    // DRAINED rather than called once: one pass settles at most MAX_MARKETS (30) markets,
+    // which no longer covers a busy day's slate on its own. See drainSibling's header for
+    // the measurements and for why looping is free.
+    const indexSettle = await drainSibling(env, '/api/index-settle');
 
     // Exchange ticker tag sweep - a SEPARATE request on purpose: each Pages Function
     // invocation has its own subrequest budget, and curation's traffic already runs
@@ -143,6 +151,52 @@ async function runSweeps(env: Env): Promise<{ indexLock: string; indexSettle: st
 // functions/api/league-slate-sweep.ts.
 async function runLeagueSlateSweep(env: Env): Promise<string> {
     return postSibling(env, '/api/league-slate-sweep');
+}
+
+// POST a sibling endpoint repeatedly until it reports its queue is drained.
+//
+// WHY THIS EXISTS. /api/index-settle caps itself at MAX_MARKETS (30) per call, because
+// resolution costs one Gamma call per market and a Pages Function has a hard ~50
+// subrequest ceiling. Four cron passes a day therefore buy 120 market-settles a day - and
+// that is no longer enough. Measured 2026-09-13: 107 distinct markets came due on 09-12
+// and 99 on 09-13, while the coming weekend projects 164 (09-19) and 144 (09-20). The
+// comment justifying four passes cites "a peak of ~36 markets"; the real peak is already
+// three times that, and every market type added multiplies it again.
+//
+// Looping is the cheap fix, and it works precisely because each POST is a SEPARATE Pages
+// Function invocation with its OWN subrequest budget - so draining the queue costs no
+// more per call than one pass does, and MAX_MARKETS never has to rise toward the ceiling.
+// No new cron trigger is needed either, which matters: the Workers Free plan caps at five
+// account-wide and all five are spent (these four plus worker-settle's one).
+//
+// Safe to over-call by construction: settlement is idempotent (closes upsert on
+// (ticker_key, close_date) and REPLACE the day's total, and a settled position is never
+// re-settled), and a pass with nothing due costs two queries. The cap is a stop against
+// a wedged endpoint looping forever, not a tuning knob - a run that genuinely needs more
+// than 8 x 30 = 240 markets will simply continue on the next cron slot, exactly as it
+// does today.
+const MAX_DRAIN_CALLS = 8;
+
+async function drainSibling(env: Env, path: string): Promise<string> {
+    let last = '';
+    for (let i = 0; i < MAX_DRAIN_CALLS; i++) {
+        last = await postSibling(env, path);
+        let more = false;
+        try {
+            // hasMore is shipped as a boolean for exactly this caller. An unparseable or
+            // empty body (the endpoint errored, or the fetch threw) stops the loop rather
+            // than spinning - the next cron slot picks the backlog up.
+            more = JSON.parse(last)?.hasMore === true;
+        } catch {
+            more = false;
+        }
+        if (!more) {
+            if (i > 0) console.log(`[worker-curate] ${path} drained in ${i + 1} calls`);
+            return last;
+        }
+    }
+    console.warn(`[worker-curate] ${path} still reported a backlog after ${MAX_DRAIN_CALLS} calls`);
+    return last;
 }
 
 async function postSibling(env: Env, path: string): Promise<string> {

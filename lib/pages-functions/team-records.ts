@@ -107,6 +107,11 @@ export const TEAM_SIDE_DEDUPE_SQL = `
            ip.settled_at, ip.kickoff, ip.away, ip.home,
            ip.away_team_id, ip.home_team_id
     FROM index_positions ip
+    -- MONEYLINE ONLY, and it must stay that way. Since 2026-09-13 spread positions also
+    -- resolve a subject_team_id (their side label IS a club), so this predicate is now
+    -- the only thing keeping a club's record meaning "games won" rather than "games won
+    -- or covered". Widening it would double-count every game a team both won AND covered
+    -- and quietly restate every record on the site.
     WHERE ip.market_type = 'moneyline'
       AND ip.result IN ('win', 'loss')
       AND ip.subject_team_id IS NOT NULL

@@ -22,6 +22,8 @@ import {
     insertTank, insertTagDirect, insertUserWithPick, findMarkets, findKalshiMarkets, tickerValue, settleEventDelta,
     flipConfig, restoreConfig, cleanupUsersByEmailPrefix, cleanupTanksBySlugPrefix,
 } from '../fixtures';
+import { LEAGUE_GROUPS, parseLeagueRule } from '../../../lib/pages-functions/league-rules';
+import { marketTypeForRule } from '../../../lib/pages-functions/index-slate';
 
 const TICKER_SECRET = process.env.TICKER_SECRET || '';
 const SETTLE_SECRET = process.env.SETTLE_SECRET || '';
@@ -49,26 +51,112 @@ async function run() {
     check('GET /api/tickers returns 200 with note', list.status === 200 && typeof list.json?.note === 'string');
     const keys = (list.json?.tickers ?? []).map((t: any) => t.key);
     const EXPECTED_KEYS = ['dogs', 'chalk', 'locks', 'moonshot', 'overs', 'unders', 'gridiron', 'footy',
-        'nbachalk', 'mlbchalk', 'nbadogs', 'mlbdogs', 'nfldogs', 'socdogs', 'nflo', 'nflu'];
-    check('all sixteen tickers present, ordered by tab_order (add_tickers_batch2/3/4.sql are deploy prerequisites)',
+        'nbachalk', 'mlbchalk', 'nbadogs', 'mlbdogs', 'nfldogs', 'socdogs', 'nflo', 'nflu',
+        // batch 5: the first indexes reading a market type other than moneyline/totals.
+        'cover', 'cushion', 'bothscore', 'cleansheet',
+        // batch 6: the per-league soccer slices, level THREE. The six dormant ones
+        // ($UCLCHALK and the two cup pairs) ship active=false and so are absent here -
+        // see add_tickers_batch6.sql.
+        'mlschalk', 'mlsdogs', 'laligachalk', 'laligadogs', 'eflchalk', 'efldogs',
+        'eplchalk', 'epldogs', 'bundeschalk', 'bundesdogs', 'ligue1chalk', 'ligue1dogs'];
+    check('all active tickers present, ordered by tab_order (add_tickers_batch2..6.sql are deploy prerequisites)',
         JSON.stringify(keys.filter((k: string) => EXPECTED_KEYS.includes(k))) === JSON.stringify(EXPECTED_KEYS));
-    // Each family slices its parent by league, so a child must name a parent that is
-    // itself top-level - a child of a child would double-count on the nested board.
-    // The chalk/dogs families partition their parents exactly (their children cover every
-    // league the sync ingests); the overs/unders family is NFL-only and deliberately
-    // partial, which the board renders the same way - the tile is just not fully
-    // subdivided. See add_tickers_batch4.sql.
+    // Each family slices its parent, so a child must name a parent one ring out. The
+    // chalk/dogs families partition their parents exactly (their children cover every
+    // league the sync ingests); the overs/unders family is NFL-only and the level-three
+    // soccer family covers six of ten competitions - both deliberately partial, which the
+    // board renders the same way, the tile is just not fully subdivided. See
+    // add_tickers_batch4.sql and add_tickers_batch6.sql.
     const EXPECTED_FAMILIES: Record<string, string> = {
         gridiron: 'chalk', footy: 'chalk', nbachalk: 'chalk', mlbchalk: 'chalk',
         nbadogs: 'dogs', mlbdogs: 'dogs', nfldogs: 'dogs', socdogs: 'dogs',
         nflo: 'overs', nflu: 'unders',
+        mlschalk: 'footy', laligachalk: 'footy', eflchalk: 'footy',
+        eplchalk: 'footy', bundeschalk: 'footy', ligue1chalk: 'footy',
+        mlsdogs: 'socdogs', laligadogs: 'socdogs', efldogs: 'socdogs',
+        epldogs: 'socdogs', bundesdogs: 'socdogs', ligue1dogs: 'socdogs',
     };
-    check('the ten league sub-indexes point at chalk/dogs/overs/unders, and no other ticker has a parent',
+    check('every sub-index points at its expected parent, and no other ticker has a parent',
         (list.json?.tickers ?? []).every((t: any) => (t.parentKey ?? null) === (EXPECTED_FAMILIES[t.key] ?? null)));
-    // Every parent named above must itself be top-level, or the board nests a tile inside
-    // a tile that is already nested.
-    check('no sub-index points at another sub-index',
-        Object.values(EXPECTED_FAMILIES).every((parent) => !(parent in EXPECTED_FAMILIES)));
+
+    // --- Hierarchy depth. Replaces the old "no sub-index points at another sub-index"
+    // assertion, which became false on 2026-09-13 when the per-league soccer slices
+    // landed under $FOOTY/$SOCDOGS. The board now draws THREE rings, so what has to hold
+    // is bounded depth plus one ring per step - not flatness.
+    const parentOf = new Map<string, string | null>(
+        (list.json?.tickers ?? []).map((t: any) => [t.key, t.parentKey ?? null]));
+    const depthOf = (k: string): number => {
+        let d = 1;
+        let cur = parentOf.get(k) ?? null;
+        const seen = new Set([k]);
+        while (cur) {
+            if (seen.has(cur)) return Infinity; // cycle
+            seen.add(cur);
+            d++;
+            cur = parentOf.get(cur) ?? null;
+        }
+        return d;
+    };
+    check('every parent_key names a ticker that is itself present',
+        (list.json?.tickers ?? []).every((t: any) => !t.parentKey || parentOf.has(t.parentKey)));
+    check('no parent_key cycle',
+        (list.json?.tickers ?? []).every((t: any) => Number.isFinite(depthOf(t.key))));
+    // Four rings would be drawn at ring three by both boards (they clamp rather than drop),
+    // so a fourth level does not crash - it silently renders in the wrong place.
+    check('no index nests deeper than three levels',
+        (list.json?.tickers ?? []).every((t: any) => depthOf(t.key) <= 3));
+    check('every level-2 index has a level-1 parent',
+        (list.json?.tickers ?? []).filter((t: any) => depthOf(t.key) === 2)
+            .every((t: any) => depthOf(t.parentKey) === 1));
+    check('every level-3 index has a level-2 parent',
+        (list.json?.tickers ?? []).filter((t: any) => depthOf(t.key) === 3)
+            .every((t: any) => depthOf(t.parentKey) === 2));
+    // layoutNested draws ONE uniform ring per container, so a parent holding a mix of
+    // depths would render tiles of two different kinds in the same band.
+    const depthsByParent = new Map<string, Set<number>>();
+    for (const t of (list.json?.tickers ?? [])) {
+        if (!t.parentKey) continue;
+        const s = depthsByParent.get(t.parentKey) ?? new Set<number>();
+        s.add(depthOf(t.key));
+        depthsByParent.set(t.parentKey, s);
+    }
+    check('all children of a given parent sit at the same depth',
+        [...depthsByParent.values()].every((s) => s.size === 1));
+
+    // --- The rule GRAMMAR. Pure, no DB, no HTTP - but this is where the expensive
+    // failure lives, so it is asserted next to the hierarchy it protects.
+    //
+    // parseLeagueRule splits on the FIRST underscore and needs the suffix to be a known
+    // side AND the prefix to be a league group. Several global rule_types look exactly
+    // like league rules under that split ('heavy_favorite' -> heavy + favorite,
+    // 'spread_favorite' -> spread + favorite), and stay global ONLY because no league
+    // group is named 'heavy' or 'spread'. Name one that way and a global index silently
+    // becomes league-scoped - it would quietly stop scoring twelve of thirteen leagues.
+    const GLOBAL_RULES = ['favorite', 'underdog', 'longshot', 'heavy_favorite',
+        'total_over', 'total_under', 'spread_favorite', 'spread_underdog', 'btts_yes', 'btts_no'];
+    check('no global rule_type parses as a league rule',
+        GLOBAL_RULES.every((rt) => parseLeagueRule(rt) === null));
+    check('no LEAGUE_GROUPS key contains an underscore (parseLeagueRule grammar)',
+        Object.keys(LEAGUE_GROUPS).every((k) => !k.includes('_')));
+    check('no LEAGUE_GROUPS key shadows a global rule prefix',
+        ['spread', 'btts', 'heavy', 'total'].every((p) => !(p in LEAGUE_GROUPS)));
+    // leagueShortCode is group.slice(0,3), and inside a family box that code is the only
+    // thing distinguishing one league slice from another - a collision makes two tiles
+    // indistinguishable rather than merely ugly.
+    check('leagueShortCode is unique across every league group',
+        new Set(Object.keys(LEAGUE_GROUPS).map((k) => k.slice(0, 3))).size
+            === Object.keys(LEAGUE_GROUPS).length);
+    // The one that actually cost money if it regressed: every active index must resolve
+    // to a market type, and a league child must resolve to the SAME one its parent does.
+    // Before marketFamilyForSide existed, the league arm ended in a binary ternary that
+    // sent any unrecognised side at the moneyline market.
+    check('every active index resolves to a market type',
+        (list.json?.tickers ?? []).every((t: any) => marketTypeForRule(t.ruleType) !== null));
+    check('every sub-index reads the same market type as its parent',
+        (list.json?.tickers ?? []).filter((t: any) => t.parentKey).every((t: any) => {
+            const parent = (list.json?.tickers ?? []).find((p: any) => p.key === t.parentKey);
+            return !parent || marketTypeForRule(t.ruleType) === marketTypeForRule(parent.ruleType);
+        }));
     check('values are numeric (not NUMERIC strings)', (list.json?.tickers ?? []).every((t: any) => typeof t.value === 'number'));
     check('fallback pcts seeded: dogs/chalk symmetric 5/5, locks 5/15, moonshot 20/5, batch-2 all 5/5',
         ['dogs:5:5', 'chalk:5:5', 'locks:5:15', 'moonshot:20:5', 'overs:5:5', 'unders:5:5', 'gridiron:5:5', 'footy:5:5'].every((spec) => {

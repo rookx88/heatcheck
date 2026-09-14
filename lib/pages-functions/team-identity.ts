@@ -323,7 +323,8 @@ export function mappedRawNames(): string[] {
  * "no team on this side" - three of them correct and one of them a bug - and without a
  * reason code they are indistinguishable in the stored row:
  *
- *   totals / three_way_no / draw_market  - honest refusals. Nothing to fix.
+ *   totals / game_property / three_way_no / draw_market
+ *                                        - honest refusals. Nothing to fix.
  *   unmapped_team / label_matches_*      - a club nobody has mapped, or a label that
  *                                          matched neither side. Those are bugs, and
  *                                          they must fail an acceptance check rather
@@ -334,6 +335,7 @@ export type SubjectSource =
     | 'side_label_nickname'  // the label is a nickname of exactly one of the two (NFL)
     | 'question'             // soccer 'Yes', club named in the question
     | 'totals'               // not team-directional
+    | 'game_property'        // both-teams-to-score: a fact about the game, not a side
     | 'three_way_no'         // 'No' = opponent win OR draw; not a team
     | 'draw_market'          // legacy "end in a draw?" rows; nobody's directional side
     | 'unmapped_team'        // BUG: a club the registry doesn't carry
@@ -408,8 +410,20 @@ export function resolvePositionTeams(input: PositionTeamsInput): PositionTeams {
         unmapped,
     });
 
-    // 1. Only a moneyline is a statement about a club. A total is a property of the game.
-    if (input.marketType !== 'moneyline') return done(null, 'totals');
+    // 1. A moneyline and a SPREAD are both statements about a club - on a spread the side
+    //    label IS the club (verified on the live board: a spread's two outcomes are the
+    //    two team names, and outcome 0 is the team the question names). A total, and
+    //    both-teams-to-score, are properties of the GAME and belong to neither side.
+    //
+    //    Spreads used to fall into the 'totals' arm below, which was a lie with teeth:
+    //    'totals' is an honest-refusal code, so it is absent from index-lock's
+    //    BUG_SOURCES, and every spread position would have recorded subject_team_id NULL
+    //    with attributionBugs still reading 0. A whole market type would have gone
+    //    unattributed and the acceptance suite would have passed.
+    if (input.marketType === 'both_teams_to_score') return done(null, 'game_property');
+    if (input.marketType !== 'moneyline' && input.marketType !== 'spreads') {
+        return done(null, 'totals');
+    }
     if (!away && !home) return done(null, 'missing_teams');
 
     const label = (input.sideLabel ?? '').trim();
