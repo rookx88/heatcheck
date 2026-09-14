@@ -65,6 +65,9 @@ export function generateSitemap(
         { loc: `${baseUrl}/quickboost-delicacies/`, lastmod: today, changefreq: 'monthly', priority: '0.4' },
         { loc: `${baseUrl}/tankdaq/`, lastmod: today, changefreq: 'monthly', priority: '0.4' },
         { loc: `${baseUrl}/tankdaq/indexes/`, lastmod: today, changefreq: 'daily', priority: '0.5' },
+        // The teams hub. League and club pages are pushed dynamically by the build, the
+        // way Tank articles are - they exist only for what the slate has actually settled.
+        { loc: `${baseUrl}/teams/`, lastmod: today, changefreq: 'daily', priority: '0.5' },
         // One detail page per Exchange ticker - a new ticker needs a line here too
         // (the pages themselves generate from the tickers table at build time).
         ...['dogs', 'chalk', 'locks', 'moonshot', 'overs', 'unders', 'gridiron', 'footy',

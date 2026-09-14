@@ -193,6 +193,7 @@ const CLUB_DISPLAY: Record<string, string> = {
     'Manchester United FC': 'Manchester United',
     'Middlesbrough FC': 'Middlesbrough',
     'Millwall FC': 'Millwall',
+    'Newcastle United FC': 'Newcastle United',
     'Norwich City FC': 'Norwich City',
     'Nottingham Forest FC': 'Nottingham Forest',
     'Portsmouth FC': 'Portsmouth',

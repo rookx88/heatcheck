@@ -63,6 +63,9 @@ export async function buildTankBundles(): Promise<void> {
             { in: path.join(process.cwd(), 'tankdaq-client.tsx'), out: 'tankdaq' },
             { in: path.join(process.cwd(), 'tankdaq-heatmap-client.tsx'), out: 'tankdaq-indexes' },
             { in: path.join(process.cwd(), 'tankdaq-ticker-client.tsx'), out: 'tankdaq-ticker' },
+            // One bundle serves /teams/, every /teams/<slug>/ and every /leagues/<slug>/:
+            // the chrome everywhere, the treemap only where a league board root exists.
+            { in: path.join(process.cwd(), 'teams-client.tsx'), out: 'teams' },
         ],
         bundle: true,
         splitting: true, // requires format: 'esm'; this is what extracts the shared chunk

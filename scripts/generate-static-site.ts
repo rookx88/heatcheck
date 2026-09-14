@@ -36,6 +36,15 @@ import { emptyMarketMovers, indexLabelOf, toMarketMovers } from '../lib/pages-fu
 import { generateTankdaqPageHtml } from './templates/tankdaq-template';
 import { generateTankdaqIndexesPageHtml } from './templates/tankdaq-indexes-template';
 import { generateTankdaqTickerPageHtml } from './templates/tankdaq-ticker-template';
+import { generateTeamPageHtml } from './templates/team-template';
+import { generateLeaguePageHtml } from './templates/league-template';
+import { generateTeamsHubPageHtml, type HubLeague } from './templates/teams-hub-template';
+import {
+    buildLeagueBoardModel, buildTeamPageModel, getTeamFixtures, getTeamSides, knownLeagues,
+    readTeamConfig, sportOf, teamDisplayMap,
+} from '../lib/pages-functions/team-pages';
+import { buildTeamRecords } from '../lib/pages-functions/team-records';
+import { buildAllTeamPricing, getTeamCloseEvents, getTeamTagEvents } from '../lib/pages-functions/team-price';
 import { generateClaimYourSpotPageHtml } from './templates/claim-your-spot-template';
 import { generateNewsletterPickPageHtml } from './templates/newsletter-pick-template';
 import { generateLoginPageHtml } from './templates/login-template';
@@ -575,6 +584,33 @@ function buildCanonicalClusters(pages: TankPageRecord[]): Map<string, string> {
         console.log(`✓ Consolidated ${canonicalBySlug.size} duplicate Tank article(s) onto their newest sibling`);
     }
     return canonicalBySlug;
+}
+
+/**
+ * Delete team or league page directories that no longer correspond to a club or league
+ * in this build - pruneStaleTankArticles' idea, for the /teams/ and /leagues/ families.
+ * Only subdirectories are considered, so a family's own index.html (the teams hub) is
+ * never touched. Same zero-row guard: a build that produced no pages (DB unreachable,
+ * migration not applied) must not wipe the corpus.
+ */
+export function pruneStaleTeamPages(family: 'teams' | 'leagues', keepSlugs: string[], baseDirs: string[] = [distDir, publicDir]): number {
+    if (keepSlugs.length === 0) {
+        console.warn(`⚠ Skipping stale-${family} prune: no ${family} pages in this build`);
+        return 0;
+    }
+    const keep = new Set(keepSlugs);
+    let removed = 0;
+    for (const baseDir of baseDirs) {
+        const dir = path.join(baseDir, family);
+        if (!fs.existsSync(dir)) continue;
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            if (!entry.isDirectory() || keep.has(entry.name)) continue;
+            fs.rmSync(path.join(dir, entry.name), { recursive: true, force: true });
+            removed++;
+        }
+    }
+    if (removed > 0) console.log(`✓ Pruned ${removed} stale ${family} page director${removed === 1 ? 'y' : 'ies'}`);
+    return removed;
 }
 
 /**
@@ -1473,6 +1509,9 @@ async function generateAllPages(): Promise<void> {
         // Generate Tank article pages (published only)
         console.log('Generating Tank articles...');
         const tankArticleUrls: Array<{ loc: string; lastmod: string; changefreq: string; priority: string }> = [];
+        // Team and league pages, pushed by the block below the TANKDAQ pages and appended
+        // to the sitemap beside the articles (the hub itself is a hardcoded sitemap entry).
+        const teamUrls: Array<{ loc: string; lastmod: string; changefreq: string; priority: string }> = [];
         // Populated below if the tank_pages query succeeds; stays empty otherwise so
         // the-tank page still generates (with its empty state) even if that table
         // isn't ready yet - it's a primary nav destination from the world map and
@@ -1694,7 +1733,71 @@ async function generateAllPages(): Promise<void> {
         } catch (err) {
             console.warn('⚠ Ticker registry unavailable; skipping TANKDAQ index pages:', (err as Error).message);
         }
-        // Note: all of these URLs are hardcoded sitemap entries in sitemap.ts - not
+
+        // Team pages and league boards (/teams/, /teams/<slug>/, /leagues/<slug>/) - the
+        // team-attribution layer's first surfaces. Same warn-and-continue posture as the
+        // TANKDAQ pages: a missing column or table (a fresh environment, a migration not
+        // yet applied) degrades to no team pages this build, never a broken build. The
+        // readers are the SqlReader helpers in team-pages.ts over sqlPg, so the build and
+        // the acceptance suite aggregate from one SQL.
+        try {
+            const [teamCfg, sides, fixturesByTeam, closeEvents, tagReport] = await Promise.all([
+                readTeamConfig(sqlPg),
+                getTeamSides(sqlPg),
+                getTeamFixtures(sqlPg),
+                getTeamCloseEvents(sqlPg),
+                getTeamTagEvents(sqlPg),
+            ]);
+            const { minGames } = teamCfg;
+            if (teamCfg.source === 'default') {
+                console.warn(`⚠ game_config['team_records'] not found; team pages use the code defaults (gate ${minGames}, scale ${teamCfg.priceScale})`);
+            }
+            const records = buildTeamRecords(sides);
+            const displayOf = teamDisplayMap();
+            // The club prices: derived closes + resolved Tank tags through the index price
+            // transform (team-price.ts). Tags that name no club are honest refusals (a soccer
+            // 'No') and unmapped names alike - reported, never guessed.
+            const priceParams = { baseline: teamCfg.priceBaseline, scale: teamCfg.priceScale };
+            const pricing = buildAllTeamPricing(closeEvents, tagReport.events, priceParams, Date.now());
+            console.log(`  team pricing: ${closeEvents.length} derived close(s), ${tagReport.events.length} of ${tagReport.considered} Tank tag side(s) resolved to a club, ${pricing.size} club(s) priced`);
+            const today = new Date().toISOString().split('T')[0];
+            const pushUrl = (loc: string, priority: string) => teamUrls.push({ loc, lastmod: today, changefreq: 'daily', priority });
+
+            // One page per club with at least one settled fixture - below the games gate
+            // too (the page lists its games and withholds the headline; see team-template).
+            const teamSlugs: string[] = [];
+            for (const [teamId, fixtures] of fixturesByTeam) {
+                const team = displayOf.get(teamId);
+                if (!team) {
+                    console.warn(`⚠ Skipping team page for unregistered club id "${teamId}" (add it to team-identity.ts)`);
+                    continue;
+                }
+                const model = buildTeamPageModel(team, records.get(teamId) ?? null, fixtures, minGames, pricing.get(teamId) ?? null);
+                writeHtmlFile(`teams/${teamId}/index.html`, generateTeamPageHtml(baseUrl, model));
+                teamSlugs.push(teamId);
+                pushUrl(`${baseUrl}/teams/${teamId}/`, model.qualifies ? '0.5' : '0.3');
+            }
+
+            // One board per league with at least one settled fixture. The hub lists every
+            // league the slate could carry, linking the ones that have a board.
+            const leagueSlugs: string[] = [];
+            const hubLeagues: HubLeague[] = [];
+            for (const league of knownLeagues()) {
+                const board = buildLeagueBoardModel(league, records, fixturesByTeam, minGames, displayOf, pricing, priceParams);
+                hubLeagues.push({ league, slug: board.slug, sport: sportOf(league), clubs: board.tiles.length, games: board.games });
+                if (board.tiles.length === 0) continue;
+                writeHtmlFile(`leagues/${board.slug}/index.html`, generateLeaguePageHtml(baseUrl, board));
+                leagueSlugs.push(board.slug);
+                pushUrl(`${baseUrl}/leagues/${board.slug}/`, '0.5');
+            }
+            writeHtmlFile('teams/index.html', generateTeamsHubPageHtml(baseUrl, hubLeagues));
+            pruneStaleTeamPages('teams', teamSlugs);
+            pruneStaleTeamPages('leagues', leagueSlugs);
+            console.log(`✓ Generated Teams hub, ${leagueSlugs.length} league board(s) and ${teamSlugs.length} team page(s) (gate: ${minGames} games)`);
+        } catch (err) {
+            console.warn('⚠ Team attribution unavailable; skipping team pages:', (err as Error).message);
+        }
+        // Note: the TANKDAQ URLs are hardcoded sitemap entries in sitemap.ts - not
         // pushed here too, to avoid duplicate <url> entries.
         console.log(`✓ Generated Tank Land, Tank HQ (${tankEntries.length} tank(s)), and Hatchery pages\n`);
 
@@ -1741,9 +1844,9 @@ async function generateAllPages(): Promise<void> {
         
         // Generate sitemap.xml (write to dist/ for Cloudflare Pages)
         console.log('Generating sitemap...');
-        generateSitemap(posts, baseUrl, 'dist/sitemap.xml', tankArticleUrls);
+        generateSitemap(posts, baseUrl, 'dist/sitemap.xml', [...tankArticleUrls, ...teamUrls]);
         // Also write to public/ for local development
-        generateSitemap(posts, baseUrl, 'public/sitemap.xml', tankArticleUrls);
+        generateSitemap(posts, baseUrl, 'public/sitemap.xml', [...tankArticleUrls, ...teamUrls]);
         console.log('');
         
         // Generate robots.txt (write to dist/ for Cloudflare Pages)

@@ -12,6 +12,7 @@ import { signAuthToken } from '../../lib/pages-functions/auth-tokens';
 import { LIFETIME_EARNED_RULE_KEYS } from '../../lib/pages-functions/ledger';
 import type { SessionTokenPayload, LoginTokenPayload } from '../../lib/auth-token-payloads';
 import { KALSHI_SERIES_MAP } from '../../kalshi';
+import { resolvePositionTeams } from '../../lib/pages-functions/team-identity';
 
 const SESSION_TOKEN_SECRET = process.env.SESSION_TOKEN_SECRET || '';
 
@@ -550,28 +551,44 @@ export interface IndexPositionFixture {
     result: 'win' | 'loss';
     closeId: string;
     settledAt?: string; // ISO; defaults to NOW() so the row ranks newest
+    /** polymarket_props.question, for Yes/No sides - the resolver reads the club from it. */
+    question?: string | null;
 }
 
-// Mirrors what index-lock + index-settle leave behind for one game, in one insert.
+// Mirrors what index-lock + index-settle leave behind for one game, in one insert -
+// including the club attribution index-lock stamps at lock time (subject_src is NOT NULL
+// since add_team_identity_to_index_positions.sql's backfill), resolved by the SAME
+// function so a fixture can never carry an attribution production wouldn't.
 export async function insertIndexPositionDirect(f: IndexPositionFixture): Promise<{ id: string; contrib: number }> {
     if (!f.eventId.startsWith(INDEX_FIXTURE_PREFIX) || !f.marketId.startsWith(INDEX_FIXTURE_PREFIX)) {
         throw new Error(`index fixture ids must start with ${INDEX_FIXTURE_PREFIX}`);
     }
     const won = f.result === 'win';
     const contrib = Number((won ? 1 - f.entryProb : -f.entryProb).toFixed(3)); // contributionFor, index-slate.ts
+    const teams = resolvePositionTeams({
+        league: f.league ?? 'ACCEPTANCE',
+        away: f.away,
+        home: f.home,
+        marketType: f.marketType,
+        sideLabel: f.sideLabel,
+        question: f.question ?? null,
+    });
     const { rows } = await pool.query(
         `INSERT INTO index_positions (
              ticker_key, provider, market_id, league, event_id, away, home, kickoff,
              market_type, market_line, side_index, side_label, entry_prob, locked_at,
-             result, winning_index, settled_at, contrib, close_id)
+             result, winning_index, settled_at, contrib, close_id,
+             away_team_id, home_team_id, subject_team_id, subject_src)
          VALUES ($1, 'polymarket', $2, $3, $4, $5, $6, NOW() - INTERVAL '6 hours',
                  $7, $8, $9, $10, $11, NOW() - INTERVAL '7 hours',
-                 $12, $13, COALESCE($14::timestamptz, NOW()), $15, $16)
+                 $12, $13, COALESCE($14::timestamptz, NOW()), $15, $16,
+                 $17, $18, $19, $20)
          RETURNING id`,
         [
             f.tickerKey, f.marketId, f.league ?? 'ACCEPTANCE', f.eventId, f.away, f.home,
             f.marketType, f.marketLine ?? null, f.sideIndex, f.sideLabel, f.entryProb,
             f.result, won ? f.sideIndex : 1 - f.sideIndex, f.settledAt ?? null, contrib, f.closeId,
+            teams.awayTeamId, teams.homeTeamId, teams.subjectTeamId, teams.subjectSource,
         ],
     );
     return { id: rows[0].id as string, contrib };

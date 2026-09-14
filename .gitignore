@@ -37,6 +37,8 @@ public/*/index.html
 public/the-tank/articles/
 public/assets/og/
 public/tankdaq/
+public/teams/
+public/leagues/
 public/404.html
 # public/robots.txt - Generated during build, but we commit it for Cloudflare Pages
 # public/sitemap.xml - Generated during build, but we commit it for Cloudflare Pages

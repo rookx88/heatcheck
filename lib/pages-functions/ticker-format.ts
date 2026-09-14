@@ -16,6 +16,25 @@ export function signOf(v: number): Sign {
     return 'zero';
 }
 
+// The market palette, as the "r, g, b" triplets the boards drop into rgba(): green up,
+// red down, slate grey flat. ONE copy, here, because a tile's colour is a claim - "this
+// went the way of / against the price" - and the same claim has to look the same on the
+// homepage board, the TANKDAQ island, a sparkline and a league board. Three private
+// copies of these numbers existed before 2026-09-13; this is where they were lifted to.
+// (#3ddc64 / #ff6b57 / #94a3b8 are the same three colours as hex.)
+export const NEON_RGB: Record<Sign, string> = {
+    pos: '61, 220, 100',
+    neg: '255, 107, 87',
+    zero: '148, 163, 184',
+};
+
+// The boards' intensity ramp: a base alpha plus up to 0.45 more for the biggest mover
+// on that board (mag = |value| / max|value|, in [0, 1]). Formatted for a CSS string.
+export function neonAlpha(base: number, mag: number): string {
+    const m = Number.isFinite(mag) ? Math.min(Math.max(mag, 0), 1) : 0;
+    return (base + 0.45 * m).toFixed(2);
+}
+
 // Real minus (U+2212); -0 normalizes to "+0.0%".
 export function formatSignedPct(v: number): string {
     const normalized = Object.is(v, -0) ? 0 : v;

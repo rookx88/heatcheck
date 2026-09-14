@@ -68,7 +68,7 @@ ALTER TABLE index_positions ADD COLUMN IF NOT EXISTS home_abbr       TEXT;
 -- ALTER TABLE index_positions
 --   ADD CONSTRAINT index_positions_subject_src_check CHECK (subject_src IN (
 --     'side_label','side_label_nickname','question',
---     'totals','three_way_no','draw_market',
+--     'totals','game_property','three_way_no','draw_market',
 --     'unmapped_team','unreadable_question','label_matches_neither','missing_teams'));
 -- ALTER TABLE index_positions ALTER COLUMN subject_src SET NOT NULL;
 
