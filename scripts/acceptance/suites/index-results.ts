@@ -14,7 +14,7 @@
 // Writes to index_positions and ticker_events (source='slate'); cleanupIndexFixtures
 // is registered as a teardown so an aborted run still removes them.
 
-import { BASE_URL, check, near, section, warn, registerTeardown, type Suite } from '../harness';
+import { BASE_URL, check, near, pool, section, warn, registerTeardown, type Suite } from '../harness';
 import {
     cleanupIndexFixtures, insertIndexPositionDirect, insertSlateCloseDirect, sqlViaPool, INDEX_FIXTURE_PREFIX,
 } from '../fixtures';
@@ -229,6 +229,59 @@ async function run() {
         JSON.stringify(mlbSpecs.map((s) => s.tickerKey)));
     check('positionShareOfClose(0.6, N=6, k=4, scale=10) = 0.6', near(positionShareOfClose(0.6, { positionsCounted: 6, smoothing: 4, scalePct: 10 }) ?? NaN, 0.6));
     check('positionShareOfClose is null on a degenerate denominator', positionShareOfClose(0.6, { positionsCounted: 0, smoothing: 0, scalePct: 10 }) === null);
+
+    // --- 2b. Live data: the same invariant, on the rows that actually exist ---------
+    // The 'child and parent hold the same market and the same entry price' check above
+    // proves positionsForGame; it says nothing about what is in index_positions. The
+    // live invariant broke twice without any check noticing - $MLBCHALK/$MLBDOGS on
+    // 2026-09-02 and $EPLCHALK/$EPLDOGS on 2026-09-14 - each time because a sub-index's
+    // rows landed before the code that understood its rule_type, so the first run after
+    // the deploy locked the child on its own, hours after the parent, at a drifted price.
+    // scripts/realign-sub-index-positions.ts repairs it; this is what makes it visible.
+    section('Live data - every sub-index position mirrors its parent');
+    const { rows: drift } = await pool.query(`
+        SELECT c.ticker_key, t.parent_key, c.event_id,
+               (c.market_id <> p.market_id) AS market_differs,
+               (c.side_index <> p.side_index) AS side_differs,
+               (c.entry_prob <> p.entry_prob) AS price_differs
+        FROM index_positions c
+        JOIN tickers t ON t.key = c.ticker_key AND t.parent_key IS NOT NULL
+        JOIN index_positions p
+          ON p.ticker_key = t.parent_key AND p.event_id = c.event_id AND p.market_type = c.market_type
+        WHERE c.event_id NOT LIKE $1
+          AND (c.market_id <> p.market_id OR c.side_index <> p.side_index OR c.entry_prob <> p.entry_prob)
+    `, [`${INDEX_FIXTURE_PREFIX}%`]);
+    const describe = (rs: any[]) => rs.slice(0, 5).map((r) => `${r.ticker_key}<-${r.parent_key}@${r.event_id}`).join(', ');
+    check('no sub-index holds a different market or side from its parent on the same game',
+        drift.every((r: any) => !r.market_differs && !r.side_differs),
+        describe(drift.filter((r: any) => r.market_differs || r.side_differs)));
+    check('no sub-index holds a different entry price from its parent (run scripts/realign-sub-index-positions.ts)',
+        drift.every((r: any) => !r.price_differs),
+        describe(drift.filter((r: any) => r.price_differs)));
+    // Mirror pairs hold opposite sides of one market, so every settled game must pay them
+    // exact opposites. Checked per POSITION, not per close: a close-level drift can also
+    // come from how the close is summed, which is a separate question.
+    //
+    // This leans on each two-way market's prices summing to exactly 1, which held for all
+    // 596 settled pair-games when the check was written (2026-09-16). If it fires with the
+    // sides correctly opposed, look at the entry prices first: a pair can only mirror as
+    // exactly as its market's two prices complement each other.
+    const { rows: unmirrored } = await pool.query(`
+        SELECT a.ticker_key AS a, b.ticker_key AS b, a.event_id
+        FROM index_positions a
+        JOIN index_positions b ON b.event_id = a.event_id AND b.market_type = a.market_type
+        WHERE (a.ticker_key, b.ticker_key) IN (
+                  ('cover','cushion'), ('bothscore','cleansheet'), ('overs','unders'), ('nflo','nflu'),
+                  ('mlbchalk','mlbdogs'), ('nbachalk','nbadogs'), ('gridiron','nfldogs'), ('footy','socdogs'),
+                  ('mlschalk','mlsdogs'), ('laligachalk','laligadogs'), ('eflchalk','efldogs'),
+                  ('eplchalk','epldogs'), ('bundeschalk','bundesdogs'), ('ligue1chalk','ligue1dogs'))
+          AND a.result IN ('win','loss') AND b.result IN ('win','loss')
+          AND a.event_id NOT LIKE $1
+          AND (a.contrib + b.contrib <> 0 OR a.side_index = b.side_index)
+    `, [`${INDEX_FIXTURE_PREFIX}%`]);
+    check('every settled mirror-pair game pays the two sides exact opposites',
+        unmirrored.length === 0,
+        unmirrored.slice(0, 5).map((r: any) => `${r.a}/${r.b}@${r.event_id}`).join(', '));
 
     // --- 3. DB fixtures -------------------------------------------------------------
     section('Fixtures - settled positions rolled into a far-past close');
