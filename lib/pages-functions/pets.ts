@@ -6,6 +6,7 @@
 // response is allowed to show, 'hungry' | 'satisfied'.
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
+import { itemIdempotencyKey } from './item-ledger';
 
 export interface FeedingConfig {
     decay_rate_per_hour: number;
@@ -92,13 +93,29 @@ export interface HatchInput {
 // there to consume (already hatched, or not this user's). A captain-uniqueness violation
 // surfaces as a 23505 the caller maps to "already have a pet".
 export async function hatch(sql: NeonQueryFunction<false, false>, input: HatchInput): Promise<PetRow | null> {
+    const burnKey = itemIdempotencyKey('hatch', input.userId, input.inventoryItemId);
     const rows = await sql`
         WITH consumed AS (
             DELETE FROM inventory_items
             WHERE id = ${input.inventoryItemId} AND user_id = ${input.userId}
               AND item_type = 'egg'
-            RETURNING id
+            RETURNING id, catalog_key
+        ), burned AS (
+            -- The item journal (create_item_ledger_tables.sql). inventory_item_id records
+            -- the row this consumed even though that row is gone a moment later - which is
+            -- exactly why that column carries no foreign key. The DELETE above remains the
+            -- real guard (a deleted row cannot be deleted twice); this key is the backstop.
+            INSERT INTO item_ledger (user_id, catalog_key, item_type, delta, reason, reason_kind,
+                                     inventory_item_id, idempotency_key, metadata)
+            SELECT ${input.userId}::uuid, c.catalog_key, 'egg', -1, 'hatch', 'sink',
+                   c.id, ${burnKey}::text, '{}'::jsonb
+            FROM consumed c
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING 1
         )
+        -- FROM consumed, NOT FROM burned: if the journal ever no-op'd on a replayed key
+        -- while the DELETE succeeded, hanging the pet off the journal would silently
+        -- swallow the pet. Both legs hang off the one guard.
         INSERT INTO pets (user_id, base_body, color, render_mode, render_config, satisfaction_at_last_feed, last_fed_at)
         SELECT ${input.userId}, 'mudpuppy', ${input.color}, ${input.renderMode},
                ${JSON.stringify(input.renderConfig)}, ${input.startSatisfaction}, NOW()
@@ -118,51 +135,78 @@ export interface FeedInput {
 }
 
 // Serializes all feed attempts for one user, mirroring ledger.ts's spendLock() exactly
-// (same reasoning, different namespace so the two locks never collide): without it, two
-// truly-simultaneous feeds with the SAME feedToken both take their statement snapshot
-// before either commits, both see the pet's last_feed_token as the OLD value, and both
-// pass the idempotency EXISTS check - a double-consume of food that was supposed to be a
-// no-op retry. Food used to be free-to-replace, so this was accepted as a cosmetic risk;
-// it no longer is now that food costs Ember, so a double-consume is an indirect Ember
-// loss. Taking the lock as the transaction's first statement means a second concurrent
-// call's own statement only starts (and takes its snapshot) after the first has
-// committed, so it correctly observes the already-updated last_feed_token and no-ops.
+// (same reasoning, different namespace so the two locks never collide). The journal's
+// UNIQUE key now handles SEQUENTIAL replays on its own; what the lock still buys is the
+// SIMULTANEOUS case: `tok` reads inventory_items and `consumed` writes it, and the lock
+// is what guarantees nothing moved the row between those two in another connection.
 function feedLock(sql: NeonQueryFunction<false, false>, userId: string) {
     return sql`SELECT pg_advisory_xact_lock(hashtext('pet_feed'), hashtext(${userId}))`;
 }
 
-// Consume one food item AND top up the pet in ONE statement, behind feedLock(). Food is
-// consumed only if (a) the pet is available and this feedToken wasn't the pet's last
-// (idempotency gate) and (b) a unit is in stock; the pet is topped up only if the food
-// was consumed. A sequential OR truly-simultaneous double-submit with the same feedToken
-// finds the pet's last_feed_token already set and no-ops. Returns the updated pet row,
-// or null when nothing was consumed.
-export async function feed(sql: NeonQueryFunction<false, false>, input: FeedInput): Promise<PetRow | null> {
+export interface FeedResult {
+    // The updated pet, or null when nothing was consumed (no stock, or a replay).
+    pet: PetRow | null;
+    // True when this feedToken had already been used - the caller answers 200 with the
+    // pet unchanged rather than 404.
+    replay: boolean;
+}
+
+// Consume one food item AND top up the pet in ONE statement, behind feedLock().
+//
+// The item journal leg is the GUARD here, not a follower, and that is what fixes a real
+// bug. Idempotency used to be `pets.last_feed_token IS DISTINCT FROM $token`, and that
+// column holds only the MOST RECENT token - so feeding with A, then B, then replaying A
+// consumed a third unit, because the pet no longer remembered A. A UNIQUE index remembers
+// every token ever used. `tok` therefore does the stock check and captures the exact row
+// in one read, and the decrement targets that row BY ID, so the journal can never claim a
+// consumption the inventory didn't make. (inventory_items now also carries a
+// quantity >= 0 CHECK as the backstop - see create_item_ledger_tables.sql.)
+export async function feed(sql: NeonQueryFunction<false, false>, input: FeedInput): Promise<FeedResult> {
+    const burnKey = itemIdempotencyKey('feed', input.userId, input.feedToken);
     const [, rows] = await sql.transaction([
         feedLock(sql, input.userId),
         sql`
-        WITH consumed AS (
+        WITH precheck AS (
+            SELECT 1 FROM item_ledger WHERE idempotency_key = ${burnKey}
+        ), tok AS (
+            INSERT INTO item_ledger (user_id, catalog_key, item_type, delta, reason, reason_kind,
+                                     inventory_item_id, idempotency_key, metadata)
+            SELECT ${input.userId}::uuid, ${input.foodCatalogKey}::text, 'food', -1, 'feed', 'sink',
+                   i.id, ${burnKey}::text,
+                   ${JSON.stringify({ feedToken: input.feedToken, points: input.points })}::jsonb
+            FROM inventory_items i
+            WHERE i.user_id = ${input.userId}::uuid
+              AND i.catalog_key = ${input.foodCatalogKey}::text
+              AND i.item_type = 'food' AND i.quantity >= 1
+              AND NOT EXISTS (SELECT 1 FROM precheck)
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING inventory_item_id
+        ), consumed AS (
             UPDATE inventory_items SET quantity = quantity - 1
-            WHERE user_id = ${input.userId} AND catalog_key = ${input.foodCatalogKey}
-              AND item_type = 'food' AND quantity >= 1
-              AND EXISTS (
-                  SELECT 1 FROM pets WHERE user_id = ${input.userId}
-                    AND last_feed_token IS DISTINCT FROM ${input.feedToken}
-              )
+            WHERE id = (SELECT inventory_item_id FROM tok) AND quantity >= 1
             RETURNING id
+        ), fed AS (
+            UPDATE pets SET
+                -- Explicit ::real casts are required: the Neon HTTP driver binds params as
+                -- untyped unknowns, so adding two param values with no column to anchor the
+                -- type is an ambiguous unknown-plus-unknown operator without them.
+                satisfaction_at_last_feed = LEAST(${input.max}::real, GREATEST(0::real, ${input.currentSatisfaction}::real + ${input.points}::real)),
+                last_fed_at = NOW(),
+                -- Lifetime feed counter for NPC encounter triggers/Plays (create_encounters.sql).
+                feed_count = feed_count + 1
+            WHERE user_id = ${input.userId} AND EXISTS (SELECT 1 FROM consumed)
+            RETURNING id, color, render_mode, render_config, name, is_captain, satisfaction_at_last_feed, last_fed_at
         )
-        UPDATE pets SET
-            -- Explicit ::real casts are required: the Neon HTTP driver binds params as
-            -- untyped unknowns, so adding two param values with no column to anchor the
-            -- type is an ambiguous unknown-plus-unknown operator without them.
-            satisfaction_at_last_feed = LEAST(${input.max}::real, GREATEST(0::real, ${input.currentSatisfaction}::real + ${input.points}::real)),
-            last_fed_at = NOW(),
-            last_feed_token = ${input.feedToken},
-            -- Lifetime feed counter for NPC encounter triggers/quests (create_encounters.sql).
-            feed_count = feed_count + 1
-        WHERE user_id = ${input.userId} AND EXISTS (SELECT 1 FROM consumed)
-        RETURNING id, color, render_mode, render_config, name, is_captain, satisfaction_at_last_feed, last_fed_at
+        -- Always exactly one row: the replay flag plus nullable pet columns, so the caller
+        -- can tell a retry (200, nothing consumed) from no-stock (404) without reading
+        -- last_feed_token, which this function no longer writes.
+        SELECT EXISTS (SELECT 1 FROM precheck) AS replay, f.*
+        FROM (SELECT 1) one LEFT JOIN fed f ON true
     `,
     ]);
-    return rows.length ? (rows[0] as unknown as PetRow) : null;
+    const row = rows[0] as unknown as (PetRow & { replay: boolean; id: string | null }) | undefined;
+    return {
+        pet: row?.id ? (row as unknown as PetRow) : null,
+        replay: Boolean(row?.replay),
+    };
 }

@@ -30,6 +30,7 @@ import {
     deactivateConfig,
     restoreConfig,
     seedBalance,
+    seedEgg,
     cleanupUsersByEmailPrefix,
     cleanupTanksBySlugPrefix,
     cheapestActiveSku,
@@ -146,11 +147,8 @@ async function runIdorSection() {
 
     const { rows: petRowsA } = await pool.query(`INSERT INTO pets (user_id, color) VALUES ($1, 'slate') RETURNING id`, [userA.userId]);
     const aPetId = petRowsA[0].id as string;
-    const { rows: eggRowsA } = await pool.query(
-        `INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity) VALUES ($1, 'egg_moss', 'egg', 1) RETURNING id`,
-        [userA.userId],
-    );
-    const aEggId = eggRowsA[0].id as string;
+    // Through the item journal, never a bare inventory insert - see seedEgg's header.
+    const aEggId = await seedEgg(userA.userId, 'egg_moss');
     const { rows: noteRowsA } = await pool.query(
         `INSERT INTO notifications (user_id, type, message, ref_type, ref_id) VALUES ($1, 'claimable', 'Acceptance fixture notification', 'pick', 'fixture') RETURNING id`,
         [userA.userId],
@@ -159,7 +157,7 @@ async function runIdorSection() {
 
     // B also owns resources of its own (an egg + a notification) - just no pet, per the
     // note above.
-    await pool.query(`INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity) VALUES ($1, 'egg_berry', 'egg', 1)`, [userB.userId]);
+    await seedEgg(userB.userId, 'egg_berry');
     await pool.query(
         `INSERT INTO notifications (user_id, type, message, ref_type, ref_id) VALUES ($1, 'claimable', 'B own fixture notification', 'pick', 'fixture')`,
         [userB.userId],

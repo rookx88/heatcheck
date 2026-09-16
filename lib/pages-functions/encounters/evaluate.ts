@@ -19,6 +19,7 @@ import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { getGameConfig } from '../pets';
 import { placeFromPath } from '../discovery';
 import { encounterGiftEmber } from '../ledger';
+import { itemIdempotencyKey } from '../item-ledger';
 import { CHARACTERS, ENCOUNTERS, ENCOUNTER_BY_KEY } from './index';
 import type { Encounter, EncounterGrants, EncounterView, Objective, Trigger } from './types';
 
@@ -202,11 +203,13 @@ async function fireEncounter(
         ), egg AS (
             INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
             SELECT ${userId}, ${catalogKey}::text, 'egg', 1 FROM ins WHERE ${itemType}::text = 'egg'
+            RETURNING id
         ), food AS (
             INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
             SELECT ${userId}, ${catalogKey}::text, 'food', 1 FROM ins WHERE ${itemType}::text = 'food'
             ON CONFLICT (user_id, catalog_key) WHERE item_type = 'food'
                 DO UPDATE SET quantity = inventory_items.quantity + 1
+            RETURNING id
         ), minted AS (
             UPDATE collectible_pools SET minted_count = minted_count + 1
             WHERE catalog_key = ${catalogKey}::text AND minted_count < mint_size
@@ -215,6 +218,24 @@ async function fireEncounter(
         ), card AS (
             INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity, serial_number)
             SELECT ${userId}, ${catalogKey}::text, 'collectible', 1, m.serial FROM minted m
+            RETURNING id, serial_number
+        ), itm AS (
+            -- The item journal (create_item_ledger_tables.sql). ONE leg, not three: the
+            -- itemType quals above make egg/food/card mutually exclusive, so this union is
+            -- always zero or one rows. The NULL::int casts are mandatory - a bare NULL in a
+            -- union branch is unknown-typed and there is no column to anchor it. When
+            -- itemType is 'none' no leg fires, so the catalog_key FK is never reached.
+            INSERT INTO item_ledger (user_id, catalog_key, item_type, delta, reason, reason_kind,
+                                     inventory_item_id, serial_number, idempotency_key, metadata)
+            SELECT ${userId}::uuid, ${catalogKey}::text, ${itemType}::text, 1,
+                   'encounter_grant', 'source', g.id, g.serial_number,
+                   ${itemIdempotencyKey('encounter_grant', userId, `${encounter.key}:${catalogKey}`)}::text,
+                   ${JSON.stringify({ encounterKey: encounter.key, character: encounter.character })}::jsonb
+            FROM (          SELECT id, NULL::int       AS serial_number FROM egg
+                  UNION ALL SELECT id, NULL::int                        FROM food
+                  UNION ALL SELECT id, serial_number                    FROM card) g
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING 1
         )
         SELECT (SELECT id FROM ins) AS id, (SELECT grants FROM ins) AS grants,
                (SELECT serial FROM minted) AS serial

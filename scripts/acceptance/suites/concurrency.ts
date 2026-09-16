@@ -27,6 +27,8 @@ import {
     insertUserWithPick,
     ledgerTotals,
     seedBalance,
+    seedEgg as insertEgg,
+    seedFood as insertFood,
     cleanupUsersByEmailPrefix,
     cleanupTanksBySlugPrefix,
     cheapestActiveSku,
@@ -39,31 +41,16 @@ const TICKER_SECRET = process.env.TICKER_SECRET || '';
 
 // ---------------------------------------------------------------------------------
 // Local fixture helpers - mirror the direct-pool-insert style suites/discovery.ts
-// already uses for a bare pet row; extended here for eggs/food/notifications since
-// this suite needs to seed preconditions no shared fixture currently covers. Balance
-// seeding goes through fixtures.ts's seedBalance (ledger row + cache fold in one
-// statement) - never a direct ember_balances write.
+// already uses for a bare pet row; extended here for notifications since this suite
+// needs to seed preconditions no shared fixture currently covers. Balance seeding goes
+// through fixtures.ts's seedBalance (ledger row + cache fold in one statement) - never a
+// direct ember_balances write. Eggs and food go through seedEgg/seedFood for the same
+// reason: an inventory row with no item_ledger row breaks the item invariant.
 // ---------------------------------------------------------------------------------
 
 async function insertPet(userId: string): Promise<string> {
     const { rows } = await pool.query(`INSERT INTO pets (user_id, color) VALUES ($1, 'slate') RETURNING id`, [userId]);
     return rows[0].id as string;
-}
-
-// Eggs are one row each (never stacked) - matches lib/pages-functions/pets.ts's hatch().
-async function insertEgg(userId: string, catalogKey: string): Promise<string> {
-    const { rows } = await pool.query(
-        `INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity) VALUES ($1, $2, 'egg', 1) RETURNING id`,
-        [userId, catalogKey],
-    );
-    return rows[0].id as string;
-}
-
-async function insertFood(userId: string, catalogKey: string, quantity: number): Promise<void> {
-    await pool.query(
-        `INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity) VALUES ($1, $2, 'food', $3)`,
-        [userId, catalogKey, quantity],
-    );
 }
 
 async function insertClaimableNotification(userId: string, message: string): Promise<string> {
@@ -206,9 +193,10 @@ async function run(): Promise<void> {
     //     takes feedLock() (a pg_advisory_xact_lock, mirroring ledger.ts's spendLock())
     //     as its transaction's first statement specifically to close this race: without
     //     it, N simultaneous same-token requests could all take their snapshot before
-    //     any commits, all see the OLD last_feed_token, and all pass the idempotency
-    //     check - consuming N food units for what should have been one feed plus (N-1)
-    //     no-op retries. With the lock, exactly one unit is ever consumed, no matter how
+    //     any commits, all pass the stock check, and consume N food units for what
+    //     should have been one feed plus (N-1) no-op retries. The item journal's unique
+    //     key on the feed token is the idempotency guard; the lock keeps the stock read
+    //     and the decrement consistent. Exactly one unit is ever consumed, no matter how
     //     many of the 8 identical requests raced in.
     // =================================================================================
     section('2b. Feed, SAME feedToken - N=8 simultaneous identical-token feeds, exactly one consumed');
@@ -223,7 +211,20 @@ async function run(): Promise<void> {
         build: () => ({ body: { foodCatalogKey: foodSku.catalogKey, feedToken: sharedFeedToken }, headers: { Cookie: u2b.cookie } }),
         n: 8,
     });
-    check('exactly one 200 (the fresh feed)', countStatus(results2b, 200) === 1, JSON.stringify(tally(results2b)));
+    // Every duplicate now answers 200. Before the item journal, losers read the pet's
+    // last_feed_token BEFORE the lock, saw a stale value, and were told 404 "You don't
+    // have that food" - a wrong answer to a double-submit. The replay flag is now
+    // computed inside the locked statement from the journal's unique key, so a duplicate
+    // is recognised as one. A 409 is still legitimate for a loser that read the pet
+    // after the winner had already filled it to max.
+    const nonReplay2b = results2b.filter((r) => r.status !== 200 && r.status !== 409);
+    check('every identical-token request answers 200 (or 409 full), never 404/500',
+        countStatus(results2b, 200) >= 1 && nonReplay2b.length === 0, JSON.stringify(tally(results2b)));
+    const { rows: journal2b } = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM item_ledger WHERE user_id = $1 AND reason = 'feed'`,
+        [u2b.userId],
+    );
+    check('exactly one feed row in the item journal for the shared token', journal2b[0].n === 1, JSON.stringify(journal2b[0]));
     const { rows: foodRows2b } = await pool.query(
         `SELECT quantity FROM inventory_items WHERE user_id = $1 AND catalog_key = $2`,
         [u2b.userId, foodSku.catalogKey],

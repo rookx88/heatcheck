@@ -200,6 +200,123 @@ export async function ledgerTotals(userId: string): Promise<LedgerTotals> {
 }
 
 // ---------------------------------------------------------------------------------
+// Item ledger totals + seeds (create_item_ledger_tables.sql)
+// ---------------------------------------------------------------------------------
+
+export interface ItemTotalsRow {
+    catalogKey: string;
+    itemType: string;
+    // SUM(item_ledger.delta) for this user and SKU.
+    ledgerSum: number;
+    // SUM(inventory_items.quantity) for this user and SKU. Zero when no row is held.
+    held: number;
+}
+
+export interface ItemTotals {
+    // Every SKU this user has ever touched, from either side.
+    rows: ItemTotalsRow[];
+    // The subset where the two sides disagree. Must always be empty.
+    mismatches: ItemTotalsRow[];
+    ledgerRows: number;
+}
+
+// Recomputes the item-ledger invariant - SUM(delta) per user and SKU equals what they
+// hold - in raw SQL, importing nothing from the product, the same independence rule that
+// makes ledgerTotals() a real check rather than a test of the code under test.
+//
+// The join MUST be a full outer one. A bought-and-hatched egg leaves a +1 and a -1 in
+// the journal and no inventory row at all, while a pre-backfill row that somehow lost
+// its journal rows would be inventory-only, so either side can be the absent one and an
+// inner join would score both as passing.
+export async function itemTotals(userId: string): Promise<ItemTotals> {
+    const { rows } = await pool.query(
+        `WITH led AS (
+            SELECT catalog_key, item_type, SUM(delta)::int AS total
+            FROM item_ledger WHERE user_id = $1 GROUP BY catalog_key, item_type
+        ), inv AS (
+            SELECT catalog_key, item_type, SUM(quantity)::int AS total
+            FROM inventory_items WHERE user_id = $1 GROUP BY catalog_key, item_type
+        )
+        SELECT COALESCE(l.catalog_key, i.catalog_key) AS catalog_key,
+               COALESCE(l.item_type, i.item_type)     AS item_type,
+               COALESCE(l.total, 0)                   AS ledger_sum,
+               COALESCE(i.total, 0)                   AS held
+        FROM led l
+        FULL OUTER JOIN inv i ON l.catalog_key = i.catalog_key AND l.item_type = i.item_type
+        ORDER BY 1, 2`,
+        [userId],
+    );
+    const mapped: ItemTotalsRow[] = rows.map((r) => ({
+        catalogKey: r.catalog_key as string,
+        itemType: r.item_type as string,
+        ledgerSum: Number(r.ledger_sum),
+        held: Number(r.held),
+    }));
+    const { rows: countRows } = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM item_ledger WHERE user_id = $1`,
+        [userId],
+    );
+    return {
+        rows: mapped,
+        mismatches: mapped.filter((r) => r.ledgerSum !== r.held),
+        ledgerRows: Number(countRows[0].n),
+    };
+}
+
+// Gives a fixture account an egg THROUGH the item journal, in one statement. Same
+// warning as seedBalance: never INSERT INTO inventory_items directly from a suite. An
+// inventory row with no journal row breaks the SUM(delta) == SUM(quantity) invariant
+// that suites/ledger-trace.ts enforces, and turns every later item assertion into a test
+// of the fixture rather than of the product. reason 'acceptance_seed' is an
+// 'adjustment', which is the only kind allowed to carry either sign.
+//
+// Eggs are one row each and are NEVER stacked - see migrate_eggs_per_row.sql and the
+// DELETE-by-id in pets.ts's hatch(). Returns the new inventory row's id, which is what
+// hatching takes.
+export async function seedEgg(userId: string, catalogKey: string): Promise<string> {
+    const { rows } = await pool.query(
+        `WITH granted AS (
+            INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
+            VALUES ($1, $2, 'egg', 1)
+            RETURNING id
+        ), itm AS (
+            INSERT INTO item_ledger (user_id, catalog_key, item_type, delta, reason, reason_kind,
+                                     inventory_item_id, idempotency_key, metadata)
+            SELECT $1, $2, 'egg', 1, 'acceptance_seed', 'adjustment', g.id, $3, $4::jsonb
+            FROM granted g
+            RETURNING 1
+        )
+        SELECT id FROM granted`,
+        [userId, catalogKey, `acceptance-item-seed:${userId}:${crypto.randomUUID()}`, JSON.stringify({ acceptance: 'seedEgg' })],
+    );
+    return rows[0].id as string;
+}
+
+// Food's inventory counterpart to seedEgg. Food DOES stack (one row per user and SKU,
+// enforced by the partial unique the ON CONFLICT names), so a repeat call adds to the
+// existing row while still writing its own journal row - which is exactly what keeps the
+// two sides equal.
+export async function seedFood(userId: string, catalogKey: string, quantity: number): Promise<void> {
+    if (!Number.isInteger(quantity) || quantity < 1) {
+        throw new Error(`seedFood needs a positive integer quantity, got ${quantity}`);
+    }
+    await pool.query(
+        `WITH granted AS (
+            INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
+            VALUES ($1, $2, 'food', $3)
+            ON CONFLICT (user_id, catalog_key) WHERE item_type = 'food'
+                DO UPDATE SET quantity = inventory_items.quantity + EXCLUDED.quantity
+            RETURNING id
+        )
+        INSERT INTO item_ledger (user_id, catalog_key, item_type, delta, reason, reason_kind,
+                                 inventory_item_id, idempotency_key, metadata)
+        SELECT $1, $2, 'food', $3, 'acceptance_seed', 'adjustment', g.id, $4, $5::jsonb
+        FROM granted g`,
+        [userId, catalogKey, quantity, `acceptance-item-seed:${userId}:${crypto.randomUUID()}`, JSON.stringify({ acceptance: 'seedFood' })],
+    );
+}
+
+// ---------------------------------------------------------------------------------
 // game_config version-flip / restore, generalized to any key. Registers its own
 // teardown so an aborted suite still restores every key it touched.
 // ---------------------------------------------------------------------------------
@@ -311,6 +428,11 @@ export async function cleanupUsersByEmailPrefix(prefix: string): Promise<void> {
         // before ember_ledger; holdings only FK the user.
         await pool.query(`DELETE FROM share_trades WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM share_holdings WHERE user_id = $1`, [u.id]);
+        // The item journal FKs ember_ledger too (purchases carry ledger_id), and it has no
+        // ON DELETE CASCADE on user_id - append-only rows should not vanish implicitly - so
+        // it must go before BOTH ember_ledger and inventory_items. Same ordering rule the
+        // share_trades line above was written for.
+        await pool.query(`DELETE FROM item_ledger WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM ember_ledger WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM ember_balances WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM inventory_items WHERE user_id = $1`, [u.id]);

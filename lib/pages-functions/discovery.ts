@@ -26,6 +26,7 @@
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { computeSatisfaction, getGameConfig, petState, type FeedingConfig, type PetRow } from './pets';
+import { itemIdempotencyKey } from './item-ledger';
 import { discoveryFindEmber } from './ledger';
 
 // game_config['discovery'] - flat numeric keys, matching getGameConfig's shape.
@@ -356,7 +357,24 @@ export async function maybeDiscover(
                 INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity, serial_number)
                 SELECT ${userId}, ${picked.key}, 'collectible', 1, m.serial
                 FROM minted m
-                RETURNING id
+                RETURNING id, serial_number
+            ), itm AS (
+                -- The item journal (create_item_ledger_tables.sql). The item type is in the
+                -- key's scope, not the reason: all three branches share one roll window, so
+                -- without it a future two-item window would silently drop one of them. The
+                -- pool-exhausted path needs no special case: an empty minted means an empty
+                -- granted means this writes nothing, which is correct - the window is
+                -- consumed and nothing was granted.
+                -- (No backticks in these comments: they terminate the enclosing template.)
+                INSERT INTO item_ledger (user_id, catalog_key, item_type, delta, reason, reason_kind,
+                                         inventory_item_id, serial_number, idempotency_key, metadata)
+                SELECT ${userId}::uuid, ${picked.key}::text, 'collectible', 1, 'discovery_find', 'source',
+                       g.id, g.serial_number,
+                       ${itemIdempotencyKey('discovery_find', userId, `${pet.id}:${windowScope}:collectible`)}::text,
+                       ${JSON.stringify({ petId: pet.id, window: windowScope })}::jsonb
+                FROM granted g
+                ON CONFLICT (idempotency_key) DO NOTHING
+                RETURNING 1
             ), note AS (
                 INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood, art)
                 SELECT ${userId}, 'claimable', ${msgPre} || m.serial::text || ${msgPost}, 'pet', ${pet.id}::text, ${notificationKey}, 'happy', ${picked.cover_image}
@@ -419,6 +437,19 @@ export async function maybeDiscover(
                 ON CONFLICT (user_id, catalog_key) WHERE item_type = 'memorabilia'
                     DO UPDATE SET quantity = inventory_items.quantity + 1
                 RETURNING id
+            ), itm AS (
+                -- The item journal - see the collectible branch for why the item type is in
+                -- the key's scope. The upsert's DO UPDATE branch returns the row id (a
+                -- DO NOTHING would not), so g.id is always present when this leg fires.
+                INSERT INTO item_ledger (user_id, catalog_key, item_type, delta, reason, reason_kind,
+                                         inventory_item_id, idempotency_key, metadata)
+                SELECT ${userId}::uuid, ${picked.key}::text, 'memorabilia', 1, 'discovery_find', 'source',
+                       g.id,
+                       ${itemIdempotencyKey('discovery_find', userId, `${pet.id}:${windowScope}:memorabilia`)}::text,
+                       ${JSON.stringify({ petId: pet.id, window: windowScope })}::jsonb
+                FROM granted g
+                ON CONFLICT (idempotency_key) DO NOTHING
+                RETURNING 1
             ), note AS (
                 INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood, art)
                 SELECT ${userId}, 'claimable', ${message}, 'pet', ${pet.id}::text, ${notificationKey}, 'happy', ${picked.image}
@@ -487,6 +518,18 @@ export async function maybeDiscover(
                     ON CONFLICT (user_id, catalog_key) WHERE item_type = 'food'
                         DO UPDATE SET quantity = inventory_items.quantity + 1
                     RETURNING id
+                ), itm AS (
+                    -- The item journal - see the collectible branch for why the item type
+                    -- is in the key's scope rather than the reason.
+                    INSERT INTO item_ledger (user_id, catalog_key, item_type, delta, reason, reason_kind,
+                                             inventory_item_id, idempotency_key, metadata)
+                    SELECT ${userId}::uuid, ${picked.key}::text, 'food', 1, 'discovery_find', 'source',
+                           g.id,
+                           ${itemIdempotencyKey('discovery_find', userId, `${pet.id}:${windowScope}:food`)}::text,
+                           ${JSON.stringify({ petId: pet.id, window: windowScope })}::jsonb
+                    FROM granted g
+                    ON CONFLICT (idempotency_key) DO NOTHING
+                    RETURNING 1
                 ), note AS (
                     INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood, art)
                     SELECT ${userId}, 'claimable', ${message}, 'pet', ${pet.id}::text, ${notificationKey}, 'happy', ${`food/${picked.key}.png`}

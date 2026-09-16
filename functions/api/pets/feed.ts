@@ -59,7 +59,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
         const points = Number((foodRows[0].config as Record<string, unknown>)?.satisfaction_points ?? 0);
 
-        const updated = await feed(sql, {
+        const result = await feed(sql, {
             userId: session.userId,
             foodCatalogKey,
             points,
@@ -68,13 +68,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             feedToken,
         });
 
-        if (updated) {
-            return jsonResponse({ pet: petPublic(updated, cfg) }, { headers: authHeaders });
+        if (result.pet) {
+            return jsonResponse({ pet: petPublic(result.pet, cfg) }, { headers: authHeaders });
         }
 
-        // Nothing consumed. Either an idempotent retry (this token already fed the pet),
-        // or there's no food to consume.
-        if (pet.last_feed_token === feedToken) {
+        // Nothing consumed. `replay` comes from the item journal's UNIQUE key, which
+        // remembers EVERY feedToken this account has used - unlike the old
+        // pets.last_feed_token, which held only the most recent one and so let a replayed
+        // older token consume a third unit of food.
+        if (result.replay) {
             return jsonResponse({ pet: petPublic(pet, cfg) }, { headers: authHeaders });
         }
         return jsonResponse({ message: "You don't have that food." }, { status: 404, headers: authHeaders });

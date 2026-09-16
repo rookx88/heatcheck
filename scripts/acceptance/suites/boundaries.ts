@@ -27,7 +27,7 @@ import { pool, api, check, warn, near, section, type Suite } from '../harness';
 import {
     createUser, createSessionUser, mintSessionCookie, mintLoginToken,
     insertTank, findMarkets, flipConfig, restoreConfig, activeConfig,
-    cleanupUsersByEmailPrefix, cleanupTanksBySlugPrefix,
+    cleanupUsersByEmailPrefix, cleanupTanksBySlugPrefix, seedFood,
 } from '../fixtures';
 
 const EMAIL_PREFIX = 'acceptance-bound-';
@@ -74,10 +74,8 @@ async function run(): Promise<void> {
         );
         if (foodRows.length === 0) throw new Error('No active food SKU in items_catalog - cannot build the feed-boundary fixture.');
         const foodKey = foodRows[0].key as string;
-        await pool.query(
-            `INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity) VALUES ($1, $2, 'food', 3)`,
-            [feeder.userId, foodKey],
-        );
+        // Through the item journal, never a bare inventory insert - see seedFood's header.
+        await seedFood(feeder.userId, foodKey, 3);
 
         // BELOW the line (max - 1): accepted.
         await pool.query(`UPDATE pets SET satisfaction_at_last_feed = $2, last_fed_at = NOW() WHERE id = $1`, [petId, max - 1]);

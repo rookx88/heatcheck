@@ -261,10 +261,19 @@ async function run() {
         check("response never carries a numeric satisfaction field, only 'state'",
             typeof feed1.json?.pet?.state === 'string' && !('satisfaction' in (feed1.json?.pet ?? {})) && !JSON.stringify(feed1.json?.pet ?? {}).toLowerCase().includes('satisfaction'));
         check(`20 + food_basic's ${FOOD_BASIC_POINTS} points >= hungry_threshold -> state 'satisfied'`, feed1.json?.pet?.state === 'satisfied', JSON.stringify(feed1.json?.pet));
-        const { rows: afterFeed1 } = await pool.query(`SELECT satisfaction_at_last_feed::float8 AS s, last_feed_token FROM pets WHERE id = $1`, [petId]);
+        const { rows: afterFeed1 } = await pool.query(`SELECT satisfaction_at_last_feed::float8 AS s FROM pets WHERE id = $1`, [petId]);
         const expectedAfterFeed1 = 20 + FOOD_BASIC_POINTS;
         check(`satisfaction rose by exactly the food SKU's satisfaction_points (20 -> ${expectedAfterFeed1})`, Math.abs(afterFeed1[0].s - expectedAfterFeed1) < 0.5, `got ${afterFeed1[0].s}`);
-        check('last_feed_token stamped with this request\'s feedToken', typeof afterFeed1[0].last_feed_token === 'string' && afterFeed1[0].last_feed_token.length > 0);
+        // The feed token lives in the item journal now, not pets.last_feed_token (which
+        // held only the most recent token and is no longer written).
+        const { rows: feedJournal1 } = await pool.query(
+            `SELECT delta, metadata->>'feedToken' AS token FROM item_ledger
+             WHERE user_id = $1 AND reason = 'feed' AND catalog_key = $2`,
+            [feeder.userId, FOOD_BASIC_KEY],
+        );
+        check('the feed wrote one -1 journal row carrying its feedToken',
+            feedJournal1.length === 1 && feedJournal1[0].delta === -1 && typeof feedJournal1[0].token === 'string' && feedJournal1[0].token.length > 0,
+            JSON.stringify(feedJournal1));
         const basicQtyAfter = await foodQuantity(feeder.userId, FOOD_BASIC_KEY);
         check('basic food quantity decremented by 1 (1 -> 0)', basicQtyAfter === 0, `got ${basicQtyAfter}`);
 

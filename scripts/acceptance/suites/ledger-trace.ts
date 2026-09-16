@@ -6,19 +6,29 @@
 // account (acceptance-trace-loss) exists only to prove the LOSS payout path
 // (participation) independently, without disturbing the win account's trace.
 //
+// Items ride the same trace. Every point that asserts the Ember invariant also asserts
+// the item one - SUM(item_ledger.delta) per SKU equals what the account holds - because
+// Ember and items move inside the SAME statement at four of these steps, and a leg that
+// lands on one side of a CTE but not the other is exactly what that pairing catches.
+//
 // This is a cross-system regression net, not a per-endpoint spec test (those live in
 // suites/tickers.ts and suites/discovery.ts already) - its whole reason to exist is to
 // catch drift that only shows up when features compose in sequence on one account.
 
+import * as fs from 'fs';
+import * as path from 'path';
+import { fileURLToPath } from 'node:url';
 import { pool, api, check, warn, section, type Suite } from '../harness';
 import {
-    createUser, mintSessionCookie, ledgerTotals,
+    createUser, mintSessionCookie, ledgerTotals, itemTotals, seedFood,
     insertTank, findMarkets, insertTagDirect, settleEventDelta,
     flipConfig, restoreConfig, cleanupUsersByEmailPrefix, cleanupTanksBySlugPrefix,
 } from '../fixtures';
+import { ITEM_REASONS } from '../../../lib/pages-functions/item-ledger';
 
 const EMAIL_PREFIX = 'acceptance-trace-';
 const SLUG_PREFIX = 'acceptance-trace-';
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const SETTLE_SECRET = process.env.SETTLE_SECRET || '';
 
 const settlePost = () => api('POST', '/api/settle', { headers: { 'X-Settle-Secret': SETTLE_SECRET } });
@@ -73,6 +83,33 @@ async function assertLedgerConsistent(userId: string, cookie: string, label: str
     const delta = ledgerSum - prev;
     lastSeenSum.set(userId, ledgerSum);
     console.log(`  TRACE  ${label.padEnd(46)} delta=${delta >= 0 ? '+' : ''}${delta}  ledgerSum=${ledgerSum}  cached=${balanceCache}`);
+
+    // Items ride along at every single trace point, for free. Ember and items move in
+    // the same statements at four of this trace's steps (both purchases, discovery, the
+    // encounter grant), so checking them together is what catches a leg that lands on
+    // one side of a CTE and not the other.
+    await assertItemsConsistent(userId, label);
+}
+
+// The item-ledger invariant (create_item_ledger_tables.sql): for every SKU this account
+// has ever touched, SUM(item_ledger.delta) equals SUM(inventory_items.quantity). Unlike
+// Ember there is no cache to compare against - the journal IS the second opinion, and
+// inventory_items is the thing it has to agree with.
+//
+// A zero-row result is legitimate only before the account has touched an item at all;
+// it is not special-cased because a SKU that exists on neither side simply does not
+// appear in the full outer join, so there is nothing to mistake for agreement.
+async function assertItemsConsistent(userId: string, label: string): Promise<void> {
+    const { rows, mismatches, ledgerRows } = await itemTotals(userId);
+    check(
+        `${label}: SUM(item_ledger) == inventory held, per SKU`,
+        mismatches.length === 0,
+        mismatches.map((m) => `${m.itemType}/${m.catalogKey}: ledger=${m.ledgerSum} held=${m.held}`).join('; '),
+    );
+    if (rows.length > 0) {
+        const summary = rows.map((r) => `${r.catalogKey}=${r.ledgerSum}`).join(' ');
+        console.log(`  ITEMS  ${label.padEnd(46)} rows=${ledgerRows}  ${summary}`);
+    }
 }
 
 // ---------------------------------------------------------------------------------
@@ -169,8 +206,90 @@ async function latestClaimableNotificationId(userId: string): Promise<string | n
 // Run
 // ---------------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------------
+// Static enforcement of the item-journal doctrine
+//
+// Ember's doctrine is enforced by a comment: nothing outside ledger.ts may write
+// ember_ledger. Items cannot be held to that. Discovery and encounters write inventory
+// inside large statements whose OTHER legs are their race guards, and the Neon driver
+// cannot compose SQL fragments, so lifting the write into a shared function would cost
+// the atomicity that makes it correct in the first place. Two static checks stand in.
+// ---------------------------------------------------------------------------------
+
+// Statements, not inserts: the encounter grant's single statement holds three mutually
+// exclusive inventory inserts behind one journal leg, while pets.ts contributes two
+// separate statements (hatch and feed). Pinned to a count so a ninth write path has to
+// be converted consciously rather than silently breaking the invariant for whoever runs
+// this next. Two purchase legs + three discovery branches + the encounter grant + hatch
+// + feed.
+const EXPECTED_INVENTORY_WRITE_SITES = 8;
+
+// Walks the source tree rather than a list of known files, so a brand-new module that
+// writes inventory is caught too - a hardcoded file list would quietly exempt it.
+function tsFilesUnder(dir: string, out: string[] = []): string[] {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) tsFilesUnder(full, out);
+        else if (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) out.push(full);
+    }
+    return out;
+}
+
+function assertEveryInventoryWriteJournals(): void {
+    section('Doctrine: every inventory write sits in a statement that also writes the journal');
+    const files = [
+        ...tsFilesUnder(path.join(REPO_ROOT, 'lib')),
+        ...tsFilesUnder(path.join(REPO_ROOT, 'functions')),
+    ];
+    let sites = 0;
+    for (const full of files) {
+        const rel = path.relative(REPO_ROOT, full).replace(/\\/g, '/');
+        const src = fs.readFileSync(full, 'utf8');
+        // Split on the tagged-template boundary so each chunk is at most one statement. A
+        // write and a journal leg that agree across two DIFFERENT statements are not
+        // atomic and must not pass this.
+        for (const stmt of src.split(/\bsql`/).slice(1)) {
+            const body = stmt.split('`')[0];
+            if (!/(INSERT INTO|UPDATE|DELETE FROM) inventory_items/.test(body)) continue;
+            sites += 1;
+            check(
+                `${rel}: an inventory-writing statement also writes item_ledger`,
+                /INSERT INTO item_ledger/.test(body),
+                body.slice(0, 160).replace(/\s+/g, ' '),
+            );
+        }
+    }
+    check(`exactly ${EXPECTED_INVENTORY_WRITE_SITES} inventory-writing statements in production code`,
+        sites === EXPECTED_INVENTORY_WRITE_SITES,
+        `found ${sites} - if this is a legitimate new site, convert it and bump the constant`);
+}
+
+// Every reason string the code uses must exist in item_reasons with the kind it pairs
+// with. The FK is (reason, reason_kind) together, so a missing seed row or a mispaired
+// kind is a foreign key violation on a hot path - during an ordinary page load, for the
+// discovery reasons - rather than anything a user could see and report.
+async function assertReasonVocabulary(): Promise<void> {
+    section('Doctrine: every reason used in code is seeded in item_reasons');
+    const { rows } = await pool.query(`SELECT key, kind FROM item_reasons`);
+    const seeded = new Set(rows.map((r) => `${r.key}:${r.kind}`));
+    for (const [key, kind] of Object.entries(ITEM_REASONS)) {
+        check(`item_reasons has '${key}' as a ${kind}`, seeded.has(`${key}:${kind}`), `${key}:${kind}`);
+    }
+    // The reverse direction, minus the reasons ITEM_REASONS deliberately omits because
+    // no product code ever writes them: the migration's backfill, the acceptance seeds,
+    // and reconcile_item_ledger_deploy_gap.sql's one-shot correction. Anything else in
+    // the table that the code cannot produce is a vocabulary row nobody owns.
+    const nonProduct = new Set(['opening_balance', 'acceptance_seed', 'deploy_gap']);
+    const unowned = rows.map((r) => r.key as string).filter((k) => !(k in ITEM_REASONS) && !nonProduct.has(k));
+    check('every seeded reason is either in ITEM_REASONS or a known non-product one',
+        unowned.length === 0, unowned.join(', '));
+}
+
 async function run(): Promise<void> {
     await cleanup();
+
+    assertEveryInventoryWriteJournals();
+    await assertReasonVocabulary();
 
     const markets = await findMarkets();
     const W = markets.resolved.winningIndex;
@@ -355,6 +474,19 @@ async function run(): Promise<void> {
     check('5: exact debit == egg price', postEgg.ledgerSum === preEgg.ledgerSum - egg.price, `pre=${preEgg.ledgerSum} post=${postEgg.ledgerSum} price=${egg.price}`);
     const { rows: eggLedgerRows } = await pool.query(`SELECT COUNT(*)::int AS n FROM ember_ledger WHERE user_id = $1 AND rule_key = $2`, [win.userId, egg.priceRuleKey]);
     check('5: exactly one egg-purchase ledger row', eggLedgerRows[0].n === 1, JSON.stringify(eggLedgerRows[0]));
+    // The purchase's item row must exist AND be stitched to the Ember row that paid for
+    // it - purchases share one idempotency key across both journals, so a non-null
+    // ledger_id is what proves the two legs came out of the same statement rather than
+    // two independent writes that happen to agree.
+    const { rows: eggItemRows } = await pool.query(
+        `SELECT delta, ledger_id, inventory_item_id FROM item_ledger
+         WHERE user_id = $1 AND catalog_key = $2 AND reason = 'purchase'`,
+        [win.userId, egg.catalogKey],
+    );
+    check('5: exactly one purchase item row, +1, linked to its ember row',
+        eggItemRows.length === 1 && eggItemRows[0].delta === 1 && eggItemRows[0].ledger_id !== null
+        && eggItemRows[0].inventory_item_id === eggInventoryId,
+        JSON.stringify(eggItemRows));
     await assertLedgerConsistent(win.userId, win.cookie, '5: egg purchased');
 
     // =================================================================================
@@ -370,6 +502,17 @@ async function run(): Promise<void> {
     check('6: pet exists', petRows.length === 1 && petRows[0].id === petId);
     const { rows: eggGoneRows } = await pool.query(`SELECT 1 FROM inventory_items WHERE id = $1`, [eggInventoryId]);
     check('6: consumed egg row is gone', eggGoneRows.length === 0);
+    // The zero-Ember check above only ever proved a negative. Paired with the journal it
+    // becomes a positive one: hatching moved zero Ember and exactly one egg. The burn row
+    // still names the inventory row it consumed even though that row no longer exists,
+    // which is precisely why inventory_item_id carries no foreign key.
+    const { rows: hatchBurnRows } = await pool.query(
+        `SELECT delta, inventory_item_id FROM item_ledger WHERE user_id = $1 AND reason = 'hatch'`,
+        [win.userId],
+    );
+    check('6: exactly one hatch burn row, -1, naming the deleted egg row',
+        hatchBurnRows.length === 1 && hatchBurnRows[0].delta === -1 && hatchBurnRows[0].inventory_item_id === eggInventoryId,
+        JSON.stringify(hatchBurnRows));
     await assertLedgerConsistent(win.userId, win.cookie, '6: hatched');
 
     // =================================================================================
@@ -396,7 +539,53 @@ async function run(): Promise<void> {
     check('7: feeding moved zero Ember (spends inventory, not the ledger)', postFeed.ledgerSum === preFeed.ledgerSum, `pre=${preFeed.ledgerSum} post=${postFeed.ledgerSum}`);
     const { rows: foodQtyRows } = await pool.query(`SELECT quantity FROM inventory_items WHERE user_id = $1 AND catalog_key = $2 AND item_type = 'food'`, [win.userId, food.catalogKey]);
     check('7: food quantity decremented to 0 (item consumed, not Ember)', foodQtyRows.length === 1 && foodQtyRows[0].quantity === 0, JSON.stringify(foodQtyRows));
+    // Same upgrade as the hatch check: feeding moved zero Ember AND exactly one food.
+    const { rows: feedBurnRows } = await pool.query(
+        `SELECT delta FROM item_ledger WHERE user_id = $1 AND reason = 'feed'`,
+        [win.userId],
+    );
+    check('7: exactly one feed burn row, -1', feedBurnRows.length === 1 && feedBurnRows[0].delta === -1, JSON.stringify(feedBurnRows));
     await assertLedgerConsistent(win.userId, win.cookie, '7: fed');
+
+    // =================================================================================
+    section('7b: Replaying an OLD feed token consumes nothing (the bug the journal fixed)');
+    // =================================================================================
+    // Feeding used to guard on pets.last_feed_token, a single column holding only the most
+    // recent token. Feed with A, feed with B, replay A: the pet no longer remembered A, so
+    // the replay consumed a THIRD unit. A unique key on a journal row remembers every
+    // token ever used, so the replay now answers 200 with the pet unchanged and no stock
+    // moves. This exact sequence fails against the pre-journal code.
+    await seedFood(win.userId, food.catalogKey, 3);
+    await assertLedgerConsistent(win.userId, win.cookie, '7b: food seeded for replay test');
+
+    const tokenA = crypto.randomUUID();
+    const tokenB = crypto.randomUUID();
+    const feedOnce = async (token: string) => {
+        // Reset below the ceiling first, or the second feed is rejected 409 before the
+        // idempotency path is ever reached and the test proves nothing.
+        await pool.query(`UPDATE pets SET satisfaction_at_last_feed = 20, last_fed_at = NOW() WHERE id = $1`, [petId]);
+        return api('POST', '/api/pets/feed', { cookie: win.cookie, body: { foodCatalogKey: food.catalogKey, feedToken: token } });
+    };
+    const feedA = await feedOnce(tokenA);
+    check('7b: feed with token A -> 200', feedA.status === 200, JSON.stringify(feedA.json));
+    const feedB = await feedOnce(tokenB);
+    check('7b: feed with token B -> 200', feedB.status === 200, JSON.stringify(feedB.json));
+    const replayA = await feedOnce(tokenA);
+    check('7b: REPLAY of token A -> 200 (idempotent, not a 404)', replayA.status === 200, JSON.stringify(replayA.json));
+
+    const { rows: afterReplayQty } = await pool.query(
+        `SELECT quantity FROM inventory_items WHERE user_id = $1 AND catalog_key = $2 AND item_type = 'food'`,
+        [win.userId, food.catalogKey],
+    );
+    check('7b: exactly two units consumed from three, NOT three',
+        afterReplayQty.length === 1 && afterReplayQty[0].quantity === 1,
+        `quantity=${JSON.stringify(afterReplayQty)} (0 means the replay over-consumed)`);
+    const { rows: feedRowCount } = await pool.query(
+        `SELECT COUNT(*)::int AS n FROM item_ledger WHERE user_id = $1 AND reason = 'feed'`,
+        [win.userId],
+    );
+    check('7b: three feed burn rows total (step 7 + A + B), the replay wrote none', feedRowCount[0].n === 3, JSON.stringify(feedRowCount[0]));
+    await assertLedgerConsistent(win.userId, win.cookie, '7b: old feed token replayed');
 
     // =================================================================================
     section('8: Discovery claim - ember find grants, food find does not, claim is presentational');

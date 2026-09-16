@@ -175,12 +175,26 @@ export async function purchaseConsumable(
                        ${idempotencyKey}, ${JSON.stringify({ catalogKey: input.catalogKey })}
                 FROM bal
                 ON CONFLICT (idempotency_key) DO NOTHING
-                RETURNING 1
+                RETURNING id
             ), granted AS (
                 INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
                 SELECT ${input.userId}, ${input.catalogKey}, 'egg', 1
                 FROM led
                 RETURNING id
+            ), itm AS (
+                -- The item journal (create_item_ledger_tables.sql). Deliberately shares the
+                -- Ember row's EXACT idempotency key and links back through ledger_id: a
+                -- replayed purchase token can no more write a second item movement than a
+                -- second debit. Both CTEs hold at most one row, so the cross join is empty
+                -- on a replay and this writes nothing.
+                INSERT INTO item_ledger (user_id, catalog_key, item_type, delta, reason, reason_kind,
+                                         inventory_item_id, ledger_id, idempotency_key, metadata)
+                SELECT ${input.userId}::uuid, ${input.catalogKey}::text, 'egg', 1, 'purchase', 'source',
+                       g.id, l.id, ${idempotencyKey}::text,
+                       ${JSON.stringify({ purchaseToken: input.purchaseScope })}::jsonb
+                FROM granted g, led l
+                ON CONFLICT (idempotency_key) DO NOTHING
+                RETURNING 1
             )
             SELECT EXISTS (SELECT 1 FROM precheck) AS already_recorded,
                    EXISTS (SELECT 1 FROM led) AS newly_spent,
@@ -202,7 +216,7 @@ export async function purchaseConsumable(
                        ${idempotencyKey}, ${JSON.stringify({ catalogKey: input.catalogKey })}
                 FROM bal
                 ON CONFLICT (idempotency_key) DO NOTHING
-                RETURNING 1
+                RETURNING id
             ), granted AS (
                 INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
                 SELECT ${input.userId}, ${input.catalogKey}, ${input.itemType}, 1
@@ -210,6 +224,18 @@ export async function purchaseConsumable(
                 ON CONFLICT (user_id, catalog_key) WHERE item_type = 'food'
                     DO UPDATE SET quantity = inventory_items.quantity + 1
                 RETURNING id
+            ), itm AS (
+                -- See the egg branch: same key as the Ember row, linked by ledger_id. The
+                -- upsert's DO UPDATE branch returns the row id (a DO NOTHING would not),
+                -- so g.id is always present when this leg fires.
+                INSERT INTO item_ledger (user_id, catalog_key, item_type, delta, reason, reason_kind,
+                                         inventory_item_id, ledger_id, idempotency_key, metadata)
+                SELECT ${input.userId}::uuid, ${input.catalogKey}::text, ${input.itemType}::text, 1,
+                       'purchase', 'source', g.id, l.id, ${idempotencyKey}::text,
+                       ${JSON.stringify({ purchaseToken: input.purchaseScope })}::jsonb
+                FROM granted g, led l
+                ON CONFLICT (idempotency_key) DO NOTHING
+                RETURNING 1
             )
             SELECT EXISTS (SELECT 1 FROM precheck) AS already_recorded,
                    EXISTS (SELECT 1 FROM led) AS newly_spent,
