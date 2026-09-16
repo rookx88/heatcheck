@@ -22,6 +22,7 @@ import { getTickerMovers, getTickerResults, type TickerResultItem } from '../../
 import { buildResultSentence, toResultSentences } from '../../../lib/pages-functions/market-movers';
 import { topMoversSince } from '../../../lib/pages-functions/ticker-window';
 import {
+    closeDelta,
     isDrawMarket,
     parseYesNoQuestion,
     pickCanonicalMarket,
@@ -227,6 +228,21 @@ async function run() {
     check('an MLB total scores the global pair only - the NFL children sit it out',
         mlbSpecs.length === 2 && mlbSpecs.every((s) => s.tickerKey === 'overs' || s.tickerKey === 'unders'),
         JSON.stringify(mlbSpecs.map((s) => s.tickerKey)));
+    // closeDelta must not depend on the order positions arrive in. The settle job sums a
+    // ticker's rows in whatever order Postgres returns them, and a float sum let $NFLO and
+    // $NFLU close at +1.737 / -1.738 on 2026-09-14 from exactly opposite contributions.
+    // These are that day's real numbers; 1.7375 is an exact half.
+    const nfloDay = [0.525, 0.525, 0.525, 0.505, 0.515, 0.445, -0.475, -0.480];
+    const scoring = { smoothing: 4, scalePct: 10 };
+    const orders = [nfloDay, [...nfloDay].reverse(), [-0.48, 0.525, -0.475, 0.445, 0.525, 0.515, 0.525, 0.505]];
+    check('closeDelta is the same in any summation order',
+        new Set(orders.map((o) => closeDelta(o, scoring))).size === 1,
+        orders.map((o) => closeDelta(o, scoring)).join(', '));
+    check('closeDelta rounds an exact half away from zero (1.7375 -> 1.738)', closeDelta(nfloDay, scoring) === 1.738,
+        String(closeDelta(nfloDay, scoring)));
+    check('a mirrored day closes at the exact negative, in any order',
+        orders.every((o) => closeDelta(o.map((x) => -x), scoring) === -1.738));
+    check('a flat day closes at 0, never -0', Object.is(closeDelta([0.3, -0.3], scoring), 0));
     check('positionShareOfClose(0.6, N=6, k=4, scale=10) = 0.6', near(positionShareOfClose(0.6, { positionsCounted: 6, smoothing: 4, scalePct: 10 }) ?? NaN, 0.6));
     check('positionShareOfClose is null on a degenerate denominator', positionShareOfClose(0.6, { positionsCounted: 0, smoothing: 0, scalePct: 10 }) === null);
 

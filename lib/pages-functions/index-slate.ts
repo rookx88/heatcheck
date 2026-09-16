@@ -494,15 +494,36 @@ export function contributionFor(won: boolean, entryProb: number): number {
  *
  * Returns null when there is nothing to close: a day with no settled positions must
  * write no event at all rather than print a 0.0% close.
+ *
+ * EXACT, AND THEREFORE ORDER-INDEPENDENT. Contributions are summed as integer
+ * thousandths, not as floats. Every contribution is already a 3dp value
+ * (contributionFor rounds to 3dp; index_positions.contrib is NUMERIC(6,3)), so nothing
+ * is lost, and an integer sum is the same in any order.
+ *
+ * The float sum it replaced was not. Float addition isn't associative, and the settle
+ * job sums a ticker's rows in whatever order Postgres returns them, so a mirror pair's
+ * two closes could round apart. Measured 2026-09-14: $NFLO closed +1.737 and $NFLU
+ * -1.738 on eight games whose contributions were exact opposites. The true value was
+ * 2.085 / 12 * 10 = 1.7375 exactly, and 3,528 of the 40,320 possible summation orders
+ * of those eight numbers landed on the other side of the half.
+ *
+ * Rounding is half AWAY from zero on the exact milli-point value - the same rule
+ * Postgres NUMERIC applies - and is taken on the magnitude, so a close and its mirror
+ * are always exact negatives. With integer scalePct and smoothing (the live config),
+ * the milli value is num/den of two integers, so an exact half is exactly representable
+ * and cannot be misrounded by float error.
  */
 export function closeDelta(
     contributions: number[],
     cfg: { smoothing: number; scalePct: number },
 ): number | null {
     if (contributions.length === 0) return null;
-    const sum = contributions.reduce((a, b) => a + b, 0);
-    const raw = (sum / (contributions.length + cfg.smoothing)) * cfg.scalePct;
-    return Number(raw.toFixed(3));
+    const toMilli = (x: number) => Math.sign(x) * Math.round(Math.abs(x) * 1000);
+    const sumMilli = contributions.reduce((acc, c) => acc + toMilli(c), 0);
+    const deltaMilli = (sumMilli * cfg.scalePct) / (contributions.length + cfg.smoothing);
+    const rounded = Math.sign(deltaMilli) * Math.round(Math.abs(deltaMilli));
+    // `+ 0` folds -0 into 0, so a flat day can never print as "-0.000".
+    return rounded / 1000 + 0;
 }
 
 /**
