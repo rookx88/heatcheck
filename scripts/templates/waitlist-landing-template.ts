@@ -405,7 +405,7 @@ export function footer(): string {
     const year = new Date().getFullYear();
     return `
         <div class="hc-footer">
-            &copy; ${year} Heatchecks &middot; <a href="/">Home</a> &middot; <a href="/terms/">Terms</a>
+            &copy; ${year} Heatchecks &middot; <a href="/">Home</a> &middot; <a href="/faq/">FAQ</a> &middot; <a href="/contact/">Contact</a> &middot; <a href="/terms/">Terms</a> &middot; <a href="/privacy/">Privacy</a>
         </div>`;
 }
 

@@ -54,6 +54,9 @@ import { generateWelcomePageHtml } from './templates/welcome-template';
 import { generateAccountPageHtml } from './templates/account-template';
 import { generateUnsubscribedPageHtml } from './templates/unsubscribed-template';
 import { generateTermsPageHtml } from './templates/terms-template';
+import { generatePrivacyPageHtml } from './templates/privacy-template';
+import { generateFaqPageHtml } from './templates/faq-template';
+import { generateContactPageHtml } from './templates/contact-template';
 import { generateMyPortfolioPageHtml } from './templates/my-portfolio-template';
 import { generateTankPageHtml, TankPageEntry, type LinesBoardEntry } from './templates/tank-template';
 import { generateTankLandPageHtml } from './templates/tank-land-template';
@@ -1207,9 +1210,13 @@ async function generateAllPages(): Promise<void> {
         writeHtmlFile('unsubscribed/index.html', generateUnsubscribedPageHtml(baseUrl));
         console.log('✓ Built unsubscribed page\n');
 
-        // Terms of Service, linked from the shared footer(). Static, no bundle, no DB.
+        // The footer pages: Terms, Privacy, FAQ, Contact - all linked from the shared
+        // footer(), all set in legal-page.ts's document card. Static, no bundle, no DB.
         writeHtmlFile('terms/index.html', generateTermsPageHtml(baseUrl));
-        console.log('✓ Built terms page\n');
+        writeHtmlFile('privacy/index.html', generatePrivacyPageHtml(baseUrl));
+        writeHtmlFile('faq/index.html', generateFaqPageHtml(baseUrl));
+        writeHtmlFile('contact/index.html', generateContactPageHtml(baseUrl));
+        console.log('✓ Built terms, privacy, FAQ and contact pages\n');
 
         // My Portfolio page (formerly My Tanks; /my-tanks/ 301s here): a logged-in user's
         // Tank picks plus their TANKDAQ index holdings. Same standalone-bundle pattern as

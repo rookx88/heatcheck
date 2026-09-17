@@ -1,5 +1,4 @@
-import { renderHead, topbar, footer } from './waitlist-landing-template';
-import { escapeHtml } from '../utils/html-escape';
+import { renderLegalDocument, type Part } from './legal-page';
 
 /**
  * /terms/ - the Terms of Service, linked from the shared footer().
@@ -32,17 +31,9 @@ const gm = (withGmCard: string, without: string): string => (INCLUDE_GM_CARD ? w
 const EFFECTIVE_DATE = 'September 17, 2026';
 const LAST_UPDATED = 'September 17, 2026';
 
-type Block =
-    | string                       // an ordinary paragraph
-    | { caps: string }             // the conspicuous ALL-CAPS legal paragraphs
-    | { note: string };            // a drafting note for counsel - draft-only
-
-interface Section { num: number; title: string; blocks: Block[] }
-interface Part { id: string; label: string; title: string; sections: Section[] }
-
 const INTRO: string[] = [
     'Welcome to Heatchecks. These Terms of Service ("Terms") are a legally binding agreement between you and Heatchecks ("Heatchecks," "we," "us," or "our") governing your access to and use of the Heatchecks website, applications, and services (collectively, the "Platform").',
-    'By creating an account, accessing, or using the Platform, you acknowledge that you have read, understood, and agree to be bound by these Terms and our Privacy Policy. If you do not agree, you may not use the Platform.',
+    'By creating an account, accessing, or using the Platform, you acknowledge that you have read, understood, and agree to be bound by these Terms and our [Privacy Policy](/privacy/). If you do not agree, you may not use the Platform.',
 ];
 
 const ARBITRATION_CALLOUT = 'These Terms contain a binding arbitration agreement and a class action waiver in Section 10 that affect how disputes between you and us are resolved.';
@@ -263,248 +254,22 @@ const ALL_PARTS: Part[] = [
     },
 ];
 
-const PARTS: Part[] = INCLUDE_GM_CARD ? ALL_PARTS : ALL_PARTS.slice(0, 1);
-// Part I on its own is simply "the Terms": no part banner, contents as one list.
-const MULTI_PART = PARTS.length > 1;
-
 const CONTACT = 'Questions about these Terms may be directed to support@heatchecks.io.';
 
-/**
- * Escape first, then apply the three inline marks. Order matters: bold before italic
- * (so ** never reads as two empty italics), and "Section N" links last so they can't
- * land inside a tag the earlier passes wrote.
- */
-function inline(text: string): string {
-    return escapeHtml(text)
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/\[([^\[\]]+)\]/g, '<span class="hc-tos-blank">[$1]</span>')
-        .replace(/\bSection (\d+)\b/g, '<a href="#section-$1">Section $1</a>');
-}
-
-function renderBlock(block: Block): string {
-    if (typeof block === 'string') return `<p>${inline(block)}</p>`;
-    if ('caps' in block) return `<p class="hc-tos-caps">${inline(block.caps)}</p>`;
-    // A drafting note is a message to counsel, not a term - it never ships.
-    return IS_DRAFT ? `<p class="hc-tos-note"><span>Drafting note</span>${inline(block.note)}</p>` : '';
-}
-
-function renderSection(section: Section): string {
-    return `
-            <section class="hc-tos-section" id="section-${section.num}">
-                <h3><span class="hc-tos-num">${section.num}.</span> ${escapeHtml(section.title)}</h3>
-                ${section.blocks.map(renderBlock).join('\n                ')}
-            </section>`;
-}
-
-function renderToc(): string {
-    return PARTS.map((part) => `
-                <div class="hc-tos-toc-part">${MULTI_PART ? `
-                    <a class="hc-tos-toc-label" href="#${part.id}">${escapeHtml(part.label)} — ${escapeHtml(part.title)}</a>` : ''}
-                    <ol start="${part.sections[0].num}">
-                        ${part.sections.map((s) => `<li><a href="#section-${s.num}">${escapeHtml(s.title)}</a></li>`).join('\n                        ')}
-                    </ol>
-                </div>`).join('');
-}
-
 export function generateTermsPageHtml(baseUrl: string): string {
-    const title = 'Terms of Service | Heatchecks';
-    const description = 'The Heatchecks Terms of Service: account eligibility, how Ember works (free, no cash value, no gambling), conduct, and dispute resolution.';
-    const head = renderHead({ title, description, path: '/terms/', baseUrl });
-
-    return `<!DOCTYPE html>
-<html lang="en">
-<head>
-    ${head}${IS_DRAFT ? '\n    <meta name="robots" content="noindex">' : ''}
-    <style>
-        /* A legal document wants a longer measure than the 560px funnel column. */
-        .hc-page.hc-page--terms { max-width: 780px; }
-        html { scroll-behavior: smooth; }
-        @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
-
-        .hc-tos {
-            margin-top: 1.5rem;
-            padding: 2rem 1.75rem 2.25rem;
-            background: rgba(11, 7, 19, 0.72);
-            border: 2px solid rgba(47, 230, 217, 0.4);
-            border-radius: 20px;
-            box-shadow: 0 0 40px rgba(47, 230, 217, 0.12), 0 20px 50px rgba(0, 0, 0, 0.45);
-        }
-        .hc-tos-eyebrow {
-            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.72rem;
-            letter-spacing: 0.14em; text-transform: uppercase; color: var(--hc-teal);
-            text-shadow: 0 0 10px rgba(47, 230, 217, 0.45); margin: 0;
-        }
-        .hc-tos h1 {
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800;
-            font-size: clamp(1.7rem, 6vw, 2.4rem); line-height: 1.1;
-            color: #ffffff; margin: 0.35rem 0 0;
-        }
-        .hc-tos-dates {
-            display: flex; flex-wrap: wrap; gap: 0.35rem 1.25rem;
-            margin: 0.6rem 0 0; font-size: 0.82rem; color: rgba(255, 255, 255, 0.6);
-        }
-        .hc-tos-dates strong { color: rgba(255, 255, 255, 0.85); font-weight: 800; }
-
-        .hc-tos p, .hc-tos li {
-            font-size: 0.95rem; line-height: 1.65; color: rgba(255, 255, 255, 0.82);
-        }
-        .hc-tos p { margin: 0.85rem 0 0; overflow-wrap: anywhere; }
-        .hc-tos strong { color: #ffffff; font-weight: 800; }
-        .hc-tos a { color: var(--hc-teal); text-decoration: underline; text-underline-offset: 2px; }
-        .hc-tos a:hover { color: #ffffff; }
-
-        .hc-tos-draft {
-            margin: 1.25rem 0 0; padding: 0.75rem 1rem;
-            border: 1px dashed rgba(255, 199, 44, 0.6); border-radius: 12px;
-            background: rgba(255, 199, 44, 0.08);
-            font-size: 0.85rem; line-height: 1.5; color: rgba(255, 255, 255, 0.85);
-        }
-        .hc-tos-draft strong { color: var(--hc-gold); }
-
-        /* The arbitration notice has to be conspicuous - gold, the site's CTA colour. */
-        .hc-tos-callout {
-            margin: 1.25rem 0 0; padding: 0.9rem 1.1rem;
-            border-left: 4px solid var(--hc-gold); border-radius: 0 12px 12px 0;
-            background: rgba(255, 199, 44, 0.1);
-        }
-        .hc-tos-callout p { margin: 0; color: #ffffff; font-weight: 800; }
-        .hc-tos-callout a { color: var(--hc-gold); }
-
-        .hc-tos-toc {
-            margin: 1.5rem 0 0; padding: 1rem 1.15rem 1.15rem;
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 14px;
-        }
-        .hc-tos-toc > summary {
-            cursor: pointer; list-style: none;
-            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.78rem;
-            letter-spacing: 0.1em; text-transform: uppercase; color: var(--hc-teal);
-        }
-        .hc-tos-toc > summary::-webkit-details-marker { display: none; }
-        .hc-tos-toc > summary::after { content: ' +'; }
-        .hc-tos-toc[open] > summary::after { content: ' \\2212'; }
-        .hc-tos-toc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1.5rem; }
-        .hc-tos-toc-grid--single { display: block; margin-top: 0.5rem; }
-        .hc-tos-toc-grid--single ol { columns: 2; column-gap: 2.5rem; }
-        .hc-tos-toc-grid--single li { break-inside: avoid; }
-        .hc-tos-toc-label {
-            display: block; margin-top: 0.9rem;
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800; font-size: 1rem;
-            color: var(--hc-gold) !important; text-decoration: none !important;
-        }
-        .hc-tos-toc ol { margin: 0.35rem 0 0; padding-left: 1.6rem; }
-        .hc-tos-toc li { font-size: 0.86rem; line-height: 1.45; padding: 0.12rem 0; }
-        .hc-tos-toc li::marker { color: rgba(47, 230, 217, 0.8); font-weight: 800; }
-        .hc-tos-toc li a { color: rgba(255, 255, 255, 0.8); text-decoration: none; }
-        .hc-tos-toc li a:hover { color: #ffffff; text-decoration: underline; }
-
-        .hc-tos-part {
-            margin: 2.5rem 0 0; padding-top: 1.5rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.14);
-            scroll-margin-top: 1rem;
-        }
-        .hc-tos-part-label {
-            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; font-size: 0.78rem;
-            letter-spacing: 0.16em; text-transform: uppercase; color: var(--hc-gold); margin: 0;
-        }
-        .hc-tos-part h2 {
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800;
-            font-size: clamp(1.3rem, 5vw, 1.7rem); line-height: 1.15;
-            color: #ffffff; margin: 0.15rem 0 0;
-        }
-        .hc-tos-section { margin-top: 1.9rem; scroll-margin-top: 1rem; }
-        .hc-tos-section h3 {
-            font-family: 'Baloo 2', 'Nunito', sans-serif; font-weight: 800;
-            font-size: 1.15rem; line-height: 1.25; color: #ffffff; margin: 0;
-        }
-        .hc-tos-num { color: var(--hc-teal); }
-        /* Arriving from the contents list or a "Section N" link: flash the heading. */
-        .hc-tos-section:target h3 { color: var(--hc-gold); }
-
-        /* The conspicuous paragraphs stay uppercase (that is the legal point of them)
-           but set smaller and looser, so a wall of capitals is still readable. */
-        .hc-tos p.hc-tos-caps {
-            font-size: 0.8rem; line-height: 1.7; letter-spacing: 0.02em;
-            padding: 0.85rem 1rem; border-radius: 12px;
-            background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1);
-            color: rgba(255, 255, 255, 0.88);
-        }
-
-        .hc-tos-blank {
-            padding: 0 0.2em; border-radius: 4px;
-            background: rgba(255, 199, 44, 0.14); color: var(--hc-gold);
-            border-bottom: 1px dashed rgba(255, 199, 44, 0.7);
-        }
-        .hc-tos p.hc-tos-note {
-            padding: 0.7rem 0.9rem; border-radius: 10px;
-            border: 1px dashed rgba(255, 199, 44, 0.45); background: rgba(255, 199, 44, 0.06);
-            font-size: 0.86rem; color: rgba(255, 255, 255, 0.75);
-        }
-        .hc-tos-note > span {
-            display: block; margin-bottom: 0.2rem;
-            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.66rem;
-            letter-spacing: 0.12em; text-transform: uppercase; color: var(--hc-gold);
-        }
-
-        .hc-tos-contact {
-            margin-top: 2.5rem; padding-top: 1.25rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.14);
-        }
-        .hc-tos-top { display: inline-block; margin-top: 1.25rem; font-size: 0.85rem; }
-
-        @media (max-width: 560px) {
-            .hc-tos { padding: 1.5rem 1.1rem 1.75rem; border-radius: 16px; }
-            .hc-tos-toc-grid { grid-template-columns: 1fr; }
-            .hc-tos-toc-grid--single ol { columns: 1; }
-        }
-        @media print {
-            body::before { display: none; }
-            .hc-tos { border: 0; box-shadow: none; background: none; }
-            .hc-tos, .hc-tos p, .hc-tos li, .hc-tos h1, .hc-tos h2, .hc-tos h3, .hc-tos strong { color: #000 !important; }
-            .hc-topbar, .hc-tos-toc, .hc-tos-top, .hc-footer { display: none; }
-        }
-    </style>
-</head>
-<body>
-    <main class="hc-page hc-page--terms">
-        ${topbar('/beta/')}
-
-        <article class="hc-tos" id="top">
-            <p class="hc-tos-eyebrow">Legal</p>
-            <h1>Terms of Service</h1>
-            <p class="hc-tos-dates">
-                <span><strong>Effective:</strong> ${inline(EFFECTIVE_DATE)}</span>
-                <span><strong>Last updated:</strong> ${inline(LAST_UPDATED)}</span>
-            </p>
-            ${IS_DRAFT ? `
-            <p class="hc-tos-draft"><strong>Draft — pending legal review.</strong> These Terms are not yet final. Highlighted items in [brackets] are still being completed.</p>` : ''}
-
-            ${INTRO.map((p) => `<p>${inline(p)}</p>`).join('\n            ')}
-
-            <div class="hc-tos-callout"><p>${inline(ARBITRATION_CALLOUT)}</p></div>
-
-            ${INCLUDE_GM_CARD ? `<p>${inline(STRUCTURE_NOTE)}</p>` : ''}
-
-            <details class="hc-tos-toc" open>
-                <summary>Contents</summary>
-                <nav class="hc-tos-toc-grid${MULTI_PART ? '' : ' hc-tos-toc-grid--single'}" aria-label="Table of contents">${renderToc()}
-                </nav>
-            </details>
-            ${PARTS.map((part) => `${MULTI_PART ? `
-            <div class="hc-tos-part" id="${part.id}">
-                <p class="hc-tos-part-label">${escapeHtml(part.label)}</p>
-                <h2>${escapeHtml(part.title)}</h2>
-            </div>` : ''}${part.sections.map(renderSection).join('')}`).join('\n')}
-
-            <div class="hc-tos-contact">
-                <p><strong>Contact.</strong> ${inline(CONTACT)}</p>
-                <a class="hc-tos-top" href="#top">&uarr; Back to top</a>
-            </div>
-        </article>
-
-        ${footer()}
-    </main>
-</body>
-</html>`;
+    return renderLegalDocument({
+        path: '/terms/',
+        title: 'Terms of Service | Heatchecks',
+        description: 'The Heatchecks Terms of Service: account eligibility, how Ember works (free, no cash value, no gambling), conduct, and dispute resolution.',
+        heading: 'Terms of Service',
+        effectiveDate: EFFECTIVE_DATE,
+        lastUpdated: LAST_UPDATED,
+        isDraft: IS_DRAFT,
+        draftNoun: 'These Terms are',
+        intro: INTRO,
+        callout: ARBITRATION_CALLOUT,
+        afterCallout: INCLUDE_GM_CARD ? [STRUCTURE_NOTE] : [],
+        parts: INCLUDE_GM_CARD ? ALL_PARTS : ALL_PARTS.slice(0, 1),
+        contact: CONTACT,
+    }, baseUrl);
 }
