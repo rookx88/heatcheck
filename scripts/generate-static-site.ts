@@ -11,6 +11,8 @@ import { generateHeatPicksArticlePage } from './templates/heat-picks-article-tem
 import { generateDFSHubPage } from './templates/dfs-hub-template';
 import { generateHeatPicksHubPage } from './templates/heat-picks-hub-template';
 import { generateTankArticlePage, TankPageRecord } from './templates/tank-article-template';
+import { generateTankLinesPage, type LinesPageGroup, type LinesRowRecord } from './templates/tank-lines-template';
+import { linesPagePath, matchupName } from '../tank-lines';
 import { generateOgImage } from './generate-og-image';
 import { buildTankBundles } from './build-tank-bundles';
 import { formatMarketLabel, formatOddsLabel, formatSettleDate, deriveTaglineFallback, truncateHeaderLabel } from '../tank-deck-format';
@@ -19,7 +21,7 @@ import { buildAnalyticsBeacon } from './build-analytics-beacon';
 import { generateBaseHtml } from './templates/base-template';
 import { generateLandingPageHtml, generateBetaInfoPageHtml } from './templates/waitlist-landing-template';
 import { generateClaimYourSpotPageHtml } from './templates/claim-your-spot-template';
-import { generateTankPageHtml, TankPageEntry } from './templates/tank-template';
+import { generateTankPageHtml, TankPageEntry, type LinesBoardEntry } from './templates/tank-template';
 import { formatDateISO, normalizeLeague } from './utils/date-formatter';
 import { generateSlug, ensureUniqueSlug, generateNarrativeSlug, generateMatchupSlug } from './utils/slug-generator';
 import { getShortTeamName } from './utils/date-formatter';
@@ -248,6 +250,27 @@ function copyConfigFiles(): void {
 /**
  * Write HTML file to both dist and public (for dev server access)
  */
+/**
+ * Delete lines pages whose matchup no longer has any lines row. No zero-row guard: an
+ * empty lines set is an ordinary day, not a sign the database was unreachable - the
+ * caller only runs this after the tank query succeeded.
+ */
+function pruneStaleLinesPages(keepPageSlugs: string[]): number {
+    const keep = new Set(keepPageSlugs);
+    let removed = 0;
+    for (const baseDir of [distDir, publicDir]) {
+        const linesDir = path.join(baseDir, 'the-tank', 'lines');
+        if (!fs.existsSync(linesDir)) continue;
+        for (const entry of fs.readdirSync(linesDir, { withFileTypes: true })) {
+            if (!entry.isDirectory() || keep.has(entry.name)) continue;
+            fs.rmSync(path.join(linesDir, entry.name), { recursive: true, force: true });
+            console.log(`✓ Pruned stale lines page: ${path.join(linesDir, entry.name)}`);
+            removed++;
+        }
+    }
+    return removed;
+}
+
 function writeHtmlFile(relativePath: string, html: string): void {
     // Write to dist (for production)
     const distPath = path.join(distDir, relativePath);
@@ -1095,21 +1118,43 @@ async function generateAllPages(): Promise<void> {
         // isn't ready yet - it's a primary nav destination from the world map and
         // must never 404.
         let tankEntries: TankPageEntry[] = [];
+        // The hub's Lines board: one entry per live lines page, soonest game first.
+        let linesBoard: LinesBoardEntry[] = [];
         try {
-            // Stories only. tank_pages.kind (add_kind_to_tank_pages.sql) also holds 'lines'
-            // rows - a matchup's moneyline/spread/total with no article - and one of those
-            // rendered through the article template is a page with an empty body. Read via
-            // to_jsonb so a database without the column still builds: no kind means every
-            // row is a story, which is what was true before the column existed.
+            // Two kinds of Tank share this table (add_kind_to_tank_pages.sql). A 'narrative'
+            // row is a story and renders through the article template. A 'lines' row is one
+            // line of a matchup's board - no article - and renders on its matchup's lines
+            // page; pushed through the article template it is a page with an empty body.
+            // kind/page_slug are read via to_jsonb so a database without the columns still
+            // builds: no kind means every row is a story, which is what was true before.
+            //
+            // 'superseded' is a lines row whose market later got a story (narrative wins,
+            // line by line). It is fetched only so its slot can hand off to that story.
             const tankPagesResult = await pool.query(
-                `SELECT t.id, t.slug, t.league, t.angle, t.game_snapshot, t.model_output, t.created_at, t.published_at
+                `SELECT t.id, t.slug, t.league, t.angle, t.game_snapshot, t.model_output, t.created_at, t.published_at,
+                        t.status,
+                        COALESCE(to_jsonb(t) ->> 'kind', 'narrative') AS kind,
+                        to_jsonb(t) ->> 'page_slug' AS page_slug
                  FROM tank_pages t
-                 WHERE t.status = 'published' AND t.slug IS NOT NULL AND t.model_output IS NOT NULL
-                   AND COALESCE(to_jsonb(t) ->> 'kind', 'narrative') = 'narrative'`
+                 WHERE t.status IN ('published', 'superseded') AND t.slug IS NOT NULL AND t.model_output IS NOT NULL`
             );
+            const storyRows = tankPagesResult.rows.filter(row => row.kind === 'narrative' && row.status === 'published');
+            const linesRows: Array<LinesRowRecord & { page_slug: string }> = tankPagesResult.rows
+                .filter(row => row.kind === 'lines' && row.page_slug)
+                .map(row => ({
+                    id: row.id,
+                    slug: row.slug,
+                    league: row.league,
+                    status: row.status,
+                    page_slug: row.page_slug,
+                    game_snapshot: row.game_snapshot,
+                    model_output: row.model_output,
+                    created_at: row.created_at,
+                    published_at: row.published_at,
+                }));
             const tankPages: TankPageRecord[] = [];
             let cardFailures = 0;
-            for (const row of tankPagesResult.rows) {
+            for (const row of storyRows) {
                 const tankPage: TankPageRecord = {
                     id: row.id,
                     slug: row.slug,
@@ -1173,13 +1218,13 @@ async function generateAllPages(): Promise<void> {
                     priority: '0.6',
                 });
             }
-            console.log(`✓ Generated ${tankPagesResult.rows.length} Tank articles\n`);
+            console.log(`✓ Generated ${storyRows.length} Tank articles\n`);
             // One summary line rather than leaving single warnings buried in the scroll.
             // Every card failing is a different problem from one failing - it means the
             // renderer itself is broken (missing fonts, sharp/resvg not installed), and
             // that is worth noticing even though the build still succeeds.
             if (cardFailures > 0) {
-                console.warn(`⚠ ${cardFailures} of ${tankPagesResult.rows.length} Tank share cards failed to render\n`);
+                console.warn(`⚠ ${cardFailures} of ${storyRows.length} Tank share cards failed to render\n`);
             }
 
             // Active feed for the-tank's carousel: published pages whose game hasn't
@@ -1206,6 +1251,50 @@ async function generateAllPages(): Promise<void> {
                     },
                 };
             });
+
+            // Lines pages: one per matchup (page_slug), every one of its rows on it. A slot
+            // whose market carries a live story hands off to it, whichever came first - the
+            // 'superseded' status covers a story published after the line, and this map
+            // covers a line created while a story was already live.
+            const narrativeSlugByMarket = new Map<string, string>();
+            for (const p of tankPages) {
+                const marketId = p.game_snapshot?.prop?.id;
+                if (marketId && !narrativeSlugByMarket.has(String(marketId))) narrativeSlugByMarket.set(String(marketId), p.slug);
+            }
+            const linesGroups = new Map<string, LinesPageGroup>();
+            for (const row of linesRows) {
+                const group = linesGroups.get(row.page_slug);
+                if (group) group.rows.push(row); else linesGroups.set(row.page_slug, { pageSlug: row.page_slug, rows: [row] });
+            }
+            let linesWritten = 0;
+            for (const group of linesGroups.values()) {
+                // Caught per page: one bad row must never cost another matchup its page. A
+                // page whose every line was handed off still renders (all hand-off cards)
+                // so old links keep working; it just leaves the hub board.
+                try {
+                    writeHtmlFile(`the-tank/lines/${group.pageSlug}/index.html`, generateTankLinesPage(group, narrativeSlugByMarket, baseUrl));
+                    linesWritten++;
+                    tankArticleUrls.push({
+                        loc: `${baseUrl}${linesPagePath(group.pageSlug)}`,
+                        lastmod: new Date().toISOString().split('T')[0],
+                        changefreq: 'daily',
+                        priority: '0.4',
+                    });
+                } catch (error: any) {
+                    console.warn(`⚠ Lines page ${group.pageSlug} failed to render:`, error.message);
+                }
+            }
+            pruneStaleLinesPages([...linesGroups.keys()]);
+            if (linesWritten > 0) console.log(`✓ Generated ${linesWritten} lines page(s)\n`);
+
+            linesBoard = [...linesGroups.values()]
+                .filter(g => g.rows.some(r => r.status === 'published'))
+                .map(g => {
+                    const game = g.rows[0].game_snapshot.game;
+                    return { pageSlug: g.pageSlug, league: g.rows[0].league, matchup: matchupName(game), kickoff: game.kickoff };
+                })
+                .filter(e => { const k = new Date(e.kickoff).getTime(); return !isNaN(k) && k > now; })
+                .sort((a, b) => new Date(a.kickoff).getTime() - new Date(b.kickoff).getTime());
         } catch (error: any) {
             console.warn('⚠ Warning: Failed to generate Tank articles (tank_pages table may not exist yet):', error.message);
         }
@@ -1215,7 +1304,7 @@ async function generateAllPages(): Promise<void> {
         // This is also the site's one real, crawlable Tank hub - see
         // generateFallbackSection() inside tank-template.ts.
         console.log('Generating the-tank page...');
-        writeHtmlFile('the-tank/index.html', generateTankPageHtml(baseUrl, tankEntries));
+        writeHtmlFile('the-tank/index.html', generateTankPageHtml(baseUrl, tankEntries, linesBoard));
         // Note: /the-tank/ itself is already a hardcoded sitemap entry in sitemap.ts -
         // not pushed here too, to avoid a duplicate <url> entry.
         console.log(`✓ Generated the-tank page with ${tankEntries.length} tank(s)\n`);

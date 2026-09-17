@@ -229,7 +229,7 @@ export function generateTankArticlePage(
         <div class="tank-article-artifact-section">
             <p class="tank-article-artifact-label">Make The Call</p>
             <div class="tank-article-artifact">
-                <div id="tank-article-deck-root" data-hook="${escapeHtml(hook)}"></div>
+                <div id="tank-article-deck-root" data-tank-deck data-hook="${escapeHtml(hook)}"></div>
                 <script type="application/json" id="tank-article-deck-data">${deckPayload}</script>
             </div>
         </div>

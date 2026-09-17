@@ -22,6 +22,23 @@ export interface TankEntry {
   payload: DeckPayload;
 }
 
+// A live lines page (the matchup board, no story) - listed under the carousel, never in
+// it: it is a different kind of Tank and is decorated as one.
+export interface LinesBoardEntry {
+  pageSlug: string;
+  league: string;
+  matchup: string;
+  kickoff: string;
+}
+
+function formatBoardKickoff(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  }).format(d) + ' ET';
+}
+
 type SportFilter = 'All' | 'Baseball' | 'Basketball' | 'Football' | 'Soccer';
 
 // League → filter category. A league not listed here simply gets no chip of its own
@@ -47,10 +64,11 @@ const SPORT_ORDER: Exclude<SportFilter, 'All'>[] = ['Baseball', 'Basketball', 'F
 
 interface TankScreenProps {
   tanks: TankEntry[];
+  linesBoard?: LinesBoardEntry[];
   backHref?: string;
 }
 
-export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' }) => {
+export const TankScreen: React.FC<TankScreenProps> = ({ tanks, linesBoard = [], backHref = '/' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
@@ -212,8 +230,8 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' })
               )}
               {!current ? (
                 <div className="tank-modal-empty">
-                  <p>No tanks available yet.</p>
-                  <p>Check back soon.</p>
+                  <p>{linesBoard.length > 0 ? 'No stories right now - the lines are below.' : 'No tanks available yet.'}</p>
+                  {linesBoard.length === 0 && <p>Check back soon.</p>}
                 </div>
               ) : (
                 <>
@@ -234,6 +252,24 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, backHref = '/' })
                     View Story <span aria-hidden="true">&rarr;</span>
                   </a>
                 </>
+              )}
+              {linesBoard.length > 0 && (
+                <section className="tank-lines-board" aria-label="The Lines">
+                  <div className="tank-lines-board__head">
+                    <span className="tank-lines-board__pill">Lines</span>
+                    <span>The board - no story, just the lines</span>
+                  </div>
+                  <ul className="tank-lines-board__list">
+                    {linesBoard.map((e) => (
+                      <li key={e.pageSlug}>
+                        <a href={`/the-tank/lines/${encodeURIComponent(e.pageSlug)}/`}>
+                          <span className="tank-lines-board__matchup">{e.league} &middot; {e.matchup}</span>
+                          <span className="tank-lines-board__time">{formatBoardKickoff(e.kickoff)}</span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </section>
               )}
             </div>
           </div>
