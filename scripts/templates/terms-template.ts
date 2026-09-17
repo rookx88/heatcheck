@@ -142,7 +142,7 @@ const ALL_PARTS: Part[] = [
                 num: 10,
                 title: 'Dispute Resolution — Arbitration and Class Action Waiver',
                 blocks: [
-                    '**10.1 Informal resolution first.** Before starting arbitration, you agree to contact us at hello@heatchecks.io and attempt to resolve the dispute informally for at least 60 days.',
+                    '**10.1 Informal resolution first.** Before starting arbitration, you agree to contact us at support@heatchecks.io and attempt to resolve the dispute informally for at least 60 days.',
                     '**10.2 Binding individual arbitration.** Except for qualifying small-claims matters and claims for injunctive relief to protect intellectual property, any dispute arising out of or relating to these Terms or the Platform will be resolved by final and binding individual arbitration administered by the American Arbitration Association (AAA) under its applicable rules, rather than in court.',
                     { caps: '**10.3 CLASS ACTION WAIVER.** ANY ARBITRATION OR PROCEEDING WILL BE CONDUCTED ONLY ON AN INDIVIDUAL BASIS. YOU AND HEATCHECKS EACH WAIVE THE RIGHT TO A JURY TRIAL AND THE RIGHT TO PARTICIPATE AS A PLAINTIFF OR CLASS MEMBER IN ANY CLASS, COLLECTIVE, OR REPRESENTATIVE ACTION.' },
                     // An open suggestion from counsel, not an adopted term: the heading goes
@@ -267,7 +267,7 @@ const PARTS: Part[] = INCLUDE_GM_CARD ? ALL_PARTS : ALL_PARTS.slice(0, 1);
 // Part I on its own is simply "the Terms": no part banner, contents as one list.
 const MULTI_PART = PARTS.length > 1;
 
-const CONTACT = 'Questions about these Terms may be directed to hello@heatchecks.io.';
+const CONTACT = 'Questions about these Terms may be directed to support@heatchecks.io.';
 
 /**
  * Escape first, then apply the three inline marks. Order matters: bold before italic
