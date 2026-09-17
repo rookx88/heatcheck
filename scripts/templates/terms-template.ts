@@ -14,7 +14,7 @@ import { escapeHtml } from '../utils/html-escape';
  * bracketed drafting notes, and is noindex (it is also deliberately absent from
  * sitemap.ts - add it there in the same change that flips this).
  */
-const IS_DRAFT = true;
+const IS_DRAFT = false;
 
 /**
  * Part II (the GM Card / NFT terms) is written but the GM Card has not launched, so it
@@ -41,7 +41,7 @@ interface Section { num: number; title: string; blocks: Block[] }
 interface Part { id: string; label: string; title: string; sections: Section[] }
 
 const INTRO: string[] = [
-    'Welcome to Heatchecks. These Terms of Service ("Terms") are a legally binding agreement between you and [Company Legal Name] ("Heatchecks," "we," "us," or "our") governing your access to and use of the Heatchecks website, applications, and services (collectively, the "Platform").',
+    'Welcome to Heatchecks. These Terms of Service ("Terms") are a legally binding agreement between you and Heatchecks ("Heatchecks," "we," "us," or "our") governing your access to and use of the Heatchecks website, applications, and services (collectively, the "Platform").',
     'By creating an account, accessing, or using the Platform, you acknowledge that you have read, understood, and agree to be bound by these Terms and our Privacy Policy. If you do not agree, you may not use the Platform.',
 ];
 
@@ -135,7 +135,7 @@ const ALL_PARTS: Part[] = [
                 num: 9,
                 title: 'Governing Law',
                 blocks: [
-                    'These Terms are governed by the laws of the State of [State], without regard to conflict-of-laws principles, and applicable U.S. federal law. The Federal Arbitration Act governs the interpretation and enforcement of the arbitration provisions in Section 10.',
+                    'These Terms are governed by the laws of the State of California, without regard to conflict-of-laws principles, and applicable U.S. federal law. The Federal Arbitration Act governs the interpretation and enforcement of the arbitration provisions in Section 10.',
                 ],
             },
             {
@@ -143,7 +143,7 @@ const ALL_PARTS: Part[] = [
                 title: 'Dispute Resolution — Arbitration and Class Action Waiver',
                 blocks: [
                     '**10.1 Informal resolution first.** Before starting arbitration, you agree to contact us at hello@heatchecks.io and attempt to resolve the dispute informally for at least 60 days.',
-                    '**10.2 Binding individual arbitration.** Except for qualifying small-claims matters and claims for injunctive relief to protect intellectual property, any dispute arising out of or relating to these Terms or the Platform will be resolved by final and binding individual arbitration administered by [AAA/JAMS] under its applicable rules, rather than in court.',
+                    '**10.2 Binding individual arbitration.** Except for qualifying small-claims matters and claims for injunctive relief to protect intellectual property, any dispute arising out of or relating to these Terms or the Platform will be resolved by final and binding individual arbitration administered by the American Arbitration Association (AAA) under its applicable rules, rather than in court.',
                     { caps: '**10.3 CLASS ACTION WAIVER.** ANY ARBITRATION OR PROCEEDING WILL BE CONDUCTED ONLY ON AN INDIVIDUAL BASIS. YOU AND HEATCHECKS EACH WAIVE THE RIGHT TO A JURY TRIAL AND THE RIGHT TO PARTICIPATE AS A PLAINTIFF OR CLASS MEMBER IN ANY CLASS, COLLECTIVE, OR REPRESENTATIVE ACTION.' },
                     // An open suggestion from counsel, not an adopted term: the heading goes
                     // with its note, so a final page never shows an empty 10.4.

@@ -76,6 +76,7 @@ export function generateSitemap(
             { loc: `${baseUrl}/tankdaq/${key}/`, lastmod: today, changefreq: 'daily', priority: '0.4' }
         )),
         { loc: `${baseUrl}/beta/`, lastmod: today, changefreq: 'monthly', priority: '0.6' },
+        { loc: `${baseUrl}/terms/`, lastmod: today, changefreq: 'yearly', priority: '0.3' },
     ];
 
     urls.push(...tankUrls);
