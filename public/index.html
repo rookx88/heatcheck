@@ -412,13 +412,18 @@
         #hc-showcase-root:empty { display: none; }
         #hc-showcase-root { margin: 0 0 1.25rem; }
 
-        /* Side-by-side at EVERY width: artifact left, symbol buttons in a vertical
-           column to its right (the round icon buttons are narrow enough to hold this
-           layout on phones). */
+        /* Phones STACK: artifact first, sport buttons in a row beneath it. They used
+           to sit side by side at every width, and on a phone that put the buttons in
+           the strip the artifact's own turn arrows occupy - Fishtank pins those a
+           fixed distance in from the VIEWPORT edge (it has to: the cube is a
+           fixed-pixel 3D scene that paints outside its container), so the right arrow
+           landed on the icon column no matter how the artifact was sized. Stacking
+           gives the cube the full width and moves the icons clear of it. From 760px
+           up there is room for both, and the side-by-side layout returns. */
         /* position:relative (z-index left 'auto') so this paints above
            .hc-tanks-backdrop - see that rule's comment for why. */
-        .hc-tanks-layout { position: relative; display: flex; flex-direction: row; align-items: center; gap: 0.75rem; }
-        .hc-tanks-layout #hc-showcase-root { flex: 1 1 auto; margin: 0; min-width: 0; }
+        .hc-tanks-layout { position: relative; display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
+        .hc-tanks-layout #hc-showcase-root { flex: 1 1 auto; margin: 0; min-width: 0; width: 100%; }
         /* Ember Dash teaser - a sibling BELOW the whole tanks panel, not a child of
            it, so it reads as its own card under the panel rather than another element
            inside the cave. .hc-tanks-column is the wrapper both share, so the banner
@@ -431,13 +436,44 @@
             border-radius: 12px;
             box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(47, 230, 217, 0.25);
         }
+        /* A centred row under the artifact on phones; the column beside it at 760px. */
         .hc-sport-row {
             margin: 0; padding: 0; flex: 0 0 auto;
-            display: flex; flex-direction: column; gap: 0.6rem; align-items: center;
+            display: flex; flex-direction: row; flex-wrap: wrap; gap: 0.6rem;
+            align-items: center; justify-content: center;
         }
         @media (min-width: 760px) {
-            .hc-tanks-layout { gap: 1.5rem; }
-            .hc-tanks-layout #hc-showcase-root { flex: 0 1 560px; }
+            .hc-tanks-layout { flex-direction: row; gap: 1.5rem; }
+            .hc-tanks-layout #hc-showcase-root { flex: 0 1 560px; width: auto; }
+            .hc-sport-row { flex-direction: column; flex-wrap: nowrap; }
+        }
+        /* The sibling-tank pager under the artifact (homepage-client's TankPager).
+           Its arrows and counter are Tank HQ's own .tank-modal-nav controls, which
+           this bundle already carries; only the surrounding block is local.
+
+           Two separate things used to swallow every tap on these arrows, one per
+           breakpoint, and this rule plus the phone rule below are what keep them
+           reachable. Do not drop either without re-testing with real pointer input:
+           element.click() cannot see an element sitting on top and will pass anyway.
+
+           The artifact's wrapper is a POSITIONED element whose negative bottom margin
+           pulls it over this block, and its 420px drag stage hit-tests across its whole
+           box whether or not the cube paints there. A static sibling loses to a
+           positioned one whatever the DOM order, so the tap went to the grab surface.
+
+           The z-index is 1550 rather than 1 because of the phone half: this row also
+           lands inside the captain's FIXED bottom-right corner (PetWidget.css, resting
+           z-index 1500), and his sprite was taking the taps and opening his own panel.
+           Layering over him beats moving the row, because BOTH bottom corners are
+           occupied - the encounter guest holds the bottom-left (EncounterStage.css) -
+           and the gap between them is narrower than this row. 1550 clears the resting
+           captain while staying under the encounter scrim (1600) and stage (1650), so
+           a live encounter still blocks the page the way it should. */
+        .hc-tank-nav { position: relative; z-index: 1550; margin: 0.25rem 0 0; text-align: center; }
+        .hc-tank-nav-matchup {
+            margin: 0.35rem 0 0;
+            font-family: 'Nunito', sans-serif; font-size: 0.78rem;
+            color: rgba(255, 255, 255, 0.62);
         }
         /* Round navy-glass symbol buttons in the house teal grammar (selected =
            committed glow). Sport name is on aria-label/title, not visible text. */
@@ -715,11 +751,21 @@
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
             font-size: 1.45rem; letter-spacing: 0.03em; text-transform: uppercase;
         }
-        .hc-tape-item, .hc-tape-item .hc-mm-value { font-weight: 800; }
-        .hc-tape-item .hc-mm-value { font-size: 1.3rem; }
-        .hc-tape-item.is-pos, .hc-tape-item.is-pos .hc-mm-value { color: #2f9e1e; }
-        .hc-tape-item.is-neg, .hc-tape-item.is-neg .hc-mm-value { color: #e33a24; }
-        .hc-tape-item.is-zero, .hc-tape-item.is-zero .hc-mm-value { color: #5b6572; }
+        .hc-tape-item, .hc-tape-item .hc-mm-quote { font-weight: 800; }
+        /* The quote ("45.23 (+1.2%)") is about twice the old value's length - a size
+           down keeps every symbol's turn on screen the same length. */
+        .hc-tape-item .hc-mm-quote { font-size: 1.15rem; white-space: nowrap; }
+        .hc-tape-item.is-pos, .hc-tape-item.is-pos .hc-mm-quote { color: #2f9e1e; }
+        .hc-tape-item.is-neg, .hc-tape-item.is-neg .hc-mm-quote { color: #e33a24; }
+        .hc-tape-item.is-zero, .hc-tape-item.is-zero .hc-mm-quote { color: #5b6572; }
+        /* The parenthesised return sits a step under the price wherever a quote is
+           split into its two parts (the card); the tape prints the joined string. */
+        .hc-mm-return { font-size: 0.82em; }
+        .hc-mm-quote-label {
+            font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.62rem;
+            letter-spacing: 0.1em; text-transform: uppercase; color: #10203a; margin: -0.1rem 0 0.2rem;
+        }
+        .hc-mm-price-note { margin: 0.5rem 0 0; font-size: 0.72rem; line-height: 1.4; color: rgba(255,255,255,0.55); }
         .hc-tape-item {
             text-shadow:
                 1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff,
@@ -815,17 +861,17 @@
             font-family: 'Nunito', sans-serif; font-weight: 800; font-size: 9px;
             letter-spacing: 0.04em; fill: #10203a;
         }
-        .hc-mm-chartrow .hc-mm-value {
+        .hc-mm-chartrow .hc-mm-quote {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900;
-            font-size: clamp(1.15rem, 4vw, 1.5rem); flex-shrink: 0;
+            font-size: clamp(1.15rem, 4vw, 1.5rem); flex-shrink: 0; white-space: nowrap;
             text-shadow:
                 1.5px 0 0 #fff, -1.5px 0 0 #fff, 0 1.5px 0 #fff, 0 -1.5px 0 #fff,
                 1px 1px 0 #fff, -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff,
                 2.5px 2.5px 3px rgba(0,0,0,0.35);
         }
-        .hc-mm-chartrow .hc-mm-value.is-pos { color: #2f9e1e; }
-        .hc-mm-chartrow .hc-mm-value.is-neg { color: #e33a24; }
-        .hc-mm-chartrow .hc-mm-value.is-zero { color: #5b6572; }
+        .hc-mm-chartrow .hc-mm-quote.is-pos { color: #2f9e1e; }
+        .hc-mm-chartrow .hc-mm-quote.is-neg { color: #e33a24; }
+        .hc-mm-chartrow .hc-mm-quote.is-zero { color: #5b6572; }
         .hc-mm-chart-empty {
             font-size: 0.82rem; font-weight: 800; color: rgba(255,255,255,0.85); margin: 0;
             background: #160c27; border: 1.5px solid rgba(47,230,217,0.4); border-radius: 8px; padding: 0.8rem 0.9rem;
@@ -891,7 +937,7 @@
             background: #000000; border: 2px solid rgba(47, 230, 217, 0.35); border-radius: 10px;
         }
         .hc-mmb-sym { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 900; fill: #ffffff; }
-        .hc-mmb-delta { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; }
+        .hc-mmb-quote { font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; }
         /* Hover lives on the <a>, so the whole tile lights up rather than just the
            glyph the cursor happens to be over. */
         .hc-mmb-tile { cursor: pointer; transition: filter 0.16s ease; }
@@ -1004,22 +1050,30 @@
             </div>
         </header>
         
-        <div class="hc-ticker-tape" aria-label="Ticker values — how tagged storylines have gone, not a forecast">
+        <div class="hc-ticker-tape" aria-label="Ember prices — how tagged storylines have gone, not a forecast">
             <div class="hc-tape-track">
                 <ul class="hc-tape-group">
-                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/dogs/">$DOGS</a> <span class="hc-mm-value is-neg">−91.7%</span> <span class="hc-tape-headline">$DOGS sinks 4.0 points as the Under misses in Rayo Vallecano de Madrid vs. FC Barcelona.</span></li>
-                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/chalk/">$CHALK</a> <span class="hc-mm-value is-pos">+71.8%</span> <span class="hc-tape-headline">$CHALK climbs 4.0 points as the Over hits in Rayo Vallecano de Madrid vs. FC Barcelona.</span></li>
-                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/locks/">$LOCKS</a> <span class="hc-mm-value is-pos">+7.7%</span> <span class="hc-tape-headline">$LOCKS climbs 1.6 points with Rayo Vallecano de Madrid vs. FC Barcelona&#039;s recent win.</span></li>
-                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/moonshot/">$MOONSHOT</a> <span class="hc-mm-value is-pos">+0.3%</span> <span class="hc-tape-headline">$MOONSHOT sinks 1.6 points with Rayo Vallecano de Madrid vs. FC Barcelona&#039;s recent loss.</span></li>
-                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/overs/">$OVERS</a> <span class="hc-mm-value is-pos">+53.0%</span> <span class="hc-tape-headline">$OVERS climbs 4.0 points as the Over hits in Rayo Vallecano de Madrid vs. FC Barcelona.</span></li>
-                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/unders/">$UNDERS</a> <span class="hc-mm-value is-neg">−53.0%</span> <span class="hc-tape-headline">$UNDERS sinks 4.0 points as the Under misses in Rayo Vallecano de Madrid vs. FC Barcelona.</span></li></ul>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/dogs/">$DOGS</a> <span class="hc-mm-quote is-pos">46.15 (+1.4%)</span> <span class="hc-tape-headline">Athletics lost at Tampa Bay Rays; $DOGS fell 0.3 points.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/chalk/">$CHALK</a> <span class="hc-mm-quote is-neg">213.56 (−1.7%)</span> <span class="hc-tape-headline">Tampa Bay Rays won against Athletics; $CHALK rose 0.3 points.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/locks/">$LOCKS</a> <span class="hc-mm-quote is-pos">118.28 (+0.3%)</span> <span class="hc-tape-headline">FC Barcelona won against Real Racing Club; $LOCKS rose 0.1 points.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/moonshot/">$MOONSHOT</a> <span class="hc-mm-quote is-neg">102.18 (−0.3%)</span> <span class="hc-tape-headline">FC Barcelona won against Real Racing Club; $MOONSHOT, which held the other side, fell 0.1 points.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/overs/">$OVERS</a> <span class="hc-mm-quote is-pos">186.22 (+0.2%)</span> <span class="hc-tape-headline">Over 2.5 hit in Aston Villa FC vs. Coventry City FC; $OVERS rose 0.5 points.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/unders/">$UNDERS</a> <span class="hc-mm-quote is-neg">53.70 (−0.2%)</span> <span class="hc-tape-headline">Over 2.5 hit in Aston Villa FC vs. Coventry City FC; $UNDERS fell 0.5 points.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/cover/">$COVER</a> <span class="hc-mm-quote is-pos">99.63 (+0.7%)</span> <span class="hc-tape-headline">Aston Villa FC vs. Coventry City FC: the Aston Villa FC side came in; $COVER rose 0.7 points.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/cushion/">$CUSHION</a> <span class="hc-mm-quote is-neg">100.37 (−0.7%)</span> <span class="hc-tape-headline">CA Osasuna vs. Club Atlético de Madrid: the CA Osasuna side missed; $CUSHION fell 0.5 points.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/bothscore/">$BOTHSCORE</a> <span class="hc-mm-quote is-neg">102.20 (−0.7%)</span> <span class="hc-tape-headline">Real Racing Club vs. FC Barcelona: the Yes side came in; $BOTHSCORE rose 0.4 points.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/cleansheet/">$CLEANSHEET</a> <span class="hc-mm-quote is-pos">97.85 (+0.8%)</span> <span class="hc-tape-headline">Aston Villa FC vs. Coventry City FC: the No side missed; $CLEANSHEET fell 0.4 points.</span></li></ul>
                 <ul class="hc-tape-group" aria-hidden="true">
-                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/dogs/">$DOGS</a> <span class="hc-mm-value is-neg">−91.7%</span> <span class="hc-tape-headline">$DOGS sinks 4.0 points as the Under misses in Rayo Vallecano de Madrid vs. FC Barcelona.</span></li>
-                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/chalk/">$CHALK</a> <span class="hc-mm-value is-pos">+71.8%</span> <span class="hc-tape-headline">$CHALK climbs 4.0 points as the Over hits in Rayo Vallecano de Madrid vs. FC Barcelona.</span></li>
-                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/locks/">$LOCKS</a> <span class="hc-mm-value is-pos">+7.7%</span> <span class="hc-tape-headline">$LOCKS climbs 1.6 points with Rayo Vallecano de Madrid vs. FC Barcelona&#039;s recent win.</span></li>
-                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/moonshot/">$MOONSHOT</a> <span class="hc-mm-value is-pos">+0.3%</span> <span class="hc-tape-headline">$MOONSHOT sinks 1.6 points with Rayo Vallecano de Madrid vs. FC Barcelona&#039;s recent loss.</span></li>
-                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/overs/">$OVERS</a> <span class="hc-mm-value is-pos">+53.0%</span> <span class="hc-tape-headline">$OVERS climbs 4.0 points as the Over hits in Rayo Vallecano de Madrid vs. FC Barcelona.</span></li>
-                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/unders/">$UNDERS</a> <span class="hc-mm-value is-neg">−53.0%</span> <span class="hc-tape-headline">$UNDERS sinks 4.0 points as the Under misses in Rayo Vallecano de Madrid vs. FC Barcelona.</span></li></ul>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/dogs/">$DOGS</a> <span class="hc-mm-quote is-pos">46.15 (+1.4%)</span> <span class="hc-tape-headline">Athletics lost at Tampa Bay Rays; $DOGS fell 0.3 points.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/chalk/">$CHALK</a> <span class="hc-mm-quote is-neg">213.56 (−1.7%)</span> <span class="hc-tape-headline">Tampa Bay Rays won against Athletics; $CHALK rose 0.3 points.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/locks/">$LOCKS</a> <span class="hc-mm-quote is-pos">118.28 (+0.3%)</span> <span class="hc-tape-headline">FC Barcelona won against Real Racing Club; $LOCKS rose 0.1 points.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/moonshot/">$MOONSHOT</a> <span class="hc-mm-quote is-neg">102.18 (−0.3%)</span> <span class="hc-tape-headline">FC Barcelona won against Real Racing Club; $MOONSHOT, which held the other side, fell 0.1 points.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/overs/">$OVERS</a> <span class="hc-mm-quote is-pos">186.22 (+0.2%)</span> <span class="hc-tape-headline">Over 2.5 hit in Aston Villa FC vs. Coventry City FC; $OVERS rose 0.5 points.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/unders/">$UNDERS</a> <span class="hc-mm-quote is-neg">53.70 (−0.2%)</span> <span class="hc-tape-headline">Over 2.5 hit in Aston Villa FC vs. Coventry City FC; $UNDERS fell 0.5 points.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/cover/">$COVER</a> <span class="hc-mm-quote is-pos">99.63 (+0.7%)</span> <span class="hc-tape-headline">Aston Villa FC vs. Coventry City FC: the Aston Villa FC side came in; $COVER rose 0.7 points.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/cushion/">$CUSHION</a> <span class="hc-mm-quote is-neg">100.37 (−0.7%)</span> <span class="hc-tape-headline">CA Osasuna vs. Club Atlético de Madrid: the CA Osasuna side missed; $CUSHION fell 0.5 points.</span></li>
+                <li class="hc-tape-item is-neg"><a class="hc-tape-link" href="/tankdaq/bothscore/">$BOTHSCORE</a> <span class="hc-mm-quote is-neg">102.20 (−0.7%)</span> <span class="hc-tape-headline">Real Racing Club vs. FC Barcelona: the Yes side came in; $BOTHSCORE rose 0.4 points.</span></li>
+                <li class="hc-tape-item is-pos"><a class="hc-tape-link" href="/tankdaq/cleansheet/">$CLEANSHEET</a> <span class="hc-mm-quote is-pos">97.85 (+0.8%)</span> <span class="hc-tape-headline">Aston Villa FC vs. Coventry City FC: the No side missed; $CLEANSHEET fell 0.4 points.</span></li></ul>
             </div>
         </div>
         <div class="hc-mobile-register-row">
@@ -1041,13 +1095,18 @@
             <h2 id="hc-tanks-heading">Sports Tanks Available</h2>
             <p class="hc-section-sub hc-section-sub--tanks">Tanks are Heatcheck&rsquo;s most important invention. With the wisdom of the user, it unlocks embers, the currency of the world that allows you to grow your mud puppy. Make your pick on a tank. Get it right. Earn Ember.</p>
             <div class="hc-tanks-layout">
-                <div id="hc-showcase-root" aria-hidden="true"></div>
+                <!-- Not aria-hidden. It was, back when the artifact was decoration,
+                     but it now holds real controls a keyboard reaches: the cube's
+                     turn arrows, the sibling-tank pager, the story link, and (signed
+                     in) the whole pick flow. Focusable content inside aria-hidden is
+                     the worse defect. -->
+                <div id="hc-showcase-root"></div>
                 <div class="hc-sport-row" data-hc-row role="group" aria-label="Choose a sport">
                     
-            <button type="button" class="hc-sport-btn is-selected" data-sport="Baseball" data-live aria-pressed="true" title="Baseball" aria-label="Show the baseball Tank: Atlanta&#039;s 9.5-game lead is nearly gone, and the team that ate it hosts them tonight."><span aria-hidden="true">⚾</span></button>
-            <button type="button" class="hc-sport-btn" data-sport="Football" data-live aria-pressed="false" title="Football" aria-label="Show the football Tank: Breece Hall got hurt in practice and now the Jets&#039; entire gameplan in Nashville is in question."><span aria-hidden="true">🏈</span></button>
-            <button type="button" class="hc-sport-btn" data-sport="Soccer" data-live aria-pressed="false" title="Soccer" aria-label="Show the soccer Tank: Liverpool just blew $166M and beat City to a signing on deadline day. Now they have to go win a football match."><span aria-hidden="true">⚽</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Baseball" disabled title="Baseball" aria-label="Baseball: nothing live today"><span aria-hidden="true">⚾</span></button>
             <button type="button" class="hc-sport-btn" data-sport="Basketball" disabled title="Basketball" aria-label="Basketball: nothing live today"><span aria-hidden="true">🏀</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Football" disabled title="Football" aria-label="Football: nothing live today"><span aria-hidden="true">🏈</span></button>
+            <button type="button" class="hc-sport-btn" data-sport="Soccer" disabled title="Soccer" aria-label="Soccer: nothing live today"><span aria-hidden="true">⚽</span></button>
                 </div>
             </div>
             <div class="hc-tanks-footer">
@@ -1074,54 +1133,7 @@
             <button type="button" class="hc-mm-tab is-losers" data-mm-view="losers" aria-pressed="false">Top Losers</button>
         </div>
         <div class="hc-mm-grid" data-hc-mm-grid data-mm-view="all">
-        <article class="hc-mm-card" data-ticker="chalk" data-sign="pos" data-mm-role="gainer">
-            <div class="hc-mm-top">
-                <header class="hc-mm-head">
-                    <h3 class="hc-mm-title">
-                        <a class="hc-mm-title-link" href="/tankdaq/chalk/">
-                            <span class="hc-mm-index">Favorite Index</span>
-                            <span class="hc-mm-name">($CHALK)</span>
-                        </a>
-                    </h3>
-                    <p class="hc-mm-desc">Favorite storylines - sides priced at 50% or better.</p>
-                </header>
-                <div class="hc-mm-chartrow">
-                    <span class="hc-mm-value is-pos">+71.8%</span>
-                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$CHALK cumulative chart: currently +71.8% over 147 events">
-                <title>$CHALK cumulative chart: currently +71.8% over 147 events</title>
-                <rect x="0.75" y="0.75" width="258.5" height="70.5" rx="8" fill="#160c27" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
-                
-                <polyline fill="none" points="6.0,26.7 10.2,26.7 14.4,25.1 18.6,30.0 22.8,30.0 27.0,27.2 31.2,33.7 35.4,30.3 39.6,34.4 43.8,31.3 48.0,35.6 52.2,31.9 56.4,36.0 60.6,31.9 64.8,30.3 69.1,26.3 73.3,31.0 77.5,35.1 81.7,35.1 85.9,35.1 90.1,39.6 94.3,38.8 98.5,36.3 102.7,38.8 106.9,35.9 111.1,35.9 115.3,38.0 119.5,42.9 123.7,38.8 127.9,36.8 132.1,35.3 136.3,31.3 140.5,31.3 144.7,26.4 148.9,18.2 153.1,18.2 157.3,15.7 161.5,14.4 165.7,11.1 169.9,9.8 174.1,10.3 178.3,9.3 182.5,8.8 186.7,8.1 190.9,7.5 195.2,7.3 199.4,6.9 203.6,6.2 207.8,6.2 212.0,6.2 216.2,6.0 220.4,6.5 224.6,6.6 228.8,7.2 233.0,7.3 237.2,7.6 241.4,7.6 245.6,7.1 249.8,7.0 254.0,7.2" stroke="#3ddc64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-                <circle cx="6.0" cy="26.7" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +4.5% (running: +48.0%)</title></circle><circle cx="10.2" cy="26.7" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +0.0% (running: +48.0%)</title></circle><circle cx="14.4" cy="25.1" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +2.0% (running: +50.0%)</title></circle><circle cx="18.6" cy="30.0" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · −6.0% (running: +44.0%)</title></circle><circle cx="22.8" cy="30.0" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · tag · +0.0% (running: +44.0%)</title></circle><circle cx="27.0" cy="27.2" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +3.5% (running: +47.5%)</title></circle><circle cx="31.2" cy="33.7" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · −8.0% (running: +39.5%)</title></circle><circle cx="35.4" cy="30.3" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +4.0% (running: +43.5%)</title></circle><circle cx="39.6" cy="34.4" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · −5.0% (running: +38.5%)</title></circle><circle cx="43.8" cy="31.3" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +3.8% (running: +42.4%)</title></circle><circle cx="48.0" cy="35.6" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · −5.2% (running: +37.1%)</title></circle><circle cx="52.2" cy="31.9" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +4.5% (running: +41.6%)</title></circle><circle cx="56.4" cy="36.0" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · −5.0% (running: +36.6%)</title></circle><circle cx="60.6" cy="31.9" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +5.0% (running: +41.6%)</title></circle><circle cx="64.8" cy="30.3" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +2.0% (running: +43.6%)</title></circle><circle cx="69.1" cy="26.3" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · +4.9% (running: +48.5%)</title></circle><circle cx="73.3" cy="31.0" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · −5.7% (running: +42.8%)</title></circle><circle cx="77.5" cy="35.1" r="2.5" fill="#3ddc64"><title>Aug 29, 2026 · settle · −5.1% (running: +37.7%)</title></circle><circle cx="81.7" cy="35.1" r="2.5" fill="#3ddc64"><title>Aug 30, 2026 · tag · +0.0% (running: +37.7%)</title></circle><circle cx="85.9" cy="35.1" r="2.5" fill="#3ddc64"><title>Aug 30, 2026 · tag · +0.0% (running: +37.7%)</title></circle><circle cx="90.1" cy="39.6" r="2.5" fill="#3ddc64"><title>Aug 30, 2026 · settle · −5.5% (running: +32.3%)</title></circle><circle cx="94.3" cy="38.8" r="2.5" fill="#3ddc64"><title>Aug 30, 2026 · tag · +1.0% (running: +33.3%)</title></circle><circle cx="98.5" cy="36.3" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · tag · +3.0% (running: +36.3%)</title></circle><circle cx="102.7" cy="38.8" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · tag · −3.0% (running: +33.3%)</title></circle><circle cx="106.9" cy="35.9" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · tag · +3.5% (running: +36.8%)</title></circle><circle cx="111.1" cy="35.9" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · tag · +0.0% (running: +36.8%)</title></circle><circle cx="115.3" cy="38.0" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · tag · −2.5% (running: +34.3%)</title></circle><circle cx="119.5" cy="42.9" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · tag · −6.0% (running: +28.3%)</title></circle><circle cx="123.7" cy="38.8" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · settle · +5.0% (running: +33.2%)</title></circle><circle cx="127.9" cy="36.8" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · settle · +2.5% (running: +35.6%)</title></circle><circle cx="132.1" cy="35.3" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · settle · +1.9% (running: +37.5%)</title></circle><circle cx="136.3" cy="31.3" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · settle · +4.8% (running: +42.4%)</title></circle><circle cx="140.5" cy="31.3" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · tag · +0.0% (running: +42.4%)</title></circle><circle cx="144.7" cy="26.4" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · tag · +6.0% (running: +48.4%)</title></circle><circle cx="148.9" cy="18.2" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · tag · +10.0% (running: +58.4%)</title></circle><circle cx="153.1" cy="18.2" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · tag · +0.0% (running: +58.4%)</title></circle><circle cx="157.3" cy="15.7" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · settle · +3.0% (running: +61.4%)</title></circle><circle cx="161.5" cy="14.4" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · settle · +1.6% (running: +63.0%)</title></circle><circle cx="165.7" cy="11.1" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · settle · +4.0% (running: +67.0%)</title></circle><circle cx="169.9" cy="9.8" r="2.5" fill="#3ddc64"><title>Sep 1, 2026 · close · +1.7% (running: +68.7%)</title></circle><circle cx="174.1" cy="10.3" r="2.5" fill="#3ddc64"><title>Sep 1, 2026 · tag · −0.6% (running: +68.1%)</title></circle><circle cx="178.3" cy="9.3" r="2.5" fill="#3ddc64"><title>Sep 1, 2026 · tag · +1.2% (running: +69.3%)</title></circle><circle cx="182.5" cy="8.8" r="2.5" fill="#3ddc64"><title>Sep 1, 2026 · tag · +0.6% (running: +69.9%)</title></circle><circle cx="186.7" cy="8.1" r="2.5" fill="#3ddc64"><title>Sep 1, 2026 · tag · +0.9% (running: +70.8%)</title></circle><circle cx="190.9" cy="7.5" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · +0.7% (running: +71.4%)</title></circle><circle cx="195.2" cy="7.3" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · +0.2% (running: +71.7%)</title></circle><circle cx="199.4" cy="6.9" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · +0.5% (running: +72.2%)</title></circle><circle cx="203.6" cy="6.2" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · +0.8% (running: +73.0%)</title></circle><circle cx="207.8" cy="6.2" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · +0.0% (running: +73.0%)</title></circle><circle cx="212.0" cy="6.2" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · +0.0% (running: +73.0%)</title></circle><circle cx="216.2" cy="6.0" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · +0.2% (running: +73.3%)</title></circle><circle cx="220.4" cy="6.5" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · −0.7% (running: +72.6%)</title></circle><circle cx="224.6" cy="6.6" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · close · −0.0% (running: +72.6%)</title></circle><circle cx="228.8" cy="7.2" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · close · −0.8% (running: +71.8%)</title></circle><circle cx="233.0" cy="7.3" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · −0.1% (running: +71.6%)</title></circle><circle cx="237.2" cy="7.6" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · −0.4% (running: +71.3%)</title></circle><circle cx="241.4" cy="7.6" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · +0.0% (running: +71.3%)</title></circle><circle cx="245.6" cy="7.1" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · +0.7% (running: +72.0%)</title></circle><circle cx="249.8" cy="7.0" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · +0.1% (running: +72.1%)</title></circle><circle cx="254.0" cy="7.2" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · −0.3% (running: +71.8%)</title></circle>
-                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 29</text><text class="hc-mm-tick" x="127.9" y="84" text-anchor="middle">Aug 31</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Sep 3</text>
-            </svg></div>
-                </div>
-            </div>
-            <div class="hc-mm-news">
-                <h4 class="hc-mm-news-heading">Recent News</h4>
-                <ul class="hc-mm-news-list">
-                <li>
-                    <a href="/the-tank/articles/braves-phillies-nl-east-showdown-citizens-bank-park/">Atlanta&#039;s 9.5-game lead is nearly gone, and the team that ate it hosts them tonight.</a>
-                    <p class="hc-mm-excerpt">This series was supposed to be a formality. Instead it opens with the division basically tied, and Philadelphia has home field for the first punch.</p>
-                    <span class="hc-mm-news-meta">MLB · Sep 3, 2026</span>
-                </li>
-                <li>
-                    <a href="/the-tank/articles/real-madrid-real-betis-total-goals-la-liga/">Real Madrid can&#039;t stop scoring. Betis is next in line to find out if they&#039;re any different.</a>
-                    <p class="hc-mm-excerpt">Madrid&#039;s attack has turned recent matchdays into scoring exhibitions, and that&#039;s exactly why this total is getting attention.</p>
-                    <span class="hc-mm-news-meta">La Liga · Sep 3, 2026</span>
-                </li>
-            </ul>
-            </div>
-            <div class="hc-mm-results">
-                <h4 class="hc-mm-results-heading">Recent Results</h4>
-                <ul class="hc-mm-results-list">
-                <li><span class="hc-mm-result-chip is-pos">$CHALK</span> $CHALK climbs 4.0 points as the Over hits in Rayo Vallecano de Madrid vs. FC Barcelona.</li>
-                <li><span class="hc-mm-result-chip is-pos">$CHALK</span> The CHALK index experiences a local high as Barcelona win deliver.</li>
-                <li><span class="hc-mm-result-chip is-pos">$CHALK</span> Buyers applaud as Arsenal FC vs. Aston Villa FC stays under 3.5. The market climbs 3.0 points.</li>
-            </ul>
-            </div>
-        </article>
-        <article class="hc-mm-card" data-ticker="dogs" data-sign="neg" data-mm-role="loser">
+        <article class="hc-mm-card" data-ticker="dogs" data-sign="pos" data-mm-role="gainer">
             <div class="hc-mm-top">
                 <header class="hc-mm-head">
                     <h3 class="hc-mm-title">
@@ -1133,14 +1145,15 @@
                     <p class="hc-mm-desc">Underdog storylines - sides priced below 50%.</p>
                 </header>
                 <div class="hc-mm-chartrow">
-                    <span class="hc-mm-value is-neg">−91.7%</span>
-                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$DOGS cumulative chart: currently −91.7% over 138 events">
-                <title>$DOGS cumulative chart: currently −91.7% over 138 events</title>
+                    <span class="hc-mm-quote is-pos" data-quote-for="dogs"><span class="hc-mm-price">46.15</span> <span class="hc-mm-return">(+1.4%)</span></span>
+                    <span class="hc-mm-quote-label">Ember price &middot; 24H change</span>
+                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$DOGS: 46.15 Ember, +1.4% over the last 24 hours (177 events)">
+                <title>$DOGS: 46.15 Ember, +1.4% over the last 24 hours (177 events)</title>
                 <rect x="0.75" y="0.75" width="258.5" height="70.5" rx="8" fill="#160c27" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
                 
-                <polyline fill="none" points="6.0,39.6 10.2,42.2 14.4,46.7 18.6,41.2 22.8,39.3 27.0,39.6 31.2,39.3 35.4,39.3 39.6,40.6 43.8,36.7 48.0,36.7 52.2,38.9 56.4,41.9 60.6,36.8 64.8,39.4 69.1,41.8 73.3,38.5 77.5,41.3 81.7,38.1 85.9,39.4 90.1,42.5 94.3,38.9 98.5,35.6 102.7,35.6 106.9,35.6 111.1,32.1 115.3,32.8 119.5,34.7 123.7,36.9 127.9,36.9 132.1,40.1 136.3,41.7 140.5,42.8 144.7,46.0 148.9,46.0 153.1,49.8 157.3,56.2 161.5,56.2 165.7,58.2 169.9,59.2 174.1,61.7 178.3,63.0 182.5,63.8 186.7,64.2 190.9,64.7 195.2,65.2 199.4,65.3 203.6,65.8 207.8,65.8 212.0,65.8 216.2,66.0 220.4,65.6 224.6,65.3 228.8,64.7 233.0,64.6 237.2,64.4 241.4,64.4 245.6,64.9 249.8,64.9 254.0,64.8" stroke="#ff6b57" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
-                <circle cx="6.0" cy="39.6" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · settle · +5.5% (running: −52.4%)</title></circle><circle cx="10.2" cy="42.2" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · settle · −4.1% (running: −56.5%)</title></circle><circle cx="14.4" cy="46.7" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · −7.0% (running: −63.5%)</title></circle><circle cx="18.6" cy="41.2" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · +8.5% (running: −55.0%)</title></circle><circle cx="22.8" cy="39.3" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · +3.0% (running: −52.0%)</title></circle><circle cx="27.0" cy="39.6" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · −0.5% (running: −52.5%)</title></circle><circle cx="31.2" cy="39.3" r="2.5" fill="#ff6b57"><title>Aug 28, 2026 · tag · +0.6% (running: −52.0%)</title></circle><circle cx="35.4" cy="39.3" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · +0.0% (running: −52.0%)</title></circle><circle cx="39.6" cy="40.6" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · −2.0% (running: −54.0%)</title></circle><circle cx="43.8" cy="36.7" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · +6.0% (running: −48.0%)</title></circle><circle cx="48.0" cy="36.7" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · tag · +0.0% (running: −48.0%)</title></circle><circle cx="52.2" cy="38.9" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −3.5% (running: −51.4%)</title></circle><circle cx="56.4" cy="41.9" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −4.5% (running: −56.0%)</title></circle><circle cx="60.6" cy="36.8" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · +8.0% (running: −48.0%)</title></circle><circle cx="64.8" cy="39.4" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −4.0% (running: −52.0%)</title></circle><circle cx="69.1" cy="41.8" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −3.8% (running: −55.9%)</title></circle><circle cx="73.3" cy="38.5" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · +5.2% (running: −50.6%)</title></circle><circle cx="77.5" cy="41.3" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −4.5% (running: −55.1%)</title></circle><circle cx="81.7" cy="38.1" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · +5.0% (running: −50.1%)</title></circle><circle cx="85.9" cy="39.4" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −2.0% (running: −52.1%)</title></circle><circle cx="90.1" cy="42.5" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · −4.9% (running: −57.0%)</title></circle><circle cx="94.3" cy="38.9" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · +5.7% (running: −51.3%)</title></circle><circle cx="98.5" cy="35.6" r="2.5" fill="#ff6b57"><title>Aug 29, 2026 · settle · +5.1% (running: −46.2%)</title></circle><circle cx="102.7" cy="35.6" r="2.5" fill="#ff6b57"><title>Aug 30, 2026 · tag · +0.0% (running: −46.2%)</title></circle><circle cx="106.9" cy="35.6" r="2.5" fill="#ff6b57"><title>Aug 30, 2026 · tag · +0.0% (running: −46.2%)</title></circle><circle cx="111.1" cy="32.1" r="2.5" fill="#ff6b57"><title>Aug 30, 2026 · settle · +5.5% (running: −40.8%)</title></circle><circle cx="115.3" cy="32.8" r="2.5" fill="#ff6b57"><title>Aug 30, 2026 · tag · −1.0% (running: −41.8%)</title></circle><circle cx="119.5" cy="34.7" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · tag · −3.0% (running: −44.8%)</title></circle><circle cx="123.7" cy="36.9" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · tag · −3.5% (running: −48.3%)</title></circle><circle cx="127.9" cy="36.9" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · tag · +0.0% (running: −48.3%)</title></circle><circle cx="132.1" cy="40.1" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · settle · −5.0% (running: −53.2%)</title></circle><circle cx="136.3" cy="41.7" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · settle · −2.5% (running: −55.6%)</title></circle><circle cx="140.5" cy="42.8" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · settle · −1.9% (running: −57.5%)</title></circle><circle cx="144.7" cy="46.0" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · settle · −4.8% (running: −62.4%)</title></circle><circle cx="148.9" cy="46.0" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · tag · +0.0% (running: −62.4%)</title></circle><circle cx="153.1" cy="49.8" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · tag · −6.0% (running: −68.3%)</title></circle><circle cx="157.3" cy="56.2" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · tag · −10.0% (running: −78.3%)</title></circle><circle cx="161.5" cy="56.2" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · tag · +0.0% (running: −78.3%)</title></circle><circle cx="165.7" cy="58.2" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · settle · −3.0% (running: −81.4%)</title></circle><circle cx="169.9" cy="59.2" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · settle · −1.6% (running: −83.0%)</title></circle><circle cx="174.1" cy="61.7" r="2.5" fill="#ff6b57"><title>Aug 31, 2026 · settle · −4.0% (running: −87.0%)</title></circle><circle cx="178.3" cy="63.0" r="2.5" fill="#ff6b57"><title>Sep 1, 2026 · close · −2.0% (running: −89.0%)</title></circle><circle cx="182.5" cy="63.8" r="2.5" fill="#ff6b57"><title>Sep 1, 2026 · tag · −1.2% (running: −90.2%)</title></circle><circle cx="186.7" cy="64.2" r="2.5" fill="#ff6b57"><title>Sep 1, 2026 · tag · −0.6% (running: −90.8%)</title></circle><circle cx="190.9" cy="64.7" r="2.5" fill="#ff6b57"><title>Sep 1, 2026 · tag · −0.9% (running: −91.7%)</title></circle><circle cx="195.2" cy="65.2" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · −0.7% (running: −92.3%)</title></circle><circle cx="199.4" cy="65.3" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · −0.2% (running: −92.6%)</title></circle><circle cx="203.6" cy="65.8" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · −0.8% (running: −93.4%)</title></circle><circle cx="207.8" cy="65.8" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · +0.0% (running: −93.4%)</title></circle><circle cx="212.0" cy="65.8" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · +0.0% (running: −93.4%)</title></circle><circle cx="216.2" cy="66.0" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · −0.2% (running: −93.6%)</title></circle><circle cx="220.4" cy="65.6" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · +0.7% (running: −93.0%)</title></circle><circle cx="224.6" cy="65.3" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · close · +0.5% (running: −92.5%)</title></circle><circle cx="228.8" cy="64.7" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · close · +0.8% (running: −91.6%)</title></circle><circle cx="233.0" cy="64.6" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · +0.1% (running: −91.5%)</title></circle><circle cx="237.2" cy="64.4" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · +0.4% (running: −91.1%)</title></circle><circle cx="241.4" cy="64.4" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · +0.0% (running: −91.1%)</title></circle><circle cx="245.6" cy="64.9" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · −0.7% (running: −91.9%)</title></circle><circle cx="249.8" cy="64.9" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · −0.1% (running: −92.0%)</title></circle><circle cx="254.0" cy="64.8" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · +0.3% (running: −91.7%)</title></circle>
-                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 28</text><text class="hc-mm-tick" x="127.9" y="84" text-anchor="middle">Aug 31</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Sep 3</text>
+                <polyline fill="none" points="6.0,6.0 10.2,29.0 14.4,40.2 18.6,46.9 22.8,50.2 27.0,55.2 31.2,58.8 35.4,60.1 39.6,64.7 43.8,64.7 48.0,64.7 52.2,66.0 56.4,62.4 60.6,59.7 64.8,50.5 69.1,49.9 73.3,47.9 77.5,47.9 81.7,51.9 85.9,52.5 90.1,50.9 94.3,48.1 98.5,53.1 102.7,45.1 106.9,42.6 111.1,40.6 115.3,41.0 119.5,41.0 123.7,41.3 127.9,41.3 132.1,42.0 136.3,42.7 140.5,42.7 144.7,43.3 148.9,48.0 153.1,49.4 157.3,49.4 161.5,48.7 165.7,48.7 169.9,51.2 174.1,43.5 178.3,43.5 182.5,44.8 186.7,46.2 190.9,47.8 195.2,49.8 199.4,48.8 203.6,48.2 207.8,55.1 212.0,55.8 216.2,55.8 220.4,56.4 224.6,56.4 228.8,56.4 233.0,55.8 237.2,55.8 241.4,54.4 245.6,55.5 249.8,48.9 254.0,40.0" stroke="#3ddc64" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="6.0" cy="6.0" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · settle · 48.57 Ember · −1.4% (index running: −83.0%)</title></circle><circle cx="10.2" cy="29.0" r="2.5" fill="#3ddc64"><title>Aug 31, 2026 · settle · 46.93 Ember · −3.4% (index running: −87.0%)</title></circle><circle cx="14.4" cy="40.2" r="2.5" fill="#3ddc64"><title>Sep 1, 2026 · close · 46.14 Ember · −1.7% (index running: −89.0%)</title></circle><circle cx="18.6" cy="46.9" r="2.5" fill="#3ddc64"><title>Sep 1, 2026 · tag · 45.66 Ember · −1.0% (index running: −90.2%)</title></circle><circle cx="22.8" cy="50.2" r="2.5" fill="#3ddc64"><title>Sep 1, 2026 · tag · 45.42 Ember · −0.5% (index running: −90.8%)</title></circle><circle cx="27.0" cy="55.2" r="2.5" fill="#3ddc64"><title>Sep 1, 2026 · tag · 45.07 Ember · −0.8% (index running: −91.7%)</title></circle><circle cx="31.2" cy="58.8" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · 44.81 Ember · −0.6% (index running: −92.3%)</title></circle><circle cx="35.4" cy="60.1" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · 44.72 Ember · −0.2% (index running: −92.6%)</title></circle><circle cx="39.6" cy="64.7" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · 44.39 Ember · −0.7% (index running: −93.4%)</title></circle><circle cx="43.8" cy="64.7" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · 44.39 Ember · +0.0% (index running: −93.4%)</title></circle><circle cx="48.0" cy="64.7" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · 44.39 Ember · +0.0% (index running: −93.4%)</title></circle><circle cx="52.2" cy="66.0" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · 44.30 Ember · −0.2% (index running: −93.6%)</title></circle><circle cx="56.4" cy="62.4" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · tag · 44.55 Ember · +0.6% (index running: −93.0%)</title></circle><circle cx="60.6" cy="59.7" r="2.5" fill="#3ddc64"><title>Sep 2, 2026 · close · 44.75 Ember · +0.4% (index running: −92.5%)</title></circle><circle cx="64.8" cy="50.5" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · close · 45.40 Ember · +1.5% (index running: −90.8%)</title></circle><circle cx="69.1" cy="49.9" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · 45.45 Ember · +0.1% (index running: −90.7%)</title></circle><circle cx="73.3" cy="47.9" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · 45.59 Ember · +0.3% (index running: −90.3%)</title></circle><circle cx="77.5" cy="47.9" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · 45.59 Ember · +0.0% (index running: −90.3%)</title></circle><circle cx="81.7" cy="51.9" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · 45.30 Ember · −0.6% (index running: −91.1%)</title></circle><circle cx="85.9" cy="52.5" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · 45.26 Ember · −0.1% (index running: −91.2%)</title></circle><circle cx="90.1" cy="50.9" r="2.5" fill="#3ddc64"><title>Sep 3, 2026 · tag · 45.38 Ember · +0.3% (index running: −90.9%)</title></circle><circle cx="94.3" cy="48.1" r="2.5" fill="#3ddc64"><title>Sep 4, 2026 · close · 45.57 Ember · +0.4% (index running: −90.4%)</title></circle><circle cx="98.5" cy="53.1" r="2.5" fill="#3ddc64"><title>Sep 5, 2026 · close · 45.21 Ember · −0.8% (index running: −91.3%)</title></circle><circle cx="102.7" cy="45.1" r="2.5" fill="#3ddc64"><title>Sep 6, 2026 · close · 45.78 Ember · +1.3% (index running: −89.8%)</title></circle><circle cx="106.9" cy="42.6" r="2.5" fill="#3ddc64"><title>Sep 7, 2026 · close · 45.96 Ember · +0.4% (index running: −89.4%)</title></circle><circle cx="111.1" cy="40.6" r="2.5" fill="#3ddc64"><title>Sep 8, 2026 · close · 46.10 Ember · +0.3% (index running: −89.0%)</title></circle><circle cx="115.3" cy="41.0" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 46.08 Ember · −0.1% (index running: −89.1%)</title></circle><circle cx="119.5" cy="41.0" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 46.08 Ember · +0.0% (index running: −89.1%)</title></circle><circle cx="123.7" cy="41.3" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 46.05 Ember · −0.1% (index running: −89.2%)</title></circle><circle cx="127.9" cy="41.3" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 46.05 Ember · +0.0% (index running: −89.2%)</title></circle><circle cx="132.1" cy="42.0" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 46.01 Ember · −0.1% (index running: −89.3%)</title></circle><circle cx="136.3" cy="42.7" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 45.96 Ember · −0.1% (index running: −89.4%)</title></circle><circle cx="140.5" cy="42.7" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 45.96 Ember · +0.0% (index running: −89.4%)</title></circle><circle cx="144.7" cy="43.3" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 45.91 Ember · −0.1% (index running: −89.5%)</title></circle><circle cx="148.9" cy="48.0" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 45.58 Ember · −0.7% (index running: −90.4%)</title></circle><circle cx="153.1" cy="49.4" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 45.48 Ember · −0.2% (index running: −90.6%)</title></circle><circle cx="157.3" cy="49.4" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 45.48 Ember · +0.0% (index running: −90.6%)</title></circle><circle cx="161.5" cy="48.7" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 45.53 Ember · +0.1% (index running: −90.5%)</title></circle><circle cx="165.7" cy="48.7" r="2.5" fill="#3ddc64"><title>Sep 9, 2026 · tag · 45.53 Ember · +0.0% (index running: −90.5%)</title></circle><circle cx="169.9" cy="51.2" r="2.5" fill="#3ddc64"><title>Sep 10, 2026 · close · 45.35 Ember · −0.4% (index running: −90.9%)</title></circle><circle cx="174.1" cy="43.5" r="2.5" fill="#3ddc64"><title>Sep 11, 2026 · close · 45.90 Ember · +1.2% (index running: −89.6%)</title></circle><circle cx="178.3" cy="43.5" r="2.5" fill="#3ddc64"><title>Sep 11, 2026 · tag · 45.90 Ember · +0.0% (index running: −89.6%)</title></circle><circle cx="182.5" cy="44.8" r="2.5" fill="#3ddc64"><title>Sep 12, 2026 · close · 45.81 Ember · −0.2% (index running: −89.8%)</title></circle><circle cx="186.7" cy="46.2" r="2.5" fill="#3ddc64"><title>Sep 12, 2026 · tag · 45.71 Ember · −0.2% (index running: −90.0%)</title></circle><circle cx="190.9" cy="47.8" r="2.5" fill="#3ddc64"><title>Sep 12, 2026 · tag · 45.59 Ember · −0.3% (index running: −90.3%)</title></circle><circle cx="195.2" cy="49.8" r="2.5" fill="#3ddc64"><title>Sep 12, 2026 · tag · 45.45 Ember · −0.3% (index running: −90.7%)</title></circle><circle cx="199.4" cy="48.8" r="2.5" fill="#3ddc64"><title>Sep 12, 2026 · tag · 45.52 Ember · +0.2% (index running: −90.5%)</title></circle><circle cx="203.6" cy="48.2" r="2.5" fill="#3ddc64"><title>Sep 12, 2026 · tag · 45.57 Ember · +0.1% (index running: −90.4%)</title></circle><circle cx="207.8" cy="55.1" r="2.5" fill="#3ddc64"><title>Sep 13, 2026 · close · 45.07 Ember · −1.1% (index running: −91.6%)</title></circle><circle cx="212.0" cy="55.8" r="2.5" fill="#3ddc64"><title>Sep 13, 2026 · tag · 45.03 Ember · −0.1% (index running: −91.8%)</title></circle><circle cx="216.2" cy="55.8" r="2.5" fill="#3ddc64"><title>Sep 13, 2026 · tag · 45.03 Ember · +0.0% (index running: −91.8%)</title></circle><circle cx="220.4" cy="56.4" r="2.5" fill="#3ddc64"><title>Sep 13, 2026 · tag · 44.98 Ember · −0.1% (index running: −91.9%)</title></circle><circle cx="224.6" cy="56.4" r="2.5" fill="#3ddc64"><title>Sep 13, 2026 · tag · 44.98 Ember · +0.0% (index running: −91.9%)</title></circle><circle cx="228.8" cy="56.4" r="2.5" fill="#3ddc64"><title>Sep 13, 2026 · tag · 44.98 Ember · +0.0% (index running: −91.9%)</title></circle><circle cx="233.0" cy="55.8" r="2.5" fill="#3ddc64"><title>Sep 13, 2026 · tag · 45.03 Ember · +0.1% (index running: −91.8%)</title></circle><circle cx="237.2" cy="55.8" r="2.5" fill="#3ddc64"><title>Sep 13, 2026 · tag · 45.03 Ember · +0.0% (index running: −91.8%)</title></circle><circle cx="241.4" cy="54.4" r="2.5" fill="#3ddc64"><title>Sep 14, 2026 · close · 45.13 Ember · +0.2% (index running: −91.5%)</title></circle><circle cx="245.6" cy="55.5" r="2.5" fill="#3ddc64"><title>Sep 15, 2026 · close · 45.05 Ember · −0.2% (index running: −91.7%)</title></circle><circle cx="249.8" cy="48.9" r="2.5" fill="#3ddc64"><title>Sep 16, 2026 · close · 45.52 Ember · +1.0% (index running: −90.5%)</title></circle><circle cx="254.0" cy="40.0" r="2.5" fill="#3ddc64"><title>Sep 17, 2026 · close · 46.15 Ember · +1.4% (index running: −88.9%)</title></circle>
+                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Aug 31</text><text class="hc-mm-tick" x="127.9" y="84" text-anchor="middle">Sep 9</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Sep 17</text>
             </svg></div>
                 </div>
             </div>
@@ -1148,182 +1161,385 @@
                 <h4 class="hc-mm-news-heading">Recent News</h4>
                 <ul class="hc-mm-news-list">
                 <li>
-                    <a href="/the-tank/articles/braves-phillies-nl-east-showdown-citizens-bank-park/">Atlanta&#039;s 9.5-game lead is nearly gone, and the team that ate it hosts them tonight.</a>
-                    <p class="hc-mm-excerpt">This series was supposed to be a formality. Instead it opens with the division basically tied, and Philadelphia has home field for the first punch.</p>
-                    <span class="hc-mm-news-meta">MLB · Sep 3, 2026</span>
+                    <a href="/the-tank/articles/bears-panthers-division-winners/">Two division winners are playing each other and somehow nobody noticed.</a>
+                    <p class="hc-mm-excerpt">Bears and Panthers both won their divisions. Now they&#039;re playing each other like it&#039;s preseason.</p>
+                    <span class="hc-mm-news-meta">NFL · Sep 13, 2026</span>
                 </li>
                 <li>
-                    <a href="/the-tank/articles/real-madrid-real-betis-total-goals-la-liga/">Real Madrid can&#039;t stop scoring. Betis is next in line to find out if they&#039;re any different.</a>
-                    <p class="hc-mm-excerpt">Madrid&#039;s attack has turned recent matchdays into scoring exhibitions, and that&#039;s exactly why this total is getting attention.</p>
-                    <span class="hc-mm-news-meta">La Liga · Sep 3, 2026</span>
+                    <a href="/the-tank/articles/dolphins-raiders-over-under-tank-bowl/">Two teams already circling the same draft slot just kicked off, and the only real question left is whether they can combine for 41 points.</a>
+                    <p class="hc-mm-excerpt">Dolphins and Raiders. Neither team&#039;s season is about winning anymore, it&#039;s about positioning.</p>
+                    <span class="hc-mm-news-meta">NFL · Sep 13, 2026</span>
                 </li>
             </ul>
             </div>
             <div class="hc-mm-results">
                 <h4 class="hc-mm-results-heading">Recent Results</h4>
                 <ul class="hc-mm-results-list">
-                <li><span class="hc-mm-result-chip is-neg">$DOGS</span> $DOGS sinks 4.0 points as the Under misses in Rayo Vallecano de Madrid vs. FC Barcelona.</li>
-                <li><span class="hc-mm-result-chip is-neg">$DOGS</span> The DOGS index experiences a local low as Rayo Vallecano win or draw don&#039;t deliver.</li>
-                <li><span class="hc-mm-result-chip is-neg">$DOGS</span> Buyers up in arms as Arsenal FC vs. Aston Villa FC stays under 3.5. The market falls 3.0 points.</li>
+                <li><span class="hc-mm-result-chip is-neg">$DOGS</span> Athletics lost at Tampa Bay Rays; $DOGS fell 0.3 points.</li>
+                <li><span class="hc-mm-result-chip is-pos">$DOGS</span> Brighton &amp; Hove Albion FC won at Manchester United FC; $DOGS rose 0.6 points.</li>
+                <li><span class="hc-mm-result-chip is-neg">$DOGS</span> Club Atlético de Madrid won against CA Osasuna; $DOGS, which held the other side, fell 0.2 points.</li>
+            </ul>
+            </div>
+        </article>
+        <article class="hc-mm-card" data-ticker="chalk" data-sign="neg" data-mm-role="loser">
+            <div class="hc-mm-top">
+                <header class="hc-mm-head">
+                    <h3 class="hc-mm-title">
+                        <a class="hc-mm-title-link" href="/tankdaq/chalk/">
+                            <span class="hc-mm-index">Favorite Index</span>
+                            <span class="hc-mm-name">($CHALK)</span>
+                        </a>
+                    </h3>
+                    <p class="hc-mm-desc">Favorite storylines - sides priced at 50% or better.</p>
+                </header>
+                <div class="hc-mm-chartrow">
+                    <span class="hc-mm-quote is-neg" data-quote-for="chalk"><span class="hc-mm-price">213.56</span> <span class="hc-mm-return">(−1.7%)</span></span>
+                    <span class="hc-mm-quote-label">Ember price &middot; 24H change</span>
+                    <div class="hc-mm-chart"><svg class="hc-mm-svg" viewBox="0 0 260 88" role="img" aria-label="$CHALK: 213.56 Ember, −1.7% over the last 24 hours (188 events)">
+                <title>$CHALK: 213.56 Ember, −1.7% over the last 24 hours (188 events)</title>
+                <rect x="0.75" y="0.75" width="258.5" height="70.5" rx="8" fill="#160c27" stroke="rgba(47,230,217,0.4)" stroke-width="1.5"/>
+                
+                <polyline fill="none" points="6.0,54.5 10.2,47.4 14.4,36.6 18.6,28.7 22.8,25.8 27.0,19.2 31.2,9.0 35.4,9.0 39.6,9.0 43.8,6.0 48.0,14.1 52.2,14.3 56.4,34.5 60.6,35.9 64.8,40.2 69.1,40.2 73.3,31.6 77.5,30.1 81.7,33.7 85.9,39.7 90.1,28.8 94.3,46.0 98.5,51.4 102.7,55.5 106.9,54.8 111.1,54.8 115.3,54.1 119.5,54.1 123.7,52.7 127.9,51.3 132.1,51.3 136.3,49.8 140.5,56.9 144.7,47.0 148.9,44.1 153.1,44.1 157.3,45.6 161.5,47.7 165.7,47.7 169.9,42.3 174.1,58.6 178.3,58.6 182.5,55.9 186.7,53.1 190.9,49.6 195.2,45.3 199.4,47.4 203.6,48.8 207.8,33.9 212.0,32.5 216.2,32.5 220.4,31.0 224.6,31.0 228.8,31.0 233.0,32.5 237.2,32.5 241.4,35.5 245.6,33.0 249.8,47.3 254.0,66.0" stroke="#ff6b57" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="6.0" cy="54.5" r="2.5" fill="#ff6b57"><title>Sep 1, 2026 · tag · 215.90 Ember · +1.3% (index running: +69.3%)</title></circle><circle cx="10.2" cy="47.4" r="2.5" fill="#ff6b57"><title>Sep 1, 2026 · tag · 217.35 Ember · +0.7% (index running: +69.9%)</title></circle><circle cx="14.4" cy="36.6" r="2.5" fill="#ff6b57"><title>Sep 1, 2026 · tag · 219.53 Ember · +1.0% (index running: +70.8%)</title></circle><circle cx="18.6" cy="28.7" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · 221.15 Ember · +0.7% (index running: +71.4%)</title></circle><circle cx="22.8" cy="25.8" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · 221.74 Ember · +0.3% (index running: +71.7%)</title></circle><circle cx="27.0" cy="19.2" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · 223.07 Ember · +0.6% (index running: +72.2%)</title></circle><circle cx="31.2" cy="9.0" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · 225.17 Ember · +0.9% (index running: +73.0%)</title></circle><circle cx="35.4" cy="9.0" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · 225.17 Ember · +0.0% (index running: +73.0%)</title></circle><circle cx="39.6" cy="9.0" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · 225.17 Ember · +0.0% (index running: +73.0%)</title></circle><circle cx="43.8" cy="6.0" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · 225.77 Ember · +0.3% (index running: +73.3%)</title></circle><circle cx="48.0" cy="14.1" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · tag · 224.12 Ember · −0.7% (index running: +72.6%)</title></circle><circle cx="52.2" cy="14.3" r="2.5" fill="#ff6b57"><title>Sep 2, 2026 · close · 224.08 Ember · −0.0% (index running: +72.6%)</title></circle><circle cx="56.4" cy="34.5" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · close · 219.98 Ember · −1.8% (index running: +71.0%)</title></circle><circle cx="60.6" cy="35.9" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · 219.68 Ember · −0.1% (index running: +70.8%)</title></circle><circle cx="64.8" cy="40.2" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · 218.81 Ember · −0.4% (index running: +70.5%)</title></circle><circle cx="69.1" cy="40.2" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · 218.81 Ember · +0.0% (index running: +70.5%)</title></circle><circle cx="73.3" cy="31.6" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · 220.56 Ember · +0.8% (index running: +71.2%)</title></circle><circle cx="77.5" cy="30.1" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · 220.86 Ember · +0.1% (index running: +71.3%)</title></circle><circle cx="81.7" cy="33.7" r="2.5" fill="#ff6b57"><title>Sep 3, 2026 · tag · 220.12 Ember · −0.3% (index running: +71.0%)</title></circle><circle cx="85.9" cy="39.7" r="2.5" fill="#ff6b57"><title>Sep 4, 2026 · close · 218.90 Ember · −0.6% (index running: +70.5%)</title></circle><circle cx="90.1" cy="28.8" r="2.5" fill="#ff6b57"><title>Sep 5, 2026 · close · 221.13 Ember · +1.0% (index running: +71.4%)</title></circle><circle cx="94.3" cy="46.0" r="2.5" fill="#ff6b57"><title>Sep 6, 2026 · close · 217.62 Ember · −1.6% (index running: +70.0%)</title></circle><circle cx="98.5" cy="51.4" r="2.5" fill="#ff6b57"><title>Sep 7, 2026 · close · 216.53 Ember · −0.5% (index running: +69.5%)</title></circle><circle cx="102.7" cy="55.5" r="2.5" fill="#ff6b57"><title>Sep 8, 2026 · close · 215.69 Ember · −0.4% (index running: +69.2%)</title></circle><circle cx="106.9" cy="54.8" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 215.84 Ember · +0.1% (index running: +69.2%)</title></circle><circle cx="111.1" cy="54.8" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 215.84 Ember · +0.0% (index running: +69.2%)</title></circle><circle cx="115.3" cy="54.1" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 215.98 Ember · +0.1% (index running: +69.3%)</title></circle><circle cx="119.5" cy="54.1" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 215.98 Ember · +0.0% (index running: +69.3%)</title></circle><circle cx="123.7" cy="52.7" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 216.27 Ember · +0.1% (index running: +69.4%)</title></circle><circle cx="127.9" cy="51.3" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 216.56 Ember · +0.1% (index running: +69.5%)</title></circle><circle cx="132.1" cy="51.3" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 216.56 Ember · +0.0% (index running: +69.5%)</title></circle><circle cx="136.3" cy="49.8" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 216.84 Ember · +0.1% (index running: +69.7%)</title></circle><circle cx="140.5" cy="56.9" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 215.40 Ember · −0.7% (index running: +69.1%)</title></circle><circle cx="144.7" cy="47.0" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 217.42 Ember · +0.9% (index running: +69.9%)</title></circle><circle cx="148.9" cy="44.1" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 218.00 Ember · +0.3% (index running: +70.1%)</title></circle><circle cx="153.1" cy="44.1" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 218.00 Ember · +0.0% (index running: +70.1%)</title></circle><circle cx="157.3" cy="45.6" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 217.71 Ember · −0.1% (index running: +70.0%)</title></circle><circle cx="161.5" cy="47.7" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 217.28 Ember · −0.2% (index running: +69.8%)</title></circle><circle cx="165.7" cy="47.7" r="2.5" fill="#ff6b57"><title>Sep 9, 2026 · tag · 217.28 Ember · +0.0% (index running: +69.8%)</title></circle><circle cx="169.9" cy="42.3" r="2.5" fill="#ff6b57"><title>Sep 10, 2026 · close · 218.38 Ember · +0.5% (index running: +70.3%)</title></circle><circle cx="174.1" cy="58.6" r="2.5" fill="#ff6b57"><title>Sep 11, 2026 · close · 215.06 Ember · −1.5% (index running: +68.9%)</title></circle><circle cx="178.3" cy="58.6" r="2.5" fill="#ff6b57"><title>Sep 11, 2026 · tag · 215.06 Ember · +0.0% (index running: +68.9%)</title></circle><circle cx="182.5" cy="55.9" r="2.5" fill="#ff6b57"><title>Sep 12, 2026 · close · 215.60 Ember · +0.3% (index running: +69.1%)</title></circle><circle cx="186.7" cy="53.1" r="2.5" fill="#ff6b57"><title>Sep 12, 2026 · tag · 216.18 Ember · +0.3% (index running: +69.4%)</title></circle><circle cx="190.9" cy="49.6" r="2.5" fill="#ff6b57"><title>Sep 12, 2026 · tag · 216.90 Ember · +0.3% (index running: +69.7%)</title></circle><circle cx="195.2" cy="45.3" r="2.5" fill="#ff6b57"><title>Sep 12, 2026 · tag · 217.77 Ember · +0.4% (index running: +70.0%)</title></circle><circle cx="199.4" cy="47.4" r="2.5" fill="#ff6b57"><title>Sep 12, 2026 · tag · 217.34 Ember · −0.2% (index running: +69.9%)</title></circle><circle cx="203.6" cy="48.8" r="2.5" fill="#ff6b57"><title>Sep 12, 2026 · tag · 217.05 Ember · −0.1% (index running: +69.7%)</title></circle><circle cx="207.8" cy="33.9" r="2.5" fill="#ff6b57"><title>Sep 13, 2026 · close · 220.09 Ember · +1.4% (index running: +71.0%)</title></circle><circle cx="212.0" cy="32.5" r="2.5" fill="#ff6b57"><title>Sep 13, 2026 · tag · 220.38 Ember · +0.1% (index running: +71.1%)</title></circle><circle cx="216.2" cy="32.5" r="2.5" fill="#ff6b57"><title>Sep 13, 2026 · tag · 220.38 Ember · +0.0% (index running: +71.1%)</title></circle><circle cx="220.4" cy="31.0" r="2.5" fill="#ff6b57"><title>Sep 13, 2026 · tag · 220.68 Ember · +0.1% (index running: +71.2%)</title></circle><circle cx="224.6" cy="31.0" r="2.5" fill="#ff6b57"><title>Sep 13, 2026 · tag · 220.68 Ember · +0.0% (index running: +71.2%)</title></circle><circle cx="228.8" cy="31.0" r="2.5" fill="#ff6b57"><title>Sep 13, 2026 · tag · 220.68 Ember · +0.0% (index running: +71.2%)</title></circle><circle cx="233.0" cy="32.5" r="2.5" fill="#ff6b57"><title>Sep 13, 2026 · tag · 220.38 Ember · −0.1% (index running: +71.1%)</title></circle><circle cx="237.2" cy="32.5" r="2.5" fill="#ff6b57"><title>Sep 13, 2026 · tag · 220.38 Ember · +0.0% (index running: +71.1%)</title></circle><circle cx="241.4" cy="35.5" r="2.5" fill="#ff6b57"><title>Sep 14, 2026 · close · 219.77 Ember · −0.3% (index running: +70.9%)</title></circle><circle cx="245.6" cy="33.0" r="2.5" fill="#ff6b57"><title>Sep 15, 2026 · close · 220.26 Ember · +0.2% (index running: +71.1%)</title></circle><circle cx="249.8" cy="47.3" r="2.5" fill="#ff6b57"><title>Sep 16, 2026 · close · 217.36 Ember · −1.3% (index running: +69.9%)</title></circle><circle cx="254.0" cy="66.0" r="2.5" fill="#ff6b57"><title>Sep 17, 2026 · close · 213.56 Ember · −1.7% (index running: +68.3%)</title></circle>
+                <text class="hc-mm-tick" x="6" y="84" text-anchor="start">Sep 1</text><text class="hc-mm-tick" x="127.9" y="84" text-anchor="middle">Sep 9</text><text class="hc-mm-tick" x="254" y="84" text-anchor="end">Sep 17</text>
+            </svg></div>
+                </div>
+            </div>
+            <div class="hc-mm-news">
+                <h4 class="hc-mm-news-heading">Recent News</h4>
+                <ul class="hc-mm-news-list">
+                <li>
+                    <a href="/the-tank/articles/bears-panthers-division-winners/">Two division winners are playing each other and somehow nobody noticed.</a>
+                    <p class="hc-mm-excerpt">Bears and Panthers both won their divisions. Now they&#039;re playing each other like it&#039;s preseason.</p>
+                    <span class="hc-mm-news-meta">NFL · Sep 13, 2026</span>
+                </li>
+                <li>
+                    <a href="/the-tank/articles/dolphins-raiders-over-under-tank-bowl/">Two teams already circling the same draft slot just kicked off, and the only real question left is whether they can combine for 41 points.</a>
+                    <p class="hc-mm-excerpt">Dolphins and Raiders. Neither team&#039;s season is about winning anymore, it&#039;s about positioning.</p>
+                    <span class="hc-mm-news-meta">NFL · Sep 13, 2026</span>
+                </li>
+            </ul>
+            </div>
+            <div class="hc-mm-results">
+                <h4 class="hc-mm-results-heading">Recent Results</h4>
+                <ul class="hc-mm-results-list">
+                <li><span class="hc-mm-result-chip is-pos">$CHALK</span> Tampa Bay Rays won against Athletics; $CHALK rose 0.3 points.</li>
+                <li><span class="hc-mm-result-chip is-neg">$CHALK</span> Aston Villa FC won at Coventry City FC; $CHALK, which held the other side, fell 0.4 points.</li>
+                <li><span class="hc-mm-result-chip is-pos">$CHALK</span> FC Barcelona won against Real Racing Club; $CHALK rose 0.1 points.</li>
             </ul>
             </div>
         </article></div>
         
         <div class="hc-mmb">
             <h4 class="hc-mmb-heading">The Board</h4>
-            <svg class="hc-mmb-svg" viewBox="0 0 100 84" role="img" aria-label="Index board: 6 indexes sized by their move over the last 24 hours, with 8 league sub-indexes drawn inside the index each one slices">
-                <title>Index board: 6 indexes sized by their move over the last 24 hours, with 8 league sub-indexes drawn inside the index each one slices</title>
+            <svg class="hc-mmb-svg" viewBox="0 0 100 84" role="img" aria-label="Index board: 10 indexes sized by their price move over the last 24 hours, with 22 sub-indexes drawn inside the index each one slices">
+                <title>Index board: 10 indexes sized by their price move over the last 24 hours, with 22 sub-indexes drawn inside the index each one slices</title>
                 <rect x="0" y="0" width="100" height="84" fill="#000000"/>
                 
                 <g class="hc-mmb-family">
-                    <rect x="55.66" y="0.70" width="43.64" height="32.91"
-                          rx="0.6" fill="rgba(255, 107, 87, 0.08)" stroke="rgba(255, 107, 87, 0.77)" stroke-width="0.5"/>
-                    <a class="hc-mmb-tile" href="/tankdaq/chalk/" aria-label="$CHALK: −0.8% over the last 24 hours, +71.8% overall">
-                        <title>$CHALK: −0.8% over the last 24 hours, +71.8% overall</title>
-                        <rect x="55.66" y="0.70" width="43.64" height="9.59" fill="transparent"/>
-                        <text class="hc-mmb-sym" x="77.48" y="7.95"
-                          text-anchor="middle" font-size="7.02">$CHALK</text>
+                    <rect x="0.70" y="43.23" width="43.31" height="40.07"
+                          rx="0.6" fill="rgba(61, 220, 100, 0.08)" stroke="rgba(61, 220, 100, 0.82)" stroke-width="0.5"/>
+                    <a class="hc-mmb-tile" href="/tankdaq/dogs/" aria-label="$DOGS: 46.15 Ember (+1.4% over the last 24 hours), index −88.9% overall">
+                        <title>$DOGS: 46.15 Ember (+1.4% over the last 24 hours), index −88.9% overall</title>
+                        <rect x="0.70" y="43.23" width="43.31" height="10.30" fill="transparent"/>
+                        <text class="hc-mmb-sym" x="22.35" y="51.03"
+                          text-anchor="middle" font-size="7.57">$DOGS</text>
                     
                     </a>
                     
-                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/footy/" aria-label="$FOOTY ($CHALK · Soccer Favorite Index): −1.6% over the last 24 hours, +34.8% overall">
-                        <title>$FOOTY ($CHALK · Soccer Favorite Index): −1.6% over the last 24 hours, +34.8% overall</title>
-                        <rect x="56.26" y="10.69" width="17.60" height="22.32"
-                              rx="0.4" fill="#000000" stroke="rgba(255, 107, 87, 0.90)" stroke-width="0.22"/>
-                        <text class="hc-mmb-sym" x="65.06" y="21.65"
-                          text-anchor="middle" font-size="3.18">$FOOTY</text>
-                    <text class="hc-mmb-delta" x="65.06" y="24.94"
-                          text-anchor="middle" font-size="2.29" fill="rgb(255, 107, 87)">−1.6%</text>
-                    </a>
-                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/mlbchalk/" aria-label="$MLBCHALK ($CHALK · MLB Favorite Index): +0.4% over the last 24 hours, +4.0% overall">
-                        <title>$MLBCHALK ($CHALK · MLB Favorite Index): +0.4% over the last 24 hours, +4.0% overall</title>
-                        <rect x="74.66" y="10.69" width="15.76" height="10.76"
-                              rx="0.4" fill="#000000" stroke="rgba(61, 220, 100, 0.56)" stroke-width="0.22"/>
-                        <text class="hc-mmb-sym" x="82.54" y="16.73"
-                          text-anchor="middle" font-size="1.88">$MLBCHALK</text>
-                    
-                    </a>
-                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/gridiron/" aria-label="$GRIDIRON ($CHALK · NFL Favorite Index): +0.0% over the last 24 hours, +0.0% overall">
-                        <title>$GRIDIRON ($CHALK · NFL Favorite Index): +0.0% over the last 24 hours, +0.0% overall</title>
-                        <rect x="74.66" y="22.25" width="15.76" height="10.76"
-                              rx="0.4" fill="#000000" stroke="rgba(148, 163, 184, 0.45)" stroke-width="0.22"/>
-                        <text class="hc-mmb-sym" x="82.54" y="28.29"
-                          text-anchor="middle" font-size="1.88">$GRIDIRON</text>
-                    
-                    </a>
-                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/nbachalk/" aria-label="$NBACHALK ($CHALK · NBA Favorite Index): +0.0% over the last 24 hours, +0.0% overall">
-                        <title>$NBACHALK ($CHALK · NBA Favorite Index): +0.0% over the last 24 hours, +0.0% overall</title>
-                        <rect x="91.22" y="10.69" width="7.48" height="22.32"
-                              rx="0.4" fill="#000000" stroke="rgba(148, 163, 184, 0.45)" stroke-width="0.22"/>
-                        <text class="hc-mmb-sym" x="94.96" y="21.65"
-                          text-anchor="middle" font-size="2.43">NBA</text>
-                    <text class="hc-mmb-delta" x="94.96" y="24.22"
-                          text-anchor="middle" font-size="1.75" fill="rgb(148, 163, 184)">+0.0%</text>
-                    </a>
-                </g>
-                <g class="hc-mmb-family">
-                    <rect x="0.70" y="0.70" width="53.56" height="40.60"
-                          rx="0.6" fill="#000000" stroke="rgba(255, 107, 87, 0.87)" stroke-width="0.35"/>
-                    <a class="hc-mmb-tile" href="/tankdaq/overs/" aria-label="$OVERS: −1.2% over the last 24 hours, +53.0% overall">
-                        <title>$OVERS: −1.2% over the last 24 hours, +53.0% overall</title>
-                        <rect x="0.70" y="0.70" width="53.56" height="40.60" fill="transparent"/>
-                        <text class="hc-mmb-sym" x="27.48" y="20.80"
-                          text-anchor="middle" font-size="10.15">$OVERS</text>
-                    <text class="hc-mmb-delta" x="27.48" y="30.86"
-                          text-anchor="middle" font-size="7.31" fill="rgb(255, 107, 87)">−1.2%</text>
-                    </a>
-                    
-                </g>
-                <g class="hc-mmb-family">
-                    <rect x="55.66" y="69.32" width="21.12" height="13.98"
-                          rx="0.6" fill="#000000" stroke="rgba(148, 163, 184, 0.55)" stroke-width="0.35"/>
-                    <a class="hc-mmb-tile" href="/tankdaq/locks/" aria-label="$LOCKS: +0.0% over the last 24 hours, +7.7% overall">
-                        <title>$LOCKS: +0.0% over the last 24 hours, +7.7% overall</title>
-                        <rect x="55.66" y="69.32" width="21.12" height="13.98" fill="transparent"/>
-                        <text class="hc-mmb-sym" x="66.22" y="76.11"
-                          text-anchor="middle" font-size="3.86">$LOCKS</text>
-                    <text class="hc-mmb-delta" x="66.22" y="80.06"
-                          text-anchor="middle" font-size="2.78" fill="rgb(148, 163, 184)">+0.0%</text>
-                    </a>
-                    
-                </g>
-                <g class="hc-mmb-family">
-                    <rect x="78.18" y="69.32" width="21.12" height="13.98"
-                          rx="0.6" fill="#000000" stroke="rgba(148, 163, 184, 0.55)" stroke-width="0.35"/>
-                    <a class="hc-mmb-tile" href="/tankdaq/moonshot/" aria-label="$MOONSHOT: +0.0% over the last 24 hours, +0.3% overall">
-                        <title>$MOONSHOT: +0.0% over the last 24 hours, +0.3% overall</title>
-                        <rect x="78.18" y="69.32" width="21.12" height="13.98" fill="transparent"/>
-                        <text class="hc-mmb-sym" x="88.74" y="76.11"
-                          text-anchor="middle" font-size="2.57">$MOONSHOT</text>
-                    <text class="hc-mmb-delta" x="88.74" y="78.81"
-                          text-anchor="middle" font-size="1.85" fill="rgb(148, 163, 184)">+0.0%</text>
-                    </a>
-                    
-                </g>
-                <g class="hc-mmb-family">
-                    <rect x="0.70" y="42.70" width="53.56" height="40.60"
-                          rx="0.6" fill="#000000" stroke="rgba(61, 220, 100, 0.87)" stroke-width="0.35"/>
-                    <a class="hc-mmb-tile" href="/tankdaq/unders/" aria-label="$UNDERS: +1.2% over the last 24 hours, −53.0% overall">
-                        <title>$UNDERS: +1.2% over the last 24 hours, −53.0% overall</title>
-                        <rect x="0.70" y="42.70" width="53.56" height="40.60" fill="transparent"/>
-                        <text class="hc-mmb-sym" x="27.48" y="62.80"
-                          text-anchor="middle" font-size="8.70">$UNDERS</text>
-                    <text class="hc-mmb-delta" x="27.48" y="71.45"
-                          text-anchor="middle" font-size="6.26" fill="rgb(61, 220, 100)">+1.2%</text>
-                    </a>
-                    
-                </g>
-                <g class="hc-mmb-family">
-                    <rect x="55.66" y="35.01" width="43.64" height="32.91"
-                          rx="0.6" fill="rgba(61, 220, 100, 0.08)" stroke="rgba(61, 220, 100, 0.77)" stroke-width="0.5"/>
-                    <a class="hc-mmb-tile" href="/tankdaq/dogs/" aria-label="$DOGS: +0.8% over the last 24 hours, −91.7% overall">
-                        <title>$DOGS: +0.8% over the last 24 hours, −91.7% overall</title>
-                        <rect x="55.66" y="35.01" width="43.64" height="9.59" fill="transparent"/>
-                        <text class="hc-mmb-sym" x="77.48" y="42.26"
-                          text-anchor="middle" font-size="7.02">$DOGS</text>
-                    
-                    </a>
-                    
-                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/socdogs/" aria-label="$SOCDOGS ($DOGS · Soccer Underdog Index): +1.6% over the last 24 hours, +1.2% overall">
-                        <title>$SOCDOGS ($DOGS · Soccer Underdog Index): +1.6% over the last 24 hours, +1.2% overall</title>
-                        <rect x="56.26" y="45.01" width="17.60" height="22.32"
+                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/mlbdogs/" aria-label="$MLBDOGS ($DOGS · MLB Underdog Index): 99.50 Ember (+2.3% over the last 24 hours), index −0.1% overall">
+                        <title>$MLBDOGS ($DOGS · MLB Underdog Index): 99.50 Ember (+2.3% over the last 24 hours), index −0.1% overall</title>
+                        <rect x="1.30" y="53.93" width="16.06" height="28.77"
                               rx="0.4" fill="#000000" stroke="rgba(61, 220, 100, 0.90)" stroke-width="0.22"/>
-                        <text class="hc-mmb-sym" x="65.06" y="55.97"
-                          text-anchor="middle" font-size="2.38">$SOCDOGS</text>
-                    <text class="hc-mmb-delta" x="65.06" y="58.48"
-                          text-anchor="middle" font-size="1.72" fill="rgb(61, 220, 100)">+1.6%</text>
+                        <text class="hc-mmb-sym" x="9.33" y="68.12"
+                          text-anchor="middle" font-size="2.16">$MLBDOGS</text>
+                    <text class="hc-mmb-quote" x="9.33" y="70.42"
+                          text-anchor="middle" font-size="1.56" fill="rgb(61, 220, 100)">99.50 (+2.3%)</text>
                     </a>
-                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/nfldogs/" aria-label="$NFLDOGS ($DOGS · NFL Underdog Index): +0.0% over the last 24 hours, +0.2% overall">
-                        <title>$NFLDOGS ($DOGS · NFL Underdog Index): +0.0% over the last 24 hours, +0.2% overall</title>
-                        <rect x="74.66" y="45.01" width="15.76" height="10.76"
+                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/socdogs/" aria-label="$SOCDOGS ($DOGS · Soccer Underdog Index): 106.16 Ember (+1.4% over the last 24 hours), index +6.9% overall">
+                        <title>$SOCDOGS ($DOGS · Soccer Underdog Index): 106.16 Ember (+1.4% over the last 24 hours), index +6.9% overall</title>
+                        <rect x="18.16" y="53.93" width="14.54" height="20.16"
+                              rx="0.4" fill="rgba(61, 220, 100, 0.10)" stroke="rgba(61, 220, 100, 0.73)" stroke-width="0.22"/>
+                        <text class="hc-mmb-sym" x="25.43" y="57.55"
+                          text-anchor="middle" font-size="1.94">$SOCDOGS</text>
+                    
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/laligadogs/" aria-label="$LALIGADOGS ($SOCDOGS · La Liga Underdog Index): 114.11 Ember (+0.7% over the last 24 hours), index +8.6% overall">
+                        <title>$LALIGADOGS ($SOCDOGS · La Liga Underdog Index): 114.11 Ember (+0.7% over the last 24 hours), index +8.6% overall</title>
+                        <rect x="18.48" y="60.04" width="5.30" height="8.42"
+                              rx="0.3" fill="#000000" stroke="rgba(61, 220, 100, 0.53)" stroke-width="0.16"/>
+                        <text class="hc-mmb-sym" x="21.13" y="64.80"
+                          text-anchor="middle" font-size="1.59">LAL</text>
+                    
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/mlsdogs/" aria-label="$MLSDOGS ($SOCDOGS · MLS Underdog Index): 97.73 Ember (+0.0% over the last 24 hours), index −1.5% overall">
+                        <title>$MLSDOGS ($SOCDOGS · MLS Underdog Index): 97.73 Ember (+0.0% over the last 24 hours), index −1.5% overall</title>
+                        <rect x="18.48" y="68.89" width="5.30" height="4.87"
+                              rx="0.3" fill="#000000" stroke="rgba(148, 163, 184, 0.40)" stroke-width="0.16"/>
+                        <text class="hc-mmb-sym" x="21.13" y="71.89"
+                          text-anchor="middle" font-size="1.59">MLS</text>
+                    
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/efldogs/" aria-label="$EFLDOGS ($SOCDOGS · EFL Underdog Index): 104.61 Ember (+0.0% over the last 24 hours), index +2.9% overall">
+                        <title>$EFLDOGS ($SOCDOGS · EFL Underdog Index): 104.61 Ember (+0.0% over the last 24 hours), index +2.9% overall</title>
+                        <rect x="24.22" y="60.04" width="3.86" height="6.64"
+                              rx="0.3" fill="#000000" stroke="rgba(148, 163, 184, 0.40)" stroke-width="0.16"/>
+                        
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/epldogs/" aria-label="$EPLDOGS ($SOCDOGS · EPL Underdog Index): 98.10 Ember (+0.0% over the last 24 hours), index −1.2% overall">
+                        <title>$EPLDOGS ($SOCDOGS · EPL Underdog Index): 98.10 Ember (+0.0% over the last 24 hours), index −1.2% overall</title>
+                        <rect x="28.52" y="60.04" width="3.86" height="6.64"
+                              rx="0.3" fill="#000000" stroke="rgba(148, 163, 184, 0.40)" stroke-width="0.16"/>
+                        
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/bundesdogs/" aria-label="$BUNDESDOGS ($SOCDOGS · Bundesliga Underdog Index): 98.78 Ember (+0.0% over the last 24 hours), index −0.8% overall">
+                        <title>$BUNDESDOGS ($SOCDOGS · Bundesliga Underdog Index): 98.78 Ember (+0.0% over the last 24 hours), index −0.8% overall</title>
+                        <rect x="24.22" y="67.12" width="3.86" height="6.64"
+                              rx="0.3" fill="#000000" stroke="rgba(148, 163, 184, 0.40)" stroke-width="0.16"/>
+                        
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/ligue1dogs/" aria-label="$LIGUE1DOGS ($SOCDOGS · Ligue 1 Underdog Index): 104.01 Ember (+0.0% over the last 24 hours), index +2.6% overall">
+                        <title>$LIGUE1DOGS ($SOCDOGS · Ligue 1 Underdog Index): 104.01 Ember (+0.0% over the last 24 hours), index +2.6% overall</title>
+                        <rect x="28.52" y="67.12" width="3.86" height="6.64"
+                              rx="0.3" fill="#000000" stroke="rgba(148, 163, 184, 0.40)" stroke-width="0.16"/>
+                        
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/nbadogs/" aria-label="$NBADOGS ($DOGS · NBA Underdog Index): 100.00 Ember (+0.0% over the last 24 hours), index +0.0% overall">
+                        <title>$NBADOGS ($DOGS · NBA Underdog Index): 100.00 Ember (+0.0% over the last 24 hours), index +0.0% overall</title>
+                        <rect x="33.50" y="53.93" width="9.90" height="20.16"
                               rx="0.4" fill="#000000" stroke="rgba(148, 163, 184, 0.45)" stroke-width="0.22"/>
-                        <text class="hc-mmb-sym" x="82.54" y="50.19"
-                          text-anchor="middle" font-size="2.12">$NFLDOGS</text>
-                    <text class="hc-mmb-delta" x="82.54" y="52.44"
-                          text-anchor="middle" font-size="1.52" fill="rgb(148, 163, 184)">+0.0%</text>
+                        <text class="hc-mmb-sym" x="38.45" y="64.45"
+                          text-anchor="middle" font-size="1.27">$NBADOGS</text>
+                    
                     </a>
-                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/nbadogs/" aria-label="$NBADOGS ($DOGS · NBA Underdog Index): +0.0% over the last 24 hours, +0.0% overall">
-                        <title>$NBADOGS ($DOGS · NBA Underdog Index): +0.0% over the last 24 hours, +0.0% overall</title>
-                        <rect x="74.66" y="56.57" width="15.76" height="10.76"
+                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/nfldogs/" aria-label="$NFLDOGS ($DOGS · NFL Underdog Index): 97.85 Ember (+0.0% over the last 24 hours), index −1.4% overall">
+                        <title>$NFLDOGS ($DOGS · NFL Underdog Index): 97.85 Ember (+0.0% over the last 24 hours), index −1.4% overall</title>
+                        <rect x="18.16" y="74.89" width="25.25" height="7.81"
                               rx="0.4" fill="#000000" stroke="rgba(148, 163, 184, 0.45)" stroke-width="0.22"/>
-                        <text class="hc-mmb-sym" x="82.54" y="61.74"
-                          text-anchor="middle" font-size="2.12">$NBADOGS</text>
-                    <text class="hc-mmb-delta" x="82.54" y="64.00"
-                          text-anchor="middle" font-size="1.52" fill="rgb(148, 163, 184)">+0.0%</text>
+                        <text class="hc-mmb-sym" x="30.78" y="78.59"
+                          text-anchor="middle" font-size="3.20">$NFLDOGS</text>
+                    <text class="hc-mmb-quote" x="30.78" y="81.90"
+                          text-anchor="middle" font-size="2.30" fill="rgb(148, 163, 184)">97.85 (+0.0%)</text>
                     </a>
-                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/mlbdogs/" aria-label="$MLBDOGS ($DOGS · MLB Underdog Index): −0.4% over the last 24 hours, −4.0% overall">
-                        <title>$MLBDOGS ($DOGS · MLB Underdog Index): −0.4% over the last 24 hours, −4.0% overall</title>
-                        <rect x="91.22" y="45.01" width="7.48" height="22.32"
-                              rx="0.4" fill="#000000" stroke="rgba(255, 107, 87, 0.56)" stroke-width="0.22"/>
-                        <text class="hc-mmb-sym" x="94.96" y="55.97"
-                          text-anchor="middle" font-size="2.43">MLB</text>
-                    <text class="hc-mmb-delta" x="94.96" y="58.53"
-                          text-anchor="middle" font-size="1.75" fill="rgb(255, 107, 87)">−0.4%</text>
+                </g>
+                <g class="hc-mmb-family">
+                    <rect x="45.41" y="0.70" width="26.35" height="28.09"
+                          rx="0.6" fill="#000000" stroke="rgba(61, 220, 100, 0.70)" stroke-width="0.35"/>
+                    <a class="hc-mmb-tile" href="/tankdaq/cleansheet/" aria-label="$CLEANSHEET: 97.85 Ember (+0.8% over the last 24 hours), index −2.2% overall">
+                        <title>$CLEANSHEET: 97.85 Ember (+0.8% over the last 24 hours), index −2.2% overall</title>
+                        <rect x="45.41" y="0.70" width="26.35" height="28.09" fill="transparent"/>
+                        <text class="hc-mmb-sym" x="58.58" y="14.55"
+                          text-anchor="middle" font-size="2.66">$CLEANSHEET</text>
+                    <text class="hc-mmb-quote" x="58.58" y="17.33"
+                          text-anchor="middle" font-size="1.91" fill="rgb(61, 220, 100)">97.85 (+0.8%)</text>
+                    </a>
+                    
+                </g>
+                <g class="hc-mmb-family">
+                    <rect x="45.41" y="30.19" width="25.61" height="25.95"
+                          rx="0.6" fill="#000000" stroke="rgba(61, 220, 100, 0.68)" stroke-width="0.35"/>
+                    <a class="hc-mmb-tile" href="/tankdaq/cover/" aria-label="$COVER: 99.63 Ember (+0.7% over the last 24 hours), index −0.4% overall">
+                        <title>$COVER: 99.63 Ember (+0.7% over the last 24 hours), index −0.4% overall</title>
+                        <rect x="45.41" y="30.19" width="25.61" height="25.95" fill="transparent"/>
+                        <text class="hc-mmb-sym" x="58.21" y="42.97"
+                          text-anchor="middle" font-size="4.73">$COVER</text>
+                    <text class="hc-mmb-quote" x="58.21" y="47.25"
+                          text-anchor="middle" font-size="3.03" fill="rgb(61, 220, 100)">99.63 (+0.7%)</text>
+                    </a>
+                    
+                </g>
+                <g class="hc-mmb-family">
+                    <rect x="72.41" y="61.45" width="13.09" height="21.85"
+                          rx="0.6" fill="#000000" stroke="rgba(61, 220, 100, 0.61)" stroke-width="0.35"/>
+                    <a class="hc-mmb-tile" href="/tankdaq/locks/" aria-label="$LOCKS: 118.28 Ember (+0.3% over the last 24 hours), index +7.0% overall">
+                        <title>$LOCKS: 118.28 Ember (+0.3% over the last 24 hours), index +7.0% overall</title>
+                        <rect x="72.41" y="61.45" width="13.09" height="21.85" fill="transparent"/>
+                        <text class="hc-mmb-sym" x="78.96" y="72.17"
+                          text-anchor="middle" font-size="2.31">$LOCKS</text>
+                    <text class="hc-mmb-quote" x="78.96" y="74.61"
+                          text-anchor="middle" font-size="1.66" fill="rgb(61, 220, 100)">(+0.3%)</text>
+                    </a>
+                    
+                </g>
+                <g class="hc-mmb-family">
+                    <rect x="72.41" y="30.19" width="26.89" height="14.23"
+                          rx="0.6" fill="rgba(61, 220, 100, 0.08)" stroke="rgba(61, 220, 100, 0.59)" stroke-width="0.5"/>
+                    <a class="hc-mmb-tile" href="/tankdaq/overs/" aria-label="$OVERS: 186.22 Ember (+0.2% over the last 24 hours), index +62.2% overall">
+                        <title>$OVERS: 186.22 Ember (+0.2% over the last 24 hours), index +62.2% overall</title>
+                        <rect x="72.41" y="30.19" width="26.89" height="4.30" fill="transparent"/>
+                        <text class="hc-mmb-sym" x="85.86" y="33.35"
+                          text-anchor="middle" font-size="2.89">$OVERS</text>
+                    
+                    </a>
+                    
+                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/nflo/" aria-label="$NFLO ($OVERS · NFL Total Over Index): 98.09 Ember (+0.0% over the last 24 hours), index −1.3% overall">
+                        <title>$NFLO ($OVERS · NFL Total Over Index): 98.09 Ember (+0.0% over the last 24 hours), index −1.3% overall</title>
+                        <rect x="73.01" y="34.89" width="25.69" height="8.93"
+                              rx="0.4" fill="#000000" stroke="rgba(148, 163, 184, 0.45)" stroke-width="0.22"/>
+                        <text class="hc-mmb-sym" x="85.86" y="39.16"
+                          text-anchor="middle" font-size="3.20">$NFLO</text>
+                    <text class="hc-mmb-quote" x="85.86" y="42.47"
+                          text-anchor="middle" font-size="2.30" fill="rgb(148, 163, 184)">98.09 (+0.0%)</text>
+                    </a>
+                </g>
+                <g class="hc-mmb-family">
+                    <rect x="72.41" y="45.82" width="26.89" height="14.23"
+                          rx="0.6" fill="rgba(255, 107, 87, 0.08)" stroke="rgba(255, 107, 87, 0.59)" stroke-width="0.5"/>
+                    <a class="hc-mmb-tile" href="/tankdaq/unders/" aria-label="$UNDERS: 53.70 Ember (−0.2% over the last 24 hours), index −62.2% overall">
+                        <title>$UNDERS: 53.70 Ember (−0.2% over the last 24 hours), index −62.2% overall</title>
+                        <rect x="72.41" y="45.82" width="26.89" height="4.30" fill="transparent"/>
+                        <text class="hc-mmb-sym" x="85.86" y="48.98"
+                          text-anchor="middle" font-size="2.89">$UNDERS</text>
+                    
+                    </a>
+                    
+                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/nflu/" aria-label="$NFLU ($UNDERS · NFL Total Under Index): 101.94 Ember (+0.0% over the last 24 hours), index +1.3% overall">
+                        <title>$NFLU ($UNDERS · NFL Total Under Index): 101.94 Ember (+0.0% over the last 24 hours), index +1.3% overall</title>
+                        <rect x="73.01" y="50.52" width="25.69" height="8.93"
+                              rx="0.4" fill="#000000" stroke="rgba(148, 163, 184, 0.45)" stroke-width="0.22"/>
+                        <text class="hc-mmb-sym" x="85.86" y="54.78"
+                          text-anchor="middle" font-size="3.20">$NFLU</text>
+                    <text class="hc-mmb-quote" x="85.86" y="58.09"
+                          text-anchor="middle" font-size="2.30" fill="rgb(148, 163, 184)">101.94 (+0.0%)</text>
+                    </a>
+                </g>
+                <g class="hc-mmb-family">
+                    <rect x="86.91" y="61.45" width="12.39" height="21.85"
+                          rx="0.6" fill="#000000" stroke="rgba(255, 107, 87, 0.61)" stroke-width="0.35"/>
+                    <a class="hc-mmb-tile" href="/tankdaq/moonshot/" aria-label="$MOONSHOT: 102.18 Ember (−0.3% over the last 24 hours), index +0.9% overall">
+                        <title>$MOONSHOT: 102.18 Ember (−0.3% over the last 24 hours), index +0.9% overall</title>
+                        <rect x="86.91" y="61.45" width="12.39" height="21.85" fill="transparent"/>
+                        <text class="hc-mmb-sym" x="93.10" y="72.88"
+                          text-anchor="middle" font-size="1.45">$MOONSHOT</text>
+                    
+                    </a>
+                    
+                </g>
+                <g class="hc-mmb-family">
+                    <rect x="45.41" y="57.54" width="25.61" height="25.76"
+                          rx="0.6" fill="#000000" stroke="rgba(255, 107, 87, 0.68)" stroke-width="0.35"/>
+                    <a class="hc-mmb-tile" href="/tankdaq/cushion/" aria-label="$CUSHION: 100.37 Ember (−0.7% over the last 24 hours), index +0.4% overall">
+                        <title>$CUSHION: 100.37 Ember (−0.7% over the last 24 hours), index +0.4% overall</title>
+                        <rect x="45.41" y="57.54" width="25.61" height="25.76" fill="transparent"/>
+                        <text class="hc-mmb-sym" x="58.21" y="70.22"
+                          text-anchor="middle" font-size="3.55">$CUSHION</text>
+                    <text class="hc-mmb-quote" x="58.21" y="73.87"
+                          text-anchor="middle" font-size="2.55" fill="rgb(255, 107, 87)">100.37 (−0.7%)</text>
+                    </a>
+                    
+                </g>
+                <g class="hc-mmb-family">
+                    <rect x="73.16" y="0.70" width="26.14" height="28.09"
+                          rx="0.6" fill="#000000" stroke="rgba(255, 107, 87, 0.70)" stroke-width="0.35"/>
+                    <a class="hc-mmb-tile" href="/tankdaq/bothscore/" aria-label="$BOTHSCORE: 102.20 Ember (−0.7% over the last 24 hours), index +2.2% overall">
+                        <title>$BOTHSCORE: 102.20 Ember (−0.7% over the last 24 hours), index +2.2% overall</title>
+                        <rect x="73.16" y="0.70" width="26.14" height="28.09" fill="transparent"/>
+                        <text class="hc-mmb-sym" x="86.23" y="14.55"
+                          text-anchor="middle" font-size="2.90">$BOTHSCORE</text>
+                    <text class="hc-mmb-quote" x="86.23" y="17.57"
+                          text-anchor="middle" font-size="2.09" fill="rgb(255, 107, 87)">102.20 (−0.7%)</text>
+                    </a>
+                    
+                </g>
+                <g class="hc-mmb-family">
+                    <rect x="0.70" y="0.70" width="43.31" height="41.13"
+                          rx="0.6" fill="rgba(255, 107, 87, 0.08)" stroke="rgba(255, 107, 87, 0.90)" stroke-width="0.5"/>
+                    <a class="hc-mmb-tile" href="/tankdaq/chalk/" aria-label="$CHALK: 213.56 Ember (−1.7% over the last 24 hours), index +68.3% overall">
+                        <title>$CHALK: 213.56 Ember (−1.7% over the last 24 hours), index +68.3% overall</title>
+                        <rect x="0.70" y="0.70" width="43.31" height="10.30" fill="transparent"/>
+                        <text class="hc-mmb-sym" x="22.35" y="8.50"
+                          text-anchor="middle" font-size="7.57">$CHALK</text>
+                    
+                    </a>
+                    
+                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/gridiron/" aria-label="$GRIDIRON ($CHALK · NFL Favorite Index): 102.58 Ember (+0.0% over the last 24 hours), index +1.7% overall">
+                        <title>$GRIDIRON ($CHALK · NFL Favorite Index): 102.58 Ember (+0.0% over the last 24 hours), index +1.7% overall</title>
+                        <rect x="33.50" y="11.40" width="9.90" height="20.91"
+                              rx="0.4" fill="#000000" stroke="rgba(148, 163, 184, 0.45)" stroke-width="0.22"/>
+                        <text class="hc-mmb-sym" x="38.45" y="21.65"
+                          text-anchor="middle" font-size="3.20">NFL</text>
+                    <text class="hc-mmb-quote" x="38.45" y="24.56"
+                          text-anchor="middle" font-size="2.01" fill="rgb(148, 163, 184)">(+0.0%)</text>
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/nbachalk/" aria-label="$NBACHALK ($CHALK · NBA Favorite Index): 100.00 Ember (+0.0% over the last 24 hours), index +0.0% overall">
+                        <title>$NBACHALK ($CHALK · NBA Favorite Index): 100.00 Ember (+0.0% over the last 24 hours), index +0.0% overall</title>
+                        <rect x="18.16" y="33.11" width="25.25" height="8.12"
+                              rx="0.4" fill="#000000" stroke="rgba(148, 163, 184, 0.45)" stroke-width="0.22"/>
+                        <text class="hc-mmb-sym" x="30.78" y="36.97"
+                          text-anchor="middle" font-size="3.11">$NBACHALK</text>
+                    <text class="hc-mmb-quote" x="30.78" y="40.19"
+                          text-anchor="middle" font-size="2.24" fill="rgb(148, 163, 184)">100.00 (+0.0%)</text>
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/footy/" aria-label="$FOOTY ($CHALK · Soccer Favorite Index): 128.82 Ember (−1.4% over the last 24 hours), index +29.1% overall">
+                        <title>$FOOTY ($CHALK · Soccer Favorite Index): 128.82 Ember (−1.4% over the last 24 hours), index +29.1% overall</title>
+                        <rect x="18.16" y="11.40" width="14.54" height="20.91"
+                              rx="0.4" fill="rgba(255, 107, 87, 0.10)" stroke="rgba(255, 107, 87, 0.73)" stroke-width="0.22"/>
+                        <text class="hc-mmb-sym" x="25.43" y="14.26"
+                          text-anchor="middle" font-size="2.59">$FOOTY</text>
+                    <text class="hc-mmb-quote" x="25.43" y="16.53"
+                          text-anchor="middle" font-size="1.54" fill="rgb(255, 107, 87)">128.82 (−1.4%)</text>
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/mlschalk/" aria-label="$MLSCHALK ($FOOTY · MLS Favorite Index): 102.32 Ember (+0.0% over the last 24 hours), index +1.5% overall">
+                        <title>$MLSCHALK ($FOOTY · MLS Favorite Index): 102.32 Ember (+0.0% over the last 24 hours), index +1.5% overall</title>
+                        <rect x="27.44" y="17.73" width="4.94" height="5.44"
+                              rx="0.3" fill="#000000" stroke="rgba(148, 163, 184, 0.40)" stroke-width="0.16"/>
+                        <text class="hc-mmb-sym" x="29.91" y="20.96"
+                          text-anchor="middle" font-size="1.45">MLS</text>
+                    
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/eflchalk/" aria-label="$EFLCHALK ($FOOTY · EFL Favorite Index): 95.59 Ember (+0.0% over the last 24 hours), index −2.9% overall">
+                        <title>$EFLCHALK ($FOOTY · EFL Favorite Index): 95.59 Ember (+0.0% over the last 24 hours), index −2.9% overall</title>
+                        <rect x="18.48" y="23.61" width="6.73" height="3.97"
+                              rx="0.3" fill="#000000" stroke="rgba(148, 163, 184, 0.40)" stroke-width="0.16"/>
+                        <text class="hc-mmb-sym" x="21.84" y="26.30"
+                          text-anchor="middle" font-size="2.00">EFL</text>
+                    
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/eplchalk/" aria-label="$EPLCHALK ($FOOTY · EPL Favorite Index): 101.94 Ember (+0.0% over the last 24 hours), index +1.2% overall">
+                        <title>$EPLCHALK ($FOOTY · EPL Favorite Index): 101.94 Ember (+0.0% over the last 24 hours), index +1.2% overall</title>
+                        <rect x="18.48" y="28.02" width="6.73" height="3.97"
+                              rx="0.3" fill="#000000" stroke="rgba(148, 163, 184, 0.40)" stroke-width="0.16"/>
+                        <text class="hc-mmb-sym" x="21.84" y="30.71"
+                          text-anchor="middle" font-size="2.00">EPL</text>
+                    
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/bundeschalk/" aria-label="$BUNDESCHALK ($FOOTY · Bundesliga Favorite Index): 101.24 Ember (+0.0% over the last 24 hours), index +0.8% overall">
+                        <title>$BUNDESCHALK ($FOOTY · Bundesliga Favorite Index): 101.24 Ember (+0.0% over the last 24 hours), index +0.8% overall</title>
+                        <rect x="25.65" y="23.61" width="6.73" height="3.97"
+                              rx="0.3" fill="#000000" stroke="rgba(148, 163, 184, 0.40)" stroke-width="0.16"/>
+                        <text class="hc-mmb-sym" x="29.02" y="26.30"
+                          text-anchor="middle" font-size="2.00">BUN</text>
+                    
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/ligue1chalk/" aria-label="$LIGUE1CHALK ($FOOTY · Ligue 1 Favorite Index): 96.14 Ember (+0.0% over the last 24 hours), index −2.6% overall">
+                        <title>$LIGUE1CHALK ($FOOTY · Ligue 1 Favorite Index): 96.14 Ember (+0.0% over the last 24 hours), index −2.6% overall</title>
+                        <rect x="25.65" y="28.02" width="6.73" height="3.97"
+                              rx="0.3" fill="#000000" stroke="rgba(148, 163, 184, 0.40)" stroke-width="0.16"/>
+                        <text class="hc-mmb-sym" x="29.02" y="30.71"
+                          text-anchor="middle" font-size="2.00">LIG</text>
+                    
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-grandchild" href="/tankdaq/laligachalk/" aria-label="$LALIGACHALK ($FOOTY · La Liga Favorite Index): 87.64 Ember (−0.7% over the last 24 hours), index −8.6% overall">
+                        <title>$LALIGACHALK ($FOOTY · La Liga Favorite Index): 87.64 Ember (−0.7% over the last 24 hours), index −8.6% overall</title>
+                        <rect x="18.48" y="17.73" width="8.52" height="5.44"
+                              rx="0.3" fill="#000000" stroke="rgba(255, 107, 87, 0.53)" stroke-width="0.16"/>
+                        <text class="hc-mmb-sym" x="22.74" y="20.25"
+                          text-anchor="middle" font-size="2.00">LAL</text>
+                    <text class="hc-mmb-quote" x="22.74" y="22.40"
+                          text-anchor="middle" font-size="1.44" fill="rgb(255, 107, 87)">(−0.7%)</text>
+                    </a>
+                    <a class="hc-mmb-tile hc-mmb-child" href="/tankdaq/mlbchalk/" aria-label="$MLBCHALK ($CHALK · MLB Favorite Index): 100.51 Ember (−2.2% over the last 24 hours), index +0.1% overall">
+                        <title>$MLBCHALK ($CHALK · MLB Favorite Index): 100.51 Ember (−2.2% over the last 24 hours), index +0.1% overall</title>
+                        <rect x="1.30" y="11.40" width="16.06" height="29.83"
+                              rx="0.4" fill="#000000" stroke="rgba(255, 107, 87, 0.89)" stroke-width="0.22"/>
+                        <text class="hc-mmb-sym" x="9.33" y="26.99"
+                          text-anchor="middle" font-size="1.92">$MLBCHALK</text>
+                    
                     </a>
                 </g>
             </svg>
-            <p class="hc-mmb-caption">Tile size tracks the move over the last 24 hours &middot; league slices sit inside the index they slice &middot; <a href="/tankdaq/indexes/">Open the full board</a></p>
-        </div>
+            <p class="hc-mmb-caption">Tile size tracks the price move over the last 24 hours &middot; slices sit inside the index they slice &middot; <a href="/tankdaq/indexes/">Open the full board</a></p>
+        </div><p class="hc-mm-price-note">Ember prices re-express each index&#039;s cumulative record - a look back at how tagged storylines have gone, not a forecast. Ember is play currency.</p>
         </section>
         
         <section id="explore" class="hc-section" aria-labelledby="hc-explore-heading">
@@ -1342,10 +1558,10 @@
         </section>
         
         <div class="hc-footer">
-            &copy; 2026 Heatchecks &middot; <a href="/">Home</a>
+            &copy; 2026 Heatchecks &middot; <a href="/">Home</a> &middot; <a href="/terms/">Terms</a>
         </div>
     </main>
-    <script type="application/json" id="homepage-data">{"initialSport":"Baseball","loggedIn":false,"sports":[{"sport":"Baseball","live":true,"slug":"braves-phillies-nl-east-showdown-citizens-bank-park","href":"/the-tank/articles/braves-phillies-nl-east-showdown-citizens-bank-park/","deck":{"hook":"Atlanta's 9.5-game lead is nearly gone, and the team that ate it hosts them tonight.","cards":["This series was supposed to be a formality. Instead it opens with the division basically tied, and Philadelphia has home field for the first punch.","Four games here, three more in Atlanta next weekend. Whoever wins this set walks into the rematch with real momentum in a race this tight."],"call":{"sides":["Atlanta Braves","Philadelphia Phillies"],"question":"Who wins Game 1 at Citizens Bank Park?","sidesImpliedProb":[0.47,0.53]},"tagline":"NL East on the Line","contextLabel":"Moneyline","oddsOrMarketLabel":"MLB · Atlanta Braves vs. Philadelphia Phillies","settleDateLabel":"Resolves Sep 4, 2026","gameTimeLabel":"Fri, Sep 4 · 6:40 PM ET","kickoff":"2026-09-04T22:40:00Z"}},{"sport":"Basketball","live":false,"slug":null,"href":null,"deck":null},{"sport":"Football","live":true,"slug":"jets-titans-breece-hall-injury-spread","href":"/the-tank/articles/jets-titans-breece-hall-injury-spread/","deck":{"hook":"Breece Hall got hurt in practice and now the Jets' entire gameplan in Nashville is in question.","cards":["Breece Hall went down Monday with an upper right leg issue, and his status for Titans-Jets is uncertain.","Lose Hall and the Jets lose their easiest source of offense, the kind that keeps a defense honest and a clock moving."],"call":{"sides":["Titans -2.5","Jets +2.5"],"question":"Do the Titans cover -2.5 against a Jets team that might be without Breece Hall?","sidesImpliedProb":[0.525,0.475]},"tagline":"Breece Hall Injury Watch","contextLabel":"O -2.5 Spreads","oddsOrMarketLabel":"NFL · New York Jets vs. Tennessee Titans","settleDateLabel":"Resolves Sep 13, 2026","gameTimeLabel":"Sun, Sep 13 · 1:00 PM ET","kickoff":"2026-09-13T17:00:00.000Z"}},{"sport":"Soccer","live":true,"slug":"liverpool-ipswich-town-barcola-gakpo-deadline-day","href":"/the-tank/articles/liverpool-ipswich-town-barcola-gakpo-deadline-day/","deck":{"hook":"Liverpool just blew $166M and beat City to a signing on deadline day. Now they have to go win a football match.","cards":["Barcola in for $166M, Gakpo kept away from City at the buzzer. Liverpool's summer ended as loud as it gets.","None of that shows up in the result automatically. New signings, new pressure, and a full ninety minutes to figure it out live."],"call":{"sides":["Yes","No"],"question":"Does Liverpool beat Ipswich Town in their first match after the transfer window closes?","sidesImpliedProb":[0.205,0.795]},"tagline":"First Match, Big Money","contextLabel":"Moneyline","oddsOrMarketLabel":"EPL · Liverpool FC vs. Ipswich Town FC","settleDateLabel":"Resolves Sep 4, 2026","gameTimeLabel":"Fri, Sep 4 · 3:00 PM ET","kickoff":"2026-09-04T19:00:00Z"}}]}</script>
+    <script type="application/json" id="homepage-data">{"initialSport":"Baseball","loggedIn":false,"sports":[{"sport":"Baseball","live":false,"tanks":[]},{"sport":"Basketball","live":false,"tanks":[]},{"sport":"Football","live":false,"tanks":[]},{"sport":"Soccer","live":false,"tanks":[]}]}</script>
     <script type="module" src="/assets/homepage.js" defer></script>
 </body>
 </html>
