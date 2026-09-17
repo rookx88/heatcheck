@@ -11,9 +11,10 @@ import { renderHead, topbar, footer } from './waitlist-landing-template';
  * Styles live here (page chrome), not in a component CSS file: /assets/account.css is
  * esbuild's side-effect output of the ContentChrome tree the bundle imports, and the
  * page's own look is one <style> block the way login/welcome/my-portfolio do it. The
- * language is the login card's - navy glass, teal border glow, Baloo headings, gold
- * for the active/"on" state - widened to the portfolio's 860px so the strip and the
- * label + control rows have room.
+ * language is the login card's - teal border glow, Baloo headings, gold for the
+ * active/"on" state - but on an OPAQUE matte dark-blue panel rather than the login
+ * card's glass (see .hc-acct-frame), widened to the portfolio's 860px so the strip and
+ * the label + control rows have room.
  */
 export function generateAccountPageHtml(baseUrl: string): string {
     const title = 'Account | Heatchecks';
@@ -36,10 +37,18 @@ export function generateAccountPageHtml(baseUrl: string): string {
             font-family: 'Nunito', sans-serif; color: rgba(255,255,255,0.8);
         }
 
-        /* ---- The frame: navy glass, teal glow (login card language) ---- */
+        /* ---- The frame: a MATTE dark-blue panel, teal glow ----
+           Opaque on purpose. The login card's translucent glass works for a short
+           form, but this page is rows of small text and switches, and the starfield
+           (renderHead's body::before) read straight through it. Matte means a flat
+           colour - no gradient, no sheen, no backdrop blur - so the panel is a surface
+           the content sits ON. The tiles, tab rail and input inside it are darker
+           wells cut into that surface. */
         .hc-acct-frame {
+            --acct-panel: #0f1a36;   /* the matte dark blue */
+            --acct-well: #0a1226;    /* recessed: stat tiles, tab rail, input */
             margin: 2rem auto 2.5rem; padding: 1.5rem 1.5rem 1.75rem;
-            background: rgba(255, 255, 255, 0.04);
+            background: var(--acct-panel);
             border: 2px solid rgba(47, 230, 217, 0.4);
             border-radius: 20px;
             box-shadow: 0 0 40px rgba(47, 230, 217, 0.12), 0 20px 50px rgba(0, 0, 0, 0.45);
@@ -65,7 +74,7 @@ export function generateAccountPageHtml(baseUrl: string): string {
         .hc-acct-stat {
             display: flex; flex-direction: column; gap: 0.2rem; min-width: 0;
             padding: 0.7rem 0.8rem; border-radius: 12px; text-decoration: none;
-            background: rgba(11, 7, 19, 0.55); border: 1px solid rgba(255,255,255,0.1);
+            background: var(--acct-well); border: 1px solid rgba(255,255,255,0.1);
             transition: border-color 0.15s ease, background 0.15s ease;
         }
         a.hc-acct-stat:hover, a.hc-acct-stat:focus-visible { border-color: rgba(47, 230, 217, 0.55); background: rgba(47, 230, 217, 0.06); outline: none; }
@@ -86,7 +95,7 @@ export function generateAccountPageHtml(baseUrl: string): string {
         /* ---- Tabs: one row of segments, the active one lit gold ---- */
         .hc-acct-tabs {
             display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; overflow: hidden;
-            background: rgba(11, 7, 19, 0.55); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px;
+            background: var(--acct-well); border: 1px solid rgba(255,255,255,0.12); border-radius: 12px;
             margin: 0 0 1.25rem;
         }
         .hc-acct-tab {
@@ -182,7 +191,7 @@ export function generateAccountPageHtml(baseUrl: string): string {
         .hc-acct-confirm { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: center; }
         .hc-acct-input {
             flex: 1 1 200px; min-width: 0; padding: 0.55rem 0.8rem; border-radius: 10px;
-            border: 1px solid rgba(255,255,255,0.25); background: rgba(11, 7, 19, 0.6); color: #fff;
+            border: 1px solid rgba(255,255,255,0.25); background: var(--acct-well); color: #fff;
             font-family: 'Nunito', sans-serif; font-size: 0.95rem;
         }
         .hc-acct-input:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 1px; }
