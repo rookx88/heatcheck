@@ -1096,9 +1096,16 @@ async function generateAllPages(): Promise<void> {
         // must never 404.
         let tankEntries: TankPageEntry[] = [];
         try {
+            // Stories only. tank_pages.kind (add_kind_to_tank_pages.sql) also holds 'lines'
+            // rows - a matchup's moneyline/spread/total with no article - and one of those
+            // rendered through the article template is a page with an empty body. Read via
+            // to_jsonb so a database without the column still builds: no kind means every
+            // row is a story, which is what was true before the column existed.
             const tankPagesResult = await pool.query(
-                `SELECT id, slug, league, angle, game_snapshot, model_output, created_at, published_at
-                 FROM tank_pages WHERE status = 'published' AND slug IS NOT NULL AND model_output IS NOT NULL`
+                `SELECT t.id, t.slug, t.league, t.angle, t.game_snapshot, t.model_output, t.created_at, t.published_at
+                 FROM tank_pages t
+                 WHERE t.status = 'published' AND t.slug IS NOT NULL AND t.model_output IS NOT NULL
+                   AND COALESCE(to_jsonb(t) ->> 'kind', 'narrative') = 'narrative'`
             );
             const tankPages: TankPageRecord[] = [];
             let cardFailures = 0;

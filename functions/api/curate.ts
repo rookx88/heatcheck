@@ -94,12 +94,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     // 2. Dedupe: skip markets already surfaced as a Tank page recently, so the same
-    // storyline doesn't get re-matched (and re-cost a web search) day after day.
+    // storyline doesn't get re-matched (and re-cost a web search) day after day. Lines
+    // rows (kind = 'lines', no article) don't count: a story on a market a lines Tank
+    // already covers is the intended handoff, not a repeat.
     const recentRows = await sql`
-        SELECT DISTINCT game_snapshot->'prop'->>'id' AS market_id
-        FROM tank_pages
-        WHERE created_at > NOW() - (INTERVAL '1 day' * ${dedupeDays})
-          AND game_snapshot->'prop'->>'id' IS NOT NULL
+        SELECT DISTINCT t.game_snapshot->'prop'->>'id' AS market_id
+        FROM tank_pages t
+        WHERE t.created_at > NOW() - (INTERVAL '1 day' * ${dedupeDays})
+          AND t.game_snapshot->'prop'->>'id' IS NOT NULL
+          AND COALESCE(to_jsonb(t) ->> 'kind', 'narrative') = 'narrative'
     `;
     const recentMarketIds = new Set(recentRows.map(r => r.market_id as string));
     candidates = candidates.filter(c => !recentMarketIds.has(c.prop.id));
