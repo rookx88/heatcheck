@@ -1,15 +1,19 @@
 // GET /api/tickers/detail?key=dogs - everything one TANKDAQ index detail page needs in
 // a single fetch: the ticker's meta + current value, its full event series (the chart
-// source - the client windows it for the 24H/3D/1W toggle and computes the 24h delta),
-// recent tagged storylines, and composed Recent Results sentences (toResultSentences over
-// the index's most recently settled slate games from index_positions - the exact copy
-// the homepage Market Movers cards show). Public, read-only, no session.
-// Same retrospective-framing contract as every ticker read endpoint.
+// source - the client windows it for the 24H/3D/1W toggle and computes the window
+// delta), recent tagged storylines, composed Recent Results sentences (toResultSentences
+// over the index's most recently settled slate games from index_positions - the exact
+// copy the homepage Market Movers cards show), and `movers`: the same sentences for every
+// game whose close landed inside the widest chart window, each with its signed points and
+// close time, so the client can rank "What moved it" per window without a refetch.
+// Public, read-only, no session. Same retrospective-framing contract as every ticker
+// read endpoint.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../../lib/pages-functions/db';
 import {
     RETROSPECTIVE_NOTE,
+    getTickerMovers,
     getTickerNews,
     getTickerResults,
     getTickerSeries,
@@ -20,6 +24,10 @@ import { PRICE_NOTE } from '../../../lib/pages-functions/ticker-price';
 
 const NEWS_LIMIT = 4;
 const RESULTS_LIMIT = 6;
+// The widest window the detail chart offers (1W); the client narrows from here. The
+// broad indexes close 3-18 games a day, so a full week is well under the cap.
+const MOVERS_WINDOW_MS = 7 * 24 * 3600_000;
+const MOVERS_LIMIT = 200;
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
     const url = new URL(context.request.url);
@@ -35,11 +43,13 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         return jsonResponse({ message: `No active ticker "${key}".` }, { status: 404 });
     }
 
-    const [series, newsMap, resultsMap] = await Promise.all([
+    const [series, newsMap, resultsMap, moverItems] = await Promise.all([
         getTickerSeries(sql, key),
         getTickerNews(sql, NEWS_LIMIT),
         getTickerResults(sql, RESULTS_LIMIT),
+        getTickerMovers(sql, key, { since: new Date(Date.now() - MOVERS_WINDOW_MS), limit: MOVERS_LIMIT }),
     ]);
+    const moverSentences = toResultSentences(moverItems, ticker.displayName);
 
     return jsonResponse({
         note: RETROSPECTIVE_NOTE,
@@ -68,5 +78,10 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
             taggedAt: n.taggedAt,
         })),
         results: toResultSentences(resultsMap[key] ?? [], ticker.displayName),
+        movers: moverSentences.map((vm, i) => ({
+            ...vm,
+            delta: moverItems[i].delta,
+            closedAt: moverItems[i].closedAt,
+        })),
     });
 };

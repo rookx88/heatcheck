@@ -1,18 +1,19 @@
 import { renderHead, topbar, footer } from './waitlist-landing-template';
 import { escapeHtml } from '../utils/html-escape';
-import { tickerCopyFor } from '../../lib/pages-functions/ticker-copy';
+import { readLineFor, tickerCopyFor } from '../../lib/pages-functions/ticker-copy';
 
 /**
  * TANKDAQ index detail page (/tankdaq/<key>/) - one page per Exchange ticker, the
  * finance-platform view of a single index: its Ember price as the headline with the
- * price's window return beside it (the cumulative index % as a secondary line), a
- * windowed price chart (24H/3D/1W toggle), a Buy/Sell panel with the signed-in user's
- * position, Recent News, and Recent Results. Same
- * static-shell-plus-island pattern as my-tanks-template.ts: this shell is generic and
- * CDN-cacheable; all live numbers come from GET /api/tickers/detail?key=<key>, fetched
- * by tankdaq-ticker-client.tsx (mounted into #tankdaq-ticker-root, which carries the
- * key as a data attribute). Ticker meta baked here is for SEO/fallback only - the
- * island re-renders from the API response.
+ * price's window return beside it (the cumulative index % as a secondary line and a
+ * one-line read of what the window's results looked like), a windowed price chart
+ * (24H/3D/1W toggle), a Buy/Sell panel with the signed-in user's position, Recent News,
+ * and "What moved it" - the window's settled games ranked by the points they carried.
+ * Same static-shell-plus-island pattern as my-tanks-template.ts: this shell is generic
+ * and CDN-cacheable; all live numbers come from GET /api/tickers/detail?key=<key>,
+ * fetched by tankdaq-ticker-client.tsx (mounted into #tankdaq-ticker-root, which
+ * carries the key as a data attribute). Ticker meta baked here is for SEO/fallback only
+ * - the island re-renders from the API response.
  */
 export interface TankdaqTickerPage {
     key: string;         // 'dogs'
@@ -20,10 +21,13 @@ export interface TankdaqTickerPage {
     indexLabel: string;  // 'Underdog Index'
     description: string; // tickers.description - the terse line, still what SEO meta uses
     ruleType: string;    // eligibility strategy - keys the friendly copy (ticker-copy.ts)
+    value: number;       // cumulative index points at build time - the fallback's all-time read line
 }
 
 export function generateTankdaqTickerPageHtml(baseUrl: string, ticker: TankdaqTickerPage): string {
     const copy = tickerCopyFor(ticker.ruleType);
+    // Build-time snapshot for crawlers only; the island replaces it with the live window.
+    const readLine = readLineFor(ticker.ruleType, ticker.displayName, ticker.value, 'its whole history');
     const title = `${ticker.indexLabel} (${ticker.displayName}) | TANKDAQ | Heatchecks`;
     // Meta stays composed from the TERSE description: the friendly blurb is page copy,
     // and pasting it here would blow past the ~155 chars search results actually show.
@@ -60,6 +64,7 @@ export function generateTankdaqTickerPageHtml(baseUrl: string, ticker: TankdaqTi
                 <h1>${escapeHtml(ticker.indexLabel)} (${escapeHtml(ticker.displayName)})</h1>
                 <p>${escapeHtml(copy?.blurb ?? ticker.description)}</p>
                 ${copy && copy.leagues.length > 0 ? `<p>Leagues: ${escapeHtml(copy.leagues.join(', '))}</p>` : ''}
+                <p>${escapeHtml(readLine)}</p>
                 <p>Priced in Ember. Signed-in members can buy and sell whole shares of ${escapeHtml(ticker.displayName)} at its live price.</p>
                 <p><a href="/tankdaq/indexes/">All TANKDAQ indexes</a> &middot; <a href="/tankdaq/">TANKDAQ floor</a></p>
             </section>
@@ -165,6 +170,13 @@ function tankdaqTickerStyles(): string {
             font-size: 0.72rem; letter-spacing: 0.02em; color: rgba(255,255,255,0.45);
         }
         .hc-tq-index-line .is-pos, .hc-tq-index-line .is-neg, .hc-tq-index-line .is-zero { font-weight: 800; opacity: 0.8; }
+        /* The read line: one plain sentence on what the window's results looked like,
+           under the quote and above the range toggle. Body copy, not a label. */
+        .hc-tq-read { margin: 0 0 0.55rem; font-size: 0.92rem; line-height: 1.5; color: var(--hc-bubble); max-width: 64ch; }
+        /* The signed-in reader's own picks in this style, same window, same units. Muted
+           like the index line; the record and points carry the weight. */
+        .hc-tq-overlay { margin: 0 0 0.75rem; font-size: 0.82rem; line-height: 1.5; color: rgba(255,255,255,0.6); max-width: 64ch; }
+        .hc-tq-overlay strong { color: #ffffff; font-weight: 800; }
         .hc-tq-delta24-label {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.66rem;
             letter-spacing: 0.1em; text-transform: uppercase; color: rgba(255,255,255,0.55);
@@ -203,7 +215,7 @@ function tankdaqTickerStyles(): string {
         .hc-tq-legend-swatch { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 0.3rem; }
         .hc-tq-legend-swatch--index { background: rgba(255,255,255,0.35); height: 0; border-top: 2px dashed rgba(255,255,255,0.45); }
 
-        /* Right column: the trade panel above Recent Results. */
+        /* Right column: the trade panel above "What moved it". */
         .hc-tq-side { display: flex; flex-direction: column; gap: 1.2rem; }
         .hc-tq-trade-panel {
             background: #000000; border: 1.5px solid rgba(255, 199, 44, 0.45);
@@ -288,6 +300,10 @@ function tankdaqTickerStyles(): string {
             border-radius: 14px; padding: 1rem 1.1rem 1.15rem;
         }
         .hc-tq-results-panel .hc-tq-section-heading { margin-top: 0; color: #ffffff; }
+        /* Above the list only when the window had no closes and it fell back to recency;
+           below it, the window's full W-L tally (the ranked six are one-sided by design). */
+        .hc-tq-movers-sub { margin: 0 0 0.6rem; font-size: 0.74rem; line-height: 1.4; color: rgba(255,255,255,0.5); }
+        .hc-tq-movers-tally { margin: 0.8rem 0 0; padding-top: 0.6rem; border-top: 1px solid rgba(255,255,255,0.1); }
         .hc-tq-results-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.7rem; }
         .hc-tq-results-list li { font-size: 0.9rem; line-height: 1.45; color: var(--hc-bubble); }
         .hc-tq-chip {

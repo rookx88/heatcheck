@@ -21,7 +21,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { tickerCopyFor } from './lib/pages-functions/ticker-copy';
+import { readLineFor, tickerCopyFor } from './lib/pages-functions/ticker-copy';
 import {
     MAX_SHARES_PER_TRADE,
     buyCost,
@@ -31,6 +31,7 @@ import {
     type PriceParams,
 } from './lib/pages-functions/ticker-price';
 import { formatEmber, formatSignedPct, signOf } from './lib/pages-functions/ticker-format';
+import { topMoversSince } from './lib/pages-functions/ticker-window';
 import { ContentChrome } from './components/ContentChrome';
 import { InsufficientEmberError } from './egg-shop-client';
 import {
@@ -38,7 +39,9 @@ import {
     TickerUnavailableError,
     buyShares,
     getHoldingsWithStatus,
+    getOverlayWithStatus,
     sellShares,
+    type OverlayResponse,
     type Position,
 } from './tankdaq-shares-client';
 
@@ -52,6 +55,9 @@ interface SeriesEvent {
 }
 interface NewsItem { href: string; hook: string; excerpt: string; league: string; taggedAt: string }
 interface ResultItem { text: string; won: boolean }
+// A settled game with its signed points and the time of the close it rolled into -
+// the server ships a week of these; topMoversSince ranks them per window here.
+interface MoverItem extends ResultItem { delta: number; closedAt: string }
 interface DetailResponse {
     note: string;
     priceNote: string;
@@ -63,15 +69,25 @@ interface DetailResponse {
     series: SeriesEvent[];
     news: NewsItem[];
     results: ResultItem[];
+    movers?: MoverItem[]; // optional only so a stale cached shell tolerates an older API
 }
 
 const HOUR_MS = 3600_000;
+// `sentence` reads inside "over ..." in the read line and the portfolio overlay.
 const WINDOWS = [
-    { id: '24h', label: '24H', ms: 24 * HOUR_MS },
-    { id: '3d', label: '3D', ms: 72 * HOUR_MS },
-    { id: '1w', label: '1W', ms: 168 * HOUR_MS },
+    { id: '24h', label: '24H', ms: 24 * HOUR_MS, sentence: 'the past 24 hours' },
+    { id: '3d', label: '3D', ms: 72 * HOUR_MS, sentence: 'the past 3 days' },
+    { id: '1w', label: '1W', ms: 168 * HOUR_MS, sentence: 'the past week' },
 ] as const;
 type WindowId = (typeof WINDOWS)[number]['id'];
+const MOVERS_SHOWN = 6;
+
+// Signed index points to one decimal, real minus, -0 normalised - the unit the read
+// line and the overlay quote ("+0.8 pts"), distinct from the price's % return.
+function fmtSignedPts(v: number): string {
+    const n = Object.is(v, -0) ? 0 : v;
+    return `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(1)}`;
+}
 
 // The shared quote formatters (ticker-format.ts) under this file's short names - the
 // same bytes the homepage tape and the Index Board print. Ember prices read to the
@@ -388,6 +404,55 @@ const TradePanel: React.FC<{ tickerKey: string; displayName: string; price: numb
 
 // ---------------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------------
+// Portfolio overlay: the signed-in user's own settled picks that fit this index's
+// style, over the chart's window, next to the index's move over the same window. Its
+// endpoint's 401/403 are the auth probe (same contract as the trade panel's holdings
+// read), so a logged-out or un-onboarded visitor simply sees no line - the page never
+// makes a separate session call for it. One fetch per window, cached for the visit.
+// ---------------------------------------------------------------------------------
+
+const PortfolioOverlay: React.FC<{ tickerKey: string; displayName: string; windowId: WindowId; indexPoints: number }> =
+    ({ tickerKey, displayName, windowId, indexPoints }) => {
+    const [hidden, setHidden] = useState(false);
+    const [byWindow, setByWindow] = useState<Partial<Record<WindowId, OverlayResponse>>>({});
+
+    useEffect(() => {
+        if (hidden || byWindow[windowId]) return;
+        let cancelled = false;
+        const w = WINDOWS.find((x) => x.id === windowId)!;
+        (async () => {
+            try {
+                const probe = await getOverlayWithStatus(tickerKey, new Date(Date.now() - w.ms).toISOString());
+                if (cancelled) return;
+                if (probe.status !== 'ok') { setHidden(true); return; }
+                setByWindow((prev) => ({ ...prev, [windowId]: probe.overlay }));
+            } catch (err) {
+                console.error('[TANKDAQ] overlay fetch failed:', err);
+                if (!cancelled) setHidden(true);
+            }
+        })();
+        return () => { cancelled = true; };
+        // byWindow is read for the cache check only; re-running on its change would loop.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tickerKey, windowId, hidden]);
+
+    if (hidden) return null;
+    const overlay = byWindow[windowId];
+    if (!overlay) return null;
+    const sentence = WINDOWS.find((x) => x.id === windowId)!.sentence;
+    if (overlay.matched === 0) {
+        return <p className="hc-tq-overlay">None of your settled picks over {sentence} fit this index&rsquo;s style.</p>;
+    }
+    const yours = overlay.points === null ? '' : `, ${fmtSignedPts(overlay.points)} pts`;
+    return (
+        <p className="hc-tq-overlay">
+            Your picks in this style over {sentence}: <strong>{overlay.won}&ndash;{overlay.lost}{yours}</strong>
+            {' '}&middot; {displayName} <strong>{fmtSignedPts(indexPoints)} pts</strong>.
+        </p>
+    );
+};
+
 const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
     const [phase, setPhase] = useState<'loading' | 'ready' | 'error'>('loading');
     const [data, setData] = useState<DetailResponse | null>(null);
@@ -412,13 +477,19 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tickerKey, reloadKey]);
 
-    // The price's % change over the SELECTED chart window - the number beside the price.
-    const windowRet = useMemo(() => {
-        if (!data) return 0;
+    // The price's % change over the SELECTED chart window - the number beside the price -
+    // and the index POINTS moved over it (last cumulative minus the window-start anchor,
+    // the same subtraction sumSince performs), which the read line and overlay quote.
+    const { windowRet, windowPts } = useMemo(() => {
+        if (!data) return { windowRet: 0, windowPts: 0 };
         const ms = WINDOWS.find((w) => w.id === windowId)!.ms;
         const { points, anchor } = windowPoints(data.series, ms, Date.now());
         const params = { baseline: data.ticker.priceBaseline, scale: data.ticker.priceScale };
-        return windowReturnPct(points[points.length - 1].v, anchor, params);
+        const last = points[points.length - 1].v;
+        return {
+            windowRet: windowReturnPct(last, anchor, params),
+            windowPts: Number((last - anchor).toFixed(3)),
+        };
     }, [data, windowId]);
 
     // Identity chrome renders in every phase - it hydrates from its own endpoint and
@@ -436,7 +507,20 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
     const copy = tickerCopyFor(ticker.ruleType);
     const totalSign = signOf(ticker.value);
     const retSign = signOf(windowRet);
-    const windowLabel = WINDOWS.find((w) => w.id === windowId)!.label;
+    const win = WINDOWS.find((w) => w.id === windowId)!;
+    const windowLabel = win.label;
+    // What moved it: the window's closes ranked by |points|; an empty window falls back
+    // to the most recent settled games so the panel is never blank on a quiet day.
+    const inWindow = topMoversSince(data.movers ?? [], Date.now() - win.ms, Number.MAX_SAFE_INTEGER);
+    const movers = inWindow.slice(0, MOVERS_SHOWN);
+    const moversFallback = movers.length === 0;
+    const listed: ResultItem[] = moversFallback ? data.results : movers;
+    // The window's full record under the ranked six. Needed because ranking by |points|
+    // is one-sided by construction - an underdog win pays more than an underdog loss
+    // costs, so $DOGS's biggest single games are nearly always wins even on a window it
+    // fell - and the tally is what squares the list with the read line above the chart.
+    const inWindowWon = inWindow.filter((m) => m.won).length;
+    const inWindowLost = inWindow.length - inWindowWon;
     const dateLabel = (iso: string) => {
         const d = new Date(iso);
         return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
@@ -474,6 +558,10 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
                     <p className="hc-tq-index-line">
                         Index <span className={`is-${totalSign}`}>{fmtPct(ticker.value)}</span> all-time
                     </p>
+                    {/* The read line: what the window's number means, in words. Same
+                        window as the chart; retrospective copy from ticker-copy.ts. */}
+                    <p className="hc-tq-read">{readLineFor(ticker.ruleType, ticker.displayName, windowPts, win.sentence)}</p>
+                    <PortfolioOverlay tickerKey={ticker.key} displayName={ticker.displayName} windowId={windowId} indexPoints={windowPts} />
                     <div className="hc-tq-ranges" role="group" aria-label="Chart window">
                         {WINDOWS.map((w) => (
                             <button key={w.id} type="button" className="hc-tq-range"
@@ -494,16 +582,24 @@ const TankdaqTickerPage: React.FC<{ tickerKey: string }> = ({ tickerKey }) => {
                         priceNote={data.priceNote}
                         onTraded={() => setReloadKey((k) => k + 1)}
                     />
-                    <aside className="hc-tq-results-panel" aria-label="Recent results">
-                        <h2 className="hc-tq-section-heading">Recent Results</h2>
-                        {data.results.length === 0 ? (
+                    <aside className="hc-tq-results-panel" aria-label="What moved this index">
+                        <h2 className="hc-tq-section-heading">What moved it &middot; {windowLabel}</h2>
+                        {listed.length === 0 ? (
                             <p className="hc-tq-muted">No settled results yet.</p>
                         ) : (
-                            <ul className="hc-tq-results-list">
-                                {data.results.map((r, i) => (
-                                    <li key={i}><span className={`hc-tq-chip is-${r.won ? 'pos' : 'neg'}`}>{r.won ? 'W' : 'L'}</span>{r.text}</li>
-                                ))}
-                            </ul>
+                            <>
+                                {moversFallback && <p className="hc-tq-movers-sub">Nothing closed in this window; showing the most recent.</p>}
+                                <ul className="hc-tq-results-list">
+                                    {listed.map((r, i) => (
+                                        <li key={i}><span className={`hc-tq-chip is-${r.won ? 'pos' : 'neg'}`}>{r.won ? 'W' : 'L'}</span>{r.text}</li>
+                                    ))}
+                                </ul>
+                                {!moversFallback && (
+                                    <p className="hc-tq-movers-sub hc-tq-movers-tally">
+                                        {inWindow.length} game{inWindow.length === 1 ? '' : 's'} closed in this window: {inWindowWon} won, {inWindowLost} lost.
+                                    </p>
+                                )}
+                            </>
                         )}
                     </aside>
                 </div>

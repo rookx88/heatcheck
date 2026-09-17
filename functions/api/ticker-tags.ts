@@ -20,6 +20,7 @@ import {
     getTicker,
     getTickerConfig,
     insertTagWithEvent,
+    snapshotEligibilityContext,
     tagScaleOf,
 } from '../../lib/pages-functions/tickers';
 
@@ -87,7 +88,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (tank.kind === 'lines') {
         return reject(422, 'lines_not_taggable', 'Lines Tanks never tag a ticker - only narrative Tanks are news.');
     }
-
     if (!['polymarket', 'kalshi'].includes(tank.provider)) {
         return reject(422, 'unsupported_provider', `Tanks from "${tank.provider}" can't be tagged - no price history and no auto-settlement path.`);
     }
@@ -104,13 +104,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const sideProb = Number(outcomePrices[relevantSide]);
 
     const cfg = await getTickerConfig(sql);
-    const eligibility = checkEligibility(ticker.rule_type, {
-        side: relevantSide,
-        probs: outcomePrices.map(Number),
-        league: tank.league,
-        market: tank.market,
-        outcomes: Array.isArray(tank.outcome_labels) ? tank.outcome_labels.map(String) : null,
-    }, cfg);
+    // Non-finite prices are still checked by checkEligibility itself (its first guard),
+    // so a null context here maps to that same rejection rather than a new code.
+    const ctx = snapshotEligibilityContext(tank, relevantSide)
+        ?? { side: relevantSide, probs: outcomePrices.map(Number), league: tank.league, market: tank.market, outcomes: null };
+    const eligibility = checkEligibility(ticker.rule_type, ctx, cfg);
     if (!eligibility.ok) {
         return reject(422, 'ineligible', `${ticker.display_name} ${eligibility.reason}`, { snapshotProb: sideProb });
     }

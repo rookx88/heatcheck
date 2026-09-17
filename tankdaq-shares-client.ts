@@ -117,6 +117,32 @@ export async function getHoldingsWithStatus(): Promise<HoldingsProbe> {
     return { status: 'ok', holdings: data as HoldingsResponse };
 }
 
+// GET /api/tankdaq/overlay - the user's settled picks that fit one index's style, over
+// the window the detail page is showing. Same 401/403 probe semantics as holdings.
+export interface OverlayResponse {
+    note: string;
+    key: string;
+    since: string;
+    matched: number;         // settled picks in the window that fit this index's rule
+    won: number;
+    lost: number;
+    points: number | null;   // the matched picks scored as one slate, in index points
+}
+
+export type OverlayProbe =
+    | { status: 'out' }
+    | { status: 'unonboarded' }
+    | { status: 'ok'; overlay: OverlayResponse };
+
+export async function getOverlayWithStatus(tickerKey: string, sinceIso: string): Promise<OverlayProbe> {
+    const res = await fetch(`/api/tankdaq/overlay?key=${encodeURIComponent(tickerKey)}&since=${encodeURIComponent(sinceIso)}`);
+    if (res.status === 401) return { status: 'out' };
+    if (res.status === 403) return { status: 'unonboarded' };
+    const data = await parseJsonSafe(res);
+    if (!res.ok) throw new Error(data.message || `GET /api/tankdaq/overlay failed: ${res.status}`);
+    return { status: 'ok', overlay: data as OverlayResponse };
+}
+
 // 401 = logged out, 403 = not onboarded - both "not in a state to see this" rather
 // than errors; returned as null so callers render the logged-out prompt.
 export async function getHoldings(): Promise<HoldingsResponse | null> {

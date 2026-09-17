@@ -82,6 +82,22 @@ export function chooseWindow(
     return pickWindow(tickers, WINDOWS.map((w) => tickers.map((t) => sumSince(series[t.key], now - w.ms))));
 }
 
+// The "What moved it" ranking for an index's detail page: of the settled games whose
+// daily close landed inside the window, the ones that carried the most points, largest
+// |share| first (a big upset and a big favorite loss rank together - it is about how far
+// the index moved, not which way). Ties break newer first. Pure, so the client re-ranks
+// on a window switch without a refetch: the server ships the widest window once.
+export function topMoversSince<T extends { delta: number; closedAt: string }>(items: T[], cutoffMs: number, limit: number): T[] {
+    return items
+        .filter((m) => new Date(m.closedAt).getTime() >= cutoffMs)
+        .sort((a, b) => {
+            const mag = Math.abs(b.delta) - Math.abs(a.delta);
+            if (mag !== 0) return mag;
+            return new Date(b.closedAt).getTime() - new Date(a.closedAt).getTime();
+        })
+        .slice(0, limit);
+}
+
 // Same rule over pre-summed windows. A ticker missing from `sums` has moved 0 in every
 // window (no events at all), exactly as sumSince reads an undefined series.
 export function chooseWindowFromSums(
