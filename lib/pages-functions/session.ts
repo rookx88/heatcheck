@@ -1,8 +1,11 @@
 // Session issuance + validation for the magic-link auth flow. The hc_session cookie
 // holds a signed SessionTokenPayload pointing at a sessions row; the row - not the
 // token - is the source of truth for expiry and revocation (create_sessions_table.sql),
-// so logout and future "log out all devices" actually work immediately instead of
-// waiting out a 30-day token.
+// so logout and "log out of all other devices" (functions/api/account/sessions/
+// revoke-others.ts) actually work immediately instead of waiting out a 30-day token.
+// A soft-deleted account (waitlist.deleted_at, functions/api/account/delete.ts) fails
+// validation here too, whatever its sessions say - delete.ts revokes them anyway, but
+// this is the wall that holds regardless.
 //
 // Sliding expiry: any authenticated request pushes expires_at back out to 30 days,
 // throttled to at most once an hour per session so chatty pages don't turn every GET
@@ -207,6 +210,7 @@ export async function getSession(request: RequestLike, env: Env): Promise<Sessio
               AND s.user_id = ${payload.userId}
               AND s.revoked_at IS NULL
               AND s.expires_at > NOW()
+              AND w.deleted_at IS NULL
         ), refreshed AS (
             UPDATE sessions SET expires_at = NOW() + INTERVAL '30 days'
             WHERE session_id IN (SELECT session_id FROM s)

@@ -25,6 +25,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { getSession } from '../../lib/pages-functions/session';
+import { standingStatement, readStanding } from '../../lib/pages-functions/standing';
 
 const PAGE_SIZE = 10;
 const MAX_RANKED = 100;
@@ -131,21 +132,18 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     let me: RankedRow | null = null;
     if (session && session.username) {
-        const meRows = await sql`
-            SELECT b.lifetime_earned AS earned,
-                   (1 + (SELECT COUNT(*) FROM ember_balances b2
-                         JOIN waitlist w2 ON w2.id = b2.user_id
-                         WHERE b2.lifetime_earned > b.lifetime_earned AND w2.username IS NOT NULL))::int AS rank,
-                   p.render_mode,
-                   p.render_config
-            FROM ember_balances b
-            LEFT JOIN pets p ON p.user_id = b.user_id AND p.is_captain
-            WHERE b.user_id = ${session.userId}
-            LIMIT 1
-        `;
-        const row = meRows[0] as (Omit<RankedDbRow, 'username'>) | undefined;
-        if (row && Number(row.earned) > 0) {
-            me = { rank: Number(row.rank), username: session.username, earned: Number(row.earned), pet: petOf(row) };
+        // The rank arithmetic lives in lib/pages-functions/standing.ts so the account
+        // page's strip shows the same number as this board; the pet recipe is the
+        // board's own concern, read alongside in the same batch.
+        const [standingRows, petRows] = await sql.transaction([
+            standingStatement(sql, session.userId),
+            sql`SELECT render_mode, render_config FROM pets WHERE user_id = ${session.userId} AND is_captain LIMIT 1`,
+        ]);
+        const standing = readStanding(standingRows);
+        if (standing.lifetime_earned > 0 && standing.rank !== null) {
+            const petRow = (petRows[0] as unknown as Pick<RankedDbRow, 'render_mode' | 'render_config'> | undefined)
+                ?? { render_mode: null, render_config: null };
+            me = { rank: standing.rank, username: session.username, earned: standing.lifetime_earned, pet: petOf(petRow) };
         }
     }
 

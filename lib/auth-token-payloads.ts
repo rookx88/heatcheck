@@ -39,7 +39,27 @@ export interface SessionTokenPayload extends Record<string, string | number | bo
 // when the flow started, not whatever session state happens to exist when Discord
 // redirects back - see callback.ts for the two branches this drives. '' is falsy, so
 // `if (payload.userId)` there already does the right thing with no extra handling.
+//
+// nonce binds the token to the BROWSER that started the flow: link.ts also sets it
+// in a short-lived HttpOnly cookie, and callback.ts requires the two to match before
+// exchanging the code. Without it (launch audit, 2026-09-07) a captured callback URL
+// worked in any browser - an attacker could complete Discord consent with their own
+// account and hand the URL to a victim, whose browser then got signed into the
+// attacker's Heatchecks account.
 export interface DiscordLinkTokenPayload extends Record<string, string | number | boolean> {
     userId: string; // waitlist.id, or '' for no session
     purpose: 'discord_link';
+    nonce: string;
+}
+
+// One-click email unsubscribe (lib/pages-functions/unsubscribe-links.ts mints,
+// functions/api/email/unsubscribe.ts consumes). Authorizes exactly one preference flip
+// for one account - `kind` names which switch - and nothing else: the purpose wall
+// above is what stops it ever acting as a login or a session, even though it shares
+// SESSION_TOKEN_SECRET. Long TTL (180 days) because emails sit in inboxes; the endpoint
+// treats an expired link as "invalid" and points the reader at the account page.
+export interface EmailUnsubscribeTokenPayload extends Record<string, string | number | boolean> {
+    userId: string; // waitlist.id
+    purpose: 'email_unsubscribe';
+    kind: 'settlement' | 'newsletter';
 }

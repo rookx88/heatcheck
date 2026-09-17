@@ -14,6 +14,13 @@
 // still matters for its own sake - unsubscribe-list management - it's just not the send
 // mechanism itself.
 //
+// Unsubscribe: because this is the /emails endpoint, Resend's {{{RESEND_UNSUBSCRIBE_URL}}}
+// merge tag is NOT substituted (Broadcasts-only) - it shipped as a literal broken href
+// for a while. Each email now carries its own signed one-click link
+// (lib/pages-functions/unsubscribe-links.ts -> GET /api/email/unsubscribe), plus the
+// RFC 8058 List-Unsubscribe headers, which is why SESSION_TOKEN_SECRET is required here
+// alongside NEWSLETTER_TOKEN_SECRET: the Pages deployment verifies the link with it.
+//
 // Run: npx tsx scripts/send-newsletter-issue.ts --week=2026-W34
 // Dry run (renders the real approved content to a local file, sends nothing, writes
 // nothing): npx tsx scripts/send-newsletter-issue.ts --week=2026-W34 --dry-run
@@ -28,6 +35,7 @@ import { render } from '@react-email/render';
 import NewsletterIssueEmail, { type NewsletterIssue } from '../emails/NewsletterIssue';
 import { signToken } from '../lib/pages-functions/tokens';
 import type { NewsletterPickTokenPayload } from '../lib/newsletter-pick-token';
+import { buildManagePrefsUrl, buildUnsubscribeUrl, listUnsubscribeHeaders } from '../lib/pages-functions/unsubscribe-links';
 
 const BASE_URL = process.env.BASE_URL || 'https://heatchecks.io';
 const TOKEN_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days - generous; "once per issue" is DB-enforced, not expiry-enforced
@@ -52,11 +60,11 @@ interface SubscriberRow {
     email: string;
 }
 
-async function sendOne(apiKey: string, to: string, subject: string, html: string): Promise<void> {
+async function sendOne(apiKey: string, to: string, subject: string, html: string, headers: Record<string, string>): Promise<void> {
     const res = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: 'Heatchecks <hello@heatchecks.io>', to, subject, html }),
+        body: JSON.stringify({ from: 'Heatchecks <hello@heatchecks.io>', to, subject, html, headers }),
     });
     if (!res.ok) {
         throw new Error(`Resend API error: ${res.status} ${await res.text()}`);
@@ -74,10 +82,12 @@ async function main() {
 
     const apiKey = process.env.RESEND_API_KEY;
     const tokenSecret = process.env.NEWSLETTER_TOKEN_SECRET;
-    if (!apiKey || !tokenSecret) {
-        console.error('RESEND_API_KEY and NEWSLETTER_TOKEN_SECRET must both be set.');
+    const sessionSecret = process.env.SESSION_TOKEN_SECRET;
+    if (!apiKey || !tokenSecret || !sessionSecret) {
+        console.error('RESEND_API_KEY, NEWSLETTER_TOKEN_SECRET and SESSION_TOKEN_SECRET must all be set (the last signs the unsubscribe links).');
         process.exit(1);
     }
+    const manageUrl = buildManagePrefsUrl(BASE_URL);
 
     const pool = new Pool({ connectionString: process.env.DATABASE_URL });
     try {
@@ -125,11 +135,15 @@ async function main() {
                 TOKEN_TTL_SECONDS
             );
             const pickUrl = `${BASE_URL}/newsletter-pick/?token=${encodeURIComponent(previewToken)}&issue=${encodeURIComponent(issue.id)}`;
+            // 'preview' is not a UUID, so /api/email/unsubscribe treats this link as
+            // invalid - a real-looking footer for QA that can never flip anyone's flag.
             const emailProps: NewsletterIssue = {
                 weekKey: issue.week_key,
                 exclusiveTank: { slug: issue.tank_slug, hook: tank.hook, pickUrl },
                 thisWeek: issue.this_week_recap!,
                 loreSpotlight: { title: issue.lore_title!, body: issue.lore_body! },
+                unsubscribeUrl: await buildUnsubscribeUrl(BASE_URL, sessionSecret, 'preview', 'newsletter'),
+                manageUrl,
             };
             const html = await render(NewsletterIssueEmail(emailProps));
 
@@ -143,8 +157,10 @@ async function main() {
             return;
         }
 
+        // deleted_at is belt-and-braces: functions/api/account/delete.ts already flips
+        // newsletter_opt_in off, but a scrubbed address must never be a recipient.
         const subscriberRows = await pool.query(
-            `SELECT id, email FROM waitlist WHERE newsletter_opt_in = true AND email_verified = true`
+            `SELECT id, email FROM waitlist WHERE newsletter_opt_in = true AND email_verified = true AND deleted_at IS NULL`
         );
         const subscribers = subscriberRows.rows as SubscriberRow[];
         console.log(`Sending issue ${weekKey} to ${subscribers.length} subscriber(s)...`);
@@ -160,16 +176,19 @@ async function main() {
                     TOKEN_TTL_SECONDS
                 );
                 const pickUrl = `${BASE_URL}/newsletter-pick/?token=${encodeURIComponent(token)}&issue=${encodeURIComponent(issue.id)}`;
+                const unsubscribeUrl = await buildUnsubscribeUrl(BASE_URL, sessionSecret, subscriber.id, 'newsletter');
 
                 const emailProps: NewsletterIssue = {
                     weekKey: issue.week_key,
                     exclusiveTank: { slug: issue.tank_slug, hook: tank.hook, pickUrl },
                     thisWeek: issue.this_week_recap!,
                     loreSpotlight: { title: issue.lore_title!, body: issue.lore_body! },
+                    unsubscribeUrl,
+                    manageUrl,
                 };
                 const html = await render(NewsletterIssueEmail(emailProps));
 
-                await sendOne(apiKey, subscriber.email, subject, html);
+                await sendOne(apiKey, subscriber.email, subject, html, listUnsubscribeHeaders(unsubscribeUrl));
                 succeeded++;
             } catch (err: any) {
                 failed++;
@@ -197,7 +216,7 @@ async function main() {
                     'This week''s exclusive Tank is live — check your email for your one-tap pick.',
                     'newsletter', $1, 'newsletter:' || $1 || ':' || w.id
              FROM waitlist w
-             WHERE w.newsletter_opt_in = true AND w.onboarded_at IS NOT NULL
+             WHERE w.newsletter_opt_in = true AND w.onboarded_at IS NOT NULL AND w.deleted_at IS NULL
              ON CONFLICT (idempotency_key) DO NOTHING`,
             [weekKey]
         );

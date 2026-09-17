@@ -1,54 +1,61 @@
 // Standalone bundle (built via scripts/build-account.ts, not the main Vite app)
-// mounted on the static /account/ page - the only place a logged-in user can see and
-// manage their account, currently just the Discord link. Same standalone-bundle
-// pattern as welcome-client.tsx: static HTML shell, all personalization fetched
-// client-side from GET /api/session.
+// mounted on the static /account/ page - where a logged-in user sees and manages
+// their account: a standing strip over four tabs (Profile / Notifications /
+// Connections / Security). Same standalone-bundle pattern as welcome-client.tsx:
+// static HTML shell, all personalization fetched client-side - here from ONE request,
+// GET /api/account (functions/api/account.ts), which batches identity, preferences,
+// session count, Discord and standing.
+//
+// Tabs mirror my-portfolio-client.tsx: the active tab lives in ?tab= (absent for the
+// default) and is kept honest with replaceState, so a refresh or a shared
+// /account/?tab=notifications link - the one every email footer carries - lands on
+// the right panel.
 
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ContentChrome } from './components/ContentChrome';
+import { StandingStrip } from './components/account/StandingStrip';
+import { ProfileTab } from './components/account/ProfileTab';
+import { NotificationsTab } from './components/account/NotificationsTab';
+import { ConnectionsTab, readDiscordFlag } from './components/account/ConnectionsTab';
+import { SecurityTab } from './components/account/SecurityTab';
+import { TAB_IDS, type AccountData, type PrefKey, type TabId } from './components/account/types';
 
-interface SessionData {
-    email: string;
-    username: string | null;
-    discordLinked: boolean;
-    discordUsername: string | null;
-}
+const TAB_LABELS: Record<TabId, string> = {
+    profile: 'Profile',
+    notifications: 'Notifications',
+    connections: 'Connections',
+    security: 'Security',
+};
 
-// Query flag set by GET /api/discord/callback's redirect (?discord=linked|error|taken)
-// - a one-time banner, not part of ongoing page state.
-function readDiscordFlag(): 'linked' | 'error' | 'taken' | null {
-    const value = new URLSearchParams(window.location.search).get('discord');
-    return value === 'linked' || value === 'error' || value === 'taken' ? value : null;
-}
-
-function DiscordFlagBanner({ flag }: { flag: 'linked' | 'error' | 'taken' | null }) {
-    if (!flag) return null;
-    const text = flag === 'linked'
-        ? 'Discord connected.'
-        : flag === 'taken'
-        ? 'That Discord account is already linked to a different Heatchecks account.'
-        : 'Could not connect Discord - try again.';
-    return <p className={`hc-account-flag hc-account-flag--${flag === 'linked' ? 'ok' : 'error'}`}>{text}</p>;
+function readTab(): TabId {
+    const raw = new URLSearchParams(window.location.search).get('tab');
+    return (TAB_IDS as readonly string[]).includes(raw ?? '') ? (raw as TabId) : 'profile';
 }
 
 function AccountPage() {
     const [phase, setPhase] = useState<'loading' | 'ready'>('loading');
-    const [session, setSession] = useState<SessionData | null>(null);
-    const [unlinking, setUnlinking] = useState(false);
+    const [data, setData] = useState<AccountData | null>(null);
+    const [tab, setTab] = useState<TabId>(readTab);
+    // A Discord OAuth return lands on /account/?discord=... - open Connections so the
+    // banner is on screen, whatever tab the URL otherwise says.
     const [flag] = useState(readDiscordFlag);
+
+    useEffect(() => {
+        if (flag) setTab('connections');
+    }, [flag]);
 
     useEffect(() => {
         (async () => {
             try {
-                const res = await fetch('/api/session');
+                const res = await fetch('/api/account');
                 if (res.status === 401) {
                     window.location.replace('/login/');
                     return;
                 }
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(data.message || 'Failed to load account.');
-                setSession(data as SessionData);
+                const body = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(body.message || 'Failed to load account.');
+                setData(body as AccountData);
                 setPhase('ready');
             } catch {
                 setPhase('ready');
@@ -56,50 +63,94 @@ function AccountPage() {
         })();
     }, []);
 
-    const handleUnlink = async () => {
-        if (unlinking || !session) return;
-        setUnlinking(true);
-        try {
-            const res = await fetch('/api/discord/unlink', { method: 'POST' });
-            if (res.ok) {
-                setSession({ ...session, discordLinked: false, discordUsername: null });
-            }
-        } finally {
-            setUnlinking(false);
-        }
+    // Keep the URL honest so a refresh or a shared link lands on the same tab.
+    const select = (t: TabId) => {
+        setTab(t);
+        const url = new URL(window.location.href);
+        if (t === 'profile') url.searchParams.delete('tab'); else url.searchParams.set('tab', t);
+        url.searchParams.delete('discord');
+        window.history.replaceState(null, '', url);
     };
 
+    // Optimistic: flip locally, POST, revert on a non-2xx and hand the message back to
+    // the switch. The server echoes the full prefs row, which wins over the local guess.
+    const updatePref = useCallback(async (key: PrefKey, value: boolean): Promise<string | null> => {
+        let previous: boolean | undefined;
+        setData((d) => {
+            if (!d) return d;
+            previous = d.prefs[key];
+            return { ...d, prefs: { ...d.prefs, [key]: value } };
+        });
+        try {
+            const res = await fetch('/api/account/prefs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ [key]: value }),
+            });
+            const body = await res.json().catch(() => ({}));
+            if (res.status === 401) {
+                window.location.replace('/login/');
+                return 'Login required.';
+            }
+            if (!res.ok) throw new Error(body.message || 'Could not save that.');
+            if (body.prefs) setData((d) => (d ? { ...d, prefs: body.prefs } : d));
+            return null;
+        } catch (err) {
+            setData((d) => (d && previous !== undefined ? { ...d, prefs: { ...d.prefs, [key]: previous } } : d));
+            return err instanceof Error ? err.message : 'Could not save that.';
+        }
+    }, []);
+
     if (phase === 'loading') {
-        return <p className="hc-account-loading">Loading your account…</p>;
+        return <p className="hc-acct-loading">Loading your account…</p>;
     }
-    if (!session) {
-        return <p className="hc-account-loading">Could not load your account. Try refreshing.</p>;
+    if (!data) {
+        return <p className="hc-acct-loading">Could not load your account. Try refreshing.</p>;
     }
 
     return (
-        <div className="hc-account-card">
-            <h1>Account</h1>
-            <DiscordFlagBanner flag={flag} />
-            <dl className="hc-account-facts">
-                <dt>Name</dt>
-                <dd>{session.username ?? '—'}</dd>
-                <dt>Email</dt>
-                <dd>{session.email}</dd>
-            </dl>
-            <div className="hc-account-discord">
-                <h2>Discord</h2>
-                {session.discordLinked ? (
-                    <>
-                        <p>Connected as <strong>{session.discordUsername}</strong>. Picks made from Discord count toward your daily picks.</p>
-                        <button type="button" className="hc-account-button hc-account-button--secondary" onClick={handleUnlink} disabled={unlinking}>
-                            {unlinking ? 'Disconnecting…' : 'Disconnect'}
-                        </button>
-                    </>
-                ) : (
-                    <>
-                        <p>Connect Discord to make picks directly from the server - they count the same as picks made here.</p>
-                        <a className="hc-account-button" href="/api/discord/link">Connect Discord</a>
-                    </>
+        <div className="hc-acct-frame">
+            <header className="hc-acct-head">
+                <div>
+                    <p className="hc-acct-eyebrow">Your account</p>
+                    <h1>{data.username ?? 'Account'}</h1>
+                </div>
+            </header>
+
+            <StandingStrip standing={data.standing} createdAt={data.createdAt} />
+
+            <div className="hc-acct-tabs" role="tablist" aria-label="Account sections">
+                {TAB_IDS.map((t) => (
+                    <button
+                        key={t}
+                        type="button"
+                        role="tab"
+                        id={`hc-acct-tab-${t}`}
+                        aria-selected={tab === t}
+                        aria-controls={`hc-acct-panel-${t}`}
+                        className={`hc-acct-tab${tab === t ? ' is-active' : ''}`}
+                        onClick={() => select(t)}
+                    >
+                        {TAB_LABELS[t]}
+                    </button>
+                ))}
+            </div>
+
+            <div id={`hc-acct-panel-${tab}`} role="tabpanel" aria-labelledby={`hc-acct-tab-${tab}`}>
+                {tab === 'profile' && <ProfileTab data={data} />}
+                {tab === 'notifications' && <NotificationsTab prefs={data.prefs} onUpdate={updatePref} />}
+                {tab === 'connections' && (
+                    <ConnectionsTab
+                        discord={data.discord}
+                        flag={flag}
+                        onUnlinked={() => setData((d) => (d ? { ...d, discord: { linked: false, username: null } } : d))}
+                    />
+                )}
+                {tab === 'security' && (
+                    <SecurityTab
+                        data={data}
+                        onSessionsRevoked={(active) => setData((d) => (d ? { ...d, sessions: { active } } : d))}
+                    />
                 )}
             </div>
         </div>

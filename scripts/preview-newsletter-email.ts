@@ -17,6 +17,8 @@ const fakeIssue: NewsletterIssue = {
         hook: 'He said he\'d never play a Game 7 in this building again. Tonight he has to.',
         pickUrl: 'https://heatchecks.io/newsletter-pick?token=fake&issue=fake',
     },
+    unsubscribeUrl: 'https://heatchecks.io/api/email/unsubscribe?token=fake',
+    manageUrl: 'https://heatchecks.io/account/?tab=notifications',
     thisWeek: 'Three calls settled correct, two settled incorrect. The board flipped twice on a ' +
         'last-second cover. New props are live in the app all week.',
     loreSpotlight: {

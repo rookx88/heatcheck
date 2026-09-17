@@ -4,6 +4,7 @@
 // will actually deliver - see .env.example for setup notes.
 
 import type { Env } from './db';
+import { listUnsubscribeHeaders } from './unsubscribe-links';
 
 // Table layout + inline styles throughout (no <style> block, no flexbox/grid) since
 // Outlook desktop and a fair chunk of webmail clients strip anything else. Font stack
@@ -79,12 +80,21 @@ export async function sendVerificationEmail(env: Env, email: string, code: strin
 // from functions/api/settle.ts right after settleCall() lands, same fire-and-forget
 // pattern as the verification email in functions/api/picks.ts: a Resend failure here
 // never fails settlement itself, which has already committed by this point.
-function settlementEmailHtml(params: {
+export interface SettlementEmailParams {
     tankQuestion: string;
     result: 'correct' | 'incorrect';
     payoutAmount: number;
     newBalance: number;
-}): string {
+    // Footer links, built by the caller from the request origin
+    // (lib/pages-functions/unsubscribe-links.ts): the account page's Notifications tab,
+    // and a signed one-click unsubscribe for this email kind. Both are required - a
+    // recurring, unsolicited email with no way out is the CAN-SPAM problem this footer
+    // exists to close, so the type does not let a caller forget them.
+    manageUrl: string;
+    unsubscribeUrl: string;
+}
+
+function settlementEmailHtml(params: SettlementEmailParams): string {
     const fontStack = "'Arial Black', 'Impact', 'Franklin Gothic Bold', 'Helvetica Neue', Arial, sans-serif";
     const won = params.result === 'correct';
     const headline = won ? "You called it." : "Not this time.";
@@ -163,6 +173,14 @@ function settlementEmailHtml(params: {
               </a>
             </td>
           </tr>
+          <tr>
+            <td align="center" style="padding-top:16px;font-family:Arial,'Helvetica Neue',Helvetica,sans-serif;font-size:12px;line-height:1.6;color:rgba(255,255,255,0.45);">
+              You're getting this because a Tank call you made settled.<br />
+              <a href="${params.manageUrl}" style="color:#ff8c00;text-decoration:underline;">Manage email preferences</a>
+              &nbsp;&middot;&nbsp;
+              <a href="${params.unsubscribeUrl}" style="color:#ff8c00;text-decoration:underline;">Unsubscribe from settlement emails</a>
+            </td>
+          </tr>
         </table>
       </td>
     </tr>
@@ -170,11 +188,11 @@ function settlementEmailHtml(params: {
 </body>`;
 }
 
-export async function sendSettlementEmail(
-    env: Env,
-    email: string,
-    params: { tankQuestion: string; result: 'correct' | 'incorrect'; payoutAmount: number; newBalance: number }
-): Promise<void> {
+// Honors waitlist.email_settlement_results at the call site (functions/api/settle.ts
+// skips this entirely when it is off) - this function only ever builds and sends. The
+// List-Unsubscribe headers let Gmail/Apple/Yahoo show their native "Unsubscribe" next to
+// the sender, which posts to the same one-click endpoint the footer link GETs.
+export async function sendSettlementEmail(env: Env, email: string, params: SettlementEmailParams): Promise<void> {
     if (!env.RESEND_API_KEY) throw new Error('RESEND_API_KEY is not configured for this Pages Function.');
 
     const res = await fetch('https://api.resend.com/emails', {
@@ -188,6 +206,7 @@ export async function sendSettlementEmail(
             to: email,
             subject: params.result === 'correct' ? 'You called it - Ember earned' : 'Your Tank call settled',
             html: settlementEmailHtml(params),
+            headers: listUnsubscribeHeaders(params.unsubscribeUrl),
         }),
     });
 

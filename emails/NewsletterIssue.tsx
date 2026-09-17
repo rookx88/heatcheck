@@ -48,6 +48,14 @@ export interface NewsletterIssue {
     exclusiveTank: { slug: string; hook: string; pickUrl: string };
     thisWeek: string;
     loreSpotlight: { title: string; body: string };
+    // Per-recipient footer links, built by the sender (lib/pages-functions/
+    // unsubscribe-links.ts): a signed one-click unsubscribe and the account page's
+    // Notifications tab. Real props rather than Resend's {{{RESEND_UNSUBSCRIBE_URL}}}
+    // merge tag, which only Broadcasts substitute - this template is sent through the
+    // plain /emails endpoint (see scripts/send-newsletter-issue.ts), where that tag
+    // rendered as a literal, broken href in every issue.
+    unsubscribeUrl: string;
+    manageUrl: string;
 }
 
 const DISPLAY_FONT = "'Arial Black', 'Franklin Gothic Heavy', Impact, 'Helvetica Neue', Arial, sans-serif";
@@ -195,7 +203,7 @@ const styles = {
     footer: { fontFamily: BODY_FONT, fontSize: '12px', color: '#8a8578', margin: '4px 0', textAlign: 'center' as const },
 };
 
-export default function NewsletterIssueEmail({ weekKey, exclusiveTank, thisWeek, loreSpotlight }: NewsletterIssue) {
+export default function NewsletterIssueEmail({ weekKey, exclusiveTank, thisWeek, loreSpotlight, unsubscribeUrl, manageUrl }: NewsletterIssue) {
     return (
         <Html>
             <Head />
@@ -241,7 +249,9 @@ export default function NewsletterIssueEmail({ weekKey, exclusiveTank, thisWeek,
 
                     <Text style={styles.footer}>Heatchecks — the story is the product.</Text>
                     <Text style={styles.footer}>
-                        <Link href="{{{RESEND_UNSUBSCRIBE_URL}}}" style={{ color: '#8a8578' }}>Unsubscribe</Link>
+                        <Link href={unsubscribeUrl} style={{ color: '#8a8578' }}>Unsubscribe</Link>
+                        {' · '}
+                        <Link href={manageUrl} style={{ color: '#8a8578' }}>Email preferences</Link>
                     </Text>
                 </Container>
             </Body>

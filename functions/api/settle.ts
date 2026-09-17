@@ -19,6 +19,8 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { settleCall, type CallResult } from '../../lib/pages-functions/ledger';
 import { sendSettlementEmail } from '../../lib/pages-functions/email';
+import { buildManagePrefsUrl, buildUnsubscribeUrl } from '../../lib/pages-functions/unsubscribe-links';
+import { resolveLoginOrigin } from '../../lib/pages-functions/session';
 import { logEvent } from '../../lib/pages-functions/events';
 import {
     fetchMarket,
@@ -50,11 +52,20 @@ interface UnresolvedPick {
     snapshot_outcomes: unknown;
     implied_prob_at_lock: number;
     email: string;
+    // The account page's "Settlement results" email switch (add_account_prefs_to_
+    // waitlist.sql). A soft-deleted account has it false, so its still-pending picks
+    // settle (Ember lands on the anonymized row) without emailing a scrubbed address.
+    email_settlement_results: boolean;
     call_question: string | null;
     side: string | null;
     away: string | null;
     home: string | null;
 }
+
+// Per-pick outcome of the settlement email, on the result entry: the acceptance
+// harness runs with Resend blanked, so 'skipped' vs 'failed' is how it can tell the
+// preference gate fired from the email merely not sending.
+type EmailOutcome = 'sent' | 'failed' | 'skipped';
 
 interface PendingTickerTag {
     id: string;
@@ -109,7 +120,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                t.game_snapshot->'prop'->'odds'->'outcomes' AS snapshot_outcomes,
                t.game_snapshot->'game'->>'away' AS away,
                t.game_snapshot->'game'->>'home' AS home,
-               w.email, t.model_output->'call'->>'question' AS call_question
+               w.email, w.email_settlement_results, t.model_output->'call'->>'question' AS call_question
         FROM picks p
         JOIN tank_pages t ON t.id = p.tank_page_id
         JOIN waitlist w ON w.id = p.waitlist_id
@@ -117,7 +128,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     `;
     const unresolved = rows as unknown as UnresolvedPick[];
 
-    const results: Array<{ pickId: string; status: string; payoutAmount?: number }> = [];
+    const results: Array<{ pickId: string; status: string; payoutAmount?: number; email?: EmailOutcome }> = [];
+
+    // Footer links for every settlement email this run sends: the request origin is the
+    // Pages deployment the cron hit (preview or prod), hardened the same way the login
+    // link is, so an unsubscribe link always points back at the site that sent it.
+    const emailOrigin = resolveLoginOrigin(context.request.url, context.env);
+    const manageUrl = buildManagePrefsUrl(emailOrigin);
 
     // Sequential, not Promise.all: current pick volume is small (up to DAILY_PICK_CAP
     // picks per account per day - functions/api/picks.ts), and Polymarket's Gamma API
@@ -156,23 +173,35 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 pickLabel: pick.side ?? undefined,
                 matchup: pick.away && pick.home ? `${pick.away} vs ${pick.home}` : pick.call_question ?? undefined,
             });
-            results.push({ pickId: pick.id, status: `settled_${result}`, payoutAmount });
+            const entry: { pickId: string; status: string; payoutAmount?: number; email?: EmailOutcome } =
+                { pickId: pick.id, status: `settled_${result}`, payoutAmount };
+            results.push(entry);
 
             // Both fire-and-forget - settlement itself already committed above, so
             // neither a Resend failure nor an analytics-insert failure should surface
             // as this pick having failed to settle. Same pattern as the verification
-            // email in functions/api/picks.ts.
-            try {
-                const balanceRows = await sql`SELECT balance FROM ember_balances WHERE user_id = ${pick.waitlist_id} LIMIT 1`;
-                const newBalance = balanceRows.length ? (balanceRows[0].balance as number) : payoutAmount;
-                await sendSettlementEmail(context.env, pick.email, {
-                    tankQuestion: pick.call_question || 'Your Tank call',
-                    result,
-                    payoutAmount,
-                    newBalance,
-                });
-            } catch (emailErr) {
-                console.error(`[POST /api/settle] Settlement email failed for pick ${pick.id}:`, emailErr);
+            // email in functions/api/picks.ts. The preference gate comes first: an
+            // account that switched settlement emails off never reaches Resend at all.
+            if (!pick.email_settlement_results) {
+                entry.email = 'skipped';
+            } else {
+                try {
+                    const balanceRows = await sql`SELECT balance FROM ember_balances WHERE user_id = ${pick.waitlist_id} LIMIT 1`;
+                    const newBalance = balanceRows.length ? (balanceRows[0].balance as number) : payoutAmount;
+                    const unsubscribeUrl = await buildUnsubscribeUrl(emailOrigin, context.env.SESSION_TOKEN_SECRET, pick.waitlist_id, 'settlement');
+                    await sendSettlementEmail(context.env, pick.email, {
+                        tankQuestion: pick.call_question || 'Your Tank call',
+                        result,
+                        payoutAmount,
+                        newBalance,
+                        manageUrl,
+                        unsubscribeUrl,
+                    });
+                    entry.email = 'sent';
+                } catch (emailErr) {
+                    entry.email = 'failed';
+                    console.error(`[POST /api/settle] Settlement email failed for pick ${pick.id}:`, emailErr);
+                }
             }
             try {
                 // No real "visitor" for a cron-triggered settlement - a fresh random id

@@ -10,7 +10,7 @@ import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { pool, registerTeardown, api } from './harness';
 import { signAuthToken } from '../../lib/pages-functions/auth-tokens';
 import { LIFETIME_EARNED_RULE_KEYS } from '../../lib/pages-functions/ledger';
-import type { SessionTokenPayload, LoginTokenPayload } from '../../lib/auth-token-payloads';
+import type { SessionTokenPayload, LoginTokenPayload, EmailUnsubscribeTokenPayload } from '../../lib/auth-token-payloads';
 import { KALSHI_SERIES_MAP } from '../../kalshi';
 import { resolvePositionTeams } from '../../lib/pages-functions/team-identity';
 
@@ -82,6 +82,17 @@ export async function mintLoginToken(userId: string, opts?: { ttlSeconds?: numbe
         SESSION_TOKEN_SECRET,
         opts?.ttlSeconds ?? 15 * 60,
     );
+}
+
+// Mirrors lib/pages-functions/unsubscribe-links.ts's mint exactly (purpose
+// 'email_unsubscribe', SESSION_TOKEN_SECRET); ttlSeconds overrides the 180-day default
+// for the expired-link case.
+export async function mintUnsubscribeToken(
+    userId: string,
+    kind: EmailUnsubscribeTokenPayload['kind'],
+    ttlSeconds = 180 * 24 * 3600,
+): Promise<string> {
+    return signAuthToken<EmailUnsubscribeTokenPayload>({ userId, purpose: 'email_unsubscribe', kind }, SESSION_TOKEN_SECRET, ttlSeconds);
 }
 
 // Hand-inserts a known 6-digit code so functions/api/verify-email.ts's brute-force
@@ -418,7 +429,16 @@ export async function insertTank(f: TankFixture): Promise<string> {
 
 export async function cleanupUsersByEmailPrefix(prefix: string): Promise<void> {
     const { rows: users } = await pool.query(`SELECT id FROM waitlist WHERE email LIKE $1`, [`${prefix}%@example.com`]);
-    for (const u of users) {
+    await cleanupUsersByIds(users.map((u) => u.id as string));
+}
+
+// The same FK-ordered sweep by id, for rows the email sweep can't see: a soft-deleted
+// fixture (functions/api/account/delete.ts) has its email rewritten to
+// deleted+<id>@deleted.heatchecks.invalid, so suites/account.ts must clean those up by
+// the ids it remembered or every later run trips the unique username/pet-name indexes.
+export async function cleanupUsersByIds(ids: string[]): Promise<void> {
+    for (const id of ids) {
+        const u = { id };
         // NPC encounters: quests FK encounters (ON DELETE CASCADE, but explicit keeps
         // the order legible); both cascade from waitlist too.
         await pool.query(`DELETE FROM quests WHERE user_id = $1`, [u.id]);

@@ -50,6 +50,7 @@ import { generateNewsletterPickPageHtml } from './templates/newsletter-pick-temp
 import { generateLoginPageHtml } from './templates/login-template';
 import { generateWelcomePageHtml } from './templates/welcome-template';
 import { generateAccountPageHtml } from './templates/account-template';
+import { generateUnsubscribedPageHtml } from './templates/unsubscribed-template';
 import { generateMyPortfolioPageHtml } from './templates/my-portfolio-template';
 import { generateTankPageHtml, TankPageEntry } from './templates/tank-template';
 import { generateTankLandPageHtml } from './templates/tank-land-template';
@@ -1168,12 +1169,18 @@ async function generateAllPages(): Promise<void> {
         writeHtmlFile('welcome/index.html', generateWelcomePageHtml(baseUrl));
         console.log('✓ Built welcome bundle and page\n');
 
-        // Account page: the only place a logged-in user manages account-level settings
-        // (currently just the Discord link). Same standalone-bundle pattern as login/welcome.
+        // Account page: where a logged-in user manages account-level settings (profile,
+        // notification switches, Discord, sessions, deletion). Same standalone-bundle
+        // pattern as login/welcome; all data comes from GET /api/account client-side.
         console.log('Building account bundle...');
         await buildAccount();
         writeHtmlFile('account/index.html', generateAccountPageHtml(baseUrl));
         console.log('✓ Built account bundle and page\n');
+
+        // One-click unsubscribe landing (GET /api/email/unsubscribe 302s here). Static,
+        // login-free, no bundle - a few inline lines pick the copy from ?kind=.
+        writeHtmlFile('unsubscribed/index.html', generateUnsubscribedPageHtml(baseUrl));
+        console.log('✓ Built unsubscribed page\n');
 
         // My Portfolio page (formerly My Tanks; /my-tanks/ 301s here): a logged-in user's
         // Tank picks plus their TANKDAQ index holdings. Same standalone-bundle pattern as

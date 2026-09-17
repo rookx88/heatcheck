@@ -22,6 +22,11 @@ export const EVENT_TYPES = [
     'egg_purchased',
     'egg_hatched',
     'food_purchased',
+    // Account page (functions/api/account/*.ts, functions/api/email/unsubscribe.ts).
+    'newsletter_opt_out',
+    'email_unsubscribed',
+    'sessions_revoked_others',
+    'account_deleted',
 ] as const;
 
 export type EventType = (typeof EVENT_TYPES)[number];
