@@ -21,8 +21,10 @@
 // notification) land in this same response.
 //
 // NPC encounters (lib/pages-functions/encounters/) ride the same read: one extra
-// statement in the batch gathers the facts (lifetime Ember, counts, the user's
-// encounter/quest rows), evaluateEncounters() fires at most one new encounter, and the
+// statement in the batch gathers the facts (lifetime Ember, counts, memorabilia held, the
+// user's encounter and Play rows), evaluateEncounters() completes any Play that is done -
+// including handing over a delivery when this page is the character's home - and fires
+// at most one new encounter, and the
 // response carries `encounter` - the oldest one the player hasn't watched yet - for the
 // EncounterStage to play. An encounter writes NO notification (the scene shows what it
 // hands over, so an inbox echo of it was redundant); it still shares the re-read below
@@ -33,7 +35,8 @@ import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { getSession } from '../../lib/pages-functions/session';
 import { petPublic, type FeedingConfig } from '../../lib/pages-functions/pets';
 import { maybeDiscover, type DiscoveryPetRow } from '../../lib/pages-functions/discovery';
-import { encounterFactsStatement, evaluateEncounters, type EncounterFactsRow } from '../../lib/pages-functions/encounters/evaluate';
+import { buildFacts, encounterFactsStatement, evaluateEncounters, type EncounterFactsRow } from '../../lib/pages-functions/encounters/evaluate';
+import { forcedFind } from '../../lib/pages-functions/encounters/plays';
 
 interface NotificationRow {
     id: string;
@@ -98,7 +101,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const [petRows, cfgRows, balanceRows, notificationRows, factsRows] = await sql.transaction([
         sql`
             SELECT id, user_id, color, render_mode, render_config, name, is_captain,
-                   satisfaction_at_last_feed, last_fed_at, next_eligible_roll_at, places_since_find, feed_count
+                   satisfaction_at_last_feed, last_fed_at, next_eligible_roll_at, places_since_find, feed_count, find_count
             FROM pets WHERE user_id = ${session.userId} LIMIT 1
         `,
         sql`SELECT config FROM game_config WHERE key = 'feeding' AND active = true LIMIT 1`,
@@ -109,6 +112,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     if (cfgRows.length === 0) throw new Error('No active game_config row for key "feeding"');
     const feedingCfg = (cfgRows[0] as unknown as { config: FeedingConfig }).config;
     const pet = petRows.length ? (petRows[0] as unknown as DiscoveryPetRow & { feed_count: number }) : null;
+    const factsRow = factsRows.length ? (factsRows[0] as unknown as EncounterFactsRow) : null;
 
     let balanceValue = balanceRows.length ? (balanceRows[0] as unknown as { balance: number }).balance : 0;
     let notifications = mapNotifications(notificationRows as unknown as NotificationRow[]);
@@ -117,22 +121,42 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     // precondition lives in the module so every trigger surface inherits it. The raw
     // ?place= goes through untouched: normalization and the allowlist are the module's.
     const placePath = new URL(context.request.url).searchParams.get('place');
-    const outcome = await maybeDiscover(sql, { userId: session.userId, pet, feedingCfg, placePath });
+    const outcome = await maybeDiscover(sql, {
+        userId: session.userId,
+        pet,
+        feedingCfg,
+        placePath,
+        // The Plays find guarantee, evaluated only if a roll is actually due. Reads the
+        // batch facts already in hand, so it costs no query.
+        forcedFind: pet && factsRow
+            ? (everyNth) => {
+                  const facts = buildFacts(factsRow, Number(pet.feed_count ?? 0), placePath);
+                  return forcedFind(facts.plays, facts, Number(pet.find_count ?? 0), everyNth);
+              }
+            : undefined,
+    });
     // Every find kind, matched by prefix rather than listed: a new reward category
     // (memorabilia was one) must not be able to ship with the re-read silently
     // skipped, which would leave that drop invisible until the NEXT poll - rare
     // enough to pass a casual test and confusing when it happens.
     const found = outcome.kind.startsWith('found_');
+    // A memorabilia find changed what a delivery counts. Fold it into the facts so a
+    // player who finds the item while standing at the character's home hands it over now.
+    if (factsRow && outcome.kind === 'found_memorabilia') {
+        const held = { ...(factsRow.memorabilia ?? {}) };
+        held[outcome.catalogKey] = Number(held[outcome.catalogKey] ?? 0) + 1;
+        factsRow.memorabilia = held;
+    }
 
     // Encounters: petless no-ops before any query, same as discovery.
     const encounters = await evaluateEncounters(sql, {
         userId: session.userId,
         pet: pet ? { id: pet.id, feedCount: Number(pet.feed_count ?? 0) } : null,
         placePath,
-        facts: factsRows.length ? (factsRows[0] as unknown as EncounterFactsRow) : null,
+        facts: factsRow,
     });
 
-    if (found || encounters.fired) {
+    if (found || encounters.fired || encounters.delivered) {
         // Rare path: a find or an encounter just landed - re-read so this response
         // already carries the new balance and the notification instead of them
         // popping in a fetch later.

@@ -68,6 +68,7 @@ async function loadSuites(): Promise<Suite[]> {
         import('./acceptance/suites/prop-sync'),
         import('./acceptance/suites/index-overlay'),
         import('./acceptance/suites/encounters'),
+        import('./acceptance/suites/plays'),
         import('./acceptance/suites/team-records'),
         import('./acceptance/suites/lines'),
         import('./acceptance/suites/account'),

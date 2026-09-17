@@ -646,7 +646,9 @@ export async function discoveryFindEmber(
         WITH claimed AS (
             UPDATE pets
             SET next_eligible_roll_at = NOW() + (${input.cooldownMinutes}::float8 * INTERVAL '1 minute'),
-                places_since_find = '{}'
+                -- find_count: the Plays find guarantee counts every won window
+                -- (rename_quests_to_plays.sql; same increment as discovery.ts's claims).
+                places_since_find = '{}', find_count = find_count + 1
             WHERE id = ${input.petId} AND user_id = ${input.userId}
               AND next_eligible_roll_at IS NOT NULL AND next_eligible_roll_at <= NOW()
               AND cardinality(places_since_find) >= ${input.minPlaces}::int

@@ -14,6 +14,7 @@ import { PetWidget } from './PetWidget';
 import { EncounterStage } from './EncounterStage';
 import { MapHud } from './MapHud';
 import { NotificationsHost } from './NotificationsHost';
+import { PlaybookHost } from './PlaybookHost';
 import './LandScreen.css';
 
 export const LAND_VIEWBOX = { width: 810, height: 1439.999935 };
@@ -118,6 +119,8 @@ export const LandScreen: React.FC<LandScreenProps> = ({ backgroundSrc, pageAriaL
             menu only dispatches the open event - it can't host a fixed overlay from
             inside the frame). */}
         <NotificationsHost />
+        {/* My Playbook host: same placement, same reason. */}
+        <PlaybookHost />
         {children}
     </div>
 );

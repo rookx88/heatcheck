@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { logout } from '../tank-pick-client';
 import { getToolbarState, BALANCE_UPDATED_EVENT } from '../toolbar-state-client';
 import { dispatchInboxOpen } from '../notifications-client';
+import { dispatchPlaybookOpen } from '../plays-client';
 import { HEADER_MENU_ITEMS } from './headerMenuItems';
 import { LoginModal } from './RegisterModal';
 import './MapHud.css';
@@ -146,24 +147,30 @@ export const MapHud: React.FC = () => {
                                 </a>
                             );
                         }
-                        if (item.action === 'inbox') {
+                        if (item.action === 'inbox' || item.action === 'playbook') {
+                            const open = item.action === 'inbox' ? dispatchInboxOpen : dispatchPlaybookOpen;
                             return (
                                 <button
                                     key={item.label}
                                     type="button"
                                     className="map-hud__item"
                                     role="menuitem"
-                                    onClick={() => { setMenuOpen(false); dispatchInboxOpen(); }}
+                                    onClick={() => { setMenuOpen(false); open(); }}
                                 >
                                     {item.label}
                                 </button>
                             );
                         }
-                        return (
-                            <button key={item.label} type="button" className="map-hud__item" role="menuitem" onClick={doLogout} disabled={loggingOut}>
-                                {loggingOut ? 'Logging out…' : item.label}
-                            </button>
-                        );
+                        // Explicit, not a fallthrough: an unrecognised action must never
+                        // log the player out.
+                        if (item.action === 'logout') {
+                            return (
+                                <button key={item.label} type="button" className="map-hud__item" role="menuitem" onClick={doLogout} disabled={loggingOut}>
+                                    {loggingOut ? 'Logging out…' : item.label}
+                                </button>
+                            );
+                        }
+                        return null;
                     })}
                 </div>
             )}

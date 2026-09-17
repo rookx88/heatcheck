@@ -6,14 +6,15 @@
 //
 // Cost model: the facts arrive in the endpoint's existing batch (encounterFactsStatement
 // rides the same HTTP round trip as the pet SELECT), so the common case - nothing new
-// fireable, no open quest touched by this page - costs zero extra queries. Reading
+// fireable, no open Play touched by this page - costs zero extra queries. Reading
 // game_config['encounters'] is skipped whenever no unfired encounter needs a threshold.
 // At most ONE encounter fires per request, in registry order, so two characters never
 // arrive on the same page load.
 //
-// Pure functions (triggerSatisfied, questComplete, fireableEncounters) carry the rules
-// and are imported directly by the acceptance suite. Adding a trigger/objective kind is
-// one case here; adding an effect kind is one leg in fireEncounter's statement.
+// Pure functions (triggerSatisfied, fireableEncounters, and the Play rules in plays.ts)
+// carry the rules and are imported directly by the acceptance suite. Adding a
+// trigger/objective kind is one case here or in plays.ts; adding an effect kind is one
+// leg in fireEncounter's statement.
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { getGameConfig } from '../pets';
@@ -21,7 +22,12 @@ import { placeFromPath } from '../discovery';
 import { encounterGiftEmber } from '../ledger';
 import { itemIdempotencyKey } from '../item-ledger';
 import { CHARACTERS, ENCOUNTERS, ENCOUNTER_BY_KEY } from './index';
-import type { Encounter, EncounterGrants, EncounterView, Objective, Trigger } from './types';
+import { deliverPlay } from './deliver';
+import { placeMatches, playComplete, type PlayFacts, type PlayRow, type StoredObjective } from './plays';
+import type { Encounter, EncounterGrants, EncounterView, Trigger } from './types';
+
+export { placeMatches };
+export type { PlayRow };
 
 export interface EncounterRow {
     id: string;
@@ -30,63 +36,66 @@ export interface EncounterRow {
     grants: EncounterGrants;
 }
 
-export interface QuestRow {
-    id: string;
-    key: string;
-    objective: Objective;
-    baseline: { feeds: number; picks: number; lifetime_earned: number };
-    visited: string[];
-    completedAt: string | null;
-    rewardEncounterKey: string;
-}
-
 // The row encounterFactsStatement returns (json columns arrive parsed).
 export interface EncounterFactsRow {
     lifetime_earned: number;
     picks: number;
     collectibles: number;
     encounters: EncounterRow[];
-    quests: QuestRow[];
+    plays: PlayRow[];
+    // Memorabilia held, catalog key -> quantity (what a delivery Play counts).
+    memorabilia: Record<string, number>;
 }
 
 // Everything a trigger or objective can ask about, in one object.
-export interface Facts {
-    lifetimeEarned: number;
-    picks: number;
+export interface Facts extends PlayFacts {
     collectibles: number;
-    feeds: number;
-    place: string | null;
     encounters: EncounterRow[];
-    quests: QuestRow[];
+    plays: PlayRow[];
 }
 
 // One statement for the toolbar-state batch. Petless users get zero rows (the EXISTS
 // guard is an index probe), so evaluateEncounters no-ops for them without a query of
-// its own. Every subquery is index-backed: ember_balances PK, idx_picks_waitlist_created,
-// idx_inventory_user_id, idx_encounters_user_key, idx_quests_user_key.
+// its own. This runs on every page load for every pet owner: every subquery must stay
+// index-backed - ember_balances PK, idx_picks_waitlist_created, idx_inventory_user_id,
+// idx_encounters_user_key, idx_plays_user_key. Do not join anything unindexed here.
 export function encounterFactsStatement(sql: NeonQueryFunction<false, false>, userId: string) {
     return sql`
         SELECT
             COALESCE((SELECT lifetime_earned FROM ember_balances WHERE user_id = ${userId}), 0)::int AS lifetime_earned,
             (SELECT COUNT(*) FROM picks WHERE waitlist_id = ${userId})::int AS picks,
             (SELECT COUNT(*) FROM inventory_items WHERE user_id = ${userId} AND item_type = 'collectible')::int AS collectibles,
+            COALESCE((SELECT json_object_agg(m.catalog_key, m.quantity)
+                      FROM inventory_items m
+                      WHERE m.user_id = ${userId} AND m.item_type = 'memorabilia'), '{}'::json) AS memorabilia,
             COALESCE((SELECT json_agg(json_build_object('id', e.id, 'key', e.encounter_key, 'status', e.status, 'grants', e.grants)
                                       ORDER BY e.created_at)
                       FROM encounters e WHERE e.user_id = ${userId}), '[]'::json) AS encounters,
-            COALESCE((SELECT json_agg(json_build_object('id', q.id, 'key', q.quest_key, 'objective', q.objective,
-                                                        'baseline', q.baseline, 'visited', q.visited,
-                                                        'completedAt', q.completed_at,
-                                                        'rewardEncounterKey', q.reward_encounter_key)
-                                      ORDER BY q.started_at)
-                      FROM quests q WHERE q.user_id = ${userId}), '[]'::json) AS quests
+            COALESCE((SELECT json_agg(json_build_object('id', p.id, 'key', p.play_key, 'objective', p.objective,
+                                                        'baseline', p.baseline, 'visited', p.visited,
+                                                        'startedAt', p.started_at,
+                                                        'completedAt', p.completed_at,
+                                                        'rewardEncounterKey', p.reward_encounter_key)
+                                      ORDER BY p.started_at)
+                      FROM plays p WHERE p.user_id = ${userId}), '[]'::json) AS plays
         WHERE EXISTS (SELECT 1 FROM pets WHERE user_id = ${userId})
     `;
 }
 
-// 'tankdaq' matches 'tankdaq' and 'tankdaq:chalk'; 'article:x' only matches itself.
-export function placeMatches(actual: string | null, wanted: string): boolean {
-    if (!actual) return false;
-    return actual === wanted || actual.startsWith(`${wanted}:`);
+// The facts row plus what only the request knows (the pet's feed counter, the page).
+// Shared by evaluateEncounters, GET /api/plays and toolbar-state's forced-find callback,
+// so all three see a Play the same way.
+export function buildFacts(row: EncounterFactsRow, feedCount: number, placePath: string | null): Facts {
+    return {
+        lifetimeEarned: Number(row.lifetime_earned),
+        picks: Number(row.picks),
+        collectibles: Number(row.collectibles),
+        feeds: Number(feedCount),
+        place: placeFromPath(placePath)?.key ?? null,
+        holdings: { ...(row.memorabilia ?? {}) },
+        encounters: (row.encounters ?? []).map((e) => ({ ...e, grants: e.grants ?? {} })),
+        plays: (row.plays ?? []).map((p) => ({ ...p, visited: p.visited ?? [] })),
+    };
 }
 
 export function triggerSatisfied(t: Trigger, facts: Facts, cfg: Record<string, number>): boolean {
@@ -102,18 +111,7 @@ export function triggerSatisfied(t: Trigger, facts: Facts, cfg: Record<string, n
         case 'feeds_at_least': return facts.feeds >= t.count;
         case 'at_place': return placeMatches(facts.place, t.place);
         case 'after_encounter': return facts.encounters.some((e) => e.key === t.key && e.status === 'seen');
-        case 'quest_completed': return facts.quests.some((q) => q.key === t.key && q.completedAt !== null);
-    }
-}
-
-// Progress is current fact minus the baseline snapshotted when the quest started.
-export function questComplete(q: QuestRow, facts: Facts): boolean {
-    const o = q.objective;
-    switch (o.kind) {
-        case 'feeds': return facts.feeds - Number(q.baseline.feeds) >= o.count;
-        case 'picks': return facts.picks - Number(q.baseline.picks) >= o.count;
-        case 'earn_ember': return facts.lifetimeEarned - Number(q.baseline.lifetime_earned) >= o.amount;
-        case 'visit_places': return o.places.every((p) => q.visited.some((v) => placeMatches(v, p)));
+        case 'play_completed': return facts.plays.some((p) => p.key === t.key && p.completedAt !== null);
     }
 }
 
@@ -143,8 +141,9 @@ export function toEncounterView(row: EncounterRow): EncounterView | null {
 // Claim-and-grant in ONE statement. `ins` is the race guard (unique (user_id,
 // encounter_key)); every other leg selects FROM it, so a concurrent loser writes
 // nothing. Item legs are gated by the itemType param so one statement covers every
-// effect shape; the quest leg snapshots its baseline with subqueries so the numbers
-// are the DB's at insert time, not the request's. `grants` is BUILT in the INSERT from
+// effect shape; the play leg snapshots its baseline with subqueries so the numbers
+// are the DB's at insert time, not the request's, and freezes the objective (with the
+// title, the character's home, and each delivery item's name and art from the catalog). `grants` is BUILT in the INSERT from
 // items_catalog and read back via RETURNING (a CTE cannot UPDATE a row a sibling CTE
 // inserted): the catalog is the single resolver for the item's display name and art
 // path, so the stored jsonb and the in-memory row cannot drift, and the reveal on
@@ -156,15 +155,23 @@ async function fireEncounter(
 ): Promise<EncounterRow | null> {
     const { userId, petId, encounter } = input;
     const item = encounter.effects.find((e) => e.kind === 'grant_item');
-    const quest = encounter.effects.find((e) => e.kind === 'start_quest');
+    const start = encounter.effects.find((e) => e.kind === 'start_play');
     const gift = encounter.effects.find((e) => e.kind === 'grant_ember');
 
     const itemType = item?.kind === 'grant_item' ? item.itemType : 'none';
     const catalogKey = item?.kind === 'grant_item' ? item.catalogKey : '';
-    const hasQuest = quest?.kind === 'start_quest';
-    const questKey = hasQuest ? quest.quest.key : '';
-    const objective = hasQuest ? JSON.stringify(quest.quest.objective) : '{}';
-    const rewardKey = hasQuest ? quest.quest.rewardEncounter : '';
+    const play = start?.kind === 'start_play' ? start.play : null;
+    const hasPlay = play !== null;
+    const playKey = play ? play.key : '';
+    const stored: StoredObjective | null = play
+        ? {
+              ...play.objective,
+              title: play.title,
+              ...(play.objective.kind === 'deliver_items' ? { home: CHARACTERS[encounter.character]?.home ?? null } : {}),
+          }
+        : null;
+    const objective = stored ? JSON.stringify(stored) : '{}';
+    const rewardKey = play ? play.rewardEncounter : '';
     const rows = await sql`
         WITH ins AS (
             INSERT INTO encounters (user_id, encounter_key, character_key, status, grants)
@@ -190,16 +197,26 @@ async function fireEncounter(
                              '{}'::jsonb))
             ON CONFLICT (user_id, encounter_key) DO NOTHING
             RETURNING id, grants
-        ), quest AS (
-            INSERT INTO quests (user_id, quest_key, encounter_id, objective, baseline, reward_encounter_key)
-            SELECT ${userId}, ${questKey}::text, ins.id, ${objective}::jsonb,
+        ), play AS (
+            -- A delivery's items are enriched here, in the order authored, with the
+            -- catalog's name and memorabilia image path. Anything else is stored as is.
+            INSERT INTO plays (user_id, play_key, encounter_id, objective, baseline, reward_encounter_key)
+            SELECT ${userId}, ${playKey}::text, ins.id,
+                   CASE WHEN ${objective}::jsonb->>'kind' = 'deliver_items' THEN
+                       ${objective}::jsonb || jsonb_build_object('items', COALESCE((
+                           SELECT jsonb_agg(w.item || jsonb_build_object('name', c.name, 'art', c.config->>'image')
+                                            ORDER BY w.ord)
+                           FROM jsonb_array_elements(${objective}::jsonb->'items') WITH ORDINALITY AS w(item, ord)
+                           LEFT JOIN items_catalog c ON c.key = w.item->>'catalogKey'), '[]'::jsonb))
+                   ELSE ${objective}::jsonb END,
                    jsonb_build_object(
                        'feeds', COALESCE((SELECT feed_count FROM pets WHERE id = ${petId}), 0),
+                       'finds', COALESCE((SELECT find_count FROM pets WHERE id = ${petId}), 0),
                        'picks', (SELECT COUNT(*) FROM picks WHERE waitlist_id = ${userId}),
                        'lifetime_earned', COALESCE((SELECT lifetime_earned FROM ember_balances WHERE user_id = ${userId}), 0)),
                    ${rewardKey}::text
-            FROM ins WHERE ${hasQuest}::boolean
-            ON CONFLICT (user_id, quest_key) DO NOTHING
+            FROM ins WHERE ${hasPlay}::boolean
+            ON CONFLICT (user_id, play_key) DO NOTHING
         ), egg AS (
             INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
             SELECT ${userId}, ${catalogKey}::text, 'egg', 1 FROM ins WHERE ${itemType}::text = 'egg'
@@ -273,6 +290,8 @@ export interface EvaluateInput {
 
 export interface EvaluateOutcome {
     fired: boolean;
+    // A delivery Play took items on this request.
+    delivered: boolean;
     // The oldest encounter this user has not finished watching (fired now or earlier).
     pending: EncounterView | null;
 }
@@ -283,17 +302,9 @@ export async function evaluateEncounters(
 ): Promise<EvaluateOutcome> {
     const { userId, pet, placePath } = input;
     // Petless / no facts row: before any query.
-    if (!pet || !input.facts) return { fired: false, pending: null };
+    if (!pet || !input.facts) return { fired: false, delivered: false, pending: null };
 
-    const facts: Facts = {
-        lifetimeEarned: Number(input.facts.lifetime_earned),
-        picks: Number(input.facts.picks),
-        collectibles: Number(input.facts.collectibles),
-        feeds: Number(pet.feedCount),
-        place: placeFromPath(placePath)?.key ?? null,
-        encounters: (input.facts.encounters ?? []).map((e) => ({ ...e, grants: e.grants ?? {} })),
-        quests: (input.facts.quests ?? []).map((q) => ({ ...q, visited: q.visited ?? [] })),
-    };
+    const facts = buildFacts(input.facts, pet.feedCount, placePath);
 
     // Thresholds only when something unfired actually needs one.
     const unfired = ENCOUNTERS.filter((e) => !facts.encounters.some((r) => r.key === e.key));
@@ -313,31 +324,46 @@ export async function evaluateEncounters(
     }
 
     // visit_places progress: one small UPDATE only when this page is a wanted place
-    // the quest hasn't recorded yet.
+    // the Play hasn't recorded yet.
     if (facts.place) {
-        for (const q of facts.quests) {
-            if (q.completedAt || q.objective.kind !== 'visit_places') continue;
-            if (!q.objective.places.some((p) => placeMatches(facts.place, p))) continue;
-            if (q.visited.includes(facts.place)) continue;
+        for (const p of facts.plays) {
+            if (p.completedAt || p.objective.kind !== 'visit_places') continue;
+            if (!p.objective.places.some((want) => placeMatches(facts.place, want))) continue;
+            if (p.visited.includes(facts.place)) continue;
             const rows = await sql`
-                UPDATE quests SET visited = array_append(visited, ${facts.place}::text)
-                WHERE id = ${q.id} AND user_id = ${userId} AND NOT (${facts.place}::text = ANY(visited))
+                UPDATE plays SET visited = array_append(visited, ${facts.place}::text)
+                WHERE id = ${p.id} AND user_id = ${userId} AND NOT (${facts.place}::text = ANY(visited))
                 RETURNING visited
             `;
-            if (rows.length) q.visited = (rows[0] as unknown as { visited: string[] }).visited;
+            if (rows.length) p.visited = (rows[0] as unknown as { visited: string[] }).visited;
         }
     }
 
-    // Quest completion. A quest completed by an earlier request whose reward never
-    // fired simply shows completedAt in facts and fires below - that's the heal.
-    for (const q of facts.quests) {
-        if (q.completedAt || !questComplete(q, facts)) continue;
+    // Play completion. A Play completed by an earlier request whose reward never fired
+    // simply shows completedAt in facts and fires below - that's the heal.
+    let delivered = false;
+    for (const p of facts.plays) {
+        if (!playComplete(p, facts)) continue;
+        if (p.objective.kind === 'deliver_items') {
+            // The hand-over consumes items, so it completes itself (deliver.ts). A
+            // no-op here (lost race, stock moved) just retries on the next page load.
+            const result = await deliverPlay(sql, { userId, play: p });
+            if (!result.completedAt) continue;
+            p.completedAt = result.completedAt;
+            delivered = true;
+            // Keep the in-memory holdings honest: a second open delivery wanting the same
+            // item must not complete for free against the pre-burn snapshot.
+            for (const i of p.objective.items) {
+                facts.holdings[i.catalogKey] = Number(facts.holdings[i.catalogKey] ?? 0) - i.count;
+            }
+            continue;
+        }
         const rows = await sql`
-            UPDATE quests SET completed_at = NOW()
-            WHERE id = ${q.id} AND user_id = ${userId} AND completed_at IS NULL
+            UPDATE plays SET completed_at = NOW()
+            WHERE id = ${p.id} AND user_id = ${userId} AND completed_at IS NULL
             RETURNING completed_at
         `;
-        q.completedAt = rows.length
+        p.completedAt = rows.length
             ? String((rows[0] as unknown as { completed_at: string }).completed_at)
             : new Date().toISOString();
     }
@@ -361,5 +387,5 @@ export async function evaluateEncounters(
         pending = toEncounterView(row);
         if (pending) break;
     }
-    return { fired, pending };
+    return { fired, delivered, pending };
 }

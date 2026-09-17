@@ -32,6 +32,9 @@ export const ITEM_REASONS = {
     encounter_grant: 'source',
     hatch: 'sink',
     feed: 'sink',
+    // Handed to a character to finish a delivery Play (encounters/deliver.ts).
+    // Seeded by rename_quests_to_plays.sql.
+    play_delivery: 'sink',
 } as const;
 
 export type ItemReason = keyof typeof ITEM_REASONS;

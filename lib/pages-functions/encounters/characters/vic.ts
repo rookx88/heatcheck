@@ -35,7 +35,7 @@ export const VIC_ENCOUNTERS: Encounter[] = [
         character: 'vic',
         once: true,
         trigger: [{ kind: 'after_encounter', key: 'charles_quest_done' }],
-        // Conversational only. No item, no Ember, no quest - the tease IS the payload,
+        // Conversational only. No item, no Ember, no Play - the tease IS the payload,
         // so there is nothing to reveal and no step is marked.
         effects: [],
         dialogue: [

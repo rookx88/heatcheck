@@ -221,8 +221,8 @@ async function latestClaimableNotificationId(userId: string): Promise<string | n
 // separate statements (hatch and feed). Pinned to a count so a ninth write path has to
 // be converted consciously rather than silently breaking the invariant for whoever runs
 // this next. Two purchase legs + three discovery branches + the encounter grant + hatch
-// + feed.
-const EXPECTED_INVENTORY_WRITE_SITES = 8;
+// + feed + the delivery Play hand-over (encounters/deliver.ts).
+const EXPECTED_INVENTORY_WRITE_SITES = 9;
 
 // Walks the source tree rather than a list of known files, so a brand-new module that
 // writes inventory is caught too - a hardcoded file list would quietly exempt it.

@@ -327,6 +327,88 @@ export async function seedFood(userId: string, catalogKey: string, quantity: num
     );
 }
 
+// Memorabilia counterpart to seedFood: stacks on its own partial unique index, and the
+// `WHERE item_type = 'memorabilia'` on the conflict target is mandatory (two partial
+// indexes cover (user_id, catalog_key); a bare target cannot pick between them).
+export async function seedMemorabilia(userId: string, catalogKey: string, quantity: number): Promise<void> {
+    if (!Number.isInteger(quantity) || quantity < 1) {
+        throw new Error(`seedMemorabilia needs a positive integer quantity, got ${quantity}`);
+    }
+    await pool.query(
+        `WITH granted AS (
+            INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
+            VALUES ($1, $2, 'memorabilia', $3)
+            ON CONFLICT (user_id, catalog_key) WHERE item_type = 'memorabilia'
+                DO UPDATE SET quantity = inventory_items.quantity + EXCLUDED.quantity
+            RETURNING id
+        )
+        INSERT INTO item_ledger (user_id, catalog_key, item_type, delta, reason, reason_kind,
+                                 inventory_item_id, idempotency_key, metadata)
+        SELECT $1, $2, 'memorabilia', $3, 'acceptance_seed', 'adjustment', g.id, $4, $5::jsonb
+        FROM granted g`,
+        [userId, catalogKey, quantity, `acceptance-item-seed:${userId}:${crypto.randomUUID()}`, JSON.stringify({ acceptance: 'seedMemorabilia' })],
+    );
+}
+
+export async function memorabiliaHeld(userId: string, catalogKey: string): Promise<number> {
+    const { rows } = await pool.query(
+        `SELECT COALESCE(SUM(quantity), 0)::int AS n FROM inventory_items
+         WHERE user_id = $1 AND catalog_key = $2 AND item_type = 'memorabilia'`,
+        [userId, catalogKey],
+    );
+    return Number(rows[0].n);
+}
+
+// Active, droppable memorabilia with weight > 0 - the same filter discovery's eligible
+// list applies, so a SKU picked here can be both found and forced. Ordered for
+// determinism; `skip` lets a suite take a second, different one.
+export async function memorabiliaSkus(): Promise<Array<{ key: string; name: string; image: string }>> {
+    const { rows } = await pool.query(
+        `SELECT key, name, config->>'image' AS image FROM items_catalog
+         WHERE item_type = 'memorabilia' AND active = true
+           AND (config->>'discovery_droppable')::boolean IS TRUE
+           AND COALESCE((config->>'discovery_weight')::int, 1) > 0
+           AND (available_from IS NULL OR available_from <= NOW())
+           AND (available_until IS NULL OR available_until > NOW())
+         ORDER BY key`,
+    );
+    if (rows.length < 2) throw new Error('Need at least two droppable memorabilia SKUs for the Plays fixtures.');
+    return rows as Array<{ key: string; name: string; image: string }>;
+}
+
+// Starts a Play directly, the way fireEncounter's play leg does: an encounters row it
+// hangs off, then the plays row with a stored objective and a baseline. Lets a suite
+// exercise any objective shape - including deliveries with several items - without a
+// registry entry. The encounter is parked 'seen' so it never plays on stage, and its key
+// is fixture-only so no registry reward can ever fire from it.
+export async function startPlayDirect(input: {
+    userId: string;
+    playKey: string;
+    objective: Record<string, unknown>;
+    rewardEncounterKey?: string;
+    baseline?: Record<string, number>;
+}): Promise<string> {
+    const { rows } = await pool.query(
+        `WITH enc AS (
+            INSERT INTO encounters (user_id, encounter_key, character_key, status, seen_at)
+            VALUES ($1, $2, 'charles', 'seen', NOW())
+            RETURNING id
+        )
+        INSERT INTO plays (user_id, play_key, encounter_id, objective, baseline, reward_encounter_key)
+        SELECT $1, $3, enc.id, $4::jsonb, $5::jsonb, $6 FROM enc
+        RETURNING id`,
+        [
+            input.userId,
+            `acceptance-start:${input.playKey}`,
+            input.playKey,
+            JSON.stringify(input.objective),
+            JSON.stringify(input.baseline ?? { feeds: 0, picks: 0, lifetime_earned: 0, finds: 0 }),
+            input.rewardEncounterKey ?? `acceptance-reward:${input.playKey}`,
+        ],
+    );
+    return rows[0].id as string;
+}
+
 // ---------------------------------------------------------------------------------
 // game_config version-flip / restore, generalized to any key. Registers its own
 // teardown so an aborted suite still restores every key it touched.
@@ -439,9 +521,9 @@ export async function cleanupUsersByEmailPrefix(prefix: string): Promise<void> {
 export async function cleanupUsersByIds(ids: string[]): Promise<void> {
     for (const id of ids) {
         const u = { id };
-        // NPC encounters: quests FK encounters (ON DELETE CASCADE, but explicit keeps
+        // NPC encounters: plays FK encounters (ON DELETE CASCADE, but explicit keeps
         // the order legible); both cascade from waitlist too.
-        await pool.query(`DELETE FROM quests WHERE user_id = $1`, [u.id]);
+        await pool.query(`DELETE FROM plays WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM encounters WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM notifications WHERE user_id = $1`, [u.id]);
         // TANKDAQ share trading: trades FK the ledger row that paid for them, so they go

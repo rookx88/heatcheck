@@ -11,6 +11,7 @@
 //                       geometry) - same choice tank-article-deck-client makes.
 //   NotificationsHost - hosts the Inbox modal. Required: MapHud's and PetWidget's Inbox
 //                       actions only DISPATCH the open event, they can't render it.
+//   PlaybookHost      - hosts My Playbook, for the same reason (MapHud's menu item).
 //
 // MapHud is position:absolute, so it needs a positioned box to sit in. Here that's
 // .hc-chrome-hud, an in-flow right-aligned slot the page puts under its topbar - so
@@ -25,6 +26,7 @@ import { MapHud } from './MapHud';
 import { PetWidget } from './PetWidget';
 import { EncounterStage } from './EncounterStage';
 import { NotificationsHost } from './NotificationsHost';
+import { PlaybookHost } from './PlaybookHost';
 import './ContentChrome.css';
 
 export const ContentChrome: React.FC = () => {
@@ -49,6 +51,7 @@ export const ContentChrome: React.FC = () => {
             {/* NPC encounters: the visiting character, bottom-left, opposite the pet. */}
             <EncounterStage variant="fixed" />
             <NotificationsHost />
+            <PlaybookHost />
         </>
     );
 };

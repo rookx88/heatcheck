@@ -15,7 +15,9 @@ import { EncounterStage } from './components/EncounterStage';
 import { MudPuppyPromo } from './components/MudPuppyPromo';
 import { RegisterModal, type AuthModalVariant } from './components/RegisterModal';
 import { NotificationsHost } from './components/NotificationsHost';
+import { PlaybookHost } from './components/PlaybookHost';
 import { dispatchInboxOpen } from './notifications-client';
+import { dispatchPlaybookOpen } from './plays-client';
 import { getTodayStatus, logout, PICKS_UPDATED_EVENT } from './tank-pick-client';
 // The header chip's mini nav reuses the map pages' MapHud menu styling and item list.
 import './components/MapHud.css';
@@ -212,6 +214,10 @@ function mountHeaderMenu() {
         setOpen(false);
         dispatchInboxOpen();
     });
+    menu.querySelector<HTMLButtonElement>('[data-hc-action="playbook"]')?.addEventListener('click', () => {
+        setOpen(false);
+        dispatchPlaybookOpen();
+    });
     menu.querySelector<HTMLButtonElement>('[data-hc-action="logout"]')?.addEventListener('click', async (e) => {
         const btn = e.currentTarget as HTMLButtonElement;
         btn.disabled = true;
@@ -227,7 +233,8 @@ function mountHeaderMenu() {
 function mountNotificationsHost() {
     const root = document.createElement('div');
     document.body.appendChild(root);
-    createRoot(root).render(<NotificationsHost />);
+    // My Playbook shares the root: same body-level placement, same reasons.
+    createRoot(root).render(<><NotificationsHost /><PlaybookHost /></>);
 }
 
 // Picks-remaining footer in the tanks panel (vanilla, session-driven). Logged out

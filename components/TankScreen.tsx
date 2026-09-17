@@ -4,6 +4,7 @@ import { PetWidget } from './PetWidget';
 import { EncounterStage } from './EncounterStage';
 import { MapHud } from './MapHud';
 import { NotificationsHost } from './NotificationsHost';
+import { PlaybookHost } from './PlaybookHost';
 import { trackEvent } from '../tank-analytics-client';
 import { SPORT_BY_LEAGUE, SPORT_ORDER, type Sport } from '../sport-map';
 import tanksBackgroundSrc from '../assets/images/tanks-bg.webp';
@@ -181,6 +182,7 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, linesBoard = [] }
       {/* NPC encounters: bottom-left, opposite the pet. */}
       <EncounterStage />
       <NotificationsHost />
+      <PlaybookHost />
 
       {isOpen && (
         // Deliberately NOT closed by overlay clicks: dragging the 3D cube often ends

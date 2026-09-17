@@ -9,8 +9,13 @@ export interface HeaderMenuItem {
     label: string;
     /** Plain navigation item. Exactly one of href/action is set. */
     href?: string;
-    /** In-page item: 'inbox' opens the notifications modal, 'logout' ends the session. */
-    action?: 'inbox' | 'logout';
+    /**
+     * In-page item: 'inbox' opens the notifications modal, 'playbook' opens My Playbook,
+     * 'logout' ends the session. Both renderers branch on the value EXPLICITLY - a new
+     * action must be handled in MapHud.tsx and homepage-client.tsx mountHeaderMenu, or
+     * it renders as a dead button (it used to fall through to log out).
+     */
+    action?: 'inbox' | 'playbook' | 'logout';
 }
 
 export const HEADER_MENU_ITEMS: readonly HeaderMenuItem[] = [
@@ -18,6 +23,9 @@ export const HEADER_MENU_ITEMS: readonly HeaderMenuItem[] = [
     // Tank picks AND TANKDAQ index holdings, in two tabs. Was "My Tanks" at /my-tanks/,
     // which 301s here (scripts/generate-redirects.ts).
     { label: 'My Portfolio', href: '/my-portfolio/' },
+    // The characters' errands (Plays), current and completed. Dispatch-only, like Inbox:
+    // a PlaybookHost elsewhere on the page renders the modal.
+    { label: 'My Playbook', action: 'playbook' },
     { label: 'Account', href: '/account/' },
     // Inbox only DISPATCHES the open event - both renderers rely on a
     // NotificationsHost elsewhere on the page to actually render the modal, since it

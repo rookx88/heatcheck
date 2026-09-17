@@ -19,6 +19,7 @@ export const BLOBBY: Character = {
     },
     alt: 'Blobby, a pale round creature in a navy suit and blue tie with a smiley-face pin',
     voice: 'Nervous, warm and over-invested. Apologises first, then gets carried away. Short sentences.',
+    home: 'the-tank-hq',
 };
 
 export const BLOBBY_ENCOUNTERS: Encounter[] = [
@@ -30,8 +31,8 @@ export const BLOBBY_ENCOUNTERS: Encounter[] = [
         effects: [
             { kind: 'grant_item', catalogKey: 'food_yogurt_parfait', itemType: 'food' },
             {
-                kind: 'start_quest',
-                quest: { key: 'blobby_first_calls', objective: { kind: 'picks', count: 3 }, rewardEncounter: 'blobby_quest_done' },
+                kind: 'start_play',
+                play: { key: 'blobby_first_calls', title: 'Make three more calls', objective: { kind: 'picks', count: 3 }, rewardEncounter: 'blobby_quest_done' },
             },
         ],
         dialogue: [
@@ -47,7 +48,7 @@ export const BLOBBY_ENCOUNTERS: Encounter[] = [
         character: 'blobby',
         once: true,
         trigger: [
-            { kind: 'quest_completed', key: 'blobby_first_calls' },
+            { kind: 'play_completed', key: 'blobby_first_calls' },
             { kind: 'after_encounter', key: 'blobby_intro' },
         ],
         effects: [{ kind: 'grant_ember', ruleKey: 'encounter_gift' }],

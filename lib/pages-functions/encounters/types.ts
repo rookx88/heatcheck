@@ -38,6 +38,12 @@ export interface Character {
     alt: string;
     // Tone notes for whoever writes this character's next lines. Docs, not data.
     voice?: string;
+    // Where this character can be found: a place key from discovery.ts STATIC_PLACES
+    // (prefix-matched, so 'tankdaq' covers every ticker page). It is where a delivery
+    // Play is handed over, and it is COPIED into the Play's stored objective when the
+    // Play starts, so moving a character later never strands an errand in progress.
+    // Absent means the character has no place on the map and cannot own a delivery Play.
+    home?: string;
 }
 
 // Every trigger on an encounter must hold (ALL-OF). Facts come from one statement in
@@ -53,20 +59,48 @@ export type Trigger =
     | { kind: 'at_place'; place: string }
     // That encounter has been watched to the end (status 'seen').
     | { kind: 'after_encounter'; key: string }
-    | { kind: 'quest_completed'; key: string };
+    // That Play has been completed (plays.completed_at set).
+    | { kind: 'play_completed'; key: string };
 
-// Quest objectives count FROM the moment the quest started (baseline snapshot).
+// One line of a delivery. `name` and `art` are never authored: the fire statement fills
+// them from items_catalog when the Play starts, so the Playbook can picture an item the
+// player has never owned.
+export interface DeliverItem {
+    catalogKey: string;
+    count: number;
+    name?: string;
+    art?: string | null;
+}
+
+// Play objectives. The counting kinds measure FROM the moment the Play started
+// (baseline snapshot). deliver_items is the one that consumes: hold the items, then go
+// to the character's home, where they are taken (encounters/deliver.ts). Memorabilia
+// only - the encounters suite enforces it.
 export type Objective =
     | { kind: 'feeds'; count: number }
     | { kind: 'picks'; count: number }
     | { kind: 'visit_places'; places: string[] }
-    | { kind: 'earn_ember'; amount: number };
+    | { kind: 'earn_ember'; amount: number }
+    | { kind: 'deliver_items'; items: DeliverItem[] };
+
+// What an author writes for a Play. `title` is the Playbook heading; the objective is
+// frozen into the plays row when the Play starts, together with the title and, for a
+// delivery, the owning character's home.
+export interface PlayDefinition {
+    key: string;
+    title: string;
+    objective: Objective;
+    // The encounter that says thank you. It must trigger on play_completed for this key
+    // (plus, at most, after_encounter on the scene that started it) - anything more
+    // could stall it and leave the receipt's "what you got" half empty.
+    rewardEncounter: string;
+}
 
 export type Effect =
     | { kind: 'grant_item'; catalogKey: string; itemType: 'egg' | 'food' | 'collectible' }
     // ruleKey is an ember_rules source whose config.amount is the gift.
     | { kind: 'grant_ember'; ruleKey: string }
-    | { kind: 'start_quest'; quest: { key: string; objective: Objective; rewardEncounter: string } };
+    | { kind: 'start_play'; play: PlayDefinition };
 
 export interface DialogueStep {
     speaker: 'character' | 'pet';

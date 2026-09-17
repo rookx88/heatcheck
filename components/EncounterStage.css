@@ -199,6 +199,11 @@
   outline: none;
 }
 
+/* The press. The transition above already animates transform for exactly this. */
+.encounter-stage__next:active {
+  transform: scale(0.95);
+}
+
 /* What he actually handed over, revealed on the line that hands it over (the step
    marked `reveal` in the script, default the last one) and left up afterwards.
    The tile is the inventory/food-shop recipe - translucent fill, teal hairline, soft

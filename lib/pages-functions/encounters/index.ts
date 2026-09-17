@@ -9,7 +9,7 @@
 // LADDER order - earliest character first - so a player who arrives already qualified
 // meets them in the intended sequence, one per page load.
 
-import type { Character, Encounter, Expression } from './types';
+import type { Character, Encounter, Expression, PlayDefinition } from './types';
 import { BEAKS, BEAKS_ENCOUNTERS } from './characters/beaks';
 import { BLOBBY, BLOBBY_ENCOUNTERS } from './characters/blobby';
 import { PUFFINGTON, PUFFINGTON_ENCOUNTERS } from './characters/puffington';
@@ -18,7 +18,7 @@ import { VIC, VIC_ENCOUNTERS } from './characters/vic';
 
 export type {
     Character, CharacterPortraits, Encounter, EncounterView, EncounterGrants,
-    DialogueStep, Trigger, Effect, Objective, Mood, Expression,
+    DialogueStep, Trigger, Effect, Objective, Mood, Expression, PlayDefinition, DeliverItem,
 } from './types';
 
 const CHARACTER_LIST: Character[] = [BLOBBY, PUFFINGTON, BEAKS, CHARLES, VIC];
@@ -34,6 +34,15 @@ export const ENCOUNTERS: Encounter[] = [
 export const CHARACTERS: Record<string, Character> = Object.fromEntries(CHARACTER_LIST.map((c) => [c.key, c]));
 
 export const ENCOUNTER_BY_KEY: Record<string, Encounter> = Object.fromEntries(ENCOUNTERS.map((e) => [e.key, e]));
+
+// Every Play the registry can start, keyed by Play key, with the character who owns it.
+// The stored objective is the source of truth for a Play in progress; this is only the
+// fallback for rows written before titles were frozen into them.
+export const PLAY_BY_KEY: Record<string, PlayDefinition & { character: string }> = Object.fromEntries(
+    ENCOUNTERS.flatMap((e) =>
+        e.effects.flatMap((f) => (f.kind === 'start_play' ? [[f.play.key, { ...f.play, character: e.character }]] : [])),
+    ),
+);
 
 // The one place expression fallback happens. Sets are ragged (Blobby has no sad,
 // Charles no happy, Vic only main), so asking for a face a character doesn't own

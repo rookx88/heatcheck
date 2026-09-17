@@ -1,0 +1,256 @@
+/* My Playbook - only what the shared modal recipes don't already cover. Rows are the
+   inventory's .pet-inv-item shell; tabs are .tank-modal-filter; chips follow the
+   encounter reward tile (teal hairline, soft radius) at inventory scale. */
+
+.playbook-loading {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0.5rem 0;
+}
+
+.playbook-row {
+  align-items: flex-start;
+}
+
+.playbook-row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  text-align: left;
+}
+
+.playbook-row__body .pet-inv-meta {
+  white-space: normal;
+}
+
+.playbook-portrait {
+  position: relative;
+  display: inline-block;
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  overflow: hidden;
+  border-radius: 50%;
+  border: 1.5px solid rgba(47, 230, 217, 0.45);
+  background: radial-gradient(circle at 50% 35%, rgba(47, 230, 217, 0.18), rgba(47, 230, 217, 0.04));
+}
+
+/* The sprites are full-body with transparent margins, so a plain cover shows a tiny
+   figure. Scaling from near the top keeps the head and shoulders in the frame. */
+.playbook-portrait__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: 50% 0;
+  transform: scale(2.1);
+  transform-origin: 50% 8%;
+}
+
+/* Completed: dimmed like a read notification, but still a live control - it opens the
+   receipt, so the dimming sits on the summary rather than the whole row. */
+.playbook-row.is-complete {
+  flex-direction: column;
+  align-items: stretch;
+  padding: 0;
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.playbook-row__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.45rem 0.7rem;
+  background: none;
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.playbook-row__toggle:hover,
+.playbook-row__toggle:focus-visible,
+.playbook-row__toggle[aria-expanded='true'] {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.05);
+  outline: none;
+}
+
+.playbook-row__toggle:focus-visible {
+  box-shadow: inset 0 0 0 2px #2fe6d9;
+}
+
+.playbook-row__receipt-label {
+  flex-shrink: 0;
+  font-family: 'Montserrat', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #2fe6d9;
+}
+
+.playbook-progress {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.playbook-bar {
+  position: relative;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.playbook-bar__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #1fb9ae, #2fe6d9);
+  box-shadow: 0 0 8px rgba(47, 230, 217, 0.5);
+  transition: width 0.3s ease;
+}
+
+.playbook-hint {
+  margin: 0;
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.playbook-hint a {
+  color: #2fe6d9;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.playbook-hint.is-ready {
+  color: var(--hc-gold, #ffc72c);
+}
+
+.playbook-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.playbook-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 100%;
+  padding: 0.2rem 0.55rem 0.2rem 0.3rem;
+  background: rgba(7, 5, 11, 0.6);
+  border: 1.5px solid rgba(47, 230, 217, 0.3);
+  border-radius: 12px;
+}
+
+.playbook-chip.is-done {
+  border-color: rgba(47, 230, 217, 0.8);
+  box-shadow: 0 0 10px rgba(47, 230, 217, 0.2);
+}
+
+.playbook-chip__art {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.35));
+}
+
+.playbook-chip__art--blank {
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgba(47, 230, 217, 0.45);
+  border-radius: 8px;
+  background: rgba(47, 230, 217, 0.1);
+}
+
+.playbook-chip__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: 'Baloo 2', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: #fff;
+}
+
+.playbook-chip__count {
+  flex-shrink: 0;
+  font-family: 'Montserrat', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+/* Ember is the currency, not an object: the gold pill, same as the encounter reward. */
+.playbook-chip--ember {
+  padding: 0.3rem 0.7rem;
+  color: var(--hc-gold, #ffc72c);
+  background: rgba(26, 18, 0, 0.85);
+  border-color: rgba(255, 199, 44, 0.45);
+  border-radius: 999px;
+}
+
+.playbook-chip--ember .playbook-chip__name {
+  color: inherit;
+}
+
+.playbook-receipt {
+  margin: 0 0.7rem 0.6rem;
+  padding: 0.6rem 0.7rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  text-align: left;
+  border-top: 1px dashed rgba(47, 230, 217, 0.3);
+}
+
+.playbook-receipt__half {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.playbook-receipt__heading {
+  font-family: 'Montserrat', 'Nunito', sans-serif;
+  font-weight: 800;
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.playbook-receipt__note {
+  margin: 0;
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.playbook-receipt__date {
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .playbook-bar__fill {
+    transition: none;
+  }
+}

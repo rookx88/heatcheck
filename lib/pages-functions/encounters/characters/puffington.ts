@@ -1,6 +1,6 @@
 // Puffington - second rung. He is the only character who arrives because of how the
 // pet is looked after rather than how it plays, which is why his trigger is feeds and
-// his quest is a tour of both food counters. It doubles as the thing that teaches a
+// his Play is a tour of both food counters. It doubles as the thing that teaches a
 // new player that the Terrace and Quickboost exist.
 //
 // See characters/beaks.ts for the house rules the copy follows.
@@ -18,6 +18,7 @@ export const PUFFINGTON: Character = {
     },
     alt: 'Puffington, a large pufferfish in a white sports shirt and navy shorts',
     voice: 'Blunt and comfortable. Cares about food above everything and assumes everyone else does too.',
+    home: 'champions-terrace',
 };
 
 export const PUFFINGTON_ENCOUNTERS: Encounter[] = [
@@ -29,9 +30,10 @@ export const PUFFINGTON_ENCOUNTERS: Encounter[] = [
         effects: [
             { kind: 'grant_item', catalogKey: 'food_worm_delicacy', itemType: 'food' },
             {
-                kind: 'start_quest',
-                quest: {
+                kind: 'start_play',
+                play: {
                     key: 'puffington_tour',
+                    title: 'Try both food counters',
                     objective: { kind: 'visit_places', places: ['champions-terrace', 'quickboost-delicacies'] },
                     rewardEncounter: 'puffington_quest_done',
                 },
@@ -50,7 +52,7 @@ export const PUFFINGTON_ENCOUNTERS: Encounter[] = [
         character: 'puffington',
         once: true,
         trigger: [
-            { kind: 'quest_completed', key: 'puffington_tour' },
+            { kind: 'play_completed', key: 'puffington_tour' },
             { kind: 'after_encounter', key: 'puffington_intro' },
         ],
         effects: [{ kind: 'grant_item', catalogKey: 'food_ribeye', itemType: 'food' }],

@@ -49,13 +49,22 @@ export interface DiscoveryConfig {
     sustained_hours: number;
     food_weight_price_exponent: number;
     min_new_places: number;
+    // OPTIONAL, same reasoning as weight_memorabilia: config v4
+    // (rename_quests_to_plays.sql) adds it. While a delivery Play is open and still
+    // short, every Nth find since the Play started is forced to be the requested item
+    // (encounters/plays.ts forcedFind). Absent or < 1 means never forced.
+    forced_find_every_nth?: number;
 }
 
-// The pet row as toolbar-state reads it: the feed/hatch shape plus the discovery clock
-// and the footprints since the last find.
+// The pet row as toolbar-state reads it: the feed/hatch shape plus the discovery clock,
+// the footprints since the last find, and the lifetime find counter.
 export interface DiscoveryPetRow extends PetRow {
     next_eligible_roll_at: string | null;
     places_since_find: string[];
+    // Windows this pet has won (rename_quests_to_plays.sql). Incremented inside every
+    // claim UPDATE below and in ledger.discoveryFindEmber, so it counts claimed rolls:
+    // equal to finds except for the once-per-SKU-ever collectible sold-out race.
+    find_count: number;
 }
 
 // Hard ceiling on places_since_find so a pet row can't grow without bound between
@@ -152,7 +161,16 @@ interface CollectibleSkuRow {
 // pet row they have (or null) and never need to know the feature's rules.
 export async function maybeDiscover(
     sql: NeonQueryFunction<false, false>,
-    input: { userId: string; pet: DiscoveryPetRow | null; feedingCfg: FeedingConfig; placePath: string | null }
+    input: {
+        userId: string;
+        pet: DiscoveryPetRow | null;
+        feedingCfg: FeedingConfig;
+        placePath: string | null;
+        // Asked only once a roll is actually due and explored, with the configured
+        // cadence. Returns a memorabilia catalog key this find must be, or null. Kept as a
+        // callback so discovery owns none of the Plays rules: it just honours a named item.
+        forcedFind?: (everyNth: number) => string | null;
+    }
 ): Promise<DiscoveryOutcome> {
     const { userId, pet, feedingCfg, placePath } = input;
 
@@ -318,6 +336,18 @@ export async function maybeDiscover(
         }
     }
 
+    // The Plays guarantee. Resolved AGAINST memorabiliaSkus, never the raw catalog, so
+    // an item that is held back (weight 0, not droppable, outside its window) can never
+    // be forced into existence. Applied after the band roll so it wins even when the
+    // memorabilia weight is zero. Everything downstream - the grant statement, the
+    // journal leg, the pet's line - is the ordinary memorabilia path, so a forced find
+    // is indistinguishable from a lucky one. Nothing a request carries moves this: it is
+    // arithmetic over the pet's own find_count and the Play's stored baseline.
+    const everyNth = Number(cfg.forced_find_every_nth ?? 0);
+    const forcedKey = everyNth >= 1 && input.forcedFind ? input.forcedFind(everyNth) : null;
+    const forcedSku = forcedKey ? memorabiliaSkus.find((r) => r.key === forcedKey) ?? null : null;
+    if (forcedSku) category = 'memorabilia';
+
     if (category === 'collectible') {
         // Collectible rolled: mint one serialized copy. Uniform over eligible SKUs
         // (one today - Genesis Neon - but nothing here assumes that).
@@ -342,7 +372,7 @@ export async function maybeDiscover(
             WITH claimed AS (
                 UPDATE pets
                 SET next_eligible_roll_at = NOW() + (${cooldownMinutes}::float8 * INTERVAL '1 minute'),
-                    places_since_find = '{}'
+                    places_since_find = '{}', find_count = find_count + 1
                 WHERE id = ${pet.id} AND user_id = ${userId}
                   AND next_eligible_roll_at IS NOT NULL AND next_eligible_roll_at <= NOW()
                   AND cardinality(places_since_find) >= ${minPlaces}::int
@@ -410,6 +440,7 @@ export async function maybeDiscover(
                 break;
             }
         }
+        if (forcedSku) picked = forcedSku;
         const message = `Look what I dragged back — a ${picked.name}! No idea whose it was. It's ours now.`;
         const notificationKey = `discovery:${pet.id}:${windowScope}`;
         // The food branch's statement shape exactly, NOT the collectible one: these
@@ -425,7 +456,7 @@ export async function maybeDiscover(
             WITH claimed AS (
                 UPDATE pets
                 SET next_eligible_roll_at = NOW() + (${cooldownMinutes}::float8 * INTERVAL '1 minute'),
-                    places_since_find = '{}'
+                    places_since_find = '{}', find_count = find_count + 1
                 WHERE id = ${pet.id} AND user_id = ${userId}
                   AND next_eligible_roll_at IS NOT NULL AND next_eligible_roll_at <= NOW()
                   AND cardinality(places_since_find) >= ${minPlaces}::int
@@ -506,7 +537,7 @@ export async function maybeDiscover(
                 WITH claimed AS (
                     UPDATE pets
                     SET next_eligible_roll_at = NOW() + (${cooldownMinutes}::float8 * INTERVAL '1 minute'),
-                        places_since_find = '{}'
+                        places_since_find = '{}', find_count = find_count + 1
                     WHERE id = ${pet.id} AND user_id = ${userId}
                       AND next_eligible_roll_at IS NOT NULL AND next_eligible_roll_at <= NOW()
                       AND cardinality(places_since_find) >= ${minPlaces}::int

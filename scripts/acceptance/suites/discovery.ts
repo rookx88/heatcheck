@@ -290,12 +290,18 @@ async function run() {
     // --- Distribution over many rolls ---
     section('Distribution - category weights, food price skew, collectible redistribution (150 rolls, ~a minute)');
     const distBase = await grantTotals(roller.userId);
+    const findsBefore = Number((await pool.query(`SELECT find_count FROM pets WHERE id = $1`, [petId])).rows[0].find_count);
     const ROLLS = 150;
     for (let i = 0; i < ROLLS; i++) {
         await rearm(petId);
         await api('GET', '/api/toolbar-state', { cookie: roller.cookie });
     }
     const distEnd = await grantTotals(roller.userId);
+    // The Plays find guarantee counts on pets.find_count, bumped inside every claim.
+    const findsAfter = Number((await pool.query(`SELECT find_count FROM pets WHERE id = $1`, [petId])).rows[0].find_count);
+    check(`find_count rose by exactly the number of grants (${ROLLS})`,
+        findsAfter - findsBefore === distEnd.total - distBase.total && findsAfter - findsBefore === ROLLS,
+        `find_count +${findsAfter - findsBefore}, grants +${distEnd.total - distBase.total}`);
     const emberRolls = distEnd.ledgerRows - distBase.ledgerRows;
     const foodRolls = distEnd.foodUnits - distBase.foodUnits;
     const memoRolls = distEnd.memoUnits - distBase.memoUnits;

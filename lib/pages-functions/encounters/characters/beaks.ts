@@ -26,6 +26,7 @@ export const BEAKS: Character = {
     },
     alt: 'Beaks the Broker, a seahorse in a black three-piece suit leaning on a cane',
     voice: 'Friendly and straightforward. Works the trading floor and says so plainly. Interested in how the pet is doing, not in sounding clever.',
+    home: 'tankdaq',
 };
 
 export const BEAKS_ENCOUNTERS: Encounter[] = [
@@ -37,8 +38,8 @@ export const BEAKS_ENCOUNTERS: Encounter[] = [
         effects: [
             { kind: 'grant_item', catalogKey: 'food_ribeye', itemType: 'food' },
             {
-                kind: 'start_quest',
-                quest: { key: 'beaks_first_trade', objective: { kind: 'picks', count: 2 }, rewardEncounter: 'beaks_quest_done' },
+                kind: 'start_play',
+                play: { key: 'beaks_first_trade', title: 'Keep making calls', objective: { kind: 'picks', count: 2 }, rewardEncounter: 'beaks_quest_done' },
             },
         ],
         dialogue: [
@@ -54,7 +55,7 @@ export const BEAKS_ENCOUNTERS: Encounter[] = [
         character: 'beaks',
         once: true,
         trigger: [
-            { kind: 'quest_completed', key: 'beaks_first_trade' },
+            { kind: 'play_completed', key: 'beaks_first_trade' },
             { kind: 'after_encounter', key: 'beaks_intro' },
         ],
         effects: [{ kind: 'grant_ember', ruleKey: 'encounter_gift' }],
