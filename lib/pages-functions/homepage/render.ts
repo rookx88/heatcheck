@@ -313,6 +313,15 @@ function homepageStyles(): string {
             font-family: 'Nunito', sans-serif; font-size: 0.78rem;
             color: rgba(255, 255, 255, 0.62);
         }
+        /* Marks a lines Tank (a matchup's board, no story) in the pager - the same bubble
+           accent and dashed edge its own page and the Tank HQ board wear. */
+        .hc-tank-nav-lines {
+            display: inline-block; margin-right: 0.45rem; padding: 0.05rem 0.45rem;
+            border-radius: 999px; border: 1.5px dashed var(--hc-bubble, #cfe6ff);
+            background: var(--hc-bubble, #cfe6ff); color: #0b0713;
+            font-weight: 800; font-size: 0.62rem; letter-spacing: 0.14em; text-transform: uppercase;
+            vertical-align: 0.08em;
+        }
         /* Round navy-glass symbol buttons in the house teal grammar (selected =
            committed glow). Sport name is on aria-label/title, not visible text. */
         .hc-sport-btn {
@@ -636,6 +645,7 @@ export function renderHomepage(options: RenderHomepageOptions): string {
             // reads that shape from a page cached across the deploy that added this.
             tanks: slot.cards.map(card => ({
                 slug: card.slug,
+                kind: card.kind,
                 href: card.href,
                 matchup: card.matchup,
                 deck: card.deck,

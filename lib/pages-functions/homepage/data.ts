@@ -20,6 +20,7 @@ import {
     deriveTaglineFallback,
     deriveSidesImpliedProb,
 } from '../../../tank-deck-format';
+import { buildLinesDeckPayload, lineKey, lineShortLabel, linesPagePath } from '../../../tank-lines';
 import { getTickerNews, getTickerResults, getTickerSeries, getTickerValues } from '../tickers';
 import { emptyMarketMovers, toMarketMovers, type MarketMoversData } from '../market-movers';
 
@@ -30,10 +31,16 @@ export interface HomepageTankRow {
     model_output: TankArticle;
     published_at: string | Date | null;
     created_at: string | Date;
+    // 'lines' = one line of a matchup's board (tank-lines.ts): no article, its page is the
+    // matchup's at /the-tank/lines/<page_slug>/. Absent on rows read before the column existed.
+    kind?: 'narrative' | 'lines' | null;
+    page_slug?: string | null;
 }
 
 export interface SportCardViewModel {
     sport: Sport;
+    // 'lines' cards are marked as such by the client and link to the matchup page.
+    kind: 'narrative' | 'lines';
     slug: string;
     href: string;
     hook: string;
@@ -75,11 +82,47 @@ export function filterAndSortLiveRows(rows: HomepageTankRow[], nowMs: number = D
         .map(({ row }) => row);
 }
 
+// A game's lines Tank is up to three rows (moneyline, spread, total) and the showcase
+// gives a game ONE cube: the moneyline, else the spread, else the total. The other lines
+// are one click away on the matchup page the cube links to. Stories pass through
+// untouched, and the input order (kickoff ASC) is kept - stories and lines are ranked
+// together by nothing but how soon the game starts.
+const LINE_RANK: Record<string, number> = { ml: 0, spread: 1, total: 2 };
+export function collapseLinesPerGame(rows: HomepageTankRow[]): HomepageTankRow[] {
+    const best = new Map<string, HomepageTankRow>();
+    const rank = (r: HomepageTankRow) => LINE_RANK[lineKey(r.game_snapshot?.prop?.market ?? '') ?? ''] ?? 9;
+    for (const row of rows) {
+        if (row.kind !== 'lines' || !row.page_slug) continue;
+        const held = best.get(row.page_slug);
+        if (!held || rank(row) < rank(held)) best.set(row.page_slug, row);
+    }
+    return rows.filter(row => row.kind !== 'lines' || (row.page_slug ? best.get(row.page_slug) === row : false));
+}
+
+function toLinesCardViewModel(row: HomepageTankRow, sport: Sport): SportCardViewModel {
+    const { prop, game } = row.game_snapshot;
+    return {
+        sport,
+        kind: 'lines',
+        slug: row.slug,
+        href: linesPagePath(row.page_slug as string),
+        hook: row.model_output.hook,
+        firstBeat: row.model_output.cards?.[0] ?? '',
+        propTag: lineShortLabel(prop),
+        league: row.league,
+        matchup: `${game.away} @ ${game.home}`,
+        // The row's own deck, headers and all - the same cube its matchup page mounts.
+        deck: buildLinesDeckPayload(row),
+    };
+}
+
 export function toSportCardViewModel(row: HomepageTankRow, sport: Sport): SportCardViewModel {
+    if (row.kind === 'lines' && row.page_slug) return toLinesCardViewModel(row, sport);
     const { prop, game } = row.game_snapshot;
     const propTag = formatPropTag(prop);
     return {
         sport,
+        kind: 'narrative',
         slug: row.slug,
         href: `/the-tank/articles/${row.slug}/`,
         hook: row.model_output.hook,
@@ -121,7 +164,7 @@ const MAX_TANKS_PER_SPORT = 5;
 // away, which is why browsing siblings needs no new query.
 export function pickLiveTankPerSport(rows: HomepageTankRow[]): SportSlot[] {
     const bySport = new Map<Sport, SportCardViewModel[]>();
-    for (const row of rows) {
+    for (const row of collapseLinesPerGame(rows)) {
         const sport = SPORT_BY_LEAGUE[row.league];
         if (!sport) continue;
         const claimed = bySport.get(sport) ?? [];
@@ -150,14 +193,14 @@ export function pickLiveTankPerSport(rows: HomepageTankRow[]): SportSlot[] {
 export async function fetchHomepageData(sql: NeonQueryFunction<false, false>): Promise<HomepageData> {
     const [liveRows, marketMovers] = await Promise.all([
         sql`
-            SELECT slug, league, game_snapshot, model_output, published_at, created_at
+            SELECT slug, league, game_snapshot, model_output, published_at, created_at, kind, page_slug
             FROM tank_pages
-            WHERE status = 'published' AND visibility = 'app' AND kind = 'narrative'
+            WHERE status = 'published' AND visibility = 'app'
               AND slug IS NOT NULL AND model_output IS NOT NULL
               AND game_snapshot->'game'->>'kickoff' IS NOT NULL
               AND (game_snapshot->'game'->>'kickoff')::timestamptz > NOW()
             ORDER BY (game_snapshot->'game'->>'kickoff')::timestamptz ASC
-            LIMIT 100
+            LIMIT 300
         `,
         Promise.all([getTickerValues(sql), getTickerSeries(sql), getTickerNews(sql, 2), getTickerResults(sql, 3)])
             .then(([values, series, news, results]) => toMarketMovers(values, series, news, results))

@@ -1707,7 +1707,13 @@ async function generateAllPages(): Promise<void> {
                 console.warn(`⚠ ${cardFailures} of ${cardsExpected} matchup card renders failed (see the warnings above)\n`);
             }
             pruneStaleTankArticles(tankPages.map(p => p.slug));
-            homepageRows = tankPages as unknown as HomepageTankRow[];
+            // Stories and live lines rows together: the homepage gives a game's lines Tank one
+            // cube and ranks everything by kickoff (homepage/data.ts collapseLinesPerGame).
+            // Superseded lines rows stay out - that line's cube is the story's now.
+            homepageRows = [
+                ...tankPages.map(p => ({ ...p, kind: 'narrative' as const, page_slug: null })),
+                ...linesRows.filter(r => r.status === 'published').map(r => ({ ...r, kind: 'lines' as const })),
+            ] as unknown as HomepageTankRow[];
 
             // Lines pages: one per matchup (page_slug), every one of its rows on it. A
             // slot whose market carries a live story hands off to it, whichever came

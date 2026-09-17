@@ -1069,13 +1069,13 @@ const goldPillStyle: React.CSSProperties = {
 // make a pick but had no route from the artifact to the story behind it - the
 // logged-out wall has had its own link all along (LinkCallContent below). Not
 // rendered on the article page's own deck, which is already the story.
-const StoryLink: React.FC<{ href: string }> = ({ href }) => (
+const StoryLink: React.FC<{ href: string; label?: string }> = ({ href, label }) => (
     <a
         href={href}
         onClick={(e) => e.stopPropagation()}
         style={{ ...goldPillStyle, fontSize: '0.85rem', padding: '0.45rem 1.2rem', marginTop: '0.9rem' }}
     >
-        View Story <span aria-hidden="true">&rarr;</span>
+        {label ?? 'View Story'} <span aria-hidden="true">&rarr;</span>
     </a>
 );
 
@@ -1182,7 +1182,7 @@ const TurnArrow: React.FC<{ direction: 1 | -1; offset: number; onTurn: (directio
 // UI is a smaller cube inside the same reserved space (a proportionally smaller box
 // would keep the same relative spill). Geometry constants stay untouched - wall copy
 // is rem-sized and would overflow shrunken walls.
-export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?: LinkCall; promoWall?: PromoWall; openWall?: 'call' | 'promo'; scale?: number; storyHref?: string }> = ({ payload, slug, linkCall, promoWall, openWall = 'call', scale = 1, storyHref }) => {
+export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?: LinkCall; promoWall?: PromoWall; openWall?: 'call' | 'promo'; scale?: number; storyHref?: string; storyLabel?: string }> = ({ payload, slug, linkCall, promoWall, openWall = 'call', scale = 1, storyHref, storyLabel }) => {
     const walls = buildWalls(payload, promoWall);
     // Which wall greets the viewer. Default: the Call wall (prop bets sell the
     // artifact). Logged-out surfaces can instead open on the promo/signup wall
@@ -1209,7 +1209,7 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
             return (
                 <>
                     <CallContent call={payload.call} slug={slug} kickoff={payload.kickoff} />
-                    {storyHref && <StoryLink href={storyHref} />}
+                    {storyHref && <StoryLink href={storyHref} label={storyLabel} />}
                 </>
             );
         }

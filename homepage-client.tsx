@@ -28,6 +28,9 @@ import type { Sport } from './sport-map';
 
 interface HomepageTank {
     slug: string;
+    // 'lines' = a matchup's board, not a story: marked in the pager and linked to the
+    // matchup page. Absent on a page cached before the field existed (all stories then).
+    kind?: 'narrative' | 'lines';
     href: string;
     matchup: string; // "Away @ Home"
     deck: DeckPayload;
@@ -63,8 +66,9 @@ const TankPager: React.FC<{
     index: number;
     total: number;
     matchup: string;
+    isLines?: boolean;
     onStep: (delta: number) => void;
-}> = ({ sport, index, total, matchup, onStep }) => (
+}> = ({ sport, index, total, matchup, isLines, onStep }) => (
     <div className="hc-tank-nav">
         <div className="tank-modal-nav">
             <button type="button" className="tank-modal-arrow" onClick={() => onStep(-1)} aria-label={`Previous ${sport.toLowerCase()} tank`}>
@@ -75,7 +79,11 @@ const TankPager: React.FC<{
                 &rsaquo;
             </button>
         </div>
-        {matchup && <p className="hc-tank-nav-matchup" aria-live="polite">{matchup}</p>}
+        {matchup && (
+            <p className="hc-tank-nav-matchup" aria-live="polite">
+                {isLines && <span className="hc-tank-nav-lines">Lines</span>}{matchup}
+            </p>
+        )}
     </div>
 );
 
@@ -373,8 +381,14 @@ function mount() {
         const step = (delta: number) => setIndex((i) => (i + delta + tanks.length) % tanks.length);
         // Only worth showing when this sport actually has siblings to page through.
         const pager = tanks.length > 1 ? (
-            <TankPager sport={sport} index={tanks.indexOf(tank)} total={tanks.length} matchup={tank.matchup} onStep={step} />
+            <TankPager sport={sport} index={tanks.indexOf(tank)} total={tanks.length} matchup={tank.matchup} isLines={tank.kind === 'lines'} onStep={step} />
+        ) : tank.kind === 'lines' && tank.matchup ? (
+            // A lone lines Tank still says what it is - the pager is the only place the mark lives.
+            <div className="hc-tank-nav"><p className="hc-tank-nav-matchup"><span className="hc-tank-nav-lines">Lines</span>{tank.matchup}</p></div>
         ) : null;
+        // A lines cube has no story behind it: its link goes to the matchup page, where the
+        // game's other lines are.
+        const linkLabel = tank.kind === 'lines' ? 'See every line' : undefined;
         return (
             <MotionConfig reducedMotion="user">
                 {payload.loggedIn ? (
@@ -383,7 +397,7 @@ function mount() {
                             {/* The cave backdrop is no longer mounted here - it's the
                                 server-rendered .hc-tanks-backdrop behind the whole #tanks
                                 panel (homepage/render.ts). */}
-                            <Fishtank key={tank.slug} payload={tank.deck} slug={tank.slug} scale={showcaseScale} storyHref={tank.href} />
+                            <Fishtank key={tank.slug} payload={tank.deck} slug={tank.slug} scale={showcaseScale} storyHref={tank.href} storyLabel={linkLabel} />
                             {/* Fixed variant: rides the viewport, so the captain stays in
                                 view wherever the page is scrolled. */}
                             <PetWidget variant="fixed" />
@@ -402,7 +416,7 @@ function mount() {
                                 key={tank.slug}
                                 payload={tank.deck}
                                 slug={tank.slug}
-                                linkCall={{ href: tank.href }}
+                                linkCall={{ href: tank.href, label: linkLabel }}
                                 promoWall={{
                                     label: 'Join HeatChecks',
                                     body: 'Experience a new way to enjoy the sports content you love. Make your picks, grow your Mud Puppy, and compete in a new sports world.',

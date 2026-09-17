@@ -13,6 +13,7 @@ import { api, check, pool, section, type Suite } from '../harness';
 import { cleanupTanksBySlugPrefix, cleanupUsersByEmailPrefix, createUser, mintSessionCookie } from '../fixtures';
 import { buildLinesArticle, buildLinesDeckPayload, type LinesFacts } from '../../../tank-lines';
 import type { Game, Prop } from '../../../tank-types';
+import { collapseLinesPerGame, pickLiveTankPerSport, type HomepageTankRow } from '../../../lib/pages-functions/homepage/data';
 
 const SLUG_PREFIX = 'acceptance-lines-';
 const EMAIL_PREFIX = 'acceptance-lines-';
@@ -195,6 +196,46 @@ async function run() {
     const legacy = buildLinesDeckPayload({ slug: 's', game_snapshot: { prop: mlProp, game }, model_output: { ...ml, cardHeaders: undefined } });
     check('a row created before cardHeaders existed falls back to league/line and the frozen odds',
         legacy.contextLabel === 'MLB · Moneyline' && legacy.oddsOrMarketLabel.startsWith('San Diego Padres 64.6%'), `${legacy.contextLabel} | ${legacy.oddsOrMarketLabel}`);
+
+    // -----------------------------------------------------------------------------
+    section('7: On the homepage a game gets one lines cube, ranked with the stories by kickoff alone');
+    const at = (iso: string): Game => ({ ...game, kickoff: iso } as Game);
+    const linesRow = (pageSlug: string, prop: Prop, kickoff: string): HomepageTankRow => ({
+        slug: `${pageSlug}-${prop.market}`, league: 'MLB', kind: 'lines', page_slug: pageSlug,
+        game_snapshot: { prop, game: at(kickoff) }, model_output: buildLinesArticle(prop, at(kickoff), facts),
+        published_at: null, created_at: '2026-09-17T00:00:00.000Z',
+    });
+    const story: HomepageTankRow = {
+        slug: 'a-story', league: 'MLB', kind: 'narrative', page_slug: null,
+        game_snapshot: { prop: mlProp, game: at('2026-09-17T21:00:00.000Z') },
+        model_output: { ...ml, body: 'A story.', cardHeaders: undefined },
+        published_at: null, created_at: '2026-09-17T00:00:00.000Z',
+    };
+    // Kickoff ASC, as the query and filterAndSortLiveRows hand them over. Game A lists its
+    // total BEFORE its moneyline to prove the pick is by line, not by row order.
+    const homeRows: HomepageTankRow[] = [
+        linesRow('lines-a', totalProp, '2026-09-17T20:00:00.000Z'),
+        linesRow('lines-a', mlProp, '2026-09-17T20:00:00.000Z'),
+        linesRow('lines-a', spreadProp, '2026-09-17T20:00:00.000Z'),
+        story,
+        linesRow('lines-b', spreadProp, '2026-09-17T22:00:00.000Z'),
+        linesRow('lines-b', totalProp, '2026-09-17T22:00:00.000Z'),
+    ];
+    const collapsed = collapseLinesPerGame(homeRows);
+    check('three lines of one game collapse to one row; a story is untouched',
+        collapsed.map((r) => r.slug).join(',') === 'lines-a-moneyline,a-story,lines-b-spreads', collapsed.map((r) => r.slug).join(','));
+    const baseball = pickLiveTankPerSport(homeRows).find((slot) => slot.sport === 'Baseball');
+    const cubes = baseball?.cards ?? [];
+    check('the cube is the moneyline, or the spread when the game has no moneyline',
+        cubes[0]?.propTag === 'Moneyline' && cubes[2]?.propTag === 'Spread', cubes.map((c) => c.propTag).join(','));
+    check('stories and lines are ranked together by kickoff - neither kind goes first',
+        cubes.map((c) => c.kind).join(',') === 'lines,narrative,lines', cubes.map((c) => c.kind).join(','));
+    check('a lines cube links to its matchup page, a story cube to its article',
+        cubes[0]?.href === '/the-tank/lines/lines-a/' && cubes[1]?.href === '/the-tank/articles/a-story/', cubes.map((c) => c.href).join(' '));
+    check('a lines cube carries the row\'s own deck, headers and all',
+        cubes[0]?.deck.contextLabel === 'Wins vs prices' && cubes[0]?.deck.cards.length === 2, String(cubes[0]?.deck.contextLabel));
+    check('a lines row with no page_slug is dropped rather than linked nowhere',
+        collapseLinesPerGame([{ ...homeRows[0], page_slug: null }]).length === 0);
 
     await cleanup();
 }
