@@ -38,8 +38,18 @@ import {
     isSyncInProgress,
     SUPPORTED_LEAGUES,
 } from './polymarket';
-import { getPropProvider } from './tank-providers';
+import { getPropProvider, buildGamesFromFlatProps, type PolymarketPropsRow } from './tank-providers';
 import { isTotalsSide, leagueRuleAccepts, parseLeagueRule } from './lib/pages-functions/league-rules';
+import { MIN_SELECTION_LIQUIDITY, MIN_SELECTION_VOLUME, pickCanonicalMarket, type SlateMarketRow } from './lib/pages-functions/index-slate';
+import { toSlateMarketRow } from './lib/pages-functions/slate-rows';
+import {
+    LINE_TYPES,
+    buildLinesArticle,
+    lineKey,
+    linesPageSlugBase,
+    linesRowSlug,
+    type LineKey,
+} from './tank-lines';
 import {
     ensureKalshiTable,
     startKalshiScheduler,
@@ -2388,6 +2398,324 @@ app.post('/api/kalshi/sync', apiKeyAuth, async (req: express.Request, res: expre
 // GET /api/tank/props reads the already-synced polymarket_props cache (or the mock
 // fixture), it never talks to Polymarket itself.
 
+// Rebuild this machine's local dist/ and fire the Cloudflare Deploy Hooks. Fire-and-
+// forget: the caller has already committed its write, so a build failure is logged, not
+// surfaced as a failed publish.
+//
+// The build:static run only rewrites local dist/ - Cloudflare Pages only rebuilds the
+// deployed site on its own git-push-triggered build. Firing the project's Deploy Hooks
+// (webhook URLs from the Cloudflare Pages dashboard: Workers & Pages -> project ->
+// Settings -> Builds & deployments -> Deploy hooks) triggers a real redeploy from the
+// latest commit on each hook's connected branch, without needing a git push. Not
+// configured locally is a no-op, not an error - publishing still works.
+function triggerStaticRebuild(reason: string): void {
+    console.log(`[Static Site] ${reason}. Regenerating static site...`);
+    execAsync('npm run build:static', {
+        cwd: process.cwd(),
+        maxBuffer: 10 * 1024 * 1024,
+        env: { ...process.env }
+    }).then(({ stdout, stderr }) => {
+        if (stdout) console.log('[Static Site] Generation output:', stdout.substring(0, 1000));
+        if (stderr && !stderr.includes('WARN')) console.warn('[Static Site] Generation warnings:', stderr.substring(0, 500));
+        console.log('[Static Site] ✓ Static site regeneration completed successfully');
+    }).catch((error: any) => {
+        console.error('[Static Site] ✗ Error regenerating static site:', error.message);
+    });
+
+    if (DEPLOY_HOOK_URLS.length === 0) {
+        console.warn('[Deploy Hook] DEPLOY_HOOK_URL is not configured - published page will not go live until the next git-push-triggered Cloudflare build.');
+        return;
+    }
+    for (const hookUrl of DEPLOY_HOOK_URLS) {
+        // Label hooks by the tail of their id so multi-hook logs are tellable apart
+        // without printing the full secret URL.
+        const hookLabel = `hook ...${hookUrl.slice(-6)}`;
+        fetch(hookUrl, { method: 'POST' })
+            .then(async (res) => {
+                if (res.status === 304) {
+                    // Cloudflare deduplicates: a hook fired while this branch already has
+                    // a build queued or running returns 304 and skips the redundant
+                    // build. The queued build picks up the latest content anyway.
+                    console.log(`[Deploy Hook] = ${hookLabel} skipped - a build for this branch is already queued/running`);
+                } else if (!res.ok) {
+                    console.error(`[Deploy Hook] ✗ ${hookLabel} trigger failed: ${res.status} ${await res.text()}`);
+                } else {
+                    console.log(`[Deploy Hook] ✓ ${hookLabel} redeploy triggered`);
+                }
+            })
+            .catch((error: any) => {
+                console.error(`[Deploy Hook] ✗ ${hookLabel} error triggering redeploy:`, error.message);
+            });
+    }
+}
+
+// Hand back every line a story took over (see the PUT route's supersede step).
+async function restoreSupersededLines(narrativeId: string): Promise<void> {
+    const restored = await pool.query(
+        `UPDATE tank_pages
+         SET status = 'published', superseded_by = NULL, updated_at = NOW()
+         WHERE superseded_by = $1 AND status = 'superseded'
+         RETURNING slug`,
+        [narrativeId]
+    );
+    if (restored.rowCount) {
+        console.log(`[Lines] Restored line(s) after story ${narrativeId} left: ${restored.rows.map(r => r.slug).join(', ')}`);
+    }
+}
+
+const isoOrNull = (v: unknown): string | null => {
+    if (!v) return null;
+    const d = new Date(v as string | Date);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+};
+const numOrNull = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+};
+
+// GET /api/tank/matchups?day=today|tomorrow&leagues=a,b - the matchup picker's feed
+// (auth required). One row per game kicking off on that America/New_York calendar day
+// (and still in the future), with its three canonical lines chosen by the SAME selector
+// the Exchange uses to lock index positions (pickCanonicalMarket) - so a lines Tank and
+// the slate measure the same market, not two neighbouring rungs. Reads the synced
+// polymarket_props cache directly rather than going through the PropProvider: the
+// selector needs raw volume/liquidity and the game's row set, which Prop doesn't carry,
+// and the picker must work whatever PROP_PROVIDER is set to.
+app.get('/api/tank/matchups', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const day = req.query.day === 'tomorrow' ? 'tomorrow' : 'today';
+        const dayOffset = day === 'tomorrow' ? 1 : 0;
+        const leagues = req.query.leagues
+            ? String(req.query.leagues).split(',').map(s => s.trim()).filter(Boolean)
+            : [...SUPPORTED_LEAGUES];
+
+        // Same per-type floor as functions/api/index-lock.ts: moneylines and totals gate on
+        // volume, spreads on liquidity (spread volume is usually absent). The selector
+        // re-applies it; this just keeps the payload small.
+        const { rows } = await pool.query(
+            `SELECT league, event_id, event_slug, event_title, event_start_time, event_end_date, event_teams,
+                    market_id, condition_id, subject_name, market_type, market_line,
+                    outcomes, outcome_prices, volume, liquidity, question, is_player_prop,
+                    clob_token_ids, best_bid, best_ask
+             FROM polymarket_props
+             WHERE closed IS DISTINCT FROM TRUE
+               AND market_type = ANY($1)
+               AND event_id IS NOT NULL
+               AND outcome_prices IS NOT NULL
+               AND league = ANY($2)
+               AND event_start_time > NOW()
+               AND (event_start_time AT TIME ZONE 'America/New_York')::date
+                   = (NOW() AT TIME ZONE 'America/New_York')::date + $3::int
+               AND (
+                     (market_type IN ('totals', 'moneyline') AND COALESCE(volume, 0) >= $4)
+                  OR (market_type = 'spreads' AND COALESCE(liquidity, 0) >= $5)
+               )
+             ORDER BY event_start_time, event_id`,
+            [[...LINE_TYPES], leagues, dayOffset, MIN_SELECTION_VOLUME, MIN_SELECTION_LIQUIDITY]
+        );
+
+        // pg hands NUMERIC back as strings and timestamps as Dates; the Prop builder
+        // wants ISO strings and real numbers (isLiveBook checks typeof === 'number').
+        const normalized: PolymarketPropsRow[] = rows.map((r: any) => ({
+            ...r,
+            event_start_time: isoOrNull(r.event_start_time),
+            event_end_date: isoOrNull(r.event_end_date),
+            best_bid: numOrNull(r.best_bid),
+            best_ask: numOrNull(r.best_ask),
+        }));
+
+        const slateByEvent = new Map<string, SlateMarketRow[]>();
+        for (const r of normalized) {
+            const row = toSlateMarketRow(r as unknown as Record<string, unknown>);
+            const list = slateByEvent.get(row.event_id);
+            if (list) list.push(row); else slateByEvent.set(row.event_id, [row]);
+        }
+        // Polymarket lists ONE fixture under SEVERAL events - observed live 2026-09-16:
+        // a La Liga game's "Will X win?" markets sat under one event_id and its spreads
+        // and totals under another, so grouping by event alone showed the same matchup
+        // twice, each with a third of its lines. Merge by fixture (league + teams +
+        // kickoff, the same identity buildCanonicalClusters uses) so a matchup is one
+        // row with all three lines. The merged game's id is that fixture key - lines
+        // rows store it, and POST /api/tank/lines reuses a page_slug by it.
+        const fixtureId = (g: { league: string; away: string; home: string; kickoff: string }) =>
+            `fixture:${g.league}:${g.away}:${g.home}:${new Date(g.kickoff).toISOString()}`;
+        const merged = new Map<string, { game: ReturnType<typeof buildGamesFromFlatProps>[number]; slate: SlateMarketRow[] }>();
+        for (const g of buildGamesFromFlatProps(normalized)) {
+            const key = fixtureId(g);
+            const slate = slateByEvent.get(g.id) ?? [];
+            const cur = merged.get(key);
+            if (cur) {
+                cur.game.props.push(...g.props);
+                cur.slate.push(...slate);
+                cur.game.awayCode ??= g.awayCode;
+                cur.game.homeCode ??= g.homeCode;
+            } else {
+                merged.set(key, { game: { ...g, id: key, props: [...g.props] }, slate: [...slate] });
+            }
+        }
+
+        const picked = [...merged.values()].flatMap(({ game, slate }) => {
+            const propById = new Map(game.props.map(p => [p.id, p]));
+            const lines: Partial<Record<LineKey, typeof game.props[number]>> = {};
+            for (const type of LINE_TYPES) {
+                const pick = pickCanonicalMarket(slate, type);
+                const prop = pick ? propById.get(pick.row.market_id) : undefined;
+                if (prop) lines[lineKey(type)!] = prop;
+            }
+            const props = Object.values(lines);
+            return props.length === 0 ? [] : [{ game: { ...game, props }, lines }];
+        });
+
+        // What already covers these exact markets - a story (draft or live) or a lines
+        // row. By market id, not game id: stories drafted by the cron carry Polymarket's
+        // event id as game.id, not the fixture key above.
+        const marketIds = picked.flatMap(m => m.game.props.map(p => String(p.id)));
+        const coverageResult = marketIds.length === 0 ? { rows: [] } : await pool.query(
+            `SELECT id, kind, status, visibility, slug, page_slug,
+                    game_snapshot->'prop'->>'id' AS market_id
+             FROM tank_pages
+             WHERE game_snapshot->'prop'->>'id' = ANY($1)
+               AND status IN ('draft', 'published', 'superseded')`,
+            [marketIds]
+        );
+        const coverageByMarket: Record<string, { id: string; kind: string; status: string; visibility: string; slug: string | null; page_slug: string | null }> = {};
+        for (const c of coverageResult.rows as any[]) {
+            if (!c.market_id) continue;
+            // A live row outranks a draft for the badge when both exist on one market.
+            const prev = coverageByMarket[c.market_id];
+            if (!prev || (prev.status === 'draft' && c.status !== 'draft')) {
+                coverageByMarket[c.market_id] = { id: c.id, kind: c.kind, status: c.status, visibility: c.visibility, slug: c.slug, page_slug: c.page_slug };
+            }
+        }
+
+        const matchups = picked.map(m => {
+            const coverage: typeof coverageByMarket = {};
+            for (const p of m.game.props) {
+                const c = coverageByMarket[String(p.id)];
+                if (c) coverage[String(p.id)] = c;
+            }
+            return { ...m, coverage };
+        });
+
+        // The board is only as fresh as the last prop sync (polymarket.ts's scheduler on
+        // this backend). Spreads and totals are listed later than moneylines, so a stale
+        // cache shows a game with its moneyline alone - surfaced so that reads as
+        // "sync is behind", not "no line exists".
+        const syncRows = await pool.query(`SELECT MAX(synced_at) AS synced_at FROM polymarket_props WHERE league = ANY($1)`, [leagues]);
+        const syncedAt = syncRows.rows[0]?.synced_at ? new Date(syncRows.rows[0].synced_at).toISOString() : null;
+
+        res.json({ day, count: matchups.length, syncedAt, games: matchups });
+    } catch (error: any) {
+        console.error('[GET /api/tank/matchups] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
+// POST /api/tank/lines - Create lines Tanks from the matchup picker (auth required).
+// Body: { matchups: [{ game, lines: { ml?, spread?, total? } }] } - the objects GET
+// /api/tank/matchups returned. Goes straight to 'published': there is nothing to review,
+// every field is a fact off the snapshot. Never tags a ticker. One rebuild per request.
+app.post('/api/tank/lines', apiKeyAuth, async (req: express.Request, res: express.Response) => {
+    try {
+        const matchups: Array<{ game: any; lines: Record<string, any> }> = Array.isArray(req.body?.matchups) ? req.body.matchups : [];
+        if (matchups.length === 0) {
+            return res.status(400).json({ message: 'Missing required body field: matchups (non-empty array)' });
+        }
+        for (const m of matchups) {
+            const g = m?.game;
+            if (!g || !g.id || !g.league || !g.away || !g.home || !g.kickoff || !m.lines || typeof m.lines !== 'object') {
+                return res.status(400).json({ message: 'Each matchup requires a game (id, league, away, home, kickoff) and a lines object.' });
+            }
+        }
+
+        const [slugRows, pageSlugRows] = await Promise.all([
+            pool.query('SELECT slug FROM tank_pages WHERE slug IS NOT NULL'),
+            pool.query('SELECT DISTINCT page_slug FROM tank_pages WHERE page_slug IS NOT NULL'),
+        ]);
+        const existingSlugs = new Set<string>(slugRows.rows.map(r => r.slug));
+        const existingPageSlugs = new Set<string>(pageSlugRows.rows.map(r => r.page_slug));
+
+        const created: any[] = [];
+        const skipped: Array<{ gameId: string; marketId?: string; key?: string; reason: string }> = [];
+
+        for (const m of matchups) {
+            const game = m.game;
+            const gameId = String(game.id);
+            if (new Date(game.kickoff).getTime() <= Date.now()) {
+                skipped.push({ gameId, reason: 'kickoff_passed' });
+                continue;
+            }
+            const entries = Object.entries(m.lines).filter(([key, prop]) =>
+                (key === 'ml' || key === 'spread' || key === 'total') && prop && prop.id && prop.market) as Array<[LineKey, any]>;
+            if (entries.length === 0) continue;
+
+            // Skip rule: a live app story on the market (that market is already the
+            // story's), or any lines row that ever covered it (still live, or handed
+            // off). Drafts do NOT block - publish is the handoff, and a draft may never
+            // ship.
+            const marketIds = entries.map(([, p]) => String(p.id));
+            const cov = await pool.query(
+                `SELECT kind, status, visibility, game_snapshot->'prop'->>'id' AS market_id
+                 FROM tank_pages
+                 WHERE game_snapshot->'prop'->>'id' = ANY($1) AND status IN ('published', 'superseded')`,
+                [marketIds]
+            );
+
+            // Every line of one game shares a page: reuse the page_slug an earlier run
+            // gave this game so a line added later joins the same page.
+            const pageRows = await pool.query(
+                `SELECT page_slug FROM tank_pages
+                 WHERE kind = 'lines' AND page_slug IS NOT NULL AND game_snapshot->'game'->>'id' = $1
+                 LIMIT 1`,
+                [gameId]
+            );
+            let pageSlug: string | null = pageRows.rows[0]?.page_slug ?? null;
+            if (!pageSlug) {
+                pageSlug = ensureUniqueSlug(linesPageSlugBase(game), existingPageSlugs);
+                existingPageSlugs.add(pageSlug);
+            }
+
+            for (const [key, prop] of entries) {
+                const marketId = String(prop.id);
+                if (lineKey(prop.market) !== key) {
+                    skipped.push({ gameId, marketId, key, reason: 'line_mismatch' });
+                    continue;
+                }
+                const blocking = (cov.rows as any[]).find(r => r.market_id === marketId
+                    && (r.kind === 'lines' || (r.status === 'published' && r.visibility === 'app')));
+                if (blocking) {
+                    skipped.push({ gameId, marketId, key, reason: blocking.kind === 'lines' ? 'lines_exists' : 'narrative_live' });
+                    continue;
+                }
+
+                const slug = ensureUniqueSlug(linesRowSlug(pageSlug, key), existingSlugs);
+                existingSlugs.add(slug);
+                const article = buildLinesArticle(prop, game);
+                article.seo.slug = slug;
+
+                const insertResult = await pool.query(
+                    `INSERT INTO tank_pages (
+                        slug, provider, league, angle, game_snapshot, model_output,
+                        status, visibility, published_at, kind, page_slug
+                    ) VALUES ($1, 'polymarket', $2, '', $3, $4, 'published', 'app', NOW(), 'lines', $5)
+                    RETURNING *`,
+                    [slug, game.league, JSON.stringify({ prop, game }), JSON.stringify(article), pageSlug]
+                );
+                created.push(insertResult.rows[0]);
+            }
+        }
+
+        if (created.length > 0) {
+            triggerStaticRebuild(`${created.length} lines Tank row(s) created`);
+        }
+        res.status(201).json({ created: created.length, skipped, pages: created });
+    } catch (error: any) {
+        console.error('[POST /api/tank/lines] Error:', error);
+        res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+});
+
 // GET /api/tank/props - Fetch + pre-filter props for the curator UI (auth required)
 app.get('/api/tank/props', apiKeyAuth, async (req: express.Request, res: express.Response) => {
     try {
@@ -2555,9 +2883,11 @@ app.get('/api/tank/pages', apiKeyAuth, async (req: express.Request, res: express
             // "Active" = published AND the underlying game hasn't happened yet. The
             // IS NOT NULL guard matters: without it, one row missing/malformed
             // kickoff data throws a cast error and 500s the whole endpoint.
+            // Superseded lines rows are included so the admin can see which line a
+            // story took over; they are not public.
             const result = await pool.query(
                 `SELECT * FROM tank_pages
-                 WHERE status = 'published'
+                 WHERE status IN ('published', 'superseded')
                    AND game_snapshot->'game'->>'kickoff' IS NOT NULL
                    AND (game_snapshot->'game'->>'kickoff')::timestamptz > NOW()
                  ORDER BY (game_snapshot->'game'->>'kickoff')::timestamptz ASC
@@ -2677,54 +3007,33 @@ app.put('/api/tank/pages/:id', apiKeyAuth, async (req: express.Request, res: exp
             }
         }
 
-        if (statusChangedToPublished || statusChangedAwayFromPublished) {
-            const verb = statusChangedToPublished ? 'published' : 'unpublished';
-            console.log(`[Static Site] Tank page ${id} was just ${verb}. Regenerating static site...`);
-            execAsync('npm run build:static', {
-                cwd: process.cwd(),
-                maxBuffer: 10 * 1024 * 1024,
-                env: { ...process.env }
-            }).then(({ stdout, stderr }) => {
-                if (stdout) console.log('[Static Site] Generation output:', stdout.substring(0, 1000));
-                if (stderr && !stderr.includes('WARN')) console.warn('[Static Site] Generation warnings:', stderr.substring(0, 500));
-                console.log('[Static Site] ✓ Static site regeneration completed successfully');
-            }).catch((error: any) => {
-                console.error('[Static Site] ✗ Error regenerating static site:', error.message);
-            });
-
-            // The build:static run above only rewrites this machine's local dist/ -
-            // Cloudflare Pages only rebuilds the deployed site on its own git-push-
-            // triggered build. Firing the project's Deploy Hooks (webhook URLs from the
-            // Cloudflare Pages dashboard: Workers & Pages -> project -> Settings ->
-            // Builds & deployments -> Deploy hooks) triggers a real redeploy from the
-            // latest commit on each hook's connected branch, without needing a git push.
-            // Not configured locally is a no-op, not an error - publishing still works.
-            if (DEPLOY_HOOK_URLS.length > 0) {
-                for (const hookUrl of DEPLOY_HOOK_URLS) {
-                    // Label hooks by the tail of their id so multi-hook logs are tellable
-                    // apart without printing the full secret URL.
-                    const hookLabel = `hook ...${hookUrl.slice(-6)}`;
-                    fetch(hookUrl, { method: 'POST' })
-                        .then(async (res) => {
-                            if (res.status === 304) {
-                                // Cloudflare deduplicates: a hook fired while this branch
-                                // already has a build queued or running returns 304 and
-                                // skips the redundant build. The queued build picks up the
-                                // latest published content anyway.
-                                console.log(`[Deploy Hook] = ${hookLabel} skipped - a build for this branch is already queued/running`);
-                            } else if (!res.ok) {
-                                console.error(`[Deploy Hook] ✗ ${hookLabel} trigger failed: ${res.status} ${await res.text()}`);
-                            } else {
-                                console.log(`[Deploy Hook] ✓ ${hookLabel} redeploy triggered`);
-                            }
-                        })
-                        .catch((error: any) => {
-                            console.error(`[Deploy Hook] ✗ ${hookLabel} error triggering redeploy:`, error.message);
-                        });
+        // Narrative wins, line by line: an app story going live on a market retires the
+        // lines row covering that same market (status 'superseded' - every public
+        // reader's status='published' predicate hides it, while settle.ts still settles
+        // the picks it already took). Unpublishing hands the line back. Only the market
+        // matters, not the game: the other two lines of that matchup stay live.
+        if (statusChangedToPublished && visibility === 'app' && existing.rows[0].kind !== 'lines') {
+            const marketId = existing.rows[0].game_snapshot?.prop?.id;
+            if (marketId) {
+                const superseded = await pool.query(
+                    `UPDATE tank_pages
+                     SET status = 'superseded', superseded_by = $1, updated_at = NOW()
+                     WHERE kind = 'lines' AND status = 'published'
+                       AND game_snapshot->'prop'->>'id' = $2
+                     RETURNING slug`,
+                    [id, String(marketId)]
+                );
+                if (superseded.rowCount) {
+                    console.log(`[Lines] Story ${result.rows[0].slug} took over line(s): ${superseded.rows.map(r => r.slug).join(', ')}`);
                 }
-            } else {
-                console.warn('[Deploy Hook] DEPLOY_HOOK_URL is not configured - published page will not go live until the next git-push-triggered Cloudflare build.');
             }
+        }
+        if (statusChangedAwayFromPublished) {
+            await restoreSupersededLines(id);
+        }
+
+        if (statusChangedToPublished || statusChangedAwayFromPublished) {
+            triggerStaticRebuild(`Tank page ${id} was just ${statusChangedToPublished ? 'published' : 'unpublished'}`);
         }
 
         res.json(result.rows[0]);
@@ -2737,6 +3046,10 @@ app.put('/api/tank/pages/:id', apiKeyAuth, async (req: express.Request, res: exp
 // DELETE /api/tank/pages/:id - Delete a Tank page (auth required)
 app.delete('/api/tank/pages/:id', apiKeyAuth, async (req: express.Request, res: express.Response) => {
     try {
+        // Before the row goes: a deleted story must give back any line it took over,
+        // or that slot stays dead with nothing left to link to. The FK is ON DELETE SET
+        // NULL, which would only clear the pointer, not the status.
+        await restoreSupersededLines(req.params.id);
         const result = await pool.query('DELETE FROM tank_pages WHERE id = $1', [req.params.id]);
         if (result.rowCount === 0) {
             return res.status(404).json({ message: 'Tank page not found' });

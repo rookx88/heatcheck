@@ -118,6 +118,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             FROM tank_pages t
             WHERE t.status = 'published'
               AND t.visibility = 'app'
+              AND t.kind = 'narrative'
               AND t.slug IS NOT NULL
               AND t.model_output IS NOT NULL
               AND t.resolution IS NULL

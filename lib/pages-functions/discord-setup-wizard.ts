@@ -917,6 +917,7 @@ async function runBackfill(context: RequestContext, sql: ReturnType<typeof getSq
         SELECT t.id, t.slug, t.league, t.model_output, t.game_snapshot
         FROM tank_pages t
         WHERE t.status = 'published' AND t.visibility = 'app' AND t.published_at IS NOT NULL
+          AND t.kind = 'narrative'
           AND NOT EXISTS (SELECT 1 FROM discord_guild_posts dgp WHERE dgp.guild_id = ${guildId} AND dgp.tank_page_id = t.id)
         ORDER BY t.published_at DESC
         LIMIT 6

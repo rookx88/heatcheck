@@ -40,6 +40,8 @@ interface PendingRow {
     implied_prob_at_lock: number | null;
     model_output: unknown;
     kickoff: string | null;
+    kind: string | null;
+    page_slug: string | null;
 }
 
 interface SettledRow {
@@ -51,6 +53,16 @@ interface SettledRow {
     settled_at: string | null;
     model_output: unknown;
     ember_awarded: number | null;
+    kind: string | null;
+    page_slug: string | null;
+}
+
+// Where a pick's Tank lives. A lines row has no article of its own - it is one slot on
+// its matchup's page - so the client must never build /the-tank/articles/<slug>/ itself.
+function tankHref(row: { tank_slug: string; kind: string | null; page_slug: string | null }): string {
+    return row.kind === 'lines' && row.page_slug
+        ? `/the-tank/lines/${encodeURIComponent(row.page_slug)}/`
+        : `/the-tank/articles/${encodeURIComponent(row.tank_slug)}/`;
 }
 
 function taglineOf(modelOutput: unknown, slug: string): string {
@@ -107,6 +119,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
                 GROUP BY metadata->>'pickId'
             )
             SELECT p.id, p.side, p.tank_slug, p.created_at, p.result, p.settled_at, t.model_output,
+                   t.kind, t.page_slug,
                    COALESCE(a.ember, 0) AS ember_awarded
             FROM picks p
             JOIN tank_pages t ON t.id = p.tank_page_id
@@ -124,6 +137,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
                 GROUP BY metadata->>'pickId'
             )
             SELECT p.id, p.side, p.tank_slug, p.created_at, p.result, p.settled_at, t.model_output,
+                   t.kind, t.page_slug,
                    COALESCE(a.ember, 0) AS ember_awarded
             FROM picks p
             JOIN tank_pages t ON t.id = p.tank_page_id
@@ -141,6 +155,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         : null;
     const settled = pageRows.map((p) => ({
         slug: p.tank_slug,
+        href: tankHref(p),
         side: p.side,
         createdAt: p.created_at,
         settledAt: p.settled_at,
@@ -159,7 +174,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         sql`
             SELECT p.side, p.tank_slug, p.created_at,
                    p.implied_prob_at_lock::float8 AS implied_prob_at_lock,
-                   t.model_output,
+                   t.model_output, t.kind, t.page_slug,
                    t.game_snapshot->'game'->>'kickoff' AS kickoff
             FROM picks p
             JOIN tank_pages t ON t.id = p.tank_page_id
@@ -184,6 +199,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     const pending = (pendingRows as unknown as PendingRow[]).map((p) => ({
         slug: p.tank_slug,
+        href: tankHref(p),
         side: p.side,
         createdAt: p.created_at,
         kickoff: p.kickoff,

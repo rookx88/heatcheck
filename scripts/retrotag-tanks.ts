@@ -114,6 +114,7 @@ async function main() {
                 game_snapshot->'prop'->'odds'->'outcomes' AS outcome_labels
          FROM tank_pages
          WHERE status = 'published' AND visibility = 'app' AND provider IN ('polymarket', 'kalshi')
+           AND kind = 'narrative'
            AND slug IS NOT NULL AND model_output IS NOT NULL
            AND game_snapshot->'prop'->>'id' IS NOT NULL
          ORDER BY published_at NULLS LAST, created_at`);

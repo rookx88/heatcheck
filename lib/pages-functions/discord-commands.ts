@@ -309,7 +309,7 @@ async function tankSearchData(context: RequestContext, search: string): Promise<
     const rows = (await sql`
         SELECT slug, league, model_output, game_snapshot
         FROM tank_pages
-        WHERE status = 'published' AND visibility = 'app'
+        WHERE status = 'published' AND visibility = 'app' AND kind = 'narrative'
           AND (slug ILIKE ${term} OR model_output->>'tagline' ILIKE ${term} OR model_output->>'hook' ILIKE ${term})
         ORDER BY published_at DESC
         LIMIT ${MAX_SELECT_OPTIONS}

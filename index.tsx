@@ -3,7 +3,9 @@ import { createRoot } from 'react-dom/client';
 import { GoogleGenAI, Type } from '@google/genai';
 import Chart from 'chart.js/auto';
 import { apiClient } from './apiClient';
-import { effectiveSettleDate, formatGameTime } from './tank-deck-format';
+import { effectiveSettleDate, formatGameTime, formatOddsLabel } from './tank-deck-format';
+import { SUPPORTED_LEAGUES } from './league-tags';
+import { lineLabel } from './tank-lines';
 import { PublicHomePage } from './pages/index';
 import { parseExcelFile } from './scripts/utils/excelParser';
 import { analyzeDFSSlate } from './scripts/services/dfsAnalysisService';
@@ -14,7 +16,7 @@ import { rewriteArticleForSEO, SEORewriteOutput } from './scripts/services/seoRe
 import { markdownToHtml } from './scripts/utils/markdown-converter';
 import { calculateV4HeatScore } from './scripts/shared/heat-score-v4';
 import type { Game, Prop, SelectedProp } from './tank-types';
-import type { TankPageRow, NewsletterIssueRow } from './apiClient';
+import type { TankPageRow, NewsletterIssueRow, LineKey, MatchupCoverage, MatchupRow } from './apiClient';
 
 // ===================================================================================
 // TYPE DEFINITIONS (Unchanged, but now shared with backend)
@@ -13834,109 +13836,66 @@ const getWebsiteReadySchema = () => ({ type: Type.OBJECT, properties: { websiteS
 // ===================================================================================
 // TANK CURATOR
 // ===================================================================================
-// Stage 3 of the Tank pipeline: browse pre-filtered props (Stage 1 provider + Stage 2
-// filter both run server-side via GET /api/tank/props), select ones worth a story,
-// write a required one-line angle for each, generate narrative drafts, then
-// review/publish. Publishing triggers the same static-site regeneration used by the
-// rest of the content pipeline (see backend.ts PUT /api/tank/pages/:id).
+// The matchup picker. GET /api/tank/matchups returns every game on the board for an
+// America/New_York day with its canonical moneyline, spread and total - the same
+// markets the Exchange locks (lib/pages-functions/index-slate.ts pickCanonicalMarket) -
+// plus whatever Tanks already exist on those markets. Two things happen from here:
+//   * Lines Tanks: check matchups, one click. POST /api/tank/lines publishes a page per
+//     game with a pick deck per line - no story, no angle, no ticker tag.
+//   * Stories: the "Story" button on any single line opens the angle box and generates
+//     a narrative draft through POST /api/tank/generate exactly as before (review and
+//     publish in the Drafts tab). Publishing a story on a market a lines Tank covers
+//     hands that one line off to the story (backend.ts PUT /api/tank/pages/:id).
 
-const DEFAULT_MARKET_WHITELIST = [
-  'basketball_player_points', 'basketball_player_rebounds', 'basketball_player_assists', 'basketball_player_triple_double',
-  'basketball_player_threes', 'basketball_player_steals', 'basketball_player_blocks', 'basketball_player_free_throws_made',
-  'basketball_player_points_rebounds_assists', 'basketball_player_points_assists', 'basketball_player_rebounds_assists',
-  'basketball_player_double_double',
-  'football_player_passing_yards', 'football_player_rushing_yards', 'football_player_anytime_td',
-  'football_player_receiving_yards', 'football_player_receptions', 'football_player_pass_completions',
-  'football_player_pass_attempts', 'football_player_interceptions_thrown', 'football_player_fantasy_points',
-  'baseball_player_home_runs', 'baseball_player_hits', 'baseball_player_rbis', 'baseball_player_strikeouts',
-  'soccer_player_anytime_scorer', 'soccer_player_shots_on_target', 'soccer_player_first_goalscorer',
-  'moneyline', 'spreads', 'totals', 'team_totals',
-  'season_futures',
-];
+type MatchupDay = 'today' | 'tomorrow';
+const LINE_ORDER: LineKey[] = ['ml', 'spread', 'total'];
+const LINE_TITLE: Record<LineKey, string> = { ml: 'Moneyline', spread: 'Spread', total: 'Total' };
 
-// Friendly grouping/labels for the raw market keys, so the filter UI reads as
-// "NBA: Points" instead of a wall of "basketball_player_points"-style checkboxes.
-// Kalshi is now the source for every "_player_"-keyed entry below (see kalshi.ts's
-// KALSHI_SERIES_MAP); Polymarket still supplies the Game Lines/Season Futures buckets.
-const MARKET_INFO: Record<string, { league: string; label: string }> = {
-  basketball_player_points: { league: 'NBA', label: 'Points' },
-  basketball_player_rebounds: { league: 'NBA', label: 'Rebounds' },
-  basketball_player_assists: { league: 'NBA', label: 'Assists' },
-  basketball_player_triple_double: { league: 'NBA', label: 'Triple-Double' },
-  basketball_player_threes: { league: 'NBA', label: 'Threes Made' },
-  basketball_player_steals: { league: 'NBA', label: 'Steals' },
-  basketball_player_blocks: { league: 'NBA', label: 'Blocks' },
-  basketball_player_free_throws_made: { league: 'NBA', label: 'Free Throws Made' },
-  basketball_player_points_rebounds_assists: { league: 'NBA', label: 'Pts + Reb + Ast' },
-  basketball_player_points_assists: { league: 'NBA', label: 'Pts + Ast' },
-  basketball_player_rebounds_assists: { league: 'NBA', label: 'Reb + Ast' },
-  basketball_player_double_double: { league: 'NBA', label: 'Double-Double' },
-  football_player_passing_yards: { league: 'NFL', label: 'Passing Yards' },
-  football_player_rushing_yards: { league: 'NFL', label: 'Rushing Yards' },
-  football_player_anytime_td: { league: 'NFL', label: 'Anytime TD' },
-  football_player_receiving_yards: { league: 'NFL', label: 'Receiving Yards' },
-  football_player_receptions: { league: 'NFL', label: 'Receptions' },
-  football_player_pass_completions: { league: 'NFL', label: 'Pass Completions' },
-  football_player_pass_attempts: { league: 'NFL', label: 'Pass Attempts' },
-  football_player_interceptions_thrown: { league: 'NFL', label: 'Interceptions Thrown' },
-  football_player_fantasy_points: { league: 'NFL', label: 'Fantasy Points' },
-  baseball_player_home_runs: { league: 'MLB', label: 'Home Runs' },
-  baseball_player_hits: { league: 'MLB', label: 'Hits' },
-  baseball_player_rbis: { league: 'MLB', label: 'RBIs' },
-  baseball_player_strikeouts: { league: 'MLB', label: 'Strikeouts' },
-  soccer_player_anytime_scorer: { league: 'Soccer', label: 'Anytime Scorer' },
-  soccer_player_shots_on_target: { league: 'Soccer', label: 'Shots on Target' },
-  soccer_player_first_goalscorer: { league: 'Soccer', label: 'First Goalscorer' },
-  // Team/game-level lines - generic across every league (disambiguated by the League
-  // filter above, not by these keys), so they get their own pseudo-league bucket here.
-  moneyline: { league: 'Game Lines', label: 'Moneyline' },
-  spreads: { league: 'Game Lines', label: 'Spread' },
-  totals: { league: 'Game Lines', label: 'Total' },
-  team_totals: { league: 'Game Lines', label: 'Team Total' },
-  // Season-long player futures (award races, season stat totals) - not tied to a single
-  // kickoff, so they only surface with a wide "Kickoff date range" (e.g. No limit).
-  season_futures: { league: 'Season Futures', label: 'Season Futures' },
-};
-const MARKET_LEAGUE_ORDER = ['NBA', 'NFL', 'MLB', 'Soccer', 'Game Lines', 'Season Futures'];
+function coverageBadge(c: MatchupCoverage | undefined): { text: string; color: string } | null {
+  if (!c) return null;
+  if (c.kind === 'lines') {
+    return c.status === 'superseded' ? { text: 'Lines · handed off', color: '#6d4c41' } : { text: 'Lines live', color: '#1565c0' };
+  }
+  if (c.status === 'published') {
+    return c.visibility === 'app' ? { text: 'Story live', color: '#2e7d32' } : { text: 'Story · newsletter', color: '#558b2f' };
+  }
+  return { text: 'Story draft', color: '#8d6e63' };
+}
 
-// The real leagues Game.league can take (see tank-providers.ts / polymarket.ts) -
-// distinct from MARKET_LEAGUE_ORDER above, which buckets stat *types*, not leagues
-// (all 5 soccer competitions share the same market keys).
-const ALL_LEAGUES = ['NBA', 'NFL', 'MLB', 'EPL', 'La Liga', 'Serie A', 'Bundesliga', 'Ligue 1'];
+// A line the picker can still turn into a lines row: no lines row ever covered it and
+// no app story is live on it. Mirrors POST /api/tank/lines's skip rule - a draft story
+// does not block, publish is the handoff.
+function isLineCreatable(c: MatchupCoverage | undefined): boolean {
+  if (!c) return true;
+  if (c.kind === 'lines') return false;
+  return !(c.status === 'published' && c.visibility === 'app');
+}
 
-const DATE_RANGE_PRESETS: { label: string; days: number | null }[] = [
-  { label: 'Today', days: 0 },
-  { label: '7 days', days: 7 },
-  { label: '14 days', days: 14 },
-  { label: '30 days', days: 30 },
-  { label: 'No limit', days: null },
-];
-
-function formatDateInput(d: Date): string {
-  return d.toISOString().split('T')[0];
+function creatableLines(m: MatchupRow): LineKey[] {
+  return LINE_ORDER.filter(k => m.lines[k] && isLineCreatable(m.coverage[m.lines[k]!.id]));
 }
 
 const TankCurator: React.FC = () => {
-  const [games, setGames] = useState<Game[]>([]);
-  const [providerName, setProviderName] = useState<string>('mock');
-  const [isLoadingProps, setIsLoadingProps] = useState(false);
-  const [propsError, setPropsError] = useState<string | null>(null);
+  const [day, setDay] = useState<MatchupDay>('today');
+  const [selectedLeagues, setSelectedLeagues] = useState<string[]>([...SUPPORTED_LEAGUES]);
+  const [matchups, setMatchups] = useState<MatchupRow[]>([]);
+  const [syncedAt, setSyncedAt] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [checked, setChecked] = useState<Set<string>>(new Set());
 
-  const [marketWhitelist, setMarketWhitelist] = useState<string[]>(DEFAULT_MARKET_WHITELIST);
-  const [minProminence, setMinProminence] = useState<number>(0);
-  const [perGameCap, setPerGameCap] = useState<number>(3);
-  const [selectedLeagues, setSelectedLeagues] = useState<string[]>(ALL_LEAGUES);
-  const [fromDate, setFromDate] = useState<string>(() => formatDateInput(new Date()));
-  const [toDate, setToDate] = useState<string>(() => formatDateInput(new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)));
+  const [isCreating, setIsCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createdNote, setCreatedNote] = useState<string | null>(null);
 
-  const [angles, setAngles] = useState<Record<string, string>>({});
-  const [selectedPropIds, setSelectedPropIds] = useState<Set<string>>(new Set());
-
+  // Story flow: one open angle box at a time, on the line it is for.
+  const [storyFor, setStoryFor] = useState<{ gameId: string; key: LineKey } | null>(null);
+  const [angle, setAngle] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
   // Drafts live in their own top-level Drafts tab (TankDrafts) - this tab only tracks
-  // how many were just generated, to point the curator there.
+  // that one was just generated, to point the curator there.
   const [generatedNote, setGeneratedNote] = useState<string | null>(null);
 
   // Manual trigger for the automated curator (the same flow worker-curate's daily
@@ -13949,21 +13908,21 @@ const TankCurator: React.FC = () => {
   const [isLoadingActive, setIsLoadingActive] = useState(false);
   const [activeError, setActiveError] = useState<string | null>(null);
 
-  const fetchProps = useCallback(async () => {
-    setIsLoadingProps(true); setPropsError(null);
+  // One fetch per day tab, every league; the league chips filter client-side so a
+  // toggle never round-trips.
+  const fetchMatchups = useCallback(async () => {
+    setIsLoading(true); setLoadError(null);
     try {
-      const result = await apiClient.getTankProps({
-        marketWhitelist, minProminence, perGameCap,
-        leagues: selectedLeagues, fromDate, toDate: toDate || null,
-      });
-      setGames(result.games);
-      setProviderName(result.provider);
+      const result = await apiClient.getTankMatchups(day);
+      setMatchups(result.games);
+      setSyncedAt(result.syncedAt ?? null);
+      setChecked(new Set());
     } catch (e: any) {
-      setPropsError(e.message || 'Failed to load props.');
+      setLoadError(e.message || 'Failed to load matchups.');
     } finally {
-      setIsLoadingProps(false);
+      setIsLoading(false);
     }
-  }, [marketWhitelist, minProminence, perGameCap, selectedLeagues, fromDate, toDate]);
+  }, [day]);
 
   const fetchActivePages = useCallback(async () => {
     setIsLoadingActive(true); setActiveError(null);
@@ -13977,69 +13936,75 @@ const TankCurator: React.FC = () => {
     }
   }, []);
 
-  useEffect(() => { fetchProps(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchMatchups(); }, [fetchMatchups]);
   useEffect(() => { fetchActivePages(); }, [fetchActivePages]);
-
-  const toggleMarket = (market: string) => {
-    setMarketWhitelist(prev => prev.includes(market) ? prev.filter(m => m !== market) : [...prev, market]);
-  };
 
   const toggleLeague = (league: string) => {
     setSelectedLeagues(prev => prev.includes(league) ? prev.filter(l => l !== league) : [...prev, league]);
   };
 
-  const applyDatePreset = (days: number | null) => {
-    setFromDate(formatDateInput(new Date()));
-    setToDate(days === null ? '' : formatDateInput(new Date(Date.now() + days * 24 * 60 * 60 * 1000)));
+  const visible = matchups.filter(m => selectedLeagues.includes(m.game.league));
+  const checkable = visible.filter(m => creatableLines(m).length > 0);
+  const allChecked = checkable.length > 0 && checkable.every(m => checked.has(m.game.id));
+  const selected = visible.filter(m => checked.has(m.game.id) && creatableLines(m).length > 0);
+  const selectedLineCount = selected.reduce((n, m) => n + creatableLines(m).length, 0);
+
+  const toggleAll = () => {
+    setChecked(allChecked ? new Set() : new Set(checkable.map(m => m.game.id)));
   };
-
-  const marketsByLeague = MARKET_LEAGUE_ORDER.map(league => ({
-    league,
-    markets: DEFAULT_MARKET_WHITELIST.filter(m => MARKET_INFO[m]?.league === league),
-  })).filter(g => g.markets.length > 0);
-
-  const toggleLeagueMarkets = (leagueMarkets: string[], selectAll: boolean) => {
-    setMarketWhitelist(prev => {
-      const withoutLeague = prev.filter(m => !leagueMarkets.includes(m));
-      return selectAll ? [...withoutLeague, ...leagueMarkets] : withoutLeague;
-    });
-  };
-
-  const togglePropSelection = (propId: string) => {
-    setSelectedPropIds(prev => {
+  const toggleOne = (gameId: string) => {
+    setChecked(prev => {
       const next = new Set(prev);
-      if (next.has(propId)) next.delete(propId); else next.add(propId);
+      if (next.has(gameId)) next.delete(gameId); else next.add(gameId);
       return next;
     });
   };
 
-  const selectedCount = selectedPropIds.size;
-  const totalPropCount = games.reduce((sum, g) => sum + g.props.length, 0);
-
-  const handleGenerate = async () => {
-    const selections: SelectedProp[] = [];
-    for (const game of games) {
-      for (const prop of game.props) {
-        if (selectedPropIds.has(prop.id)) {
-          const angle = (angles[prop.id] || '').trim();
-          if (!angle) {
-            setGenerateError(`"${prop.player} — ${prop.market}" is missing an angle. Every selected prop needs a one-line reason it has a story.`);
-            return;
-          }
-          selections.push({ prop, game, angle });
-        }
-      }
+  const handleCreateLines = async () => {
+    if (selected.length === 0) {
+      setCreateError('Check at least one matchup first.');
+      return;
     }
-    if (selections.length === 0) {
-      setGenerateError('Select at least one prop first.');
+    setIsCreating(true); setCreateError(null); setCreatedNote(null);
+    try {
+      const payload = selected.map(m => ({
+        game: m.game,
+        lines: Object.fromEntries(creatableLines(m).map(k => [k, m.lines[k]!])) as Partial<Record<LineKey, Prop>>,
+      }));
+      const result = await apiClient.createLinesTanks(payload);
+      const skippedBit = result.skipped.length ? ` ${result.skipped.length} line(s) skipped (${Array.from(new Set(result.skipped.map(s => s.reason))).join(', ')}).` : '';
+      setCreatedNote(`${result.created} line(s) published across ${selected.length} matchup(s) — live once the site rebuilds.${skippedBit}`);
+      await Promise.all([fetchMatchups(), fetchActivePages()]);
+    } catch (e: any) {
+      setCreateError(e.message || 'Creating lines Tanks failed.');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  const openStory = (gameId: string, key: LineKey) => {
+    const isOpen = storyFor?.gameId === gameId && storyFor.key === key;
+    setStoryFor(isOpen ? null : { gameId, key });
+    setAngle('');
+    setGenerateError(null);
+  };
+
+  const handleGenerateStory = async (m: MatchupRow, key: LineKey) => {
+    const prop = m.lines[key];
+    if (!prop) return;
+    const trimmed = angle.trim();
+    if (!trimmed) {
+      setGenerateError('Write the angle first - the one-line reason this line has a story.');
       return;
     }
     setIsGenerating(true); setGenerateError(null);
     try {
-      await apiClient.generateTankArticles(selections);
-      setSelectedPropIds(new Set());
-      setAngles({});
-      setGeneratedNote(`${selections.length} draft(s) generated — review them in the Drafts tab.`);
+      const selection: SelectedProp = { prop, game: m.game, angle: trimmed };
+      await apiClient.generateTankArticles([selection]);
+      setStoryFor(null);
+      setAngle('');
+      setGeneratedNote(`Story draft generated for ${m.game.away} @ ${m.game.home} (${LINE_TITLE[key].toLowerCase()}) — review it in the Drafts tab.`);
+      await fetchMatchups();
     } catch (e: any) {
       setGenerateError(e.message || 'Generation failed.');
     } finally {
@@ -14070,22 +14035,37 @@ const TankCurator: React.FC = () => {
   const handleRevertToDraft = async (id: string) => {
     try {
       await apiClient.updateTankPage(id, { status: 'draft' });
-      await fetchActivePages();
+      await Promise.all([fetchActivePages(), fetchMatchups()]);
     } catch (e: any) {
       setActiveError(e.message || 'Failed to revert to draft.');
     }
   };
 
-  const formatOdds = (prop: Prop): string => {
-    if (!prop.odds) return '—';
-    return prop.odds.outcomes.map((o, i) => `${o} ${(prop.odds!.outcomePrices[i] * 100).toFixed(0)}%`).join(' / ');
+  // A lines row has nothing to review, so "draft" means nothing for it: taking it down
+  // is a delete. The page rebuilds without that slot (or without the page, if it was
+  // the last line).
+  const handleDeleteLinesRow = async (id: string) => {
+    if (!window.confirm('Take this line down? Picks already made on it still settle.')) return;
+    try {
+      await apiClient.deleteTankPage(id);
+      await Promise.all([fetchActivePages(), fetchMatchups()]);
+    } catch (e: any) {
+      setActiveError(e.message || 'Failed to delete.');
+    }
   };
+
+  const chip = (active: boolean): React.CSSProperties => ({
+    padding: '0.3rem 0.7rem', fontSize: '0.8rem', borderRadius: '999px', cursor: 'pointer',
+    border: active ? '1px solid #1565c0' : '1px solid #ccc',
+    background: active ? '#e3f2fd' : '#fff', color: active ? '#0d47a1' : '#666', fontWeight: active ? 700 : 500,
+  });
 
   return (
     <div style={{ padding: '1.5rem', maxWidth: '1100px', margin: '0 auto' }}>
       <h2 style={{ marginTop: 0 }}>The Tank Curator</h2>
       <p style={{ color: '#666' }}>
-        Provider: <strong>{providerName}</strong>. Pick props worth a story, write a one-line angle, then generate.
+        Every matchup on the board with its canonical moneyline, spread and total — the same markets the Exchange locks.
+        Check the games you want as <strong>Lines Tanks</strong>, or open a <strong>Story</strong> on any single line.
       </p>
 
       <div className="card" style={{ marginBottom: '1.5rem' }}>
@@ -14102,159 +14082,181 @@ const TankCurator: React.FC = () => {
       </div>
 
       <div className="card" style={{ marginBottom: '1.5rem' }}>
-        <h3 style={{ marginTop: 0, marginBottom: '1rem' }}>Filters</h3>
-
-        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.85rem' }}>Leagues</label>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: '1.1rem' }}>
-          {ALL_LEAGUES.map(league => (
-            <label key={league} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer', fontSize: '0.85rem' }}>
-              <input
-                type="checkbox"
-                checked={selectedLeagues.includes(league)}
-                onChange={() => toggleLeague(league)}
-                style={{ width: '15px', height: '15px', cursor: 'pointer' }}
-              />
-              <span>{league}</span>
-            </label>
-          ))}
-        </div>
-
-        <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 'bold', fontSize: '0.85rem' }}>Kickoff date range</label>
-        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.6rem' }}>
-          <input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} style={{ padding: '0.45rem' }} />
-          <span style={{ color: '#666' }}>to</span>
-          <input
-            type="date" value={toDate} onChange={e => setToDate(e.target.value)}
-            placeholder="No limit" style={{ padding: '0.45rem' }}
-          />
-          {DATE_RANGE_PRESETS.map(preset => (
-            <button key={preset.label} className="cancel" onClick={() => applyDatePreset(preset.days)} style={{ padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}>
-              {preset.label}
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center', marginBottom: '0.9rem' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em', marginRight: '0.25rem' }}>Leagues</span>
+          {SUPPORTED_LEAGUES.map(league => (
+            <button key={league} type="button" style={chip(selectedLeagues.includes(league))} onClick={() => toggleLeague(league)}>
+              {league}
             </button>
           ))}
+          <button type="button" className="cancel" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }} onClick={() => setSelectedLeagues([...SUPPORTED_LEAGUES])}>All</button>
+          <button type="button" className="cancel" style={{ padding: '0.2rem 0.5rem', fontSize: '0.7rem' }} onClick={() => setSelectedLeagues([])}>None</button>
         </div>
 
-        <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: '1.25rem', paddingBottom: '1.25rem', borderBottom: '1px solid #eee' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 'bold', fontSize: '0.85rem' }}>
-              Min prominence: <span style={{ fontWeight: 'normal' }}>{minProminence}</span>
-            </label>
-            <input
-              type="range" min={0} max={99} value={minProminence}
-              onChange={e => setMinProminence(Number(e.target.value))}
-              style={{ width: '160px' }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 'bold', fontSize: '0.85rem' }}>Per-game cap</label>
-            <input
-              type="number" min={1} max={20} value={perGameCap}
-              onChange={e => setPerGameCap(Number(e.target.value))}
-              style={{ width: '70px', padding: '0.45rem' }}
-            />
-          </div>
-          <button className="action-button" onClick={fetchProps} disabled={isLoadingProps}>
-            {isLoadingProps ? 'Loading...' : 'Apply Filters'}
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
+          {(['today', 'tomorrow'] as MatchupDay[]).map(d => (
+            <button
+              key={d}
+              type="button"
+              className={day === d ? 'action-button' : 'cancel'}
+              onClick={() => setDay(d)}
+              style={{ padding: '0.4rem 1rem', textTransform: 'capitalize' }}
+            >
+              {d}
+            </button>
+          ))}
+          <button type="button" className="cancel" onClick={fetchMatchups} disabled={isLoading} style={{ padding: '0.4rem 0.8rem' }}>
+            {isLoading ? 'Loading…' : 'Refresh'}
           </button>
-          {!isLoadingProps && games.length > 0 && (
-            <span style={{ color: '#666', fontSize: '0.85rem' }}>{games.length} game{games.length === 1 ? '' : 's'} &middot; {totalPropCount} prop{totalPropCount === 1 ? '' : 's'}</span>
+          <span style={{ width: '1px', alignSelf: 'stretch', background: '#ddd', margin: '0 0.25rem' }} aria-hidden="true" />
+          <button
+            type="button"
+            className="action-button"
+            onClick={() => setChecked(new Set(checkable.map(m => m.game.id)))}
+            disabled={isLoading || checkable.length === 0 || allChecked}
+            title={checkable.length === 0 ? `Nothing ${day} still has an open line` : `Check every ${day} matchup that still has an open line`}
+            style={{ padding: '0.4rem 0.9rem' }}
+          >
+            Select all {day}{!isLoading && checkable.length > 0 ? ` (${checkable.length})` : ''}
+          </button>
+          <button
+            type="button"
+            className="cancel"
+            onClick={() => setChecked(new Set())}
+            disabled={checked.size === 0}
+            style={{ padding: '0.4rem 0.8rem' }}
+          >
+            Clear{checked.size > 0 ? ` (${selected.length})` : ''}
+          </button>
+          {!isLoading && (
+            <span style={{ color: '#666', fontSize: '0.85rem' }}>
+              {visible.length} matchup{visible.length === 1 ? '' : 's'} {day} (ET), kickoff still ahead
+              {selected.length > 0 ? ` · ${selected.length} selected` : ''}
+            </span>
           )}
         </div>
-
-        <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold', fontSize: '0.85rem' }}>Markets</label>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-          {marketsByLeague.map(({ league, markets }) => {
-            const allChecked = markets.every(m => marketWhitelist.includes(m));
-            return (
-              <div key={league} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: '#888', minWidth: '60px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{league}</span>
-                <button
-                  className="cancel"
-                  onClick={() => toggleLeagueMarkets(markets, !allChecked)}
-                  style={{ padding: '0.15rem 0.5rem', fontSize: '0.7rem' }}
-                >
-                  {allChecked ? 'Clear' : 'All'}
-                </button>
-                {markets.map(market => (
-                  <label key={market} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer', fontSize: '0.85rem' }}>
-                    <input
-                      type="checkbox"
-                      checked={marketWhitelist.includes(market)}
-                      onChange={() => toggleMarket(market)}
-                      style={{ width: '15px', height: '15px', cursor: 'pointer' }}
-                    />
-                    <span>{MARKET_INFO[market]?.label || market}</span>
-                  </label>
-                ))}
-              </div>
-            );
-          })}
-        </div>
+        {!isLoading && syncedAt && (() => {
+          const mins = Math.round((Date.now() - new Date(syncedAt).getTime()) / 60000);
+          const stale = mins > 60;
+          return (
+            <p style={{ margin: '0.6rem 0 0', fontSize: '0.78rem', color: stale ? '#c62828' : '#888' }}>
+              Prop cache synced {mins < 1 ? 'just now' : `${mins} min ago`}.
+              {stale ? ' That is stale - spreads and totals list later than moneylines, so a game showing only its moneyline usually means the sync is behind, not that no line exists. Is the backend scheduler running?' : ' Spreads and totals list later than moneylines; a moneyline-only game usually fills in closer to kickoff.'}
+            </p>
+          );
+        })()}
       </div>
 
-      {propsError && (
+      {loadError && (
         <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ffebee', color: '#c62828', borderRadius: '4px' }}>
-          {propsError}
+          {loadError}
         </div>
       )}
 
-      {games.map(game => (
-        <div className="card" key={game.id} style={{ marginBottom: '1rem' }}>
-          <h4 style={{ marginTop: 0 }}>
-            {game.league}: {game.away} @ {game.home}
-            <span style={{ fontWeight: 'normal', color: '#666', marginLeft: '0.5rem' }}>
-              {new Date(game.kickoff).toLocaleString()}
-            </span>
-          </h4>
-          {game.props.map(prop => (
-            <div key={prop.id} style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', padding: '0.5rem 0', borderTop: '1px solid #eee' }}>
+      {visible.length > 0 && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem', fontSize: '0.9rem', cursor: 'pointer' }}>
+          <input type="checkbox" checked={allChecked} disabled={checkable.length === 0} onChange={toggleAll} style={{ width: '18px', height: '18px' }} />
+          <span>Check all {day} ({checkable.length} with lines still open)</span>
+        </label>
+      )}
+
+      {visible.map(m => {
+        const creatable = creatableLines(m);
+        const isChecked = checked.has(m.game.id);
+        return (
+          <div className="card" key={m.game.id} style={{ marginBottom: '0.75rem', opacity: creatable.length === 0 ? 0.8 : 1 }}>
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
               <input
                 type="checkbox"
-                checked={selectedPropIds.has(prop.id)}
-                onChange={() => togglePropSelection(prop.id)}
-                style={{ width: '18px', height: '18px', marginTop: '0.3rem', cursor: 'pointer' }}
+                checked={isChecked && creatable.length > 0}
+                disabled={creatable.length === 0}
+                title={creatable.length === 0 ? 'Every line here already has a Tank' : undefined}
+                onChange={() => toggleOne(m.game.id)}
+                style={{ width: '18px', height: '18px', cursor: creatable.length === 0 ? 'not-allowed' : 'pointer' }}
               />
               <div style={{ flex: 1 }}>
-                <div>
-                  <strong>{prop.player}</strong> {prop.team ? `(${prop.team})` : ''} — {MARKET_INFO[prop.market]?.label || prop.market}
-                  {prop.line !== null ? ` ${prop.line}` : ''}
-                  <span style={{ marginLeft: '0.75rem', color: '#666', fontSize: '0.85rem' }}>
-                    odds: {formatOdds(prop)} · prominence: {prop.prominence}
-                  </span>
-                </div>
-                {selectedPropIds.has(prop.id) && (
-                  <textarea
-                    placeholder="Angle (required): why does this prop have a story?"
-                    value={angles[prop.id] || ''}
-                    onChange={e => setAngles(prev => ({ ...prev, [prop.id]: e.target.value }))}
-                    style={{ width: '100%', marginTop: '0.5rem', padding: '0.5rem', minHeight: '50px' }}
-                  />
-                )}
+                <strong>{m.game.league}</strong> &middot; {m.game.away} @ {m.game.home}
+                <span style={{ color: '#666', marginLeft: '0.6rem', fontSize: '0.85rem' }}>{formatGameTime(m.game.kickoff)}</span>
               </div>
             </div>
-          ))}
-        </div>
-      ))}
 
-      {games.length === 0 && !isLoadingProps && (
-        <p style={{ color: '#666' }}>No props match the current filters.</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: '0.5rem', marginTop: '0.6rem' }}>
+              {LINE_ORDER.map(key => {
+                const prop = m.lines[key];
+                if (!prop) {
+                  return (
+                    <div key={key} style={{ border: '1px dashed #ddd', borderRadius: '4px', padding: '0.5rem 0.6rem', color: '#999', fontSize: '0.85rem' }}>
+                      <div style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{LINE_TITLE[key]}</div>
+                      <em>no line meets the floor</em>
+                    </div>
+                  );
+                }
+                const cov = m.coverage[prop.id];
+                const badge = coverageBadge(cov);
+                const storyOpen = storyFor?.gameId === m.game.id && storyFor.key === key;
+                const storyBlocked = cov?.kind === 'narrative';
+                return (
+                  <div key={key} style={{ border: '1px solid #e5e5e5', borderRadius: '4px', padding: '0.5rem 0.6rem' }}>
+                    <div style={{ fontSize: '0.7rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{LINE_TITLE[key]}</div>
+                    <div style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{lineLabel(prop)}</div>
+                    <div style={{ fontSize: '0.8rem', color: '#666' }}>{formatOddsLabel(prop.odds, prop.book) ?? 'no live price'}</div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginTop: '0.35rem', flexWrap: 'wrap' }}>
+                      {badge && (
+                        <span style={{ fontSize: '0.68rem', background: badge.color, color: '#fff', padding: '0.1rem 0.45rem', borderRadius: '3px', fontWeight: 700 }}>
+                          {badge.text}
+                        </span>
+                      )}
+                      {!storyBlocked && (
+                        <button type="button" className="cancel" style={{ fontSize: '0.7rem', padding: '0.15rem 0.5rem' }} onClick={() => openStory(m.game.id, key)}>
+                          {storyOpen ? 'Cancel' : 'Story…'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {storyFor?.gameId === m.game.id && (
+              <div style={{ marginTop: '0.6rem' }}>
+                <textarea
+                  placeholder={`Angle (required): why does the ${LINE_TITLE[storyFor.key].toLowerCase()} have a story?`}
+                  value={angle}
+                  onChange={e => setAngle(e.target.value)}
+                  style={{ width: '100%', padding: '0.5rem', minHeight: '50px', boxSizing: 'border-box' }}
+                />
+                <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.4rem' }}>
+                  <button className="action-button" onClick={() => handleGenerateStory(m, storyFor.key)} disabled={isGenerating}>
+                    {isGenerating ? 'Generating…' : `Generate story on the ${LINE_TITLE[storyFor.key].toLowerCase()}`}
+                  </button>
+                  <span style={{ color: '#666', fontSize: '0.8rem' }}>Lands in Drafts. Publishing it hands this one line off from any Lines Tank.</span>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {visible.length === 0 && !isLoading && (
+        <p style={{ color: '#666' }}>No matchups {day} for the selected leagues with a line that meets the floor.</p>
       )}
 
-      {generateError && (
+      {(generateError || createError) && (
         <div style={{ marginBottom: '1rem', padding: '1rem', background: '#ffebee', color: '#c62828', borderRadius: '4px' }}>
-          {generateError}
+          {generateError || createError}
         </div>
       )}
 
-      <div style={{ position: 'sticky', bottom: 0, background: '#fff', padding: '1rem 0', borderTop: '1px solid #ddd' }}>
-        <button className="action-button" onClick={handleGenerate} disabled={isGenerating || selectedCount === 0}>
-          {isGenerating ? 'Generating...' : `Generate (${selectedCount} selected)`}
+      <div style={{ position: 'sticky', bottom: 0, background: '#fff', padding: '1rem 0', borderTop: '1px solid #ddd', display: 'flex', gap: '1rem', alignItems: 'center' }}>
+        <button className="action-button" onClick={handleCreateLines} disabled={isCreating || selected.length === 0}>
+          {isCreating ? 'Publishing…' : `Create Lines Tanks (${selected.length} matchup${selected.length === 1 ? '' : 's'} · ${selectedLineCount} line${selectedLineCount === 1 ? '' : 's'})`}
         </button>
+        <span style={{ color: '#666', fontSize: '0.8rem' }}>Publishes straight away. No story, no ticker tag - results settle through the slate.</span>
       </div>
 
-      {generatedNote && (
+      {(createdNote || generatedNote) && (
         <div style={{ marginTop: '0.75rem', padding: '0.75rem 1rem', background: '#e8f5e9', color: '#1b5e20', borderRadius: '4px' }}>
-          {generatedNote}
+          {createdNote || generatedNote}
         </div>
       )}
 
@@ -14274,18 +14276,37 @@ const TankCurator: React.FC = () => {
           {!isLoadingActive && activePages.length === 0 && <p style={{ color: '#666' }}>No active pages yet — published pages whose game is still upcoming will show here.</p>}
           {activePages.map(page => {
             const kickoff = page.game_snapshot?.game?.kickoff;
+            const isLines = page.kind === 'lines';
+            const handedOff = page.status === 'superseded';
+            const href = isLines
+              ? (page.page_slug ? `/the-tank/lines/${page.page_slug}/` : null)
+              : (page.slug ? `/the-tank/articles/${page.slug}/` : null);
             return (
-              <div className="card" key={page.id} style={{ marginBottom: '1rem' }}>
-                <h4 style={{ marginTop: 0 }}>{page.model_output?.seo.title || page.slug}</h4>
+              <div className="card" key={page.id} style={{ marginBottom: '1rem', opacity: handedOff ? 0.75 : 1 }}>
+                <h4 style={{ marginTop: 0, display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontSize: '0.65rem', fontWeight: 800, letterSpacing: '0.12em', padding: '0.15rem 0.5rem', borderRadius: '999px',
+                    background: isLines ? '#cfe6ff' : '#fff3cd', color: isLines ? '#0d47a1' : '#7a5200',
+                    border: isLines ? '1.5px dashed #1565c0' : '1px solid #e0b400',
+                  }}>
+                    {isLines ? 'LINES' : 'STORY'}
+                  </span>
+                  <span>{page.model_output?.seo.title || page.slug}</span>
+                  {handedOff && (
+                    <span style={{ fontSize: '0.68rem', background: '#6d4c41', color: '#fff', padding: '0.1rem 0.45rem', borderRadius: '3px' }}>handed off to a story</span>
+                  )}
+                </h4>
                 <p style={{ color: '#666' }}>
                   {page.league}
-                  {kickoff ? ` · Kickoff: ${new Date(kickoff).toLocaleString()}` : ''}
+                  {kickoff ? ` · ${formatGameTime(kickoff)}` : ''}
                 </p>
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                  {page.slug && (
-                    <a href={`/the-tank/articles/${page.slug}/`} target="_blank" rel="noopener noreferrer">View live</a>
+                  {href && (
+                    <a href={href} target="_blank" rel="noopener noreferrer">View live</a>
                   )}
-                  <button className="cancel" onClick={() => handleRevertToDraft(page.id)}>Revert to Draft</button>
+                  {isLines
+                    ? <button className="cancel" onClick={() => handleDeleteLinesRow(page.id)}>Take line down</button>
+                    : <button className="cancel" onClick={() => handleRevertToDraft(page.id)}>Revert to Draft</button>}
                 </div>
               </div>
             );

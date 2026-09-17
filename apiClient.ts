@@ -1,5 +1,5 @@
 import type { HeatcheckPost } from './index';
-import type { Game, SelectedProp, TankArticle } from './tank-types';
+import type { Game, Prop, SelectedProp, TankArticle } from './tank-types';
 
 // The v2 curator's evidence for one Tank (tank-curation.ts's CurationRecord). Null on
 // pre-v2 rows, on anything the manual TankCurator flow generated, and against a database
@@ -65,13 +65,38 @@ export interface TankPageRow {
     model_output: TankArticle | null;
     raw_output: string | null;
     generation_error: string | null;
-    status: 'draft' | 'published';
+    // 'superseded' is a lines row a story took over (see add_kind_to_tank_pages.sql).
+    status: 'draft' | 'published' | 'superseded';
     visibility: 'app' | 'newsletter_only';
     created_at: string;
     updated_at: string;
     published_at: string | null;
     curation?: TankCurationRow | null;
     resolution?: TankResolutionRow | null;
+    // 'narrative' (the article Tank) or 'lines' (the matchup board). Absent on rows
+    // read before the migration ran.
+    kind?: 'narrative' | 'lines';
+    // Shared by every lines row of one matchup; the page lives at /the-tank/lines/<page_slug>/.
+    page_slug?: string | null;
+}
+
+export type LineKey = 'ml' | 'spread' | 'total';
+
+export interface MatchupCoverage {
+    id: string;
+    kind: 'narrative' | 'lines';
+    status: 'draft' | 'published' | 'superseded';
+    visibility: 'app' | 'newsletter_only';
+    slug: string | null;
+    page_slug: string | null;
+}
+
+// One row of the matchup picker: a game, its canonical lines (the same markets the
+// Exchange locks), and what Tanks already exist on those markets, keyed by market id.
+export interface MatchupRow {
+    game: Game;
+    lines: Partial<Record<LineKey, Prop>>;
+    coverage: Record<string, MatchupCoverage>;
 }
 
 export interface NewsletterIssueRow {
@@ -439,6 +464,25 @@ export const apiClient = {
         if (filters?.toDate) params.set('toDate', filters.toDate);
         const qs = params.toString();
         const response = await apiRequest(`/api/tank/props${qs ? `?${qs}` : ''}`);
+        return response.json();
+    },
+
+    async getTankMatchups(day: 'today' | 'tomorrow', leagues?: string[]): Promise<{ day: string; count: number; syncedAt: string | null; games: MatchupRow[] }> {
+        const params = new URLSearchParams({ day });
+        if (leagues?.length) params.set('leagues', leagues.join(','));
+        const response = await apiRequest(`/api/tank/matchups?${params.toString()}`);
+        return response.json();
+    },
+
+    async createLinesTanks(matchups: Array<{ game: Game; lines: Partial<Record<LineKey, Prop>> }>): Promise<{
+        created: number;
+        skipped: Array<{ gameId: string; marketId?: string; key?: string; reason: string }>;
+        pages: TankPageRow[];
+    }> {
+        const response = await apiRequest('/api/tank/lines', {
+            method: 'POST',
+            body: JSON.stringify({ matchups }),
+        });
         return response.json();
     },
 

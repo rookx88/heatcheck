@@ -34,11 +34,78 @@ export interface TankPageRecord {
 // "Sep 8" - the date a Tank's story was written (tank_pages.created_at, i.e. curation),
 // which is when its frozen prices were taken. Not published_at: a human publishes hours
 // or days after the story is written, and the prices belong to the writing.
-function writtenDateLabel(value: string | Date): string {
+export function writtenDateLabel(value: string | Date): string {
     const d = new Date(value);
     return Number.isNaN(d.getTime())
         ? 'date unknown'
         : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+}
+
+/**
+ * "Polymarket prices" - the live market panel's server-rendered fallback, plus the seed
+ * its island (components/ArticleMarket.tsx) needs to fetch this market's current prices
+ * from /api/tank-market. The fallback is the price frozen when the Tank was created,
+ * explicitly DATED, so a no-JS reader or crawler is never shown an old number as if it
+ * were current. Only Polymarket markets get the panel (their ids are numeric; Kalshi's
+ * start with "KX"), and only two-outcome ones, which is every game line we curate. A
+ * dead book shows no percentages at all - never a fake 50/50.
+ *
+ * Shared by the article page (one panel) and the lines page (one per line): the island
+ * mounts on every `[data-tank-market]` it finds, so `id` is optional and purely for the
+ * article's existing anchors. Returns '' when the market gets no panel.
+ */
+export function renderMarketSection(
+    prop: Prop,
+    game: Game,
+    createdAt: string | Date,
+    opts: { id?: string; writtenVerb: string },
+): string {
+    if (!/^\d{1,12}$/.test(String(prop.id ?? '')) || !prop.odds || prop.odds.outcomes.length !== 2) return '';
+    const outcomes = prop.odds.outcomes;
+    // Display names: a spread side carries its line ("Chelsea FC -2.5"), since its
+    // price is the price of covering, not of winning. See sideLabelsFor.
+    const labels = sideLabelsFor(prop);
+    const yesNo = isYesNo(outcomes);
+    const question = prop.question?.trim() || null;
+    // A Yes/No market with no question on record can't say what "Yes" means, so it
+    // shows no prices rather than unlabelled ones; the island fills in Gamma's wording.
+    const unlabelled = yesNo && !question;
+    const showable = hasShowablePrices(prop.odds, prop.book) && !unlabelled;
+    let writtenPct: number[] | null = null;
+    if (showable) {
+        const first = Math.round(prop.odds.outcomePrices[0] * 100);
+        writtenPct = [first, 100 - first];
+    }
+    const writtenLabel = writtenDateLabel(createdAt);
+    const seed = JSON.stringify({
+        marketId: String(prop.id),
+        kickoff: game.kickoff ?? null,
+        writtenLabel,
+        outcomes,
+        labels,
+        writtenPct,
+        question,
+    }).replace(/</g, '\\u003c');
+    const rows = writtenPct
+        ? labels.map((label, i) => `<li><span>${escapeHtml(label)}</span><span>${writtenPct![i]}%</span></li>`).join('')
+        : '';
+    const fallbackBody = writtenPct
+        ? `<p class="tank-article-market-meta">When ${escapeHtml(opts.writtenVerb)} (${escapeHtml(writtenLabel)})</p>
+                        <ul class="tank-article-market-rows">${rows}</ul>`
+        : unlabelled
+            ? ''
+            : `<p class="tank-article-market-meta">Not enough trading on this market to show a price when ${escapeHtml(opts.writtenVerb)} (${escapeHtml(writtenLabel)}).</p>`;
+    return `
+                <section${opts.id ? ` id="${opts.id}"` : ''} class="tank-article-market" data-tank-market>
+                    <h2 class="tank-article-market-heading">Polymarket prices</h2>
+                    <div class="tank-article-market-fallback">
+                        ${yesNo && question ? `<p class="tank-article-market-question">${escapeHtml(question)}</p>` : ''}
+                        ${fallbackBody}
+                        <p class="tank-article-market-note">${escapeHtml(MARKET_PANEL_NOTE)}</p>
+                    </div>
+                    <script type="application/json"${opts.id ? ` id="${opts.id}-data"` : ''}>${seed}</script>
+                </section>
+`;
 }
 
 /**
@@ -170,61 +237,7 @@ export function generateTankArticlePage(
                 </aside>`
         : '';
 
-    // "Polymarket prices" - the live market panel's server-rendered fallback, plus the seed
-    // its island (components/ArticleMarket.tsx) needs to fetch this market's current prices
-    // from /api/tank-market. The fallback is the price frozen when this story was written,
-    // explicitly DATED, so a no-JS reader or crawler is never shown an old number as if it
-    // were current. Only Polymarket markets get the panel (their ids are numeric; Kalshi's
-    // start with "KX"), and only two-outcome ones, which is every game line we curate. A
-    // dead book shows no percentages at all - never a fake 50/50.
-    let marketSectionHtml = '';
-    if (/^\d{1,12}$/.test(String(prop.id ?? '')) && prop.odds && prop.odds.outcomes.length === 2) {
-        const outcomes = prop.odds.outcomes;
-        // Display names: a spread side carries its line ("Chelsea FC -2.5"), since its
-        // price is the price of covering, not of winning. See sideLabelsFor.
-        const labels = sideLabelsFor(prop);
-        const yesNo = isYesNo(outcomes);
-        const question = prop.question?.trim() || null;
-        // A Yes/No market with no question on record can't say what "Yes" means, so it
-        // shows no prices rather than unlabelled ones; the island fills in Gamma's wording.
-        const unlabelled = yesNo && !question;
-        const showable = hasShowablePrices(prop.odds, prop.book) && !unlabelled;
-        let writtenPct: number[] | null = null;
-        if (showable) {
-            const first = Math.round(prop.odds.outcomePrices[0] * 100);
-            writtenPct = [first, 100 - first];
-        }
-        const writtenLabel = writtenDateLabel(page.created_at);
-        const seed = JSON.stringify({
-            marketId: String(prop.id),
-            kickoff: game.kickoff ?? null,
-            writtenLabel,
-            outcomes,
-            labels,
-            writtenPct,
-            question,
-        }).replace(/</g, '\\u003c');
-        const rows = writtenPct
-            ? labels.map((label, i) => `<li><span>${escapeHtml(label)}</span><span>${writtenPct![i]}%</span></li>`).join('')
-            : '';
-        const fallbackBody = writtenPct
-            ? `<p class="tank-article-market-meta">When this story was written (${escapeHtml(writtenLabel)})</p>
-                        <ul class="tank-article-market-rows">${rows}</ul>`
-            : unlabelled
-                ? ''
-                : `<p class="tank-article-market-meta">Not enough trading on this market to show a price when this story was written (${escapeHtml(writtenLabel)}).</p>`;
-        marketSectionHtml = `
-                <section id="tank-article-market" class="tank-article-market">
-                    <h2 class="tank-article-market-heading">Polymarket prices</h2>
-                    <div class="tank-article-market-fallback">
-                        ${yesNo && question ? `<p class="tank-article-market-question">${escapeHtml(question)}</p>` : ''}
-                        ${fallbackBody}
-                        <p class="tank-article-market-note">${escapeHtml(MARKET_PANEL_NOTE)}</p>
-                    </div>
-                    <script type="application/json" id="tank-article-market-data">${seed}</script>
-                </section>
-`;
-    }
+    const marketSectionHtml = renderMarketSection(prop, game, page.created_at, { id: 'tank-article-market', writtenVerb: 'this story was written' });
 
     const deckPayload = JSON.stringify({
         hook, cards, slug: page.slug,
@@ -727,7 +740,7 @@ ${marketSectionHtml}
                 <div class="tank-article-artifact-section">
                     <p class="tank-article-artifact-label">Make The Call</p>
                     <div class="tank-article-artifact">
-                        <div id="tank-article-deck-root" data-hook="${escapeHtml(hook)}"></div>
+                        <div id="tank-article-deck-root" data-tank-deck data-hook="${escapeHtml(hook)}"></div>
                         <script type="application/json" id="tank-article-deck-data">${deckPayload}</script>
                     </div>
                 </div>

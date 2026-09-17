@@ -924,6 +924,7 @@ export async function sweepUntaggedTanks(
                    t.game_snapshot->'prop'->'odds'->'outcomes' AS outcome_labels
             FROM tank_pages t
             WHERE t.status = 'published' AND t.visibility = 'app' AND t.provider IN ('polymarket', 'kalshi')
+              AND t.kind = 'narrative'
               AND t.slug IS NOT NULL AND t.model_output IS NOT NULL
               AND t.game_snapshot->'prop'->>'id' IS NOT NULL
               AND t.published_at > NOW() - (INTERVAL '1 day' * ${opts.maxAgeDays})

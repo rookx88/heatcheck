@@ -62,6 +62,7 @@ function ScoreBoxes({ scores }: { scores: Score[] }) {
 
 interface PendingPick {
     slug: string;
+    href?: string;
     side: string;
     createdAt: string;
     kickoff: string | null;
@@ -71,6 +72,7 @@ interface PendingPick {
 
 interface SettledPick {
     slug: string;
+    href?: string;
     side: string;
     createdAt: string;
     settledAt: string | null;
@@ -86,7 +88,9 @@ interface MinePicks {
     record: { correct: number; incorrect: number; emberTotal: number };
 }
 
-const tankHref = (slug: string) => `/the-tank/articles/${encodeURIComponent(slug)}/`;
+// The API says where a pick's Tank lives (a lines pick points at its matchup page, not
+// an article); the slug fallback only covers a response from before `href` existed.
+const tankHref = (p: { slug: string; href?: string }) => p.href || `/the-tank/articles/${encodeURIComponent(p.slug)}/`;
 
 // WON and LOST side by side, like HOME and GUEST.
 function tankScores(d: MinePicks | null): Score[] {
@@ -129,7 +133,7 @@ function PendingList({ picks }: { picks: PendingPick[] }) {
                 return (
                     <li key={p.slug} className="hc-portfolio-row">
                         <div className="hc-portfolio-rowbody">
-                            <a href={tankHref(p.slug)}>{p.tagline}</a>
+                            <a href={tankHref(p)}>{p.tagline}</a>
                             <div className="hc-portfolio-meta">
                                 <PickTag side={p.side} />
                                 {pct !== null && (
@@ -181,7 +185,7 @@ function SettledList({ picks, cursor, loadingMore, onLoadMore }: {
                             <span className="hc-sb-vh">{p.result === 'correct' ? 'Correct' : 'Incorrect'}</span>
                         </span>
                         <div className="hc-portfolio-rowbody">
-                            <a href={tankHref(p.slug)}>{p.tagline}</a>
+                            <a href={tankHref(p)}>{p.tagline}</a>
                             <div className="hc-portfolio-meta">
                                 <PickTag side={p.side} />
                                 {p.settledAt && <span className="hc-sb-led">{formatSettleDate(p.settledAt).replace('Resolves', 'Settled')}</span>}

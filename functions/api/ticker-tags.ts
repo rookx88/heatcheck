@@ -67,20 +67,26 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (!ticker) return reject(404, 'unknown_ticker', `No active ticker "${tickerKey}".`);
 
     const tankRows = tankId
-        ? await sql`SELECT id, slug, provider, league,
+        ? await sql`SELECT id, slug, provider, league, kind,
                            game_snapshot->'prop'->>'id' AS market_id,
                            game_snapshot->'prop'->>'market' AS market,
                            game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices,
                            game_snapshot->'prop'->'odds'->'outcomes' AS outcome_labels
                     FROM tank_pages WHERE id = ${tankId} LIMIT 1`
-        : await sql`SELECT id, slug, provider, league,
+        : await sql`SELECT id, slug, provider, league, kind,
                            game_snapshot->'prop'->>'id' AS market_id,
                            game_snapshot->'prop'->>'market' AS market,
                            game_snapshot->'prop'->'odds'->'outcomePrices' AS outcome_prices,
                            game_snapshot->'prop'->'odds'->'outcomes' AS outcome_labels
                     FROM tank_pages WHERE slug = ${slug} LIMIT 1`;
     if (tankRows.length === 0) return reject(404, 'tank_not_found', 'No Tank matches that id/slug.');
-    const tank = tankRows[0] as unknown as TankRow;
+    const tank = tankRows[0] as unknown as TankRow & { kind?: string };
+
+    // A lines Tank is not news: it carries no story, so it moves no index. Its game's
+    // result reaches the indexes through the slate leg like every other game's.
+    if (tank.kind === 'lines') {
+        return reject(422, 'lines_not_taggable', 'Lines Tanks never tag a ticker - only narrative Tanks are news.');
+    }
 
     if (!['polymarket', 'kalshi'].includes(tank.provider)) {
         return reject(422, 'unsupported_provider', `Tanks from "${tank.provider}" can't be tagged - no price history and no auto-settlement path.`);

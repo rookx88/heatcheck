@@ -35,6 +35,7 @@ public/*/index.html
 # deploy), so nothing here needs to be in git for the site to work - and the OG
 # cards alone are ~80MB of binaries that would only ever churn.
 public/the-tank/articles/
+public/the-tank/lines/
 public/assets/og/
 public/tankdaq/
 public/teams/

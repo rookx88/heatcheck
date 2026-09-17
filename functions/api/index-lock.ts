@@ -33,30 +33,11 @@ import {
     type SlateMarketRow,
 } from '../../lib/pages-functions/index-slate';
 import { resolvePositionTeams } from '../../lib/pages-functions/team-identity';
+import { teamAt, toSlateMarketRow } from '../../lib/pages-functions/slate-rows';
 
 // Matches the gap between worker-curate's sweep slots (10:00 / 18:00 / 02:00 UTC), with
 // an hour of overlap so a game can't fall between two runs.
 const LOCK_LOOKAHEAD_HOURS = 9;
-
-// One side of a fixture as Gamma publishes it. The abbreviation is read as well as the
-// name because it is the stable half: present on 100% of 183,696 team entries measured
-// 2026-09-12, a strict bijection with name inside a league, and unaffected by a rename
-// (Polymarket already shortened 'Oakland Athletics' to 'Athletics'). It is frozen onto
-// the row so a registry correction can re-resolve without polymarket_props, which is a
-// cache of OPEN markets and cannot be relied on for a game that finished weeks ago.
-//
-// The positional fallback matches tank-providers.ts:211-214. teamName() had none, so an
-// event where Gamma omits `ordering` wrote away/home as NULL with no counter and no
-// guard. That has not happened in 996 locked rows, but it is a silent failure by
-// construction, and a position with no teams can never be attributed or described.
-function teamAt(teams: unknown, ordering: 'away' | 'home'): { name: string | null; abbr: string | null } {
-    if (!Array.isArray(teams)) return { name: null, abbr: null };
-    const positional = ordering === 'away' ? teams[0] : teams[1];
-    const match = teams.find((t: any) => t?.ordering === ordering) ?? positional;
-    const name = typeof match?.name === 'string' ? match.name : null;
-    const abbr = typeof match?.abbreviation === 'string' ? match.abbreviation.toLowerCase() : null;
-    return { name, abbr };
-}
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Curate-Secret');
@@ -106,30 +87,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // the grouped rows rather than widening SlateMarketRow (which index-slate owns).
     const abbrByEvent = new Map<string, { away: string | null; home: string | null }>();
     for (const r of rows) {
-        const away = teamAt(r.event_teams, 'away');
-        const home = teamAt(r.event_teams, 'home');
-        const row: SlateMarketRow = {
-            event_id: r.event_id as string,
-            league: (r.league as string) ?? '',
-            market_id: r.market_id as string,
-            condition_id: (r.condition_id as string | null) ?? null,
-            market_type: (r.market_type as string) ?? '',
-            market_line: (r.market_line as number | null) ?? null,
-            outcomes: Array.isArray(r.outcomes) ? (r.outcomes as unknown[]).map(String) : null,
-            outcome_prices: Array.isArray(r.outcome_prices) ? (r.outcome_prices as unknown[]).map(Number) : null,
-            volume: (r.volume as number | null) ?? null,
-            liquidity: (r.liquidity as number | null) ?? null,
-            // Neon hands timestamps back as Date objects, and String(date) yields
-            // "... GMT-0700 (Pacific Daylight Time)" which Postgres rejects on the way
-            // back in. Always round-trip through ISO.
-            kickoff: r.event_start_time ? new Date(r.event_start_time as string | Date).toISOString() : null,
-            away: away.name,
-            home: home.name,
-            // The selector reads this to keep "end in a draw?" markets out of the
-            // moneyline pick (isDrawMarket, index-slate.ts).
-            question: (r.question as string | null) ?? null,
-        };
-        if (!abbrByEvent.has(row.event_id)) abbrByEvent.set(row.event_id, { away: away.abbr, home: home.abbr });
+        const row = toSlateMarketRow(r);
+        if (!abbrByEvent.has(row.event_id)) {
+            abbrByEvent.set(row.event_id, { away: teamAt(r.event_teams, 'away').abbr, home: teamAt(r.event_teams, 'home').abbr });
+        }
         const list = byEvent.get(row.event_id);
         if (list) list.push(row); else byEvent.set(row.event_id, [row]);
     }

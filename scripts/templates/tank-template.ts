@@ -9,6 +9,23 @@ export interface TankPageEntry {
     payload: DeckPayload;
 }
 
+// One live lines page (kind='lines' - the matchup board with no story). Listed apart
+// from the story carousel because it is a different kind of Tank, and decorated so.
+export interface LinesBoardEntry {
+    pageSlug: string;
+    league: string;
+    matchup: string;
+    kickoff: string;
+}
+
+function formatBoardKickoff(iso: string): string {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York', weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    }).format(d) + ' ET';
+}
+
 function formatKickoffFromMatchup(entry: TankPageEntry): string {
     // matchup is "Away @ Home" text only (no kickoff carried on TankPageEntry itself),
     // so the fallback list shows league + matchup - enough for real crawlable text and
@@ -26,11 +43,16 @@ function formatKickoffFromMatchup(entry: TankPageEntry): string {
  * sees the interactive carousel take over visually. (Articles themselves stay under
  * /the-tank/articles/ - only this hub page moved when Tank Land took over /the-tank/.)
  */
-function generateFallbackSection(baseUrl: string, tanks: TankPageEntry[]): string {
+function generateFallbackSection(baseUrl: string, tanks: TankPageEntry[], linesBoard: LinesBoardEntry[]): string {
     const items = tanks.map(entry => `
         <li>
             <a href="/the-tank/articles/${entry.slug}/">${escapeHtml(entry.payload.hook)}</a>
             <span>${escapeHtml(formatKickoffFromMatchup(entry))}</span>
+        </li>`).join('');
+    const lines = linesBoard.map(entry => `
+        <li>
+            <a href="/the-tank/lines/${escapeHtml(entry.pageSlug)}/">${escapeHtml(entry.league)} &middot; ${escapeHtml(entry.matchup)}</a>
+            <span>${escapeHtml(formatBoardKickoff(entry.kickoff))}</span>
         </li>`).join('');
 
     return `
@@ -40,6 +62,10 @@ function generateFallbackSection(baseUrl: string, tanks: TankPageEntry[]): strin
         ${tanks.length === 0
             ? `<p>No active stories right now &mdash; check back soon.</p>`
             : `<ul>${items}</ul>`}
+        ${linesBoard.length === 0 ? '' : `
+        <h2>The Lines</h2>
+        <p>Today's boards: the moneyline, spread and total for each game, no story attached.</p>
+        <ul>${lines}</ul>`}
     </section>`;
 }
 
@@ -89,12 +115,13 @@ function buildSchemaOrg(baseUrl: string, tanks: TankPageEntry[]): any[] {
  * mounted client-side by tank-page-client.tsx via scripts/build-tank-bundles.ts. Also
  * the site's one real, crawlable hub for Tank articles - see generateFallbackSection().
  */
-export function generateTankPageHtml(baseUrl: string, tanks: TankPageEntry[]): string {
+export function generateTankPageHtml(baseUrl: string, tanks: TankPageEntry[], linesBoard: LinesBoardEntry[] = []): string {
     const title = 'The Tank HQ | Heatchecks';
     const description = 'Step into the Tank HQ - browse the sports stories available right now at Heatchecks headquarters.';
     const head = renderHead({ title, description, path: '/the-tank-hq/', baseUrl, schemaOrg: buildSchemaOrg(baseUrl, tanks) });
 
     const tanksPayload = JSON.stringify(tanks).replace(/</g, '\\u003c');
+    const linesPayload = JSON.stringify(linesBoard).replace(/</g, '\\u003c');
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -116,9 +143,10 @@ export function generateTankPageHtml(baseUrl: string, tanks: TankPageEntry[]): s
     </style>
 </head>
 <body>
-    ${generateFallbackSection(baseUrl, tanks)}
+    ${generateFallbackSection(baseUrl, tanks, linesBoard)}
     <div id="tank-page-root"></div>
     <script type="application/json" id="tank-page-data">${tanksPayload}</script>
+    <script type="application/json" id="tank-lines-data">${linesPayload}</script>
     <script type="module" src="/assets/tank-page.js" defer></script>
 </body>
 </html>`;

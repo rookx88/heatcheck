@@ -152,7 +152,7 @@ export async function fetchHomepageData(sql: NeonQueryFunction<false, false>): P
         sql`
             SELECT slug, league, game_snapshot, model_output, published_at, created_at
             FROM tank_pages
-            WHERE status = 'published' AND visibility = 'app'
+            WHERE status = 'published' AND visibility = 'app' AND kind = 'narrative'
               AND slug IS NOT NULL AND model_output IS NOT NULL
               AND game_snapshot->'game'->>'kickoff' IS NOT NULL
               AND (game_snapshot->'game'->>'kickoff')::timestamptz > NOW()

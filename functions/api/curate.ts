@@ -945,11 +945,14 @@ export async function runCuration(env: Env, groupNames: string[]): Promise<Curat
     }
 
     // Skip markets already surfaced as a Tank recently, so the same storyline doesn't get
-    // re-matched (and re-cost a web search) day after day.
+    // re-matched (and re-cost a web search) day after day. Lines rows don't count: a
+    // story on a market a lines Tank covers is exactly the handoff the lines kind is
+    // built for (narrative wins, line by line - see add_kind_to_tank_pages.sql).
     const recentRows = await sql`
         SELECT DISTINCT game_snapshot->'prop'->>'id' AS market_id
         FROM tank_pages
         WHERE created_at > NOW() - (INTERVAL '1 day' * ${config.dedupeDays})
+          AND kind = 'narrative'
           AND game_snapshot->'prop'->>'id' IS NOT NULL
     `;
     budget.charge(1);

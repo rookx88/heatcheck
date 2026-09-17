@@ -60,12 +60,14 @@ const ArticleDeck: React.FC<{ payload: DeckPayload; slug: string }> = ({ payload
 
 function mount() {
     // "Polymarket prices" - this market's current prices, in place of the dated
-    // fallback (the prices when the story was written). Same contract as the indexes
+    // fallback (the prices when the Tank was created). Same contract as the indexes
     // island below: the fallback stays until the island confirms it has something real
-    // to show, so a failed fetch or no JS leaves the dated fallback in place.
-    const marketRoot = document.getElementById('tank-article-market');
-    const marketData = document.getElementById('tank-article-market-data');
-    if (marketRoot && marketData?.textContent) {
+    // to show, so a failed fetch or no JS leaves the dated fallback in place. One
+    // island per `[data-tank-market]`: an article has one, a lines page has one per
+    // line, each carrying its own seed script.
+    document.querySelectorAll<HTMLElement>('[data-tank-market]').forEach((marketRoot) => {
+        const marketData = marketRoot.querySelector('script[type="application/json"]');
+        if (!marketData?.textContent) return;
         try {
             const seed = JSON.parse(marketData.textContent) as MarketPanelSeed;
             const fallback = marketRoot.querySelector('.tank-article-market-fallback');
@@ -75,7 +77,7 @@ function mount() {
         } catch (err) {
             console.error('[Tank Article] market panel seed unreadable:', err);
         }
-    }
+    });
 
     // "Indexes this story moved", in place of the bullet cards. The cards stay in the
     // DOM until this component confirms it has something to show - onReady fires only
@@ -100,15 +102,20 @@ function mount() {
     const chromeRoot = document.getElementById('tank-article-chrome');
     if (chromeRoot) createRoot(chromeRoot).render(<ContentChrome />);
 
-    const root = document.getElementById('tank-article-deck-root');
-    const dataEl = document.getElementById('tank-article-deck-data');
-    if (!root || !dataEl || !dataEl.textContent) return;
-    try {
-        const { slug, ...payload } = JSON.parse(dataEl.textContent) as DeckPayload & { slug: string };
-        createRoot(root).render(<ArticleDeck payload={payload} slug={slug} />);
-    } catch (err) {
-        console.error('[Tank Article Deck] Failed to parse deck payload:', err);
-    }
+    // One deck per `[data-tank-deck]`, its payload in the JSON script right after it (a
+    // sibling, not a child: root.render clears the container). An article mounts one; a
+    // lines page mounts one per line, each with its own slug so picks land on the right
+    // row.
+    document.querySelectorAll<HTMLElement>('[data-tank-deck]').forEach((root) => {
+        const dataEl = root.nextElementSibling;
+        if (!(dataEl instanceof HTMLScriptElement) || !dataEl.textContent) return;
+        try {
+            const { slug, ...payload } = JSON.parse(dataEl.textContent) as DeckPayload & { slug: string };
+            createRoot(root).render(<ArticleDeck payload={payload} slug={slug} />);
+        } catch (err) {
+            console.error('[Tank Article Deck] Failed to parse deck payload:', err);
+        }
+    });
 }
 
 if (document.readyState === 'loading') {

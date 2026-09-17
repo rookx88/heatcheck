@@ -1,0 +1,1 @@
+function o(e,r){let n=r.baseline*Math.exp(e/r.scale);return Math.round(n*1e4)/1e4}function t(e,r){return e*Math.round(r*1e4)}function a(e,r){let n=t(e,r);return Math.floor(n/1e4)+(n%1e4===0?0:1)}function m(e,r){return Math.floor(t(e,r)/1e4)}function u(e,r){return(Math.exp(e/r)-1)*100}function b(e,r,n){return u(e-r,n.scale)}export{o as a,a as b,m as c,u as d,b as e};

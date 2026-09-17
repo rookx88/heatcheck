@@ -403,6 +403,75 @@
   box-shadow: 0 2px 0 var(--hc-gold-dark, #e8a800);
 }
 
+/* The Lines board: the other kind of Tank (kind='lines' - the matchup board, no story),
+   listed under the story carousel and never inside it. Bubble accent and dashed edges
+   on purpose: teal and gold belong to stories, and a reader should tell the two apart
+   at a glance. */
+.tank-lines-board {
+  margin-top: 1.5rem;
+  padding: 0.9rem 1rem 1rem;
+  text-align: left;
+  border: 1.5px dashed rgba(207, 230, 255, 0.4);
+  border-radius: 14px;
+  background: rgba(207, 230, 255, 0.05);
+}
+
+.tank-lines-board__head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-family: 'Montserrat', 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--hc-bubble, #cfe6ff);
+  margin-bottom: 0.6rem;
+}
+
+.tank-lines-board__pill {
+  display: inline-block;
+  padding: 0.12rem 0.5rem;
+  border-radius: 999px;
+  background: var(--hc-bubble, #cfe6ff);
+  color: #0b0713;
+  font-size: 0.64rem;
+  letter-spacing: 0.16em;
+}
+
+.tank-lines-board__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tank-lines-board__list a {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 8px;
+  text-decoration: none;
+  color: rgba(255, 255, 255, 0.9);
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.85rem;
+  transition: background 0.15s ease;
+}
+
+.tank-lines-board__list a:hover,
+.tank-lines-board__list a:focus-visible {
+  background: rgba(207, 230, 255, 0.12);
+  outline: none;
+}
+
+.tank-lines-board__matchup { font-weight: 700; }
+.tank-lines-board__time { color: rgba(255, 255, 255, 0.55); white-space: nowrap; }
+
 @media (max-width: 420px) {
   .tank-modal-header {
     padding: 0.85rem 1rem;
@@ -411,6 +480,7 @@
   .tank-modal-body {
     padding: 1rem;
   }
+  .tank-lines-board__list a { flex-direction: column; gap: 0.1rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {
