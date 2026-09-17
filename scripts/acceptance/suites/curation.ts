@@ -27,6 +27,8 @@ import {
     formatVerifiedStatFact,
 } from '../../../tank-curation';
 import { extractJson, parseModelJson } from '../../../tank-generate';
+import { findKickoffCountdowns, replaceKickoffCountdowns, buildCountdownFeedback, kickoffWeekday } from '../../../tank-countdown-lint';
+import type { TankArticle } from '../../../tank-types';
 import { filterProps, GAME_LINE_MARKETS } from '../../../tank-filter';
 import { effectiveSettleDate } from '../../../tank-deck-format';
 
@@ -357,6 +359,76 @@ async function run() {
     })[0]?.props.length ?? 0;
     check('an EMPTY whitelist still means no filtering (the trap that caused the incident)',
         unfiltered === 5, `kept ${unfiltered} of 5`);
+
+    // -----------------------------------------------------------------------------
+    section('kickoff countdown lint - "tonight" in a Tank written days before the game');
+
+    // The real offender: white-sox-cardinals-turnaround-moneyline, generated 2026-09-07
+    // for a Saturday 2026-09-12 23:15Z game, read on Friday night as if it were in-play.
+    const SAT_KICKOFF = '2026-09-12T23:15:00Z';
+    const offender = (): TankArticle => ({
+        seo: { title: 'White Sox vs Cardinals moneyline', meta_description: 'A rebuilt team chasing a bye.', slug: 'white-sox-cardinals' },
+        tagline: 'From 121 losses to a bye',
+        hook: "Two years ago this team lost 121 games. Tonight they're chasing a first-round bye.",
+        body: "Chicago or St. Louis, moneyline, straight up, tonight only. The Cardinals aren't in this arc. They're just tonight's opponent.",
+        cards: ['Two years, 121 losses.', 'Now a bye is on the table.'],
+        call: { question: 'Who wins?', sides: ['Chicago White Sox', 'St. Louis Cardinals'] },
+    });
+
+    check('kickoffWeekday renders the ET weekday (23:15Z Sat is still Saturday in New York)',
+        kickoffWeekday(SAT_KICKOFF) === 'Saturday');
+    check('kickoffWeekday crosses the date line correctly (03:00Z Sunday is Saturday night ET)',
+        kickoffWeekday('2026-09-13T03:00:00Z') === 'Saturday');
+    check('kickoffWeekday is null for a missing or unparseable kickoff',
+        kickoffWeekday(undefined) === null && kickoffWeekday('soon') === null);
+
+    const hits = findKickoffCountdowns(offender());
+    check('finds every "tonight" across hook and body (3 hits)',
+        hits.length === 3 && hits.every((h) => h.phrase.toLowerCase() === 'tonight'), JSON.stringify(hits));
+    check('each hit names the field it sits in',
+        hits.map((h) => h.field).join(',') === 'hook,body,body', hits.map((h) => h.field).join(','));
+
+    const clean = offender();
+    clean.hook = 'Two years ago this team lost 121 games. Saturday they chase a first-round bye.';
+    clean.body = "Chicago or St. Louis, moneyline, straight up. The Cardinals aren't in this arc. They're just the opponent.";
+    check('a clean article has no hits', findKickoffCountdowns(clean).length === 0);
+    check('"today" inside another word does not match (Todayville, uptodate)',
+        findKickoffCountdowns({ ...clean, body: 'The uptodate Todayville roster.' }).length === 0);
+    check('"tomorrow night", "later today", "this evening" are all caught',
+        findKickoffCountdowns({ ...clean, body: 'Tomorrow night, or later today, or this evening.' }).length === 3);
+    check('"hours away" phrasing is caught',
+        findKickoffCountdowns({ ...clean, cards: ['First pitch is just hours away.'] }).length === 1);
+    check('the scan covers seo, tagline, cards and call.question, not only body/hook',
+        findKickoffCountdowns({
+            ...clean,
+            seo: { ...clean.seo, title: 'Tonight in St. Louis', meta_description: 'Today it ends.' },
+            tagline: 'Tomorrow decides it',
+            cards: ['This afternoon matters.'],
+            call: { ...clean.call, question: 'Who wins tonight?' },
+        }).map((h) => h.field).sort().join(',') === 'call.question,cards[0],seo.meta_description,seo.title,tagline');
+
+    const rewrite = replaceKickoffCountdowns(offender(), SAT_KICKOFF);
+    check('rewrite swaps every "tonight" for "Saturday night"',
+        rewrite.replaced.length === 3 && rewrite.unresolved.length === 0 && findKickoffCountdowns(rewrite.article).length === 0,
+        JSON.stringify({ replaced: rewrite.replaced.length, unresolved: rewrite.unresolved }));
+    check('rewrite keeps the sentence readable at sentence start',
+        rewrite.article.hook === "Two years ago this team lost 121 games. Saturday night they're chasing a first-round bye.", rewrite.article.hook);
+    check('rewrite keeps the sentence readable mid-sentence and possessive',
+        rewrite.article.body === "Chicago or St. Louis, moneyline, straight up, Saturday night only. The Cardinals aren't in this arc. They're just Saturday night's opponent.", rewrite.article.body);
+    check('rewrite does not mutate its input', offender().hook.includes('Tonight'));
+    check('"today" and "tomorrow" become the bare weekday',
+        replaceKickoffCountdowns({ ...clean, body: 'Today or tomorrow.' }, SAT_KICKOFF).article.body === 'Saturday or Saturday.');
+    const stuck = replaceKickoffCountdowns({ ...clean, cards: ['First pitch is just hours away.'] }, SAT_KICKOFF);
+    check('"hours away" has no safe rewrite and comes back unresolved, text untouched',
+        stuck.unresolved.length === 1 && stuck.replaced.length === 0 && stuck.article.cards[0] === 'First pitch is just hours away.');
+    const noKickoff = replaceKickoffCountdowns(offender(), undefined);
+    check('with no usable kickoff nothing is replaced and every hit is unresolved',
+        noKickoff.replaced.length === 0 && noKickoff.unresolved.length === 3 && noKickoff.article.hook.includes('Tonight'));
+
+    const feedback = buildCountdownFeedback(hits, SAT_KICKOFF);
+    check('feedback names every hit with its field and hands the model the weekday',
+        feedback.includes('"Tonight" in hook') && feedback.includes('"tonight" in body') && feedback.includes('The game is on Saturday'), feedback);
+    check('feedback asks for the complete JSON back', /complete JSON/.test(feedback));
 }
 
 function mkProp(id: string, market: string) {

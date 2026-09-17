@@ -5,9 +5,9 @@
 // works identically under Node (tsx/backend.ts) and Workers with no environment
 // branching. Content is otherwise byte-for-byte the same as the original .md.
 
-export const TANK_NARRATIVE_PROMPT_VERSION = 'narrative/v0.5';
+export const TANK_NARRATIVE_PROMPT_VERSION = 'narrative/v0.6';
 
-export const TANK_NARRATIVE_PROMPT = `# The Tank — Narrative Generation Prompt (v0.5)
+export const TANK_NARRATIVE_PROMPT = `# The Tank — Narrative Generation Prompt (v0.6)
 
 System prompt for the content stage of the Heatchecks pipeline. Input: one prop you've already
 selected for its storyline. Output: one page's worth of content — a server-rendered narrative for
@@ -131,7 +131,10 @@ Two shapes are allowed:
 - **Absolute** — a named day. "He said it Tuesday."
 
 **Never write a countdown to kickoff** — not "with kickoff hours away," not "tonight," not
-"tomorrow night," not "later today." Two reasons, both hard:
+"today," not "tomorrow," not "tomorrow night," not "later today," not "this evening." This
+applies to every field — \`hook\`, \`cards\`, \`tagline\`, \`seo\`, and \`call.question\` as much as
+the \`body\`. A draft containing any of them is sent back to you to rewrite. Two reasons, both
+hard:
 
 1. This page is generated once and then sits, unchanged, for days or weeks. A countdown is simply
    false by the time most people read it — and it sits in the \`body\`, which is the text search

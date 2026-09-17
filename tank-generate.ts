@@ -16,6 +16,7 @@ import type { Prop, Game, TankArticle } from './tank-types';
 import type { TimeContext } from './tank-curation';
 import { toWriterProp, toWriterMarketContext, type MarketContext } from './market-movement';
 import { TANK_NARRATIVE_PROMPT } from './scripts/prompts/tank-narrative-prompt';
+import { findKickoffCountdowns, replaceKickoffCountdowns, buildCountdownFeedback } from './tank-countdown-lint';
 
 export interface GenerationConfig {
     apiKey: string;
@@ -99,7 +100,9 @@ export interface GenerationResult {
     error: string | null;
 }
 
-async function callAnthropicOnce(systemPrompt: string, userPayload: object, config: GenerationConfig): Promise<string> {
+type ChatMessage = { role: 'user' | 'assistant'; content: string };
+
+async function callAnthropicOnce(systemPrompt: string, messages: ChatMessage[], config: GenerationConfig): Promise<string> {
     const client = new Anthropic({ apiKey: config.apiKey });
     const model = config.model || 'claude-sonnet-5';
     const maxTokens = config.maxTokens ?? 1000;
@@ -116,7 +119,7 @@ async function callAnthropicOnce(systemPrompt: string, userPayload: object, conf
         // to the actual response every time.
         thinking: { type: 'disabled' },
         system: systemPrompt,
-        messages: [{ role: 'user', content: JSON.stringify(userPayload) }],
+        messages,
     });
 
     const textBlock = response.content.find(block => block.type === 'text');
@@ -126,6 +129,14 @@ async function callAnthropicOnce(systemPrompt: string, userPayload: object, conf
 // Generates one TankArticle from a single selected prop. Never throws on a malformed
 // model response - retries once, then returns the failure for the caller to surface
 // rather than letting bad JSON render.
+//
+// A well-formed article is then linted for kickoff countdown language ("tonight",
+// "tomorrow", "hours away" - tank-countdown-lint.ts). The prompt forbids it, the model
+// still writes it, and a Tank generated days out then reads as in-play to whoever opens
+// it on game night. First offence: the draft goes back to the model with every hit
+// named, for one corrected draft (this shares the same two-attempt budget as the shape
+// retry). Second offence: the simple words are swapped for the game's weekday, which is
+// always true; anything that can't be swapped into readable prose fails the generation.
 //
 // `timeContext` is OPTIONAL and trailing on purpose: only the v2 curation path
 // (functions/api/curate.ts) can compute it, while backend.ts's manual curator route and
@@ -158,16 +169,41 @@ export async function generateTankArticle(
         ...(marketContext ? { market_context: toWriterMarketContext(marketContext) } : {}),
     };
 
+    const messages: ChatMessage[] = [{ role: 'user', content: JSON.stringify(userPayload) }];
+
     for (let attempt = 0; attempt < 2; attempt++) {
         let rawText = '';
         try {
-            rawText = await callAnthropicOnce(TANK_NARRATIVE_PROMPT, userPayload, config);
+            rawText = await callAnthropicOnce(TANK_NARRATIVE_PROMPT, messages, config);
             const jsonText = extractJson(rawText);
             const parsed = parseModelJson(jsonText);
-            if (validateTankArticle(parsed)) {
+            if (!validateTankArticle(parsed)) {
+                console.warn(`[Tank] Generation attempt ${attempt + 1} produced invalid TankArticle shape for prop ${prop.id}`);
+                continue;
+            }
+
+            const countdowns = findKickoffCountdowns(parsed);
+            if (countdowns.length === 0) {
                 return { parsed, rawText, error: null };
             }
-            console.warn(`[Tank] Generation attempt ${attempt + 1} produced invalid TankArticle shape for prop ${prop.id}`);
+            const listed = countdowns.map((h) => `${h.field}:"${h.phrase}"`).join(', ');
+            if (attempt === 0) {
+                console.warn(`[Tank] Generation attempt 1 for prop ${prop.id} contains kickoff countdowns (${listed}); asking the model for a corrected draft`);
+                messages.push(
+                    { role: 'assistant', content: rawText },
+                    { role: 'user', content: buildCountdownFeedback(countdowns, game.kickoff) }
+                );
+                continue;
+            }
+
+            const rewrite = replaceKickoffCountdowns(parsed, game.kickoff);
+            if (rewrite.unresolved.length === 0) {
+                const swapped = rewrite.replaced.map((h) => `${h.field}:"${h.phrase}"`).join(', ');
+                console.warn(`[Tank] Prop ${prop.id} still had kickoff countdowns after retry; substituted the game weekday for ${swapped}`);
+                return { parsed: rewrite.article, rawText, error: null };
+            }
+            const stuck = rewrite.unresolved.map((h) => `${h.field}:"${h.phrase}"`).join(', ');
+            return { parsed: null, rawText, error: `Model kept kickoff countdown language after retry and it could not be rewritten safely: ${stuck}` };
         } catch (err: any) {
             console.warn(`[Tank] Generation attempt ${attempt + 1} failed for prop ${prop.id}:`, err.message);
             if (attempt === 1) {
