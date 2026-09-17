@@ -92,7 +92,7 @@ export interface LinesDeckRow {
 // convention functions/api/picks.ts's sideIndex relies on.
 export function buildLinesDeckPayload(row: LinesDeckRow): DeckPayload & { slug: string } {
     const { prop, game } = row.game_snapshot;
-    const { hook, cards, call, tagline } = row.model_output;
+    const { hook, cards, call, tagline, cardHeaders } = row.model_output;
     const prices = prop.odds?.outcomePrices;
     const sidesImpliedProb = Array.isArray(prices) && prices.length === call.sides.length
         && prices.every((p) => typeof p === 'number' && Number.isFinite(p))
@@ -104,8 +104,10 @@ export function buildLinesDeckPayload(row: LinesDeckRow): DeckPayload & { slug: 
         slug: row.slug,
         call: sidesImpliedProb ? { ...call, sidesImpliedProb } : call,
         tagline: truncateHeaderLabel(tagline || hook),
-        contextLabel: truncateHeaderLabel(`${game.league} · ${lineShortLabel(prop)}`),
-        oddsOrMarketLabel: truncateHeaderLabel(formatOddsLabel(prop.odds) ?? lineLabel(prop, call.sides)),
+        // A lines row names its own card walls; rows created before it did fall back to the
+        // league/line and the frozen odds.
+        contextLabel: truncateHeaderLabel(cardHeaders?.[0] || `${game.league} · ${lineShortLabel(prop)}`),
+        oddsOrMarketLabel: truncateHeaderLabel(cardHeaders?.[1] || (formatOddsLabel(prop.odds) ?? lineLabel(prop, call.sides))),
         settleDateLabel: truncateHeaderLabel(formatSettleDate(prop.settleDate ?? game.settleDate ?? game.kickoff)),
     };
 }

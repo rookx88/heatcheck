@@ -73,4 +73,8 @@ export interface TankArticle {
     hook: string;
     cards: string[];
     call: TankArticleCall;
+    // Lines Tanks only: the headers for the two card walls, written when the row was
+    // created to match what each card says ("Win vs cover", "$119K volume"). A story's
+    // card walls keep their computed headers.
+    cardHeaders?: [string, string];
 }

@@ -56,7 +56,7 @@ function renderFrozenPrices(row: LinesRowRecord): string {
     const listed = listedDateLabel(row.created_at);
     return `
                     <div class="tank-lines-prices">
-                        <p class="tank-lines-prices-heading">Polymarket prices</p>
+                        <p class="tank-lines-prices-heading">Market prices</p>
                         <ul class="tank-lines-prices-rows">${rows}
                         </ul>
                         <p class="tank-lines-prices-meta">As of when this line was listed${listed ? `, ${escapeHtml(listed)}` : ''}. Prices move until the game starts.</p>
