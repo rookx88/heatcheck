@@ -18,6 +18,7 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, EMAIL_RE, UUID_RE, type Env } from '../../lib/pages-functions/db';
 import { createSession, requireSameOrigin } from '../../lib/pages-functions/session';
 import { logEvent } from '../../lib/pages-functions/events';
+import { throttle, clientIp } from '../../lib/pages-functions/throttle';
 
 const MAX_ATTEMPTS = 5;
 // One generic message for unknown-email, wrong code, and expired code, so this endpoint
@@ -48,6 +49,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const sql = getSql(context.env);
+
+    // Per-IP throttle (launch audit, 2026-09-07): the per-email attempt cap below
+    // bounds guesses against ONE address; this bounds one client guessing across
+    // many. Same 429 copy as the per-email cap so nothing new leaks.
+    const ip = await throttle(sql, 'verify_email', clientIp(context.request));
+    if (!ip.allowed) {
+        return jsonResponse({ message: 'Too many attempts. Request a new code.' }, { status: 429 });
+    }
 
     // Existence + verified state - not attempt-sensitive, so a plain read. Unknown email
     // returns the same generic failure as a wrong code (no enumeration).

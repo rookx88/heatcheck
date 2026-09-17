@@ -15,6 +15,7 @@ import { getSql, jsonResponse, EMAIL_RE, type Env } from '../../lib/pages-functi
 import { sendLoginLinkEmail } from '../../lib/pages-functions/email';
 import { signAuthToken } from '../../lib/pages-functions/auth-tokens';
 import { resolveLoginOrigin, requireSameOrigin } from '../../lib/pages-functions/session';
+import { throttle, clientIp } from '../../lib/pages-functions/throttle';
 import type { LoginTokenPayload } from '../../lib/auth-token-payloads';
 
 const LOGIN_TOKEN_TTL_SECONDS = 15 * 60;
@@ -37,6 +38,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const sql = getSql(context.env);
+
+    // Per-IP throttle before the upsert: the per-email limits below cannot stop one
+    // client cycling through unlimited addresses (each one a waitlist row and an
+    // email), which is exactly what this closes. 429 with the same copy as the
+    // per-email limits so the client's existing handling applies.
+    const ip = await throttle(sql, 'login', clientIp(context.request));
+    if (!ip.allowed) {
+        return jsonResponse({ message: 'Too many login links requested from this connection. Try again later.' }, { status: 429 });
+    }
 
     let waitlistId: string;
     let lastSentAt: Date | null;

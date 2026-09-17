@@ -8,17 +8,24 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from '../../../lib/pages-functions/db';
-import { resolveLoginOrigin, createSession } from '../../../lib/pages-functions/session';
+import { resolveLoginOrigin, createSession, getCookieValue, isSecureRequest } from '../../../lib/pages-functions/session';
 import { verifyAuthToken } from '../../../lib/pages-functions/auth-tokens';
 import { exchangeDiscordCode, sendDiscordDirectMessage } from '../../../lib/pages-functions/discord-api';
 import type { DiscordLinkTokenPayload } from '../../../lib/auth-token-payloads';
-
-function redirectTo(url: string, extraHeaders?: Record<string, string>): Response {
-    return new Response(null, { status: 302, headers: { Location: url, ...extraHeaders } });
-}
+import { DISCORD_LINK_COOKIE, buildClearDiscordLinkCookie } from './link';
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
     const origin = resolveLoginOrigin(context.request.url, context.env);
+    const secure = isSecureRequest(context.request.url);
+
+    // Every exit clears the flow cookie: the nonce is single-flow, and leaving it
+    // behind would let a stale one satisfy a later, unrelated callback.
+    function redirectTo(url: string, extraHeaders?: Record<string, string>): Response {
+        const headers = new Headers({ Location: url, ...extraHeaders });
+        headers.append('Set-Cookie', buildClearDiscordLinkCookie(secure));
+        return new Response(null, { status: 302, headers });
+    }
+
     const url = new URL(context.request.url);
     const code = url.searchParams.get('code');
     const state = url.searchParams.get('state');
@@ -26,6 +33,16 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     const payload = await verifyAuthToken<DiscordLinkTokenPayload>(state, context.env.SESSION_TOKEN_SECRET, 'discord_link');
     if (!payload) return redirectTo(`${origin}/account/?discord=error`);
+
+    // Browser binding (see link.ts): the nonce inside the signed state must match the
+    // one link.ts set in THIS browser's cookie. A callback URL replayed in any other
+    // browser has a valid token but no matching cookie, and stops here - before the
+    // code exchange, before any account is touched. `?discord=state` is deliberately
+    // distinct from `?discord=error` so the failure is recognizable (and testable).
+    const cookieNonce = getCookieValue(context.request.headers.get('Cookie'), DISCORD_LINK_COOKIE);
+    if (!payload.nonce || !cookieNonce || cookieNonce !== payload.nonce) {
+        return redirectTo(`${origin}/account/?discord=state`);
+    }
 
     // Neither branch below has anywhere sensible to send a failure yet - the
     // session-present branch's error destination (/account/) only makes sense once we

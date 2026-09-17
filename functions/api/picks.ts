@@ -20,6 +20,7 @@ import { sendVerificationEmail, generateVerificationCode } from '../../lib/pages
 import { getSession, requireSameOrigin, requireOnboarded } from '../../lib/pages-functions/session';
 import { logEvent } from '../../lib/pages-functions/events';
 import { submitPick, type SubmitPickResult } from '../../lib/pages-functions/picks';
+import { throttle, clientIp } from '../../lib/pages-functions/throttle';
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const csrf = requireSameOrigin(context.request);
@@ -71,6 +72,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         // Identity already established - no upsert, the account row necessarily exists.
         waitlistId = session.userId;
     } else {
+        // Per-IP throttle on the unauthenticated funnel entry: this path creates an
+        // account row and sends a verification email for ANY address, so without it one
+        // client could mint accounts and emails without limit (launch audit,
+        // 2026-09-07). Logged-in picks are already bounded per account by the cap.
+        const ip = await throttle(sql, 'pick_email', clientIp(context.request));
+        if (!ip.allowed) {
+            return jsonResponse({ message: 'Too many picks from this connection. Log in to keep playing.' }, { status: 429 });
+        }
         try {
             const waitlistRows = await sql`
                 INSERT INTO waitlist (email) VALUES (${email})
