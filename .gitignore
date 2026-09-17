@@ -76,6 +76,7 @@ assets/images/*
 !assets/images/market-movers-logo.webp
 !assets/images/heatchecks-logo-email.png
 !assets/images/register-banner.webp
+!assets/images/ember_currency.png
 !assets/images/tank-homepage-backdrop.webp
 # The site-wide page background (sharedStyles' body::before). Must be committed for
 # the same reason as the game-screen art below: optimize-landing-images.ts is a manual

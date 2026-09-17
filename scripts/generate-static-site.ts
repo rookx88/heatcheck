@@ -200,6 +200,9 @@ const NEW_SITE_IMAGES = [
     // (.hc-ember-dash, server-rendered by homepage/render.ts). Downscaled from
     // Ember_Run_banner.png (2.2MB) to ~2x its rendered size.
     'ember-dash-banner.webp',
+    // The Ember currency stone - every Ember pill (components/MapHud.tsx EmberIcon,
+    // tankdaq-ticker-client.tsx EmberGlyph, homepage/render.ts). Downscaled to 96px.
+    'ember_currency.png',
     // Auth form art - the world + Mud Puppy band above the magic-link/Discord
     // buttons, on both the homepage register modal and /login/ (components/
     // AuthForm.tsx). Derived by scripts/make-auth-art.ts.

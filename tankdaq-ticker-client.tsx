@@ -99,11 +99,9 @@ function fmtSignedEmber(v: number): string {
     return `${n >= 0 ? '+' : '−'}${Math.abs(n).toLocaleString('en-US')}`;
 }
 
-// Same flame glyph the HUD's Ember chip uses (components/MapHud.tsx).
+// Same Ember stone the HUD's Ember chip uses (components/MapHud.tsx).
 const EmberGlyph: React.FC<{ size?: number }> = ({ size = 22 }) => (
-    <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" fill="currentColor" className="hc-tq-ember">
-        <path d="M12 2c.6 3.8-1.2 5.6-2.9 7.3C7.4 11 6 12.6 6 15a6 6 0 0 0 12 0c0-1.7-.6-3.1-1.5-4.5-.4 1-.9 1.7-1.8 2.3.3-3.4-1-6.5-2.7-8.8Z" />
-    </svg>
+    <img src="/assets/images/ember_currency.png" alt="" aria-hidden="true" width={size} height={size} draggable={false} className="hc-tq-ember" />
 );
 
 // ---------------------------------------------------------------------------------

@@ -158,7 +158,7 @@ function tankdaqTickerStyles(): string {
             font-size: clamp(1.9rem, 6vw, 2.6rem); line-height: 1; color: #ffffff;
             display: inline-flex; align-items: center; gap: 0.15rem;
         }
-        .hc-tq-ember { color: var(--hc-gold); flex: none; }
+        .hc-tq-ember { flex: none; vertical-align: -0.15em; }
         .hc-tq-return {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800;
             font-size: clamp(1.05rem, 3.5vw, 1.35rem);

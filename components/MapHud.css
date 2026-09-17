@@ -74,6 +74,13 @@
   padding: 0.15rem 0.6rem;
 }
 
+/* The Ember stone (EmberIcon) - every Ember pill is an inline-flex row. */
+.ember-icon {
+  display: block;
+  flex: none;
+  user-select: none;
+}
+
 .map-hud__login {
   display: inline-block;
   background: var(--hc-gold, #ffc72c);

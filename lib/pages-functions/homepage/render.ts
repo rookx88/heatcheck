@@ -30,7 +30,7 @@ export interface RenderHomepageOptions {
     data: HomepageData;
 }
 
-const EMBER_SVG = `<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="currentColor"><path d="M12 2c.6 3.8-1.2 5.6-2.9 7.3C7.4 11 6 12.6 6 15a6 6 0 0 0 12 0c0-1.7-.6-3.1-1.5-4.5-.4 1-.9 1.7-1.8 2.3.3-3.4-1-6.5-2.7-8.8Z"/></svg>`;
+const EMBER_ICON = `<img src="/assets/images/ember_currency.png" alt="" aria-hidden="true" width="16" height="16" draggable="false" class="ember-icon">`;
 
 // Register banner (logged-out only) - rendered in TWO places: inline in the
 // header (desktop, left of Log in) and as its own row between the ticker and
@@ -64,7 +64,7 @@ function renderHeader(user: HomepageUser | null): string {
                 <button type="button" class="map-hud__chip" aria-haspopup="menu" aria-expanded="false"
                         aria-label="${escapeHtml(user.username)} - ${user.balance} Ember. Open menu">
                     <span class="map-hud__name">${escapeHtml(user.username)}</span>
-                    <span class="map-hud__ember">${EMBER_SVG}${user.balance}</span>
+                    <span class="map-hud__ember">${EMBER_ICON}${user.balance}</span>
                 </button>
             </div>`
         // A real link (no-JS fallback, middle-click); homepage-client's

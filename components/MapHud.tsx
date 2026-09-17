@@ -14,13 +14,11 @@ import { HEADER_MENU_ITEMS } from './headerMenuItems';
 import { LoginModal } from './RegisterModal';
 import './MapHud.css';
 
-// Same flame glyph the homepage's ember chip uses. Exported for the Hall of Fame
+// Same Ember stone the homepage's ember chip uses. Exported for the Hall of Fame
 // leaderboard's Ember pills (components/HallOfFameModal.tsx) so the map surfaces
-// share one glyph rather than a third copy.
-export const EmberIcon: React.FC = () => (
-    <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="currentColor">
-        <path d="M12 2c.6 3.8-1.2 5.6-2.9 7.3C7.4 11 6 12.6 6 15a6 6 0 0 0 12 0c0-1.7-.6-3.1-1.5-4.5-.4 1-.9 1.7-1.8 2.3.3-3.4-1-6.5-2.7-8.8Z" />
-    </svg>
+// share one icon rather than a third copy.
+export const EmberIcon: React.FC<{ size?: number }> = ({ size = 16 }) => (
+    <img src="/assets/images/ember_currency.png" alt="" aria-hidden="true" width={size} height={size} draggable={false} className="ember-icon" />
 );
 
 export const MapHud: React.FC = () => {
