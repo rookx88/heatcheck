@@ -26,6 +26,11 @@ export interface TankEntry {
   league: string;
   matchup: string;
   payload: DeckPayload;
+  // 'lines' = one cube standing for a matchup's board (its moneyline, else spread, else
+  // total): marked LINES, and linked to the matchup page rather than an article. Absent
+  // on a page built before the field existed, when every entry was a story.
+  kind?: 'narrative' | 'lines';
+  href?: string;
 }
 
 // A live lines page (the matchup board, no story) - listed under the carousel, never
@@ -225,7 +230,10 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, linesBoard = [] }
                 </div>
               ) : (
                 <>
-                  <div className="tank-modal-matchup">{current.league} &middot; {current.matchup}</div>
+                  <div className="tank-modal-matchup">
+                    {current.kind === 'lines' && <span className="tank-modal-lines-pill">Lines</span>}
+                    {current.league} &middot; {current.matchup}
+                  </div>
                   <Fishtank key={current.slug} payload={current.payload} slug={current.slug} scale={0.8} />
                   {visibleTanks.length > 1 && (
                     <div className="tank-modal-nav">
@@ -238,8 +246,8 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, linesBoard = [] }
                       </button>
                     </div>
                   )}
-                  <a className="tank-modal-view-story" href={`/the-tank/articles/${current.slug}/`}>
-                    View Story <span aria-hidden="true">&rarr;</span>
+                  <a className="tank-modal-view-story" href={current.href ?? `/the-tank/articles/${current.slug}/`}>
+                    {current.kind === 'lines' ? 'See every line' : 'View Story'} <span aria-hidden="true">&rarr;</span>
                   </a>
                 </>
               )}

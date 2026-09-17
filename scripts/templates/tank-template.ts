@@ -7,6 +7,10 @@ export interface TankPageEntry {
     league: string;
     matchup: string;
     payload: DeckPayload;
+    // A lines cube in the carousel (see TankScreen's TankEntry). The crawlable list and
+    // the schema below cover STORIES only - lines pages have their own list, The Lines.
+    kind?: 'narrative' | 'lines';
+    href?: string;
 }
 
 // One live lines page (kind='lines' - the matchup board with no story). Listed apart
@@ -118,8 +122,11 @@ function buildSchemaOrg(baseUrl: string, tanks: TankPageEntry[]): any[] {
 export function generateTankPageHtml(baseUrl: string, tanks: TankPageEntry[], linesBoard: LinesBoardEntry[] = []): string {
     const title = 'The Tank HQ | Heatchecks';
     const description = 'Step into the Tank HQ - browse the sports stories available right now at Heatchecks headquarters.';
-    const head = renderHead({ title, description, path: '/the-tank-hq/', baseUrl, schemaOrg: buildSchemaOrg(baseUrl, tanks) });
+    const head = renderHead({ title, description, path: '/the-tank-hq/', baseUrl, schemaOrg: buildSchemaOrg(baseUrl, tanks.filter(entry => entry.kind !== 'lines')) });
 
+    // The carousel gets every entry; the story list and the schema get stories only, so
+    // neither ever builds an /articles/ URL out of a lines row's slug.
+    const stories = tanks.filter(entry => entry.kind !== 'lines');
     const tanksPayload = JSON.stringify(tanks).replace(/</g, '\\u003c');
     const linesPayload = JSON.stringify(linesBoard).replace(/</g, '\\u003c');
 
@@ -143,7 +150,7 @@ export function generateTankPageHtml(baseUrl: string, tanks: TankPageEntry[], li
     </style>
 </head>
 <body>
-    ${generateFallbackSection(baseUrl, tanks, linesBoard)}
+    ${generateFallbackSection(baseUrl, stories, linesBoard)}
     <div id="tank-page-root"></div>
     <script type="application/json" id="tank-page-data">${tanksPayload}</script>
     <script type="application/json" id="tank-lines-data">${linesPayload}</script>

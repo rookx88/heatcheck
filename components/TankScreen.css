@@ -334,6 +334,22 @@
   margin-bottom: 0.5rem;
 }
 
+/* Marks a lines cube in the carousel - same bubble pill as the Lines board below it. */
+.tank-modal-lines-pill {
+  display: inline-block;
+  margin-right: 0.45rem;
+  padding: 0.08rem 0.5rem;
+  border-radius: 999px;
+  border: 1.5px dashed var(--hc-bubble, #cfe6ff);
+  background: var(--hc-bubble, #cfe6ff);
+  color: #0b0713;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  vertical-align: 0.08em;
+}
+
 .tank-modal-empty {
   padding: 3rem 1rem;
   color: rgba(255, 255, 255, 0.7);

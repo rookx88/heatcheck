@@ -12,7 +12,7 @@ import { generateDFSHubPage } from './templates/dfs-hub-template';
 import { generateHeatPicksHubPage } from './templates/heat-picks-hub-template';
 import { generateTankArticlePage, TankPageRecord } from './templates/tank-article-template';
 import { generateTankLinesPage, type LinesPageGroup, type LinesRowRecord } from './templates/tank-lines-template';
-import { linesPagePath, matchupName } from '../tank-lines';
+import { buildLinesDeckPayload, lineKey, linesPagePath, matchupName } from '../tank-lines';
 import { generateOgImage } from './generate-og-image';
 import { buildTankBundles } from './build-tank-bundles';
 import { formatMarketLabel, formatOddsLabel, formatSettleDate, formatGameTime, effectiveSettleDate, deriveTaglineFallback, truncateHeaderLabel, deriveSidesImpliedProb } from '../tank-deck-format';
@@ -1769,9 +1769,10 @@ async function generateAllPages(): Promise<void> {
                 const kickoff = new Date(p.game_snapshot?.game?.kickoff || '').getTime();
                 return !isNaN(kickoff) && kickoff > now;
             });
-            tankEntries = activeTankPages.map(p => {
+            const storyEntries: TankPageEntry[] = activeTankPages.map(p => {
                 const { prop, game } = p.game_snapshot;
                 return {
+                    kind: 'narrative' as const,
                     slug: p.slug,
                     league: p.league,
                     matchup: `${game.away} @ ${game.home}`,
@@ -1791,6 +1792,34 @@ async function generateAllPages(): Promise<void> {
                     },
                 };
             });
+
+            // Lines Tanks join the carousel, one cube per game: its moneyline, else its
+            // spread, else its total - the same pick the homepage makes (homepage/data.ts
+            // collapseLinesPerGame). Only live rows of games still to start; a handed-off
+            // line's cube is the story's. The cube is the row's own deck, and it links to
+            // the matchup page, where the game's other lines are.
+            const LINE_RANK: Record<string, number> = { ml: 0, spread: 1, total: 2 };
+            const rankOf = (market: string) => LINE_RANK[lineKey(market) ?? ''] ?? 9;
+            const linesEntries: TankPageEntry[] = [];
+            for (const group of linesGroups.values()) {
+                const row = group.rows
+                    .filter(r => r.status === 'published')
+                    .sort((a, b) => rankOf(a.game_snapshot.prop.market) - rankOf(b.game_snapshot.prop.market))[0];
+                if (!row) continue;
+                const kickoff = new Date(row.game_snapshot.game.kickoff || '').getTime();
+                if (isNaN(kickoff) || kickoff <= now) continue;
+                linesEntries.push({
+                    kind: 'lines',
+                    slug: row.slug,
+                    href: linesPagePath(group.pageSlug),
+                    league: row.league,
+                    matchup: matchupName(row.game_snapshot.game),
+                    payload: buildLinesDeckPayload(row),
+                });
+            }
+            // Stories and lines ranked together by nothing but how soon the game starts.
+            const kickoffOf = (e: TankPageEntry) => new Date(e.payload.kickoff || '').getTime();
+            tankEntries = [...storyEntries, ...linesEntries].sort((a, b) => kickoffOf(a) - kickoffOf(b));
         } catch (error: any) {
             console.warn('⚠ Warning: Failed to generate Tank articles (tank_pages table may not exist yet):', error.message);
         }
