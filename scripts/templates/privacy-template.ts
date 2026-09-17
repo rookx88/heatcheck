@@ -80,7 +80,10 @@ const ALL_PARTS: Part[] = [
                 num: 4,
                 title: 'Cookies and Tracking',
                 blocks: [
-                    'We use a functional session cookie to keep you signed in and, if applicable, a basic analytics cookie to understand aggregate usage of the Platform. We do not currently use advertising cookies, cross-site tracking pixels, or third-party ad networks. If this changes in the future, we will update this policy and provide any disclosures or choices required by law at that time.',
+                    // Counsel's draft said "a basic analytics cookie". The site sets no such
+                    // cookie: tank-analytics-client.ts keeps a random id in localStorage and
+                    // verify-email.ts / login link it to the account at sign-in. Worded to match.
+                    'We use a functional session cookie to keep you signed in. To understand how the Platform is used, we also run our own first-party analytics: a randomly generated identifier is stored in your browser\'s local storage (not a cookie) and sent with page-view and in-Platform activity events to our own servers. It is not shared with any third party or advertising network, and it is associated with your account once you sign in. You can remove it at any time by clearing your browser\'s site data for heatchecks.io. We do not currently use advertising cookies, cross-site tracking pixels, or third-party ad networks. If this changes in the future, we will update this policy and provide any disclosures or choices required by law at that time.',
                 ],
             },
             {

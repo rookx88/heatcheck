@@ -12,6 +12,8 @@ import { escapeHtml } from '../utils/html-escape';
  *
  * Answers use inline() marks: **bold**, *italic*, [text](/url).
  */
+export const DISCORD_INVITE = 'https://discord.gg/z3XUVvG4Nh';
+
 interface Faq { q: string; a: string[] }
 interface FaqGroup { id: string; title: string; faqs: Faq[] }
 
@@ -183,6 +185,10 @@ const GROUPS: FaqGroup[] = [
         id: 'discord',
         title: 'Discord',
         faqs: [
+            {
+                q: 'Is there a Heatchecks Discord?',
+                a: [`Yes — [join the Heatchecks Discord](${DISCORD_INVITE}) to talk games, compare calls and hear about new features first.`],
+            },
             {
                 q: 'Is there a Discord bot?',
                 a: ['Yes. Servers that add the Heatchecks bot get Tanks posted to a channel, community picks and leaderboards, and members can make their calls right from Discord. Link your Discord on your [account page](/account/) and the Ember you earn there lands on your Heatchecks account.'],

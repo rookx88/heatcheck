@@ -1,5 +1,6 @@
 import { renderHead, topbar, footer } from './waitlist-landing-template';
 import { documentStyles } from './legal-page';
+import { DISCORD_INVITE } from './faq-template';
 
 /**
  * /contact/ - two inboxes, no form. A form would need an endpoint, spam handling and a
@@ -111,6 +112,7 @@ export function generateContactPageHtml(baseUrl: string): string {
                 <h2>Before you write</h2>
                 <ul>
                     <li><strong>Quick answers</strong> — how Ember, calls, TANKDAQ and pets work is covered in the <a href="/faq/">FAQ</a>.</li>
+                    <li><strong>Want to talk to other players?</strong> Join the <a href="${DISCORD_INVITE}" rel="noopener">Heatchecks Discord</a>.</li>
                     <li><strong>Too many emails?</strong> Every results email and newsletter has a one-click unsubscribe, and all the switches are on your <a href="/account/?tab=notifications">account page</a>.</li>
                     <li><strong>Deleting your account</strong> is self-serve, from the Security tab of your <a href="/account/">account page</a> — no need to wait on us.</li>
                     <li><strong>Privacy requests and legal notices</strong> go to <a href="mailto:support@heatchecks.io">support@heatchecks.io</a>. See our <a href="/privacy/">Privacy Policy</a> and <a href="/terms/">Terms of Service</a>.</li>
