@@ -53,6 +53,7 @@ import { generateLoginPageHtml } from './templates/login-template';
 import { generateWelcomePageHtml } from './templates/welcome-template';
 import { generateAccountPageHtml } from './templates/account-template';
 import { generateUnsubscribedPageHtml } from './templates/unsubscribed-template';
+import { generateTermsPageHtml } from './templates/terms-template';
 import { generateMyPortfolioPageHtml } from './templates/my-portfolio-template';
 import { generateTankPageHtml, TankPageEntry, type LinesBoardEntry } from './templates/tank-template';
 import { generateTankLandPageHtml } from './templates/tank-land-template';
@@ -1205,6 +1206,10 @@ async function generateAllPages(): Promise<void> {
         // login-free, no bundle - a few inline lines pick the copy from ?kind=.
         writeHtmlFile('unsubscribed/index.html', generateUnsubscribedPageHtml(baseUrl));
         console.log('✓ Built unsubscribed page\n');
+
+        // Terms of Service, linked from the shared footer(). Static, no bundle, no DB.
+        writeHtmlFile('terms/index.html', generateTermsPageHtml(baseUrl));
+        console.log('✓ Built terms page\n');
 
         // My Portfolio page (formerly My Tanks; /my-tanks/ 301s here): a logged-in user's
         // Tank picks plus their TANKDAQ index holdings. Same standalone-bundle pattern as
