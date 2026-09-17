@@ -58,7 +58,10 @@ export function renderMarketSection(
     prop: Prop,
     game: Game,
     createdAt: string | Date,
-    opts: { id?: string; writtenVerb: string },
+    // heading/note default to the story page's own wording. A lines page overrides both so
+    // it names no data source; the island reads the same two strings off the seed, so the
+    // live panel can never disagree with the server-rendered one it replaces.
+    opts: { id?: string; writtenVerb: string; heading?: string; note?: string },
 ): string {
     if (!/^\d{1,12}$/.test(String(prop.id ?? '')) || !prop.odds || prop.odds.outcomes.length !== 2) return '';
     const outcomes = prop.odds.outcomes;
@@ -85,6 +88,8 @@ export function renderMarketSection(
         labels,
         writtenPct,
         question,
+        writtenPhrase: `When ${opts.writtenVerb}`,
+        note: opts.note ?? MARKET_PANEL_NOTE,
     }).replace(/</g, '\\u003c');
     const rows = writtenPct
         ? labels.map((label, i) => `<li><span>${escapeHtml(label)}</span><span>${writtenPct![i]}%</span></li>`).join('')
@@ -97,11 +102,11 @@ export function renderMarketSection(
             : `<p class="tank-article-market-meta">Not enough trading on this market to show a price when ${escapeHtml(opts.writtenVerb)} (${escapeHtml(writtenLabel)}).</p>`;
     return `
                 <section${opts.id ? ` id="${opts.id}"` : ''} class="tank-article-market" data-tank-market>
-                    <h2 class="tank-article-market-heading">Polymarket prices</h2>
+                    <h2 class="tank-article-market-heading">${escapeHtml(opts.heading ?? 'Polymarket prices')}</h2>
                     <div class="tank-article-market-fallback">
                         ${yesNo && question ? `<p class="tank-article-market-question">${escapeHtml(question)}</p>` : ''}
                         ${fallbackBody}
-                        <p class="tank-article-market-note">${escapeHtml(MARKET_PANEL_NOTE)}</p>
+                        <p class="tank-article-market-note">${escapeHtml(opts.note ?? MARKET_PANEL_NOTE)}</p>
                     </div>
                     <script type="application/json"${opts.id ? ` id="${opts.id}-data"` : ''}>${seed}</script>
                 </section>

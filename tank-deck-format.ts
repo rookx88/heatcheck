@@ -40,12 +40,22 @@ export function formatPropTag(prop: { market: string; line: number | null }): st
 // a two-sided quote no wider than 10 points and at least some traded volume.
 export const DEAD_BOOK_MAX_SPREAD = 0.1;
 
-export function isLiveBook(book: Pick<PropBook, 'bestBid' | 'bestAsk' | 'volume'> | null | undefined): boolean {
+// Depth that counts as "someone is quoting this" when nothing has traded yet.
+export const LIVE_BOOK_MIN_LIQUIDITY = 250;
+
+export function isLiveBook(book: Pick<PropBook, 'bestBid' | 'bestAsk' | 'volume' | 'liquidity'> | null | undefined): boolean {
     if (!book) return false;
-    const { bestBid, bestAsk, volume } = book;
+    const { bestBid, bestAsk, volume, liquidity } = book;
     if (typeof bestBid !== 'number' || typeof bestAsk !== 'number') return false;
     if (!Number.isFinite(bestBid) || !Number.isFinite(bestAsk) || bestAsk < bestBid) return false;
-    if (typeof volume !== 'number' || !(volume > 0)) return false;
+    // Somebody must actually be making this market: either it has traded, or real depth is
+    // resting in it. The second half exists for game spreads, which are quoted tight with
+    // six figures of depth and frequently no volume at all - the same measurement that made
+    // pickCanonicalMarket gate spreads on liquidity (index-slate.ts, MIN_SELECTION_LIQUIDITY,
+    // whose value this mirrors). A book that carries no liquidity field behaves as before.
+    const traded = typeof volume === 'number' && volume > 0;
+    const quoted = typeof liquidity === 'number' && liquidity >= LIVE_BOOK_MIN_LIQUIDITY;
+    if (!traded && !quoted) return false;
     return bestAsk - bestBid <= DEAD_BOOK_MAX_SPREAD + 1e-9;
 }
 

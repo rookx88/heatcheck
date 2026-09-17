@@ -41,7 +41,10 @@ import {
 import { getPropProvider, buildGamesFromFlatProps, type PolymarketPropsRow } from './tank-providers';
 import { isTotalsSide, leagueRuleAccepts, parseLeagueRule } from './lib/pages-functions/league-rules';
 import { MIN_SELECTION_LIQUIDITY, MIN_SELECTION_VOLUME, pickCanonicalMarket, type SlateMarketRow } from './lib/pages-functions/index-slate';
-import { toSlateMarketRow } from './lib/pages-functions/slate-rows';
+import { teamAt, toSlateMarketRow } from './lib/pages-functions/slate-rows';
+import { fetchPriceHistory } from './lib/pages-functions/clob';
+import { priceAsOf } from './market-movement';
+import { hasShowablePrices } from './tank-deck-format';
 import {
     LINE_TYPES,
     buildLinesArticle,
@@ -49,6 +52,9 @@ import {
     linesPageSlugBase,
     linesRowSlug,
     type LineKey,
+    type LinesFacts,
+    type LinesOverRecord,
+    type LinesTeamRecord,
 } from './tank-lines';
 import {
     ensureKalshiTable,
@@ -61,7 +67,7 @@ import {
 } from './kalshi';
 import { filterProps } from './tank-filter';
 import { ensureTankPagesTable, generateTankArticle } from './tank-generate';
-import type { SelectedProp } from './tank-types';
+import type { Game, Prop, SelectedProp } from './tank-types';
 import { getISOWeekKey } from './lib/iso-week';
 import { generateLoreSpotlight } from './newsletter-generate';
 
@@ -2612,10 +2618,161 @@ app.get('/api/tank/matchups', apiKeyAuth, async (req: express.Request, res: expr
     }
 });
 
+// ---------------------------------------------------------------------------------
+// Lines Tank facts. Everything a lines row's walls say beyond the frozen snapshot is
+// gathered here, once, when the row is created: no model, no per-view request. Each fact
+// is independent and best-effort - a history endpoint that times out or a club with four
+// games on the board just leaves its sentence out (tank-lines.ts writes none it can't back).
+// The whole gather is wrapped by its caller too: facts never block a line from going up.
+// ---------------------------------------------------------------------------------
+
+// The movement sentence covers the day before the line was listed. Ask for a little more
+// than that so there is a point on the far side of the 24-hour mark to read.
+const LINES_MOVEMENT_WINDOW_S = 24 * 60 * 60;
+const LINES_HISTORY_LOOKBACK_S = LINES_MOVEMENT_WINDOW_S + 6 * 60 * 60;
+// The reading has to sit close to the 24-hour mark to be called "a day ago"...
+const LINES_MOVEMENT_MAX_STALENESS_S = 3 * 60 * 60;
+// ...and a game line does not honestly move this far in a day. A bigger gap is a thin
+// book's midpoint, so the sentence is left out rather than reported.
+const LINES_MOVEMENT_MAX_JUMP = 0.2;
+
+async function gatherTeamRecord(league: string, labels: string[]): Promise<LinesTeamRecord | null> {
+    // One row per game: several indexes hold the same side of the same game, and summing
+    // across them would multiply every count (see team-records.ts TEAM_SIDE_DEDUPE_SQL).
+    const { rows } = await pool.query(
+        `WITH sides AS (
+             SELECT DISTINCT ON (event_id) event_id, entry_prob::float8 AS p, result
+               FROM index_positions
+              WHERE league = $1 AND market_type = 'moneyline' AND result IN ('win', 'loss') AND side_label = ANY($2)
+              ORDER BY event_id, locked_at)
+         SELECT COUNT(*)::int AS games,
+                COUNT(*) FILTER (WHERE result = 'win')::int AS wins,
+                COALESCE(SUM(p), 0)::float8 AS expected_wins
+           FROM sides`,
+        [league, labels],
+    );
+    const r = rows[0];
+    return r && r.games > 0 ? { games: r.games, wins: r.wins, expectedWins: Number(r.expected_wins) } : null;
+}
+
+async function gatherOverRecords(league: string, away: string, home: string): Promise<NonNullable<LinesFacts['overs']>> {
+    const { rows } = await pool.query(
+        `WITH g AS (
+             SELECT DISTINCT ON (event_id) event_id, away, home, result
+               FROM index_positions
+              WHERE league = $1 AND market_type = 'totals' AND result IN ('win', 'loss') AND side_label ILIKE 'Over%'
+              ORDER BY event_id, locked_at)
+         SELECT 'league' AS scope, COUNT(*)::int AS games, COUNT(*) FILTER (WHERE result = 'win')::int AS overs FROM g
+         UNION ALL
+         SELECT 'away', COUNT(*)::int, COUNT(*) FILTER (WHERE result = 'win')::int FROM g WHERE away = $2 OR home = $2
+         UNION ALL
+         SELECT 'home', COUNT(*)::int, COUNT(*) FILTER (WHERE result = 'win')::int FROM g WHERE away = $3 OR home = $3`,
+        [league, away, home],
+    );
+    const pick = (scope: string): LinesOverRecord | null => {
+        const r = rows.find((row) => row.scope === scope);
+        return r && r.games > 0 ? { games: r.games, overs: r.overs } : null;
+    };
+    return { league: pick('league'), away: pick('away'), home: pick('home') };
+}
+
+async function gatherLinesFacts(game: Game, props: Prop[]): Promise<Map<string, LinesFacts>> {
+    const asOf = new Date().toISOString();
+    const nowS = Math.floor(Date.now() / 1000);
+    const safe = async <T>(label: string, fn: () => Promise<T>): Promise<T | null> => {
+        try {
+            return await fn();
+        } catch (err: any) {
+            console.warn(`[Lines Facts] ${label} unavailable for ${game.away} @ ${game.home}:`, err?.message ?? err);
+            return null;
+        }
+    };
+
+    const marketIds = props.map((p) => String(p.id));
+    // A club's labels on the board: its fixture name, plus the moneyline outcome that names
+    // it ("Lions" for "Detroit Lions"). Yes/No moneylines name no club, so soccer gets
+    // only the fixture name - and, today, no record.
+    const mlOutcomes = props.find((p) => p.market === 'moneyline')?.odds?.outcomes ?? [];
+    const labelsFor = (team: string): string[] => [team, ...mlOutcomes.filter((o) => o !== team && o.length >= 3
+        && team.toLowerCase().split(/\s+/).includes(o.toLowerCase()))];
+    const [moneyRows, ladderRows, awayRecord, homeRecord, overs] = await Promise.all([
+        safe('volume', async () => (await pool.query(
+            `SELECT market_id, volume::float8 AS volume, liquidity::float8 AS liquidity
+               FROM polymarket_props WHERE market_id = ANY($1)`, [marketIds])).rows),
+        // The whole ladder for this fixture. Matched on league + kickoff + both team names
+        // rather than event_id: one fixture is listed under several event ids (see GET
+        // /api/tank/matchups), and the alternate lines are not always under the same one.
+        safe('ladder', async () => (await pool.query(
+            `SELECT market_id, market_type, market_line::float8 AS line, outcomes, outcome_prices, event_teams
+               FROM polymarket_props
+              WHERE league = $1 AND event_start_time = $2 AND market_type IN ('spreads', 'totals')
+                AND closed IS DISTINCT FROM TRUE AND outcome_prices IS NOT NULL AND market_line IS NOT NULL
+                AND COALESCE(liquidity, 0) >= $3`,
+            [game.league, game.kickoff, MIN_SELECTION_LIQUIDITY])).rows),
+        safe('away record', () => gatherTeamRecord(game.league, labelsFor(game.away))),
+        safe('home record', () => gatherTeamRecord(game.league, labelsFor(game.home))),
+        safe('totals record', () => gatherOverRecords(game.league, game.away, game.home)),
+    ]);
+
+    const sameFixture = (ladderRows ?? []).filter((r: any) => {
+        return teamAt(r.event_teams, 'away').name === game.away && teamAt(r.event_teams, 'home').name === game.home;
+    });
+
+    const ml = props.find((p) => p.market === 'moneyline');
+    const moneyline = ml?.odds && ml.odds.outcomes.length === 2 && hasShowablePrices(ml.odds, ml.book)
+        ? { outcomes: ml.odds.outcomes, probs: ml.odds.outcomePrices }
+        : null;
+
+    const facts = new Map<string, LinesFacts>();
+    await Promise.all(props.map(async (prop) => {
+        const id = String(prop.id);
+        const money = (moneyRows ?? []).find((r: any) => String(r.market_id) === id);
+        const token = prop.book?.tokenIds?.[0];
+        const history = token
+            ? await safe('price history', () => fetchPriceHistory(token, nowS - LINES_HISTORY_LOOKBACK_S, nowS, 60))
+            : null;
+        // The last reading at or before the 24-hour mark - if there is one near it, if it
+        // is not the empty book's exact 0.500 midpoint, and if the day's move is believable.
+        const mark = nowS - LINES_MOVEMENT_WINDOW_S;
+        const before = history && history.ok ? priceAsOf(history.points, mark) : null;
+        const current = prop.odds?.outcomePrices?.[0];
+        const opening = before
+            && mark - before.t <= LINES_MOVEMENT_MAX_STALENESS_S
+            && Math.abs(before.p - 0.5) > 1e-9
+            && typeof current === 'number' && Math.abs(current - before.p) <= LINES_MOVEMENT_MAX_JUMP
+            ? before
+            : null;
+
+        // Rungs priced for the SAME first outcome as this line: every other total's Over, or
+        // the same club's other spreads (a ladder is listed from both clubs' perspectives,
+        // and the other club's -2.5 is not a rung of this club's -1.5).
+        const firstOutcome = prop.odds?.outcomes?.[0];
+        const ladder = sameFixture
+            .filter((r: any) => r.market_type === prop.market && String(r.market_id) !== id
+                && Array.isArray(r.outcomes) && Array.isArray(r.outcome_prices)
+                && r.outcomes[0] === firstOutcome && Number.isFinite(Number(r.outcome_prices[0])))
+            .map((r: any) => ({ line: Number(r.line), prob: Number(r.outcome_prices[0]) }));
+
+        facts.set(id, {
+            asOf,
+            volume: money?.volume ?? prop.book?.volume ?? null,
+            liquidity: money?.liquidity ?? prop.book?.liquidity ?? null,
+            dayAgo: opening ? { prob: opening.p, ts: new Date(opening.t * 1000).toISOString() } : null,
+            ladder,
+            moneyline,
+            records: { away: awayRecord, home: homeRecord },
+            overs,
+        });
+    }));
+    return facts;
+}
+
 // POST /api/tank/lines - Create lines Tanks from the matchup picker (auth required).
 // Body: { matchups: [{ game, lines: { ml?, spread?, total? } }] } - the objects GET
 // /api/tank/matchups returned. Goes straight to 'published': there is nothing to review,
 // every field is a fact off the snapshot. Never tags a ticker. One rebuild per request.
+// ?dryRun=1 builds every wall exactly as a real create would - facts gathered live - and
+// returns them under `previews`, inserting nothing and rebuilding nothing.
 app.post('/api/tank/lines', apiKeyAuth, async (req: express.Request, res: express.Response) => {
     try {
         const matchups: Array<{ game: any; lines: Record<string, any> }> = Array.isArray(req.body?.matchups) ? req.body.matchups : [];
@@ -2636,6 +2793,8 @@ app.post('/api/tank/lines', apiKeyAuth, async (req: express.Request, res: expres
         const existingSlugs = new Set<string>(slugRows.rows.map(r => r.slug));
         const existingPageSlugs = new Set<string>(pageSlugRows.rows.map(r => r.page_slug));
 
+        const dryRun = req.query.dryRun === '1';
+        const previews: Array<{ slug: string; key: LineKey; article: ReturnType<typeof buildLinesArticle> }> = [];
         const created: any[] = [];
         const skipped: Array<{ gameId: string; marketId?: string; key?: string; reason: string }> = [];
 
@@ -2676,6 +2835,15 @@ app.post('/api/tank/lines', apiKeyAuth, async (req: express.Request, res: expres
                 existingPageSlugs.add(pageSlug);
             }
 
+            // Gathered once per game, for every line on it (the spread's card reads the
+            // moneyline). Best-effort by design: a failure here costs the walls their
+            // extra sentences, never the line itself.
+            const factsByMarket: Map<string, LinesFacts> = await gatherLinesFacts(game, entries.map(([, p]) => p as Prop))
+                .catch((err: any) => {
+                    console.warn(`[Lines Facts] gather failed for ${game.away} @ ${game.home}:`, err?.message ?? err);
+                    return new Map<string, LinesFacts>();
+                });
+
             for (const [key, prop] of entries) {
                 const marketId = String(prop.id);
                 if (lineKey(prop.market) !== key) {
@@ -2691,8 +2859,12 @@ app.post('/api/tank/lines', apiKeyAuth, async (req: express.Request, res: expres
 
                 const slug = ensureUniqueSlug(linesRowSlug(pageSlug, key), existingSlugs);
                 existingSlugs.add(slug);
-                const article = buildLinesArticle(prop, game);
+                const article = buildLinesArticle(prop, game, factsByMarket.get(marketId));
                 article.seo.slug = slug;
+                if (dryRun) {
+                    previews.push({ slug, key, article });
+                    continue;
+                }
 
                 const insertResult = await pool.query(
                     `INSERT INTO tank_pages (
@@ -2709,6 +2881,7 @@ app.post('/api/tank/lines', apiKeyAuth, async (req: express.Request, res: expres
         if (created.length > 0) {
             triggerStaticRebuild(`${created.length} lines Tank row(s) created`);
         }
+        if (dryRun) return res.status(200).json({ dryRun: true, created: 0, skipped, previews });
         res.status(201).json({ created: created.length, skipped, pages: created });
     } catch (error: any) {
         console.error('[POST /api/tank/lines] Error:', error);

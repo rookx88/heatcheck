@@ -22,6 +22,10 @@ export interface PropBook {
     bestBid: number | null;     // 0-1, for outcome 0
     bestAsk: number | null;     // 0-1, for outcome 0
     volume: number | null;      // lifetime traded volume
+    // Resting order-book depth. Optional: snapshots taken before 2026-09-17 don't carry it.
+    // Game spreads are routinely quoted with real depth and no traded volume at all, so
+    // this is what lets a spread's price count as live (see isLiveBook).
+    liquidity?: number | null;
 }
 
 export interface Prop {
@@ -106,6 +110,10 @@ export interface TankArticle {
     hook: string;
     cards: string[];
     call: TankArticleCall;
+    // Lines Tanks only (tank-lines.ts): the headers for the two card walls, written to
+    // match what each card actually says ("Win vs cover", "$119K volume"). A story's card
+    // walls keep their computed headers - league/subject and the frozen odds.
+    cardHeaders?: [string, string];
 }
 
 // The Fishtank artifact's render payload (components/Fishtank.tsx re-exports this for

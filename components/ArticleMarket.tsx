@@ -27,6 +27,10 @@ export interface MarketPanelSeed {
     labels?: string[];             // display names, parallel to outcomes ("Chelsea FC -2.5" for a spread)
     writtenPct: number[] | null;   // whole %, parallel to outcomes; null when not showable
     question: string | null;       // the market's wording, which names the Yes side
+    // Set by the page that rendered the panel (renderMarketSection). Absent on pages built
+    // before these existed, which were all story pages - hence the story defaults below.
+    writtenPhrase?: string;        // "When this story was written" / "When this line was listed"
+    note?: string;                 // the panel's footnote
 }
 
 interface TankMarketBody {
@@ -118,7 +122,7 @@ export const ArticleMarket: React.FC<{ seed: MarketPanelSeed; onReady: () => voi
 
     const meta: string[] = [];
     if (state.kind === 'live' && state.asOf) meta.push(`As of ${state.asOf}`);
-    if (seed.writtenPct) meta.push(`When this story was written (${seed.writtenLabel}): ${levels(namesFor(seed.outcomes), seed.writtenPct)}`);
+    if (seed.writtenPct) meta.push(`${seed.writtenPhrase ?? 'When this story was written'} (${seed.writtenLabel}): ${levels(namesFor(seed.outcomes), seed.writtenPct)}`);
     if (state.kind === 'live' && state.pct24hAgo) meta.push(`24 hours ago: ${levels(namesFor(state.outcomes), state.pct24hAgo)}`);
 
     return (
@@ -144,7 +148,7 @@ export const ArticleMarket: React.FC<{ seed: MarketPanelSeed; onReady: () => voi
                     ))}
                 </p>
             )}
-            <p className="tank-article-market-note">{MARKET_PANEL_NOTE}</p>
+            <p className="tank-article-market-note">{seed.note ?? MARKET_PANEL_NOTE}</p>
         </>
     );
 };

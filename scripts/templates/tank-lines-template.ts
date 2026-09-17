@@ -30,6 +30,10 @@ export interface LinesPageGroup {
     rows: LinesRowRecord[];
 }
 
+// A lines page names no data source anywhere - same footnote as a story's price panel,
+// minus the name.
+const LINES_PRICE_NOTE = 'Midpoint prices, shown as percentages. Not a forecast and not a recommendation.';
+
 const SLOT_ORDER: LineKey[] = ['ml', 'spread', 'total'];
 const SLOT_TITLE: Record<LineKey, string> = { ml: 'Moneyline', spread: 'Spread', total: 'Total' };
 
@@ -123,7 +127,7 @@ export function generateTankLinesPage(
                 <section class="tank-lines-slot">
                     <h2 class="tank-lines-slot-title">${SLOT_TITLE[key]}</h2>
                     <p class="tank-lines-slot-label">${escapeHtml(label)}</p>
-${renderMarketSection(prop, game, row.created_at, { writtenVerb: 'this line was listed' })}
+${renderMarketSection(prop, game, row.created_at, { writtenVerb: 'this line was listed', heading: 'Market prices', note: LINES_PRICE_NOTE })}
                     <div class="tank-article-artifact-section">
                         <p class="tank-article-artifact-label">Make The Call</p>
                         <div class="tank-article-artifact">

@@ -240,6 +240,9 @@ export function buildGamesFromFlatProps(rows: PolymarketPropsRow[]): Game[] {
                     bestBid: row.best_bid ?? null,
                     bestAsk: row.best_ask ?? null,
                     volume: row.volume === null ? null : (Number.isFinite(Number(row.volume)) ? Number(row.volume) : null),
+                    liquidity: row.liquidity === null || row.liquidity === undefined
+                        ? null
+                        : (Number.isFinite(Number(row.liquidity)) ? Number(row.liquidity) : null),
                 }
                 : undefined,
         }));
