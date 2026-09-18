@@ -5,6 +5,8 @@
 //
 // Interaction: click the pet -> [Feed] [Inventory] buttons slide in to its LEFT on
 // one line; click again (or Escape) collapses. Feed and Inventory open their modals.
+// Hide tucks the pet away and leaves only his name, which is the button back; the
+// choice is remembered per device (localStorage) across pages and visits.
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { petDisplayName, PET_MOOD_IMAGE_SRC } from './petRender';
@@ -29,6 +31,26 @@ import './TankScreen.css';
 import './PetWidget.css';
 
 type OpenModal = null | 'feed' | 'inventory' | 'name';
+
+// Storage can throw (private windows, blocked site data) - that just means visible.
+const HIDDEN_KEY = 'hc_pet_hidden';
+
+function readHidden(): boolean {
+    try {
+        return window.localStorage.getItem(HIDDEN_KEY) === '1';
+    } catch {
+        return false;
+    }
+}
+
+function writeHidden(hidden: boolean): void {
+    try {
+        if (hidden) window.localStorage.setItem(HIDDEN_KEY, '1');
+        else window.localStorage.removeItem(HIDDEN_KEY);
+    } catch {
+        // Not remembered this time; the in-memory state still applies.
+    }
+}
 
 interface PetWidgetProps {
     // 'card': docked to the bottom-right corner of the aspect-fit map card (the
@@ -55,6 +77,17 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
     // over the notification bubble, hides the badge, and lifts the widget above the
     // stage's scrim (PetWidget.css .is-scripted). Tapping it advances the scene.
     const [scripted, setScripted] = useState<EncounterStepDetail | null>(null);
+    // Tucked away by the user's Hide. An encounter line still brings him out for the
+    // scene (see `tucked` below) without clearing this, so he goes back when it ends.
+    const [hidden, setHidden] = useState<boolean>(readHidden);
+
+    const setHiddenPersisted = (next: boolean) => {
+        setHidden(next);
+        writeHidden(next);
+        setExpanded(false);
+        setBubble(null);
+        setCoins(null);
+    };
 
     // One consolidated fetch for both facts this widget owns (pet + notifications) -
     // /api/toolbar-state replaced the separate /api/pets + /api/notifications pair.
@@ -172,9 +205,12 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
     if (!pet) return null;
 
     const name = petDisplayName(pet.name, pet.color);
+    // An encounter needs the pet on stage for his lines, so it overrides Hide.
+    const tucked = hidden && !scripted;
 
     return (
-        <div className={`pet-widget pet-widget--${variant}${expanded ? ' is-expanded' : ''}${scripted ? ' is-scripted' : ''}`}>
+        <div className={`pet-widget pet-widget--${variant}${expanded ? ' is-expanded' : ''}${scripted ? ' is-scripted' : ''}${tucked ? ' is-hidden' : ''}`}>
+            {!tucked && (
             <div className="pet-widget__row">
                 {expanded && (
                     <div className="pet-widget__actions">
@@ -192,6 +228,9 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                             onClick={() => { setExpanded(false); dispatchInboxOpen(); }}
                         >
                             Inbox
+                        </button>
+                        <button className="pet-widget__action" onClick={() => setHiddenPersisted(true)}>
+                            Hide
                         </button>
                     </div>
                 )}
@@ -300,7 +339,20 @@ export const PetWidget: React.FC<PetWidgetProps> = ({ variant = 'card' }) => {
                     </div>
                 )}
             </div>
-            {pet.name ? (
+            )}
+            {tucked ? (
+                // Hidden: the name alone stays, and it is the way back. A gold dot
+                // stands in for the "!" badge so unread news isn't lost while he's away.
+                <button
+                    type="button"
+                    className="pet-widget__name pet-widget__name--reveal"
+                    onClick={() => setHiddenPersisted(false)}
+                    aria-label={`Show ${pet.name ? name : 'your pet'}${unread.length > 0 ? ` - ${unread.length} unread` : ''}`}
+                >
+                    {pet.name ? name : 'Show pet'}
+                    {unread.length > 0 && <span className="pet-widget__name-dot" aria-hidden="true" />}
+                </button>
+            ) : pet.name ? (
                 <div className="pet-widget__name">{name}</div>
             ) : (
                 // Unnamed (the hatch reveal was dismissed early): the label doubles as

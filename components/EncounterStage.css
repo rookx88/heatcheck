@@ -142,8 +142,8 @@
   width: max-content;
   max-width: min(340px, 84vw);
   padding: 0.85rem 1rem;
-  background: #ffffff;
-  border: 3px solid #000000;
+  background: #0f2557;
+  border: 2px solid #ffffff;
   border-radius: 16px;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
   z-index: 3;
@@ -157,17 +157,17 @@
   top: 100%;
   left: 39px;
   border: 12px solid transparent;
-  border-top-color: #000000;
+  border-top-color: #ffffff;
 }
 
 .encounter-stage__bubble::after {
   content: '';
   position: absolute;
   top: 100%;
-  left: 44px;
-  margin-top: -4px;
-  border: 7px solid transparent;
-  border-top-color: #ffffff;
+  left: 40px;
+  margin-top: -2px;
+  border: 11px solid transparent;
+  border-top-color: #0f2557;
 }
 
 /* Next / Done chip: the widget's action pill, teal to read as "the scene's control"

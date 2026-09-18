@@ -203,6 +203,43 @@ button.pet-widget__name--prompt:focus-visible {
   outline: none;
 }
 
+/* Hidden pet: the name alone, as the button that brings him back. Same white name
+   with the same outline, so it reads as the pet's label rather than a new control. */
+button.pet-widget__name--reveal {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button.pet-widget__name--reveal:hover,
+button.pet-widget__name--reveal:focus-visible {
+  text-decoration: underline;
+  outline: none;
+}
+
+/* The negative margins tuck the name under the sprite's feet; with no sprite there
+   it would ride up out of place. Two classes to beat the desktop variant rules. */
+.pet-widget.is-hidden .pet-widget__name {
+  margin-top: 0;
+}
+
+/* Unread notifications while hidden: the "!" badge's gold, shrunk to a dot. */
+.pet-widget__name-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-left: 0.35rem;
+  border-radius: 50%;
+  border: 2px solid #07050b;
+  background: #ffc72c;
+  box-shadow: 0 0 8px rgba(255, 199, 44, 0.8);
+}
+
 /* Desktop sizing, per docking mode. The ground shadow is percentage-based so it
    scales with him either way. */
 @media (min-width: 1024px) {
@@ -328,10 +365,11 @@ button.pet-widget__name--prompt:focus-visible {
 /* Speech bubble: the pet "reads" the oldest unread notification. Absolute (never
    fixed - the map pages' transformed frames would trap a fixed box) above the pet,
    with a CSS tail pointing down at it. */
-/* Manga styling: flat white fill, bold black outline, anime-pop black text. The
-   tail is two stacked border-triangles - ::before draws the black outline,
-   ::after a slightly smaller white fill pulled up over the bubble's bottom
-   border so the tail reads as part of the same shape. */
+/* Manga styling: flat dark-blue fill, thin white outline, anime-pop white text.
+   The tail is two stacked border-triangles - ::before draws the white outline,
+   ::after a slightly smaller blue fill pulled up over the bubble's bottom border
+   so the tail reads as part of the same shape. The ::after numbers (11px, 1px
+   inset, -2px pull) keep the tail's outline ~2px thick to match the border. */
 .pet-widget__bubble {
   position: absolute;
   /* Aimed at the head, not the box. In the 1158px sprites (base, happy and sad
@@ -352,8 +390,8 @@ button.pet-widget__name--prompt:focus-visible {
   align-items: flex-start;
   gap: 0.45rem;
   padding: 0.85rem 1rem;
-  background: #ffffff;
-  border: 3px solid #000000;
+  background: #0f2557;
+  border: 2px solid #ffffff;
   border-radius: 16px;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.55);
   z-index: 3;
@@ -365,17 +403,17 @@ button.pet-widget__name--prompt:focus-visible {
   top: 100%;
   right: 39px;
   border: 12px solid transparent;
-  border-top-color: #000000;
+  border-top-color: #ffffff;
 }
 
 .pet-widget__bubble::after {
   content: '';
   position: absolute;
   top: 100%;
-  right: 44px;
-  margin-top: -4px;
-  border: 7px solid transparent;
-  border-top-color: #ffffff;
+  right: 40px;
+  margin-top: -2px;
+  border: 11px solid transparent;
+  border-top-color: #0f2557;
 }
 
 /* Mochiy Pop One: Japanese pop/anime lettering with clean mixed-case Latin
@@ -396,7 +434,7 @@ button.pet-widget__name--prompt:focus-visible {
 
 .pet-widget__bubble-text {
   line-height: 1.5;
-  color: #000000;
+  color: #ffffff;
   text-align: left;
 }
 
@@ -442,7 +480,7 @@ button.pet-widget__name--prompt:focus-visible {
 .pet-widget__bubble-close {
   background: none;
   border: none;
-  color: rgba(0, 0, 0, 0.55);
+  color: rgba(255, 255, 255, 0.65);
   font-size: 1.2rem;
   line-height: 1;
   cursor: pointer;
@@ -451,7 +489,7 @@ button.pet-widget__name--prompt:focus-visible {
 }
 
 .pet-widget__bubble-close:hover {
-  color: #000000;
+  color: #ffffff;
 }
 
 @media (prefers-reduced-motion: reduce) {
