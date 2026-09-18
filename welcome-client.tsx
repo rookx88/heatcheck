@@ -19,6 +19,8 @@ interface LetterData {
     balance: number;
     pickCount: number;
     isFoundingEra: boolean;
+    // McLaren's welcome gift, credited when the letter is signed (0 = no gift paragraph).
+    giftAmount: number;
 }
 
 // The founding-era record sentence, built only from real nonzero numbers -
@@ -53,7 +55,35 @@ function RecordSentence({ data }: { data: LetterData }) {
     );
 }
 
+// Links out of the letter open in a new tab so reading the fine print never costs the
+// reader the letter (or a half-typed signature).
+function LetterLink({ href, children }: { href: string; children: React.ReactNode }) {
+    return (
+        <a className="hc-letter-link" href={href} target="_blank" rel="noopener">
+            {children}
+        </a>
+    );
+}
+
+// Shared by both versions of the letter, right before the signature: the Terms and
+// Privacy Policy, in McLaren's words. The checkbox in SignatureForm is the binding part.
+function FinePrint() {
+    return (
+        <p>
+            Before you sign, the fine print. Every ledger worth keeping runs on rules, and ours are
+            written down: the <LetterLink href="/terms/">Terms of Service</LetterLink> and the{' '}
+            <LetterLink href="/privacy/">Privacy Policy</LetterLink>. Read them. I did, twice. I always
+            read twice.
+        </p>
+    );
+}
+
+function Gift({ amount }: { amount: number }) {
+    return <span className="hc-letter-ember">{amount.toLocaleString()} Ember</span>;
+}
+
 function Letter({ data, children }: { data: LetterData; children: React.ReactNode }) {
+    const gift = data.giftAmount > 0 ? data.giftAmount : 0;
     return (
         <div className="hc-letter">
             <p className="hc-letter-eyebrow">From the desk of Sports McLaren</p>
@@ -75,10 +105,29 @@ function Letter({ data, children }: { data: LetterData; children: React.ReactNod
                         All of it carries forward. Nothing you've earned is going anywhere; it simply has a
                         proper home now.
                     </p>
-                    <p>
-                        There is more ahead — an egg that will want hatching, eventually, and a wider world
-                        past the tanks — but I don't narrate the future. It shows up regardless.
-                    </p>
+                    {gift > 0 ? (
+                        <>
+                            <p>
+                                I've put <Gift amount={gift} /> on top of it, from me — a thank-you for turning
+                                up before there was much to turn up to.
+                            </p>
+                            <p>
+                                The Hatchery has eggs now, and I'm told one costs about what I just handed you.
+                                I won't tell you what to do with a gift. I'll only say eggs don't hatch
+                                themselves.
+                            </p>
+                            <p>
+                                There's a wider world past the tanks, too, but I don't narrate the future. It
+                                shows up regardless.
+                            </p>
+                        </>
+                    ) : (
+                        <p>
+                            There is more ahead — an egg that will want hatching, eventually, and a wider world
+                            past the tanks — but I don't narrate the future. It shows up regardless.
+                        </p>
+                    )}
+                    <FinePrint />
                     <p>
                         One piece of business remains. A letter isn't finished until it's signed, and around
                         here, the signature is the name. Choose the one your record will answer to.
@@ -97,17 +146,40 @@ function Letter({ data, children }: { data: LetterData; children: React.ReactNod
                         played anyway — they call it a mechanic now; at the time I called it a Tuesday. It
                         caught on.
                     </p>
-                    <p>
-                        Your account is new, and it holds exactly what you'd expect: nothing yet. I mention
-                        this as a courtesy, not a criticism. Everything this account ever holds, you will
-                        have put there yourself — Ember when your calls land, a record with your name on it.
-                        I find that's the only kind of ledger worth keeping.
-                    </p>
-                    <p>
-                        There is more ahead of you than a ledger, for what it's worth. An egg that will want
-                        hatching, eventually. A wider world past the tanks. I don't narrate the future — it
-                        shows up regardless.
-                    </p>
+                    {gift > 0 ? (
+                        <>
+                            <p>
+                                Your account is new, so I've taken the liberty of starting it off:{' '}
+                                <Gift amount={gift} />, from me. It's a one-time thing. Everything after this,
+                                you'll put there yourself — Ember when your calls land, a record with your name
+                                on it. I find that's the only kind of ledger worth keeping.
+                            </p>
+                            <p>
+                                About that Ember. There's a Hatchery down the way, and I'm told an egg costs
+                                about what I just handed you. I won't tell you what to do with a gift. I'll only
+                                say eggs don't hatch themselves.
+                            </p>
+                            <p>
+                                There's a wider world past the tanks, too, but I don't narrate the future. It
+                                shows up regardless.
+                            </p>
+                        </>
+                    ) : (
+                        <>
+                            <p>
+                                Your account is new, and it holds exactly what you'd expect: nothing yet. I
+                                mention this as a courtesy, not a criticism. Everything this account ever holds,
+                                you will have put there yourself — Ember when your calls land, a record with
+                                your name on it. I find that's the only kind of ledger worth keeping.
+                            </p>
+                            <p>
+                                There is more ahead of you than a ledger, for what it's worth. An egg that will
+                                want hatching, eventually. A wider world past the tanks. I don't narrate the
+                                future — it shows up regardless.
+                            </p>
+                        </>
+                    )}
+                    <FinePrint />
                     <p>
                         One piece of business remains. A letter isn't finished until it's signed, and around
                         here, the signature is the name. Choose the one your work will answer to.
@@ -120,14 +192,19 @@ function Letter({ data, children }: { data: LetterData; children: React.ReactNod
     );
 }
 
-function SignatureForm({ onSigned }: { onSigned: () => void }) {
+function SignatureForm({ onSigned }: { onSigned: (giftAmount: number) => void }) {
     const [value, setValue] = useState('');
+    const [accepted, setAccepted] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (submitting) return;
+        if (!accepted) {
+            setError("Tick the box first. McLaren doesn't countersign blanks.");
+            return;
+        }
         const username = value.trim();
         if (!USERNAME_RE.test(username)) {
             setError(
@@ -143,7 +220,7 @@ function SignatureForm({ onSigned }: { onSigned: () => void }) {
             const res = await fetch('/api/onboarding/complete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, visitorId: getOrCreateVisitorId() }),
+                body: JSON.stringify({ username, acceptTerms: true, visitorId: getOrCreateVisitorId() }),
             });
             if (res.status === 401) {
                 window.location.replace('/login/');
@@ -159,7 +236,8 @@ function SignatureForm({ onSigned }: { onSigned: () => void }) {
             }
             // Success - including alreadyOnboarded (another tab/device won the race):
             // either way the account is signed; proceed under whichever name stuck.
-            onSigned();
+            // giftAmount is what this request actually credited (0 for the race loser).
+            onSigned(Number(data.giftAmount) > 0 ? Number(data.giftAmount) : 0);
         } catch {
             setError('Could not sign the letter right now. Try again.');
             setSubmitting(false);
@@ -168,6 +246,21 @@ function SignatureForm({ onSigned }: { onSigned: () => void }) {
 
     return (
         <form onSubmit={handleSubmit}>
+            <label className="hc-letter-consent">
+                <input
+                    type="checkbox"
+                    checked={accepted}
+                    onChange={(e) => {
+                        setAccepted(e.target.checked);
+                        if (e.target.checked) setError(null);
+                    }}
+                    disabled={submitting}
+                />
+                <span>
+                    I've read and agree to the <LetterLink href="/terms/">Terms of Service</LetterLink> and
+                    the <LetterLink href="/privacy/">Privacy Policy</LetterLink>, and I'm 18 or older.
+                </span>
+            </label>
             <p className="hc-letter-sign-label">Sign here</p>
             <input
                 className="hc-letter-signature"
@@ -182,7 +275,7 @@ function SignatureForm({ onSigned }: { onSigned: () => void }) {
                 aria-label="Choose your username"
             />
             <p className="hc-letter-hint">3–20 characters. Letters, numbers, underscores. This is the name your record answers to.</p>
-            <button className="hc-letter-button" type="submit" disabled={submitting}>
+            <button className="hc-letter-button" type="submit" disabled={submitting || !accepted}>
                 {submitting ? 'Signing…' : 'Sign the letter'}
             </button>
             {error && <p className="hc-letter-error">{error}</p>}
@@ -240,7 +333,10 @@ function WelcomePage() {
         return () => window.removeEventListener('pageshow', onPageShow);
     }, [checkStatus]);
 
-    const handleSigned = () => {
+    const [creditedGift, setCreditedGift] = useState(0);
+
+    const handleSigned = (giftAmount: number) => {
+        setCreditedGift(giftAmount);
         setPhase('signed');
         window.setTimeout(() => {
             // Onboarding completion lands on the homepage in its logged-in state
@@ -256,7 +352,16 @@ function WelcomePage() {
         return (
             <div className="hc-letter">
                 <p className="hc-letter-eyebrow">From the desk of Sports McLaren</p>
-                <p>Signed and entered into the record. The tank is this way.</p>
+                <p>
+                    Signed and entered into the record.{' '}
+                    {creditedGift > 0 ? (
+                        <>
+                            Your <Gift amount={creditedGift} /> is waiting. The tank is this way.
+                        </>
+                    ) : (
+                        'The tank is this way.'
+                    )}
+                </p>
             </div>
         );
     }

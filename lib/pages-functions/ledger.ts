@@ -27,7 +27,8 @@ export type EntryType = 'earn' | 'spend' | 'reversal' | 'adjustment';
 // half of the definition and comes from share_trades.realized_pnl, not from a rule key:
 // 'shares_sell' rows are proceeds (the trader's own Ember coming back), not earnings.
 // 'encounter_gift' (NPC encounters, encounterGiftEmber below) is an 'earn' row that is
-// intentionally NOT listed: a character's gift is not something the Captain earned.
+// intentionally NOT listed: a character's gift is not something the Captain earned. Same
+// for 'welcome_gift' (Sports McLaren's starting Ember, welcomeGiftEmber below).
 export const LIFETIME_EARNED_RULE_KEYS = ['correct_call', 'participation', 'discovery_find'] as const;
 
 interface RuleRow {
@@ -801,6 +802,55 @@ export async function encounterGiftEmber(
         SELECT EXISTS (SELECT 1 FROM led) AS credited
     `;
     return { credited: Boolean((rows[0] as unknown as { credited: boolean }).credited), amount };
+}
+
+export interface WelcomeGiftEmberResult {
+    // false = this account's welcome gift was already credited (nothing written).
+    credited: boolean;
+    amount: number;
+}
+
+// Sports McLaren's welcome gift - the starting Ember credited once per account when the
+// welcome letter is signed (functions/api/onboarding/complete.ts, add_terms_acceptance_and_welcome_gift.sql).
+// A GIFT, not game earnings: an 'earn' row whose rule key is NOT in
+// LIFETIME_EARNED_RULE_KEYS, so it folds `balance` only and never moves the Hall of
+// Fame. The per-account idempotency key is the whole once-only guarantee - a retried or
+// racing call inserts nothing and the balance CTE sees no row.
+export async function welcomeGiftEmber(
+    sql: NeonQueryFunction<false, false>,
+    input: { userId: string }
+): Promise<WelcomeGiftEmberResult> {
+    const rule = await getActiveRule(sql, 'welcome_gift');
+    const amount = Number(rule.config.amount);
+    const idempotencyKey = buildIdempotencyKey('welcome_gift', input.userId, 'onboarding');
+    const rows = await sql`
+        WITH led AS (
+            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
+            VALUES (${input.userId}, ${amount}::int, 'earn', 'welcome_gift', ${rule.version},
+                    ${idempotencyKey}, '{}'::jsonb)
+            ON CONFLICT (idempotency_key) DO NOTHING
+            RETURNING amount
+        ), bal AS (
+            INSERT INTO ember_balances (user_id, balance, updated_at)
+            SELECT ${input.userId}, amount, NOW() FROM led
+            ON CONFLICT (user_id) DO UPDATE
+                SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
+            RETURNING user_id
+        )
+        SELECT EXISTS (SELECT 1 FROM led) AS credited
+    `;
+    return { credited: Boolean((rows[0] as unknown as { credited: boolean }).credited), amount };
+}
+
+// The welcome gift's current amount for display (the letter, the inbox line) - 0 when
+// the rule is missing or inactive, which the letter reads as "no gift paragraph".
+export async function welcomeGiftAmount(sql: NeonQueryFunction<false, false>): Promise<number> {
+    const rows = await sql`
+        SELECT config FROM ember_rules WHERE key = 'welcome_gift' AND active = true LIMIT 1
+    `;
+    if (rows.length === 0) return 0;
+    const amount = Number((rows[0] as unknown as RuleRow).config.amount);
+    return Number.isFinite(amount) && amount > 0 ? amount : 0;
 }
 
 // Fast-path read of the cached balance.

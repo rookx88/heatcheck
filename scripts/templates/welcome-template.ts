@@ -39,6 +39,17 @@ export function generateWelcomePageHtml(baseUrl: string): string {
         .hc-letter p { margin: 0 0 1.1rem; font-size: 1rem; }
         .hc-letter-ember { color: #b8860b; font-weight: bold; }
         .hc-letter-signoff { margin-top: 1.5rem; font-style: italic; }
+        .hc-letter-link { color: #7a5a0b; text-decoration: underline; text-underline-offset: 2px; }
+        .hc-letter-link:hover { color: #b8860b; }
+        .hc-letter-consent {
+            display: flex; gap: 0.6rem; align-items: flex-start; margin: 2rem 0 0;
+            font-size: 0.92rem; line-height: 1.5; color: #2b2b2b; cursor: pointer;
+        }
+        .hc-letter-consent input {
+            flex: 0 0 auto; width: 1.1rem; height: 1.1rem; margin: 0.18rem 0 0;
+            accent-color: #b8860b; cursor: pointer;
+        }
+        .hc-letter .hc-letter-consent + .hc-letter-sign-label { margin-top: 1.5rem; }
         .hc-letter-sign-label {
             font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase;
             color: #8a7f66; margin: 2rem 0 0.35rem;

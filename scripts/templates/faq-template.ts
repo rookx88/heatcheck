@@ -88,7 +88,7 @@ const GROUPS: FaqGroup[] = [
                 q: 'How do I earn Ember?',
                 a: [
                     'Mostly by making calls. A correct call pays Ember, and calling an underdog correctly pays more than calling a heavy favourite. A call that misses still earns a small amount for taking part.',
-                    'Your pet also digs up Ember as you explore, characters you meet around the world sometimes hand out gifts, and selling TANKDAQ shares returns Ember too. Everyone starts from zero — there is no signup bonus to buy or claim.',
+                    'Your pet also digs up Ember as you explore, characters you meet around the world sometimes hand out gifts, and selling TANKDAQ shares returns Ember too. Every new account also gets a one-time welcome gift of 100 Ember when you sign the welcome letter — enough for your first egg. There is nothing to buy or claim beyond that.',
                 ],
             },
             {

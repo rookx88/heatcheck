@@ -14,6 +14,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { getSession } from '../../lib/pages-functions/session';
+import { welcomeGiftAmount } from '../../lib/pages-functions/ledger';
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
     const session = await getSession(context.request, context.env);
@@ -40,10 +41,13 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         `;
         const balance = Number(rows[0].balance ?? 0);
         const pickCount = Number(rows[0].pick_count ?? 0);
+        // What McLaren's welcome gift will be when the letter is signed - read live from
+        // the rule so the letter never promises a stale number (0 = no gift paragraph).
+        const giftAmount = await welcomeGiftAmount(sql);
         return jsonResponse(
             {
                 onboarded: false,
-                letterData: { balance, pickCount, isFoundingEra: balance > 0 || pickCount > 0 },
+                letterData: { balance, pickCount, isFoundingEra: balance > 0 || pickCount > 0, giftAmount },
             },
             { headers: authHeaders }
         );

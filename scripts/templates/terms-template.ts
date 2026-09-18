@@ -1,4 +1,5 @@
 import { renderLegalDocument, type Part } from './legal-page';
+import { TERMS_VERSION } from '../../lib/pages-functions/terms';
 
 /**
  * /terms/ - the Terms of Service, linked from the shared footer().
@@ -28,7 +29,14 @@ const INCLUDE_GM_CARD = false;
 /** Pick the wording for a sentence that reads differently once GM Cards exist. */
 const gm = (withGmCard: string, without: string): string => (INCLUDE_GM_CARD ? withGmCard : without);
 
-const EFFECTIVE_DATE = 'September 17, 2026';
+// Derived from TERMS_VERSION (the version the welcome letter records at signing), so a
+// new effective date and a new recorded version are one edit, never two.
+const EFFECTIVE_DATE = new Date(`${TERMS_VERSION}T00:00:00Z`).toLocaleDateString('en-US', {
+    timeZone: 'UTC',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+});
 const LAST_UPDATED = 'September 17, 2026';
 
 const INTRO: string[] = [

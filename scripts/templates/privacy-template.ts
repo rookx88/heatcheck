@@ -43,6 +43,7 @@ const ALL_PARTS: Part[] = [
                     { list: [
                         '**Email address** — required to create an account and receive your sign-in link ("magic link"). We do not use or store passwords.',
                         '**Discord information (optional)** — if you choose to link or sign in with Discord, we receive your Discord user ID, username, and (if made available by Discord) a verified email address.',
+                        '**Username and agreement record** — the username you choose when you sign the welcome letter, and the date and version of the Terms of Service and Privacy Policy you agreed to at that time.',
                         '**Communications** — if you contact us for support, we retain that correspondence.',
                     ] },
                     '**1.2 Information collected automatically.**',

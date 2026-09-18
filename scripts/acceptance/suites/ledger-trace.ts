@@ -25,6 +25,7 @@ import {
     flipConfig, restoreConfig, cleanupUsersByEmailPrefix, cleanupTanksBySlugPrefix,
 } from '../fixtures';
 import { ITEM_REASONS } from '../../../lib/pages-functions/item-ledger';
+import { TERMS_VERSION } from '../../../lib/pages-functions/terms';
 
 const EMAIL_PREFIX = 'acceptance-trace-';
 const SLUG_PREFIX = 'acceptance-trace-';
@@ -125,8 +126,14 @@ async function signUp(email: string): Promise<TraceUser> {
 }
 
 async function onboard(user: TraceUser, username: string): Promise<void> {
-    const res = await api('POST', '/api/onboarding/complete', { cookie: user.cookie, body: { username } });
+    const res = await api('POST', '/api/onboarding/complete', { cookie: user.cookie, body: { username, acceptTerms: true } });
     check(`onboarding/complete -> 200 for ${username}`, res.status === 200 && res.json?.username === username, JSON.stringify(res.json));
+}
+
+async function onboardingRow(userId: string): Promise<{ onboarded_at: unknown; terms_accepted_at: unknown; terms_version: string | null; username: string | null }> {
+    const { rows } = await pool.query(
+        `SELECT onboarded_at, terms_accepted_at, terms_version, username FROM waitlist WHERE id = $1`, [userId]);
+    return rows[0];
 }
 
 async function emberBalancesRowExists(userId: string): Promise<boolean> {
@@ -325,17 +332,51 @@ async function run(): Promise<void> {
         await assertLedgerConsistent(u.userId, u.cookie, `0 (${label}): signed up`);
     }
 
+    // The letter's checkbox is binding: signing without acceptTerms is refused and
+    // writes nothing - no username, no onboarded_at, no terms stamp, no gift.
+    const unticked = await api('POST', '/api/onboarding/complete', { cookie: win.cookie, body: { username: 'acceptancetracewin' } });
+    check('1: onboarding/complete without acceptTerms -> 400', unticked.status === 400, JSON.stringify(unticked.json));
+    const untickedRow = await onboardingRow(win.userId);
+    check('1: refused signature left the account un-onboarded, unstamped, unnamed',
+        untickedRow.onboarded_at === null && untickedRow.terms_accepted_at === null && untickedRow.terms_version === null && untickedRow.username === null,
+        JSON.stringify(untickedRow));
+    const untickedTotals = await ledgerTotals(win.userId);
+    check('1: refused signature credited no Ember', untickedTotals.ledgerRows === 0, JSON.stringify(untickedTotals));
+
+    const giftAmount = await activeRuleAmount('welcome_gift');
+    const statusRes = await api('GET', '/api/onboarding-status', { cookie: win.cookie });
+    check(`1: onboarding-status letterData.giftAmount == live welcome_gift amount (${giftAmount})`,
+        statusRes.status === 200 && statusRes.json?.letterData?.giftAmount === giftAmount, JSON.stringify(statusRes.json));
+
     await onboard(win, 'acceptancetracewin');
     await onboard(loss, 'acceptancetraceloss');
     for (const [label, u] of [['win', win], ['loss', loss]] as const) {
-        // functions/api/onboarding/complete.ts's header comment: "no pet, no starter
-        // item, no bonus Ember is provisioned here or anywhere else on first login" -
-        // verified directly against the actual route above, so this asserts that claim
-        // against real behavior rather than trusting the comment.
+        // functions/api/onboarding/complete.ts's header: exactly one provision on first
+        // login, Sports McLaren's welcome gift - verified against the real route. A
+        // gift, not earnings: balance moves, lifetime_earned must not.
+        const row = await onboardingRow(u.userId);
+        check(`1 (${label}): terms_accepted_at stamped with terms_version == TERMS_VERSION (${TERMS_VERSION})`,
+            row.terms_accepted_at !== null && row.terms_version === TERMS_VERSION, JSON.stringify(row));
         const totals = await ledgerTotals(u.userId);
-        check(`1 (${label}): onboarding grants zero Ember`, totals.ledgerRows === 0 && totals.ledgerSum === 0, JSON.stringify(totals));
-        await assertLedgerConsistent(u.userId, u.cookie, `1 (${label}): onboarded`);
+        const { rows: giftRows } = await pool.query(
+            `SELECT amount, entry_type FROM ember_ledger WHERE user_id = $1 AND rule_key = 'welcome_gift'`, [u.userId]);
+        check(`1 (${label}): onboarding credits exactly one welcome_gift earn row of ${giftAmount}, nothing else`,
+            giftRows.length === 1 && giftRows[0].amount === giftAmount && giftRows[0].entry_type === 'earn'
+            && totals.ledgerRows === 1 && totals.ledgerSum === giftAmount,
+            JSON.stringify({ giftRows, totals }));
+        check(`1 (${label}): the welcome gift never moves lifetime_earned`,
+            (totals.lifetimeCache ?? 0) === 0 && totals.lifetimeRecomputed === 0, JSON.stringify(totals));
+        await assertLedgerConsistent(u.userId, u.cookie, `1 (${label}): onboarded (welcome gift)`);
     }
+
+    // A second signature (another tab, a replay) is the already-settled path: 200,
+    // alreadyOnboarded, and the gift is not paid twice.
+    const resign = await api('POST', '/api/onboarding/complete', { cookie: win.cookie, body: { username: 'acceptancetracewin2', acceptTerms: true } });
+    check('1: re-signing -> 200 alreadyOnboarded under the original name',
+        resign.status === 200 && resign.json?.alreadyOnboarded === true && resign.json?.username === 'acceptancetracewin', JSON.stringify(resign.json));
+    const afterResign = await ledgerTotals(win.userId);
+    check('1: re-signing credits no second gift', afterResign.ledgerRows === 1 && afterResign.ledgerSum === giftAmount, JSON.stringify(afterResign));
+    await assertLedgerConsistent(win.userId, win.cookie, '1: re-sign replay (no second gift)');
 
     // =================================================================================
     section('2: Make a pick (win account) - picks pay nothing at submission');
