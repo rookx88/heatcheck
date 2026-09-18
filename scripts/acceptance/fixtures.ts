@@ -530,6 +530,24 @@ export async function cleanupUsersByIds(ids: string[]): Promise<void> {
         // before ember_ledger; holdings only FK the user.
         await pool.query(`DELETE FROM share_trades WHERE user_id = $1`, [u.id]);
         await pool.query(`DELETE FROM share_holdings WHERE user_id = $1`, [u.id]);
+        // Finite-supply SKUs (add_egg_supply_caps.sql): give back what this fixture
+        // bought. Every egg a suite buys is one of the 500 real people can have, and
+        // the harness buys several per run against the shared database - without this,
+        // acceptance would quietly eat the public run a few units at a time. Safe here
+        // and NOT safe for collectible_pools, whose counter doubles as a serial
+        // allocator (a freed serial would be re-issued); this counter only counts, and
+        // the row it is counting is about to be deleted on the next line. Purchases
+        // only - a seeded or gifted egg never consumed supply in the first place.
+        await pool.query(
+            `UPDATE sku_supply s
+             SET sold_count = GREATEST(s.sold_count - x.n, 0)
+             FROM (SELECT catalog_key, COUNT(*)::int AS n
+                   FROM item_ledger
+                   WHERE user_id = $1 AND reason = 'purchase' AND delta > 0
+                   GROUP BY catalog_key) x
+             WHERE s.catalog_key = x.catalog_key`,
+            [u.id],
+        );
         // The item journal FKs ember_ledger too (purchases carry ledger_id), and it has no
         // ON DELETE CASCADE on user_id - append-only rows should not vanish implicitly - so
         // it must go before BOTH ember_ledger and inventory_items. Same ordering rule the

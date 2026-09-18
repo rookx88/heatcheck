@@ -32,6 +32,23 @@
   margin-top: 0.15rem;
 }
 
+/* How many of this colour are left of its 500 (add_egg_supply_caps.sql). Reads as
+   plain information while stock lasts; ember/orange - the "considering" colour of this
+   modal's grammar - once it is gone, because that is the state a buyer needs to see. */
+.hatchery-stock {
+  font-family: 'Nunito', sans-serif;
+  font-weight: 700;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.72);
+  margin-top: 0.2rem;
+}
+
+.hatchery-stock.is-out {
+  color: rgba(255, 138, 76, 0.95);
+  text-transform: uppercase;
+}
+
 .hatchery-limited {
   font-family: 'Nunito', sans-serif;
   font-size: 0.75rem;
@@ -72,6 +89,20 @@
 
 .hatchery-buy:active {
   transform: scale(0.96);
+}
+
+/* A sold-out colour keeps its slot on the shelf with the button visibly spent. */
+.hatchery-buy:disabled {
+  color: rgba(255, 255, 255, 0.45);
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.2);
+  cursor: not-allowed;
+}
+
+.hatchery-buy:disabled:hover,
+.hatchery-buy:disabled:active {
+  background: rgba(255, 255, 255, 0.04);
+  transform: none;
 }
 
 .hatchery-confirm-row {

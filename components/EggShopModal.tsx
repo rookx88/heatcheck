@@ -8,6 +8,13 @@
 // Server-authoritative buying through the atomic Ember spend, idempotent on a
 // purchaseToken minted once per confirm intent. Known-outcome only: one fixed
 // colorway per listing, no picker.
+//
+// Every colour is also a finite run shared by the whole user base - 500 each
+// (add_egg_supply_caps.sql) - so each listing shows how many are left, a colour that
+// runs out stays on the shelf marked sold out rather than vanishing, and the listing is
+// refetched after every purchase. The count here is display only: the cap is held by
+// the purchase statement, and losing the race for the last one comes back as a 409
+// (SoldOutError) even with the button showing stock.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Egg3D, { colorwayFromCatalog } from './Egg3D';
@@ -20,6 +27,7 @@ import {
     buyEgg,
     InsufficientEmberError,
     EggUnavailableError,
+    SoldOutError,
     type ShopEgg,
     type OwnedEgg,
 } from '../egg-shop-client';
@@ -154,7 +162,12 @@ export const EggShopModal: React.FC<EggShopModalProps> = ({ onClose }) => {
             trackEvent('egg_purchased', { metadata: { catalogKey: confirming.catalogKey } });
             setConfirming(null);
             setBuyNotice('Added to your eggs!');
-            const [eggs, bal] = await Promise.all([getOwnedEggs(), getEmberBalance()]);
+            // The shop listing is refetched alongside the owned eggs, not just on open:
+            // every colour is a finite run shared with everyone, so the count on the
+            // shelf has to move the moment this buyer takes one of them (and it also
+            // picks up whatever everyone ELSE bought while this modal was open).
+            const [shop, eggs, bal] = await Promise.all([getShopEggs(), getOwnedEggs(), getEmberBalance()]);
+            if (shop !== null) setShopEggs(shop);
             if (eggs !== null) setOwnedEggs(eggs);
             if (bal !== null) setBalance(bal);
             // The HUD chip above this modal shows the same balance - tell it.
@@ -164,6 +177,13 @@ export const EggShopModal: React.FC<EggShopModalProps> = ({ onClose }) => {
                 setBalance(err.balance);
                 setBuyError('Not enough Ember.');
                 setConfirming(null);
+            } else if (err instanceof SoldOutError) {
+                // Lost the race for the last one of this colour. Re-list so the shelf
+                // agrees with the refusal instead of still offering a Buy button.
+                setBuyError(err.message);
+                setConfirming(null);
+                const shop = await getShopEggs();
+                if (shop !== null) setShopEggs(shop);
             } else if (err instanceof EggUnavailableError) {
                 setBuyError('That egg is no longer available.');
                 setConfirming(null);
@@ -190,6 +210,10 @@ export const EggShopModal: React.FC<EggShopModalProps> = ({ onClose }) => {
             );
         }
         const isConfirming = confirming?.catalogKey === listing.catalogKey;
+        // Capped colour (supply non-null) with nothing left. Only the server actually
+        // enforces this - the Buy button below is a courtesy, and a hand-rolled POST
+        // still gets a 409 from /api/shop/buy.
+        const soldOut = listing.supply !== null && (listing.remaining ?? 0) <= 0;
         return (
             <>
                 <div className="hatchery-balance" aria-live="polite">
@@ -204,6 +228,15 @@ export const EggShopModal: React.FC<EggShopModalProps> = ({ onClose }) => {
                 />
                 <div className="hatchery-egg-name">{listing.name}</div>
                 <div className="hatchery-price">{listing.price} Ember</div>
+                {listing.supply !== null && (
+                    // The count is the whole scarcity story: no tiers, no rarity, just
+                    // how many of these there will ever be and how many are still here.
+                    <div className={`hatchery-stock${soldOut ? ' is-out' : ''}`} aria-live="polite">
+                        {soldOut
+                            ? `Sold out — all ${listing.supply} claimed`
+                            : `${listing.remaining} of ${listing.supply} left`}
+                    </div>
+                )}
                 {listing.availableUntil && (
                     <div className="hatchery-limited">Limited — gone after {formatAcquired(listing.availableUntil)}</div>
                 )}
@@ -219,8 +252,12 @@ export const EggShopModal: React.FC<EggShopModalProps> = ({ onClose }) => {
                     </div>
                 )}
                 {!isConfirming ? (
-                    <button className="hatchery-buy" onClick={() => startBuy(listing.catalogKey)}>
-                        Buy
+                    <button
+                        className="hatchery-buy"
+                        onClick={() => startBuy(listing.catalogKey)}
+                        disabled={soldOut}
+                    >
+                        {soldOut ? 'Sold out' : 'Buy'}
                     </button>
                 ) : (
                     <div className="hatchery-confirm-row">

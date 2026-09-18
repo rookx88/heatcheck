@@ -10,9 +10,15 @@
 // which made every check in this file fail with "That item is not available." The
 // catalog is retuned independently of this harness, so hardcoding a key is exactly the
 // kind of thing that silently breaks the moment someone deactivates a SKU.
-// Two throwaway items_catalog rows (inactive / expired-window) are hand-inserted only
-// for the 404-unavailable-SKU cases and deleted immediately after, mirroring
-// suites/discovery.ts's "Exhaustion" section.
+// Three throwaway items_catalog rows (inactive / expired-window / one-unit run) are
+// hand-inserted only for the 404-unavailable and 409-sold-out cases and deleted
+// immediately after, mirroring suites/discovery.ts's "Exhaustion" section.
+//
+// Supply: eggs are a finite run shared by every account (add_egg_supply_caps.sql), so
+// every purchase this suite makes takes one of the 500 real people can buy. It gives
+// them back - cleanupUsersByIds releases the supply a deleted fixture consumed - and the
+// sold-out boundary is tested on a throwaway one-unit SKU rather than by emptying a live
+// colour.
 
 import { pool, api, check, section, type Suite } from '../harness';
 import { createSessionUser, cleanupUsersByEmailPrefix, cheapestActiveSku, secondActiveSku } from '../fixtures';
@@ -21,6 +27,16 @@ const EMAIL_PREFIX = 'acceptance-pets-';
 
 let EGG_KEY: string;
 let EGG_PRICE: number;
+// The live colour's finite run (add_egg_supply_caps.sql). Read from the pool row rather
+// than hardcoded as 500, for the same reason the SKU keys are looked up live: the cap is
+// retuned independently of this harness, and an assertion against a stale number tests
+// the harness's memory instead of the product.
+let EGG_SUPPLY: number;
+
+// Throwaway one-unit SKU for the sold-out cases, inserted and deleted inside the suite
+// (precedent: the inactive/expired SKUs below). Selling out a real 500-unit colour to
+// test the boundary would be vandalism of the live run.
+const LAST_EGG_KEY = 'acceptance_pets_last_egg';
 let FOOD_BASIC_KEY: string;
 let FOOD_BASIC_PRICE: number;
 let FOOD_BASIC_POINTS: number;
@@ -32,6 +48,12 @@ async function resolveLiveSkus(): Promise<void> {
     const egg = await cheapestActiveSku('egg');
     EGG_KEY = egg.catalogKey;
     EGG_PRICE = egg.price;
+
+    const { rows: supplyRows } = await pool.query(`SELECT supply FROM sku_supply WHERE catalog_key = $1`, [EGG_KEY]);
+    if (supplyRows.length === 0) {
+        throw new Error(`Egg SKU ${EGG_KEY} has no sku_supply row - apply add_egg_supply_caps.sql first.`);
+    }
+    EGG_SUPPLY = Number(supplyRows[0].supply);
 
     const foodA = await cheapestActiveSku('food');
     FOOD_BASIC_KEY = foodA.catalogKey;
@@ -92,6 +114,13 @@ function feedReq(cookie: string, foodCatalogKey: string) {
 
 function nameReq(cookie: string, name: string) {
     return api('POST', '/api/pets/name', { cookie, body: { name } });
+}
+
+// Units of a SKU's run sold site-wide, straight from the pool row the purchase
+// statement actually writes - never derived from one user's inventory.
+async function soldCount(catalogKey: string): Promise<number> {
+    const { rows } = await pool.query(`SELECT sold_count FROM sku_supply WHERE catalog_key = $1`, [catalogKey]);
+    return rows.length ? Number(rows[0].sold_count) : -1;
 }
 
 async function eggInventoryCount(userId: string): Promise<number> {
@@ -181,6 +210,84 @@ async function run() {
 
         const shopperBalanceAfter = await currentBalance(shopper.userId);
         check('unavailable-SKU attempts charged nothing', shopperBalanceAfter === 500, `got ${shopperBalanceAfter}`);
+    }
+
+    // ===============================================================================
+    section('Finite supply - a run of 500 per egg colour, shared by the whole user base');
+    // ===============================================================================
+    {
+        // The live colours are capped (add_egg_supply_caps.sql) and GET /api/shop has
+        // to say so, because the number on the shelf IS the scarcity story.
+        const browser = await createSessionUser(user('supply-listing'));
+        const shopRes = await api('GET', '/api/shop', { cookie: browser.cookie });
+        const eggListing = (shopRes.json?.items ?? []).find((i: any) => i.catalogKey === EGG_KEY);
+        check('shop lists the egg with a supply cap', eggListing?.supply === EGG_SUPPLY, JSON.stringify(eggListing));
+        check(
+            'shop lists remaining consistent with the pool row',
+            eggListing?.remaining === EGG_SUPPLY - (await soldCount(EGG_KEY)),
+            JSON.stringify(eggListing),
+        );
+
+        // One purchase takes exactly one unit of the GLOBAL run - the counter is not
+        // per user - and a replayed purchaseToken takes none (the grant and the unit
+        // ride the same idempotency key).
+        const buyer = await createSessionUser(user('supply-decrement'));
+        await seedBalance(buyer.userId, 2 * EGG_PRICE);
+        const before = await soldCount(EGG_KEY);
+        const token = crypto.randomUUID();
+        const first = await api('POST', '/api/shop/buy', { cookie: buyer.cookie, body: { catalogKey: EGG_KEY, purchaseToken: token } });
+        check('buy -> 200 and reports what is left of the run', first.status === 200 && first.json?.remaining === EGG_SUPPLY - before - 1, JSON.stringify(first.json));
+        const afterOne = await soldCount(EGG_KEY);
+        check('one purchase consumed exactly one unit, site-wide', afterOne === before + 1, `${before} -> ${afterOne}`);
+        const replay = await api('POST', '/api/shop/buy', { cookie: buyer.cookie, body: { catalogKey: EGG_KEY, purchaseToken: token } });
+        const afterReplay = await soldCount(EGG_KEY);
+        check('replayed purchaseToken -> 200 and consumes no further supply', replay.status === 200 && afterReplay === before + 1, `${afterReplay} after replay of ${replay.status}`);
+    }
+    {
+        // A one-unit SKU, so "the last one" is testable without selling 500 eggs: two
+        // different accounts, both funded, both wanting it. Exactly one can win, and the
+        // loser must be told SOLD OUT rather than charged, or told about their balance.
+        await pool.query(
+            `INSERT INTO items_catalog (key, item_type, name, price_rule_key, config, active)
+             VALUES ($1, 'egg', 'Acceptance Last Egg', 'spend_egg_standard', '{"color":"red","render_mode":"filter","hue":0}', true)
+             ON CONFLICT (key) DO NOTHING`,
+            [LAST_EGG_KEY],
+        );
+        await pool.query(
+            `INSERT INTO sku_supply (catalog_key, supply, sold_count) VALUES ($1, 1, 0)
+             ON CONFLICT (catalog_key) DO UPDATE SET supply = 1, sold_count = 0`,
+            [LAST_EGG_KEY],
+        );
+
+        const winner = await createSessionUser(user('supply-last-winner'));
+        const loser = await createSessionUser(user('supply-last-loser'));
+        await seedBalance(winner.userId, EGG_PRICE);
+        await seedBalance(loser.userId, EGG_PRICE);
+
+        const won = await buy(winner.cookie, LAST_EGG_KEY);
+        check('last unit -> 200 for the buyer who gets there first', won.status === 200, JSON.stringify(won.json));
+        check('and the response says the run is finished', won.json?.remaining === 0, JSON.stringify(won.json));
+
+        const lost = await buy(loser.cookie, LAST_EGG_KEY);
+        check('sold out -> 409, not 402', lost.status === 409, JSON.stringify(lost.json));
+        check('409 says sold out rather than talking about Ember', lost.json?.soldOut === true && lost.json?.balance === undefined, JSON.stringify(lost.json));
+        const loserBalance = await currentBalance(loser.userId);
+        check('sold-out attempt debited nothing', loserBalance === EGG_PRICE, `got ${loserBalance}`);
+        const loserEggs = await eggInventoryCount(loser.userId);
+        check('sold-out attempt granted nothing', loserEggs === 0, `got ${loserEggs}`);
+        const sold = await soldCount(LAST_EGG_KEY);
+        check('the pool sold exactly its supply, never one more', sold === 1, `got ${sold}`);
+
+        // Sold out is a state the shelf SHOWS - the listing stays, at remaining 0.
+        const shopRes = await api('GET', '/api/shop', { cookie: loser.cookie });
+        const listing = (shopRes.json?.items ?? []).find((i: any) => i.catalogKey === LAST_EGG_KEY);
+        check('a sold-out SKU stays listed with remaining 0', listing?.remaining === 0 && listing?.supply === 1, JSON.stringify(listing));
+
+        // FK order: the rows that reference the SKU, then its pool row, then the SKU.
+        await pool.query(`DELETE FROM item_ledger WHERE catalog_key = $1`, [LAST_EGG_KEY]);
+        await pool.query(`DELETE FROM inventory_items WHERE catalog_key = $1`, [LAST_EGG_KEY]);
+        await pool.query(`DELETE FROM sku_supply WHERE catalog_key = $1`, [LAST_EGG_KEY]);
+        await pool.query(`DELETE FROM items_catalog WHERE key = $1`, [LAST_EGG_KEY]);
     }
 
     // ===============================================================================

@@ -18,6 +18,12 @@ export interface ShopEgg {
     hue: number | null;
     assetKey: string | null;
     availableUntil: string | null;
+    // Finite supply, shared by every account: how many of this colour will ever be sold
+    // and how many are left (add_egg_supply_caps.sql). Both null on an uncapped SKU, so
+    // "no cap" and "none left" can never be confused. remaining 0 = sold out, and the
+    // listing deliberately stays on the shelf saying so.
+    supply: number | null;
+    remaining: number | null;
 }
 
 export interface OwnedEgg {
@@ -100,6 +106,16 @@ export class InsufficientEmberError extends Error {
         super('Not enough Ember.');
         this.name = 'InsufficientEmberError';
         this.balance = balance;
+    }
+}
+
+// Buy 409 - the SKU's run is finished for everyone, not just for this buyer. Distinct
+// from EggUnavailableError (the SKU is gone) and from InsufficientEmberError (more
+// Ember would have worked): nothing the buyer does gets them one of these.
+export class SoldOutError extends Error {
+    constructor(message?: string) {
+        super(message || 'Sold out — every one of these has been claimed.');
+        this.name = 'SoldOutError';
     }
 }
 
@@ -188,6 +204,7 @@ export async function buyFood(catalogKey: string, purchaseToken: string): Promis
     });
     const data = await parseJsonSafe(res);
     if (res.status === 402) throw new InsufficientEmberError(typeof data.balance === 'number' ? data.balance : 0);
+    if (res.status === 409) throw new SoldOutError(data.message);
     if (res.status === 404) throw new EggUnavailableError(data.message || 'That item is not available.');
     if (!res.ok) throw new Error(data.message || `POST /api/shop/buy failed: ${res.status}`);
     return { quantity: (data.item?.quantity as number) ?? 0 };
@@ -241,7 +258,10 @@ export async function getPet(): Promise<PetInfo | null> {
 // verbatim on a retry of that same intent (that's what makes a double-submit debit
 // once), discarded when the confirm is dismissed. inventoryItemId is null on an
 // idempotent replay.
-export async function buyEgg(catalogKey: string, purchaseToken: string): Promise<{ inventoryItemId: string | null }> {
+export async function buyEgg(
+    catalogKey: string,
+    purchaseToken: string
+): Promise<{ inventoryItemId: string | null; remaining: number | null }> {
     const res = await fetch('/api/shop/buy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -249,9 +269,14 @@ export async function buyEgg(catalogKey: string, purchaseToken: string): Promise
     });
     const data = await parseJsonSafe(res);
     if (res.status === 402) throw new InsufficientEmberError(typeof data.balance === 'number' ? data.balance : 0);
+    // 409: someone else took the last one of this colour while this buyer was deciding.
+    if (res.status === 409) throw new SoldOutError(data.message);
     if (res.status === 404) throw new EggUnavailableError(data.message);
     if (!res.ok) throw new Error(data.message || `POST /api/shop/buy failed: ${res.status}`);
-    return { inventoryItemId: (data.item?.inventoryItemId as string) ?? null };
+    return {
+        inventoryItemId: (data.item?.inventoryItemId as string) ?? null,
+        remaining: typeof data.remaining === 'number' ? data.remaining : null,
+    };
 }
 
 // Feed the pet one unit of an owned food. feedToken: crypto.randomUUID() minted once

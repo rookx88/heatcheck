@@ -4,6 +4,11 @@
 // debits once and grants once. No client-asserted price or grant is ever trusted: the
 // server reads the SKU's price from its ember_rules sink and does the whole thing
 // server-side. Insufficient balance -> 402, nothing written.
+//
+// Capped SKUs (each egg colour is a run of 500 shared by the whole user base,
+// add_egg_supply_caps.sql) are enforced in that same statement, not here: the pool row
+// is locked before the debit, so the check and the unit taken are one decision and the
+// last egg can only be sold once. A sold-out SKU comes back as 409.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, UUID_RE, type Env } from '../../../lib/pages-functions/db';
@@ -68,6 +73,16 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             purchaseScope: purchaseToken,
         });
         if (!result.ok) {
+            // Sold out is 409, not 402: the run of 500 is gone for everyone
+            // (add_egg_supply_caps.sql) and no amount of Ember changes that, so telling
+            // this buyer about their balance would be a lie about why they were refused.
+            // Nothing was written either way.
+            if (result.reason === 'sold_out') {
+                return jsonResponse(
+                    { message: 'Sold out — every one of these has been claimed.', soldOut: true, remaining: 0 },
+                    { status: 409, headers: authHeaders }
+                );
+            }
             const balanceRows = await sql`SELECT balance FROM ember_balances WHERE user_id = ${session.userId} LIMIT 1`;
             const balance = balanceRows.length ? (balanceRows[0].balance as number) : 0;
             return jsonResponse({ message: 'Not enough Ember.', balance }, { status: 402, headers: authHeaders });
@@ -75,8 +90,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         if (itemType === 'egg') {
             // Eggs are one row per purchase — report the new row's identity, not a
             // quantity. inventoryItemId is null on an idempotent replay (already granted).
+            // remaining is what's left of the colour's run after this sale, or null when
+            // the SKU is uncapped or this was a replay.
             return jsonResponse(
-                { ok: true, item: { catalogKey, itemType, inventoryItemId: result.grantedInventoryId } },
+                { ok: true, item: { catalogKey, itemType, inventoryItemId: result.grantedInventoryId }, remaining: result.remaining },
                 { headers: authHeaders }
             );
         }

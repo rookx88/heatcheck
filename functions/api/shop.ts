@@ -3,6 +3,11 @@
 // at listing time - there is no rarity roll and no hidden-until-hatch outcome. Price is
 // read live from each SKU's active ember_rules sink, so it always matches what buy will
 // actually debit. Founder/time-boxed SKUs drop out of the list once their window closes.
+//
+// Scarcity is a COUNT, in the same spirit: each egg colour is a run of 500 for the
+// entire user base (add_egg_supply_caps.sql), and supply/remaining say exactly where
+// that run stands. A colour that runs out stays listed at remaining 0 - sold out is a
+// thing the shelf shows, not a thing that quietly disappears.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
@@ -15,6 +20,8 @@ interface ShopRow {
     config: Record<string, unknown>;
     available_until: string | null;
     price: number;
+    supply: number | null;    // null = uncapped (no sku_supply row)
+    remaining: number | null; // units of the site-wide run left; 0 = sold out
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
@@ -27,9 +34,16 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const sql = getSql(context.env);
     const rows = await sql`
         SELECT c.key, c.item_type, c.name, c.config, c.available_until,
-               (r.config->>'amount')::int AS price
+               (r.config->>'amount')::int AS price,
+               -- Finite supply, shared by the whole user base (add_egg_supply_caps.sql).
+               -- A LEFT join: a SKU with no pool row is uncapped and both columns come
+               -- back null. GREATEST(...,0) so a sold-out row reads 0 rather than a
+               -- negative, which the CHECK constraint should make impossible anyway.
+               s.supply,
+               GREATEST(s.supply - s.sold_count, 0) AS remaining
         FROM items_catalog c
         JOIN ember_rules r ON r.key = c.price_rule_key AND r.active = true
+        LEFT JOIN sku_supply s ON s.catalog_key = c.key
         WHERE c.active = true
           AND c.item_type IN ('egg', 'food')
           -- A food with no config.vendor is stocked by no shop: it's a discovery-only
@@ -60,6 +74,13 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         // (components/ItemTooltip.tsx). Same config key on every item type.
         description: (r.config.description as string) ?? null,
         availableUntil: r.available_until,
+        // Scarcity, as a count rather than a tier: how many of this SKU will ever be
+        // sold and how many are left. Both null on an uncapped SKU (every food today).
+        // A sold-out SKU deliberately STAYS in this list with remaining 0 - the shelf
+        // showing an empty slot is the point, and /api/shop/buy refuses it with a 409
+        // whatever the client does with that.
+        supply: r.supply ?? null,
+        remaining: r.supply === null ? null : (r.remaining ?? 0),
     }));
     return jsonResponse({ items }, { headers: authHeaders });
 };

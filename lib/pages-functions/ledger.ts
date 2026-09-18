@@ -127,12 +127,17 @@ export interface PurchaseConsumableInput {
 }
 
 export interface PurchaseResult {
-    ok: boolean;              // false only means insufficient balance (nothing written)
-    reason?: 'insufficient';
+    ok: boolean;              // false means insufficient balance OR sold out - nothing written either way
+    reason?: 'insufficient' | 'sold_out';
     // The freshly-granted inventory row's id. null on an idempotent replay (the original
     // grant's row id isn't recoverable from the CTE, and replay callers don't need it)
     // and for food (callers report quantity, not row identity).
     grantedInventoryId: string | null;
+    // Units of the site-wide run left AFTER this purchase, for a capped SKU
+    // (add_egg_supply_caps.sql). null for an uncapped SKU and on an idempotent replay —
+    // no unit moved, so this call has no number of its own to report; 0 on a sold-out
+    // rejection. Display only: the cap is enforced in the statement, never from this.
+    remaining: number | null;
 }
 
 // Atomic spend-and-grant: debit Ember AND grant a consumable inventory item in a SINGLE
@@ -151,6 +156,27 @@ export interface PurchaseResult {
 //          own row identity so hatch can consume exactly that row by id.
 //   food - quantity upsert against idx_inventory_user_food (the partial unique on
 //          (user_id, catalog_key) for food).
+//
+// FINITE SUPPLY (add_egg_supply_caps.sql). A SKU with a sku_supply row is capped for
+// the whole user base — 500 of each egg colour exist and that is that. Two legs carry
+// it, and the ORDER of the pair is the whole design:
+//   supply - a LOCKING read (FOR UPDATE) of the pool row, taken BEFORE anything is
+//            written, that returns nothing when the SKU is sold out. `bal` requires it
+//            (or the absence of any pool row, which is what "uncapped" means), so a
+//            sold-out SKU never debits. Taking the lock here and holding it to commit
+//            is what makes the check and the increment one decision: a loser blocks on
+//            this row, then re-evaluates sold_count < supply against the WINNER's
+//            committed version, so the cap holds under any number of racing Workers.
+//            (Doing it the other way round — decrement first, debit second — would
+//            burn a unit of public supply every time someone's balance came up short.)
+//   sold   - the increment, gated on `led` so it fires once per real spend and never on
+//            a replay. It deliberately does NOT re-check sold_count < supply: we hold
+//            the row lock, so the check has already been made, and a second guard could
+//            only fail silently and leave a debit with no unit taken. sku_supply's
+//            CHECK constraint is the backstop — an impossible over-sale aborts the
+//            whole transaction rather than half-applying.
+// A SKU with no pool row takes no lock and skips both legs' effects, which is every
+// food SKU today.
 export async function purchaseConsumable(
     sql: NeonQueryFunction<false, false>,
     input: PurchaseConsumableInput
@@ -162,12 +188,18 @@ export async function purchaseConsumable(
         ? sql`
             WITH precheck AS (
                 SELECT 1 FROM ember_ledger WHERE idempotency_key = ${idempotencyKey}
+            ), supply AS (
+                SELECT catalog_key FROM sku_supply
+                WHERE catalog_key = ${input.catalogKey} AND sold_count < supply
+                FOR UPDATE
             ), bal AS (
                 UPDATE ember_balances
                 SET balance = balance - ${amount}, updated_at = NOW()
                 WHERE user_id = ${input.userId}
                   AND balance >= ${amount}
                   AND NOT EXISTS (SELECT 1 FROM precheck)
+                  AND (EXISTS (SELECT 1 FROM supply)
+                       OR NOT EXISTS (SELECT 1 FROM sku_supply WHERE catalog_key = ${input.catalogKey}))
                 RETURNING user_id
             ), led AS (
                 INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
@@ -176,6 +208,11 @@ export async function purchaseConsumable(
                 FROM bal
                 ON CONFLICT (idempotency_key) DO NOTHING
                 RETURNING id
+            ), sold AS (
+                -- One unit of the site-wide run, taken under the lock the supply CTE holds.
+                UPDATE sku_supply SET sold_count = sold_count + 1
+                WHERE catalog_key = ${input.catalogKey} AND EXISTS (SELECT 1 FROM led)
+                RETURNING supply - sold_count AS remaining
             ), granted AS (
                 INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
                 SELECT ${input.userId}, ${input.catalogKey}, 'egg', 1
@@ -198,17 +235,29 @@ export async function purchaseConsumable(
             )
             SELECT EXISTS (SELECT 1 FROM precheck) AS already_recorded,
                    EXISTS (SELECT 1 FROM led) AS newly_spent,
-                   (SELECT id FROM granted LIMIT 1) AS granted_id
+                   (SELECT id FROM granted LIMIT 1) AS granted_id,
+                   -- Capped SKU whose pool is empty: the caller owes the buyer "sold
+                   -- out", not "not enough Ember". Only meaningful when nothing was
+                   -- written; a replay reports success regardless (see the caller).
+                   (NOT EXISTS (SELECT 1 FROM supply)
+                    AND EXISTS (SELECT 1 FROM sku_supply WHERE catalog_key = ${input.catalogKey})) AS sold_out,
+                   (SELECT remaining FROM sold) AS remaining
         `
         : sql`
             WITH precheck AS (
                 SELECT 1 FROM ember_ledger WHERE idempotency_key = ${idempotencyKey}
+            ), supply AS (
+                SELECT catalog_key FROM sku_supply
+                WHERE catalog_key = ${input.catalogKey} AND sold_count < supply
+                FOR UPDATE
             ), bal AS (
                 UPDATE ember_balances
                 SET balance = balance - ${amount}, updated_at = NOW()
                 WHERE user_id = ${input.userId}
                   AND balance >= ${amount}
                   AND NOT EXISTS (SELECT 1 FROM precheck)
+                  AND (EXISTS (SELECT 1 FROM supply)
+                       OR NOT EXISTS (SELECT 1 FROM sku_supply WHERE catalog_key = ${input.catalogKey}))
                 RETURNING user_id
             ), led AS (
                 INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
@@ -217,6 +266,12 @@ export async function purchaseConsumable(
                 FROM bal
                 ON CONFLICT (idempotency_key) DO NOTHING
                 RETURNING id
+            ), sold AS (
+                -- No food SKU is capped today; this is the same leg as the egg branch so
+                -- that capping one is an INSERT into sku_supply and nothing else.
+                UPDATE sku_supply SET sold_count = sold_count + 1
+                WHERE catalog_key = ${input.catalogKey} AND EXISTS (SELECT 1 FROM led)
+                RETURNING supply - sold_count AS remaining
             ), granted AS (
                 INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
                 SELECT ${input.userId}, ${input.catalogKey}, ${input.itemType}, 1
@@ -239,17 +294,30 @@ export async function purchaseConsumable(
             )
             SELECT EXISTS (SELECT 1 FROM precheck) AS already_recorded,
                    EXISTS (SELECT 1 FROM led) AS newly_spent,
-                   NULL AS granted_id
+                   NULL AS granted_id,
+                   (NOT EXISTS (SELECT 1 FROM supply)
+                    AND EXISTS (SELECT 1 FROM sku_supply WHERE catalog_key = ${input.catalogKey})) AS sold_out,
+                   (SELECT remaining FROM sold) AS remaining
         `;
     // spendLock() first: serializes simultaneous same-token submits so the loser's
     // precheck sees the winner's committed spend (see spendLock's comment for the
     // double-debit failure mode this closes).
     const [, rows] = await sql.transaction([spendLock(sql, input.userId), purchaseStatement]);
-    const row = rows[0] as unknown as { already_recorded: boolean; newly_spent: boolean; granted_id: string | null };
+    const row = rows[0] as unknown as {
+        already_recorded: boolean; newly_spent: boolean; granted_id: string | null;
+        sold_out: boolean; remaining: number | null;
+    };
     const ok = row.already_recorded || row.newly_spent;
-    return ok
-        ? { ok: true, grantedInventoryId: row.granted_id }
-        : { ok: false, reason: 'insufficient', grantedInventoryId: null };
+    // already_recorded wins over sold_out on purpose: a retry of a token that ALREADY
+    // bought the last egg is that same purchase, not a new one against an empty pool,
+    // and must keep reporting the success it originally got.
+    if (ok) return { ok: true, grantedInventoryId: row.granted_id, remaining: row.remaining };
+    return {
+        ok: false,
+        reason: row.sold_out ? 'sold_out' : 'insufficient',
+        grantedInventoryId: null,
+        remaining: row.sold_out ? 0 : row.remaining,
+    };
 }
 
 // -----------------------------------------------------------------------------------
