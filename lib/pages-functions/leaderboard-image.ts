@@ -63,7 +63,7 @@ import { buildLeaderboardRowEmbeds, colorForRank, type LeaderboardRowInput } fro
 // (pixels can't be clicked, but a screenshot/re-share keeps the association) AND it's
 // the clickable url on the Discord embed that carries the image (see
 // sendLeaderboardResult).
-export const HEATCHECKS_DISCORD_INVITE = 'https://discord.gg/cv8yPDAEy';
+export const HEATCHECKS_DISCORD_INVITE = 'https://discord.gg/z3XUVvG4Nh';
 
 const IMAGE_WIDTH = 720;
 const CARD_PAD = 26;

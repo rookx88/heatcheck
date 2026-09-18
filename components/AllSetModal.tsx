@@ -15,7 +15,7 @@ import { optIntoNewsletter } from '../tank-pick-client';
 import './AllSetModal.css';
 
 const TWITTER_URL = 'https://x.com/heatchecksio';
-const DISCORD_URL = 'https://discord.gg/mF2NB6BNU';
+const DISCORD_URL = 'https://discord.gg/z3XUVvG4Nh';
 
 const SPARKLE_COLORS = ['#ffc72c', '#fb923c', '#ff8a3d', '#e8a800', '#2fe6d9'];
 const SPARKLE_COUNT = 10;
