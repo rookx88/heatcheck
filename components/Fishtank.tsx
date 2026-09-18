@@ -164,7 +164,10 @@ const WallPanel: React.FC<{
     // wall sits among the others.
     index: number;
     total: number;
-}> = ({ wall, content, index, total }) => {
+    // Rendered between the masthead rule and the scrollable body, so it never
+    // scrolls out of view however tall the body's content gets.
+    pinned?: React.ReactNode;
+}> = ({ wall, content, index, total, pinned }) => {
     const Icon = wall.icon;
     // The Call wall is where the pick actually happens - give it a fiery-orange glow
     // so it reads as "check this side out" against the other panels' cyan.
@@ -238,6 +241,7 @@ const WallPanel: React.FC<{
                     background: 'linear-gradient(90deg, transparent, var(--hc-gold, #ffc72c), transparent)',
                     opacity: 0.55,
                 }} />
+                {pinned && <div style={{ flexShrink: 0 }}>{pinned}</div>}
                 <div style={{ padding: '1.25rem', color: '#e2e8f0', fontSize: '0.9rem', lineHeight: 1.6, overflowY: 'auto', textShadow: '0 1px 4px rgba(0,0,0,0.7)' }}>
                     {content}
                 </div>
@@ -1048,9 +1052,10 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
 // front-facing wall is computed instead of hardcoded, so any wall can open at this angle.
 const OPEN_TILT_DEG = 25;
 
-// The gold action pill, shared by all three action surfaces on the cube - the Call
-// wall's story link, the logged-out "read the story" wall, and the promo wall's CTA -
-// so the three cannot drift apart. Matches Tank HQ's .tank-modal-view-story button.
+// The gold action pill, shared by the cube's in-body action surfaces - the logged-out
+// "read the story" wall and the promo wall's CTA - so they cannot drift apart.
+// Matches Tank HQ's .tank-modal-view-story button. (The signed-in Call wall's story
+// link is deliberately NOT a pill any more - see StoryLink.)
 const goldPillStyle: React.CSSProperties = {
     display: 'inline-block',
     background: 'var(--hc-gold, #ffc72c)',
@@ -1064,20 +1069,53 @@ const goldPillStyle: React.CSSProperties = {
     boxShadow: '0 4px 0 var(--hc-gold-dark, #e8a800), 0 8px 18px rgba(0,0,0,0.4)',
 };
 
-// "View Story" under the pick flow, for surfaces that show the Call wall away from
-// the article itself (the homepage showcase). Without it a signed-in reader could
-// make a pick but had no route from the artifact to the story behind it - the
-// logged-out wall has had its own link all along (LinkCallContent below). Not
-// rendered on the article page's own deck, which is already the story.
-const StoryLink: React.FC<{ href: string; label?: string }> = ({ href, label }) => (
-    <a
-        href={href}
-        onClick={(e) => e.stopPropagation()}
-        style={{ ...goldPillStyle, fontSize: '0.85rem', padding: '0.45rem 1.2rem', marginTop: '0.9rem' }}
-    >
-        {label ?? 'View Story'} <span aria-hidden="true">&rarr;</span>
-    </a>
-);
+// "View Story" on the Call wall, for surfaces that show it away from the article
+// itself (the homepage showcase). Without it a signed-in reader could make a pick
+// but had no route from the artifact to the story behind it - the logged-out wall
+// has had its own link all along (LinkCallContent below). Not rendered on the
+// article page's own deck, which is already the story.
+//
+// A full-width gold bar in WallPanel's pinned slot, directly under the masthead.
+// It used to be a small pill at the END of the pick flow, inside the wall's
+// scrolling body, so any tall pick state pushed it below the wall's fold and the
+// reader had to scroll the wall to find it. Montserrat 900 caps (the section-title
+// face) instead of the pill's Baloo, so it reads as a headline action rather than
+// another form button, with a slow glow pulse to draw the eye.
+const StoryLink: React.FC<{ href: string; label?: string }> = ({ href, label }) => {
+    const reduceMotion = useReducedMotion();
+    return (
+        <motion.a
+            href={href}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+                display: 'block',
+                background: 'linear-gradient(180deg, #ffd65c, var(--hc-gold, #ffc72c))',
+                color: '#1a1200',
+                fontFamily: "'Montserrat', 'Nunito', sans-serif",
+                fontWeight: 900,
+                fontSize: '1rem',
+                letterSpacing: '0.14em',
+                textTransform: 'uppercase',
+                textDecoration: 'none',
+                textShadow: 'none',
+                padding: '0.55rem 0.75rem',
+                borderBottom: '2px solid var(--hc-gold-dark, #e8a800)',
+                touchAction: 'manipulation',
+            }}
+            animate={reduceMotion ? undefined : {
+                boxShadow: [
+                    '0 0 0 rgba(255,199,44,0)',
+                    '0 0 22px rgba(255,199,44,0.75)',
+                    '0 0 0 rgba(255,199,44,0)',
+                ],
+            }}
+            transition={{ duration: 2.4, repeat: Infinity, ease: 'easeInOut' }}
+            whileHover={{ filter: 'brightness(1.08)' }}
+        >
+            {label ?? 'View Story'} <span aria-hidden="true">&rarr;</span>
+        </motion.a>
+    );
+};
 
 // Discovery-surface variant of the Call wall (the homepage showcase): a plain
 // "read the story" link instead of <CallContent>'s interactive pick flow, so the
@@ -1203,19 +1241,16 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
         if (wall.kind === 'promo') return promoWall ? <PromoWallContent promoWall={promoWall} /> : null;
         if (wall.kind === 'call') {
             if (linkCall) return <LinkCallContent call={payload.call} linkCall={linkCall} />;
-            // The story link rides alongside the pick flow rather than inside it, so
-            // it shows in every one of CallContent's states - already picked, game
-            // started, daily cap used up - from one place.
-            return (
-                <>
-                    <CallContent call={payload.call} slug={slug} kickoff={payload.kickoff} />
-                    {storyHref && <StoryLink href={storyHref} label={storyLabel} />}
-                </>
-            );
+            return <CallContent call={payload.call} slug={slug} kickoff={payload.kickoff} />;
         }
         const cardIndex = index - 1; // hook occupies index 0
         return <p style={{ margin: 0 }}>{cards[cardIndex]}</p>;
     };
+    // The story link is pinned above the pick flow rather than placed inside it, so
+    // it shows in every one of CallContent's states - already picked, game started,
+    // daily cap used up - from one place, and never scrolls away with the body.
+    const pinnedByKind = (wall: Wall): React.ReactNode =>
+        wall.kind === 'call' && !linkCall && storyHref ? <StoryLink href={storyHref} label={storyLabel} /> : null;
 
     const handlePan = (_: any, info: { delta: { x: number; y: number } }) => {
         // Deltas are unscaled screen pixels; dividing by `scale` keeps a full drag
@@ -1371,7 +1406,7 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
                     <Embers />
 
                     {walls.map((wall, i) => (
-                        <WallPanel key={i} wall={wall} content={contentByKind(wall, i)} index={i} total={walls.length} />
+                        <WallPanel key={i} wall={wall} content={contentByKind(wall, i)} pinned={pinnedByKind(wall)} index={i} total={walls.length} />
                     ))}
                 </motion.div>
             </motion.div>
