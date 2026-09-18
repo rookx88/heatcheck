@@ -618,7 +618,7 @@ function renderDiscordBanner(variant: 'desktop' | 'mobile'): string {
     return `
         <a class="hc-discord-banner hc-discord-banner--${variant}" href="/discord-bot/">
             <img src="/assets/images/discord-bot-banner.webp"
-                 alt="Bring the heat: add the free Heatchecks bot to your Discord - PvP battles, leaderboards, earn Ember, giveaways, profile cards, easy set-up. Read more."
+                 alt="Bring the heat, elevate your Discord: add the free Heatchecks bot - PvP battles, leaderboards, earn Ember, giveaways, profile cards, easy set-up. Read more."
                  width="1200" height="400" loading="lazy" decoding="async">
         </a>`;
 }
