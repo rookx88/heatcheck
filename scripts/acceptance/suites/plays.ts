@@ -7,16 +7,29 @@
 // exception is the Charles football arc, which the first section drives for real so the
 // registry path - fire, freeze, enrich, hand over, reward - is covered end to end.
 
-import { pool, api, check, section, type Suite } from '../harness';
+import crypto from 'crypto';
+import { pool, api, check, warn, section, type Suite } from '../harness';
 import { fireParallel, tally, countStatus } from '../concurrency';
 import {
     createSessionUser, cleanupUsersByEmailPrefix, flipConfig, restoreConfig,
-    seedMemorabilia, memorabiliaHeld, memorabiliaSkus, startPlayDirect, itemTotals,
+    seedMemorabilia, memorabiliaHeld, memorabiliaSkus, startPlayDirect, itemTotals, seedFood,
 } from '../fixtures';
 import { ENCOUNTERS, PLAY_BY_KEY } from '../../../lib/pages-functions/encounters';
 
 const EMAIL_PREFIX = 'acceptance-plays-';
 const FOOTBALL = 'memorabilia_worn_football';
+// A found-only concession food: droppable, never sold, so a delivery of it is the
+// found-food path rather than the buy-it path.
+const FOUND_FOOD = 'food_loaded_nachos';
+
+async function foodHeld(userId: string, catalogKey: string): Promise<number> {
+    const { rows } = await pool.query(
+        `SELECT COALESCE(SUM(quantity), 0)::int AS n FROM inventory_items
+         WHERE user_id = $1 AND catalog_key = $2 AND item_type = 'food'`,
+        [userId, catalogKey],
+    );
+    return Number(rows[0].n);
+}
 
 async function insertPet(userId: string): Promise<string> {
     const { rows } = await pool.query(`INSERT INTO pets (user_id, color) VALUES ($1, 'slate') RETURNING id`, [userId]);
@@ -271,6 +284,279 @@ async function run() {
     } finally {
         await restoreConfig('discovery');
     }
+
+    // =================================================================================
+    section('Food deliveries - a character can be handed a meal');
+    // =================================================================================
+    // Puffington's arc hands over food, which feeding also consumes. The objective
+    // carries the frozen itemType, exactly as freezeObjective would have written it.
+    const eater = await createSessionUser(`${EMAIL_PREFIX}food@example.com`);
+    await insertPet(eater.userId);
+    await parkEncounters(eater.userId);
+    const foodPlayId = await startPlayDirect({
+        userId: eater.userId,
+        playKey: 'acceptance_food',
+        objective: {
+            kind: 'deliver_items',
+            title: 'Bring him a plate',
+            home: 'champions-terrace',
+            items: [{ catalogKey: FOUND_FOOD, count: 2, itemType: 'food', forceable: true }],
+        },
+    });
+    await seedFood(eater.userId, FOUND_FOOD, 1);
+    await api('GET', at('/champions-terrace/'), { cookie: eater.cookie });
+    check('short on food: nothing taken', (await foodHeld(eater.userId, FOUND_FOOD)) === 1
+        && (await deliveryRows(eater.userId)).length === 0);
+    await seedFood(eater.userId, FOUND_FOOD, 1);
+    await api('GET', at('/the-tank/'), { cookie: eater.cookie });
+    check('stocked but at the wrong place: nothing taken', (await foodHeld(eater.userId, FOUND_FOOD)) === 2);
+    await api('GET', at('/champions-terrace/'), { cookie: eater.cookie });
+    const { rows: foodDone } = await pool.query(`SELECT completed_at FROM plays WHERE id = $1`, [foodPlayId]);
+    check('at his home with both: the Play completes', foodDone[0].completed_at !== null);
+    check('both units left the pantry', (await foodHeld(eater.userId, FOUND_FOOD)) === 0);
+    const df = await deliveryRows(eater.userId);
+    check("the journal row is a food sink of -2", df.length === 1 && df[0].delta === -2, JSON.stringify(df));
+    const { rows: dfType } = await pool.query(
+        `SELECT item_type FROM item_ledger WHERE user_id = $1 AND reason = 'play_delivery'`, [eater.userId]);
+    check("it is journaled as 'food', not memorabilia", dfType[0]?.item_type === 'food', JSON.stringify(dfType));
+    await assertItemsConsistent(eater.userId, 'food hand-over');
+
+    // =================================================================================
+    section('A feed and a hand-over cannot spend the same unit');
+    // =================================================================================
+    // The one genuinely new race in this change: feeding and delivering both decrement
+    // food. deliver.ts takes the feeding lock as well as its own for exactly this.
+    const racer2 = await createSessionUser(`${EMAIL_PREFIX}foodrace@example.com`);
+    const racer2Pet = await insertPet(racer2.userId);
+    await parkEncounters(racer2.userId);
+    const racePlayId = await startPlayDirect({
+        userId: racer2.userId,
+        playKey: 'acceptance_food_race',
+        objective: {
+            kind: 'deliver_items',
+            title: 'One unit, two claimants',
+            home: 'champions-terrace',
+            items: [{ catalogKey: FOUND_FOOD, count: 1, itemType: 'food', forceable: true }],
+        },
+    });
+    await seedFood(racer2.userId, FOUND_FOOD, 1);
+    // Hungry, so the feed is not rejected before it reaches the lock.
+    await pool.query(`UPDATE pets SET satisfaction_at_last_feed = 20, last_fed_at = NOW() WHERE id = $1`, [racer2Pet]);
+    const [feedRes, loadRes] = await Promise.all([
+        api('POST', '/api/pets/feed', { cookie: racer2.cookie, body: { foodCatalogKey: FOUND_FOOD, feedToken: crypto.randomUUID() } }),
+        api('GET', at('/champions-terrace/'), { cookie: racer2.cookie }),
+    ]);
+    const heldAfterRace = await foodHeld(racer2.userId, FOUND_FOOD);
+    const { rows: raceRows } = await pool.query(`SELECT completed_at FROM plays WHERE id = $1`, [racePlayId]);
+    const { rows: raceSinks } = await pool.query(
+        `SELECT reason, delta FROM item_ledger WHERE user_id = $1 AND catalog_key = $2 AND delta < 0`,
+        [racer2.userId, FOUND_FOOD]);
+    check('exactly one of the two spent it', raceSinks.length === 1, JSON.stringify(raceSinks));
+    check('the unit is gone and never negative', heldAfterRace === 0, `held=${heldAfterRace}`);
+    // Whichever won, the other must have declined rather than double-spent: a fed pet
+    // leaves the Play open, a completed Play leaves the feed with nothing to eat.
+    const fedWon = raceSinks[0]?.reason === 'feed';
+    check('the loser did nothing',
+        fedWon ? raceRows[0].completed_at === null : raceRows[0].completed_at !== null,
+        `feed=${feedRes.status} load=${loadRes.status} winner=${raceSinks[0]?.reason}`);
+    await assertItemsConsistent(racer2.userId, 'feed versus delivery');
+
+    // =================================================================================
+    section('Compound beats - every part at the same moment');
+    // =================================================================================
+    const both = await createSessionUser(`${EMAIL_PREFIX}compound@example.com`);
+    const bothPet = await insertPet(both.userId);
+    await parkEncounters(both.userId);
+    const compoundId = await startPlayDirect({
+        userId: both.userId,
+        playKey: 'acceptance_compound',
+        objective: {
+            kind: 'all_of',
+            title: 'A plate, and a pet that eats properly',
+            home: 'champions-terrace',
+            parts: [
+                { kind: 'deliver_items', items: [{ catalogKey: FOUND_FOOD, count: 1, itemType: 'food', forceable: true }] },
+                { kind: 'pet_sustained_satisfied' },
+            ],
+        },
+    });
+    await seedFood(both.userId, FOUND_FOOD, 1);
+    // Hungry: the item part holds, the care part does not.
+    await pool.query(`UPDATE pets SET satisfaction_at_last_feed = 10, last_fed_at = NOW() - INTERVAL '3 hours' WHERE id = $1`, [bothPet]);
+    await api('GET', at('/champions-terrace/'), { cookie: both.cookie });
+    check('one part short: nothing is taken and the Play stays open',
+        (await foodHeld(both.userId, FOUND_FOOD)) === 1
+        && (await pool.query(`SELECT completed_at FROM plays WHERE id = $1`, [compoundId])).rows[0].completed_at === null);
+    const bookCompound = await api('GET', '/api/plays', { cookie: both.cookie });
+    const compoundView = bookCompound.json?.current?.find((p: any) => p.key === 'acceptance_compound');
+    check('the Playbook lists both parts with their own numbers',
+        compoundView?.progress?.parts?.length === 2
+        && compoundView.progress.parts[0].done === 1 && compoundView.progress.parts[0].target === 1
+        && compoundView.progress.parts[1].done === 0 && compoundView.progress.parts[1].target === 1,
+        JSON.stringify(compoundView?.progress?.parts));
+    // Satisfied, and fed long enough ago to count as sustained.
+    await pool.query(`UPDATE pets SET satisfaction_at_last_feed = 100, last_fed_at = NOW() - INTERVAL '4 hours' WHERE id = $1`, [bothPet]);
+    await api('GET', at('/champions-terrace/'), { cookie: both.cookie });
+    check('both parts true at once: it completes and burns',
+        (await foodHeld(both.userId, FOUND_FOOD)) === 0
+        && (await pool.query(`SELECT completed_at FROM plays WHERE id = $1`, [compoundId])).rows[0].completed_at !== null);
+    await assertItemsConsistent(both.userId, 'compound beat');
+
+    // =================================================================================
+    section('The rest of the new objective kinds, through the endpoints');
+    // =================================================================================
+    const misc = await createSessionUser(`${EMAIL_PREFIX}kinds@example.com`);
+    const miscPet = await insertPet(misc.userId);
+    await parkEncounters(misc.userId);
+
+    // name_pet: open while the pet is nameless, done the moment it has a name.
+    const namePlay = await startPlayDirect({
+        userId: misc.userId, playKey: 'acceptance_name',
+        objective: { kind: 'name_pet', title: 'Name it' },
+    });
+    await api('GET', '/api/toolbar-state', { cookie: misc.cookie });
+    check('name_pet: open while the pet is nameless',
+        (await pool.query(`SELECT completed_at FROM plays WHERE id = $1`, [namePlay])).rows[0].completed_at === null);
+    await pool.query(`UPDATE pets SET name = $2 WHERE id = $1`, [miscPet, `Acceptance ${Date.now()}`]);
+    await api('GET', '/api/toolbar-state', { cookie: misc.cookie });
+    check('name_pet: completes once it has one',
+        (await pool.query(`SELECT completed_at FROM plays WHERE id = $1`, [namePlay])).rows[0].completed_at !== null);
+
+    // hold_shares: the holdings row is the fact. Written directly - buying goes through
+    // ledger.buyShares and the Ember economy, which is not what this check is about.
+    const tickerKey = (await pool.query(`SELECT key FROM tickers WHERE active ORDER BY key LIMIT 1`)).rows[0]?.key as string;
+    const holdPlay = await startPlayDirect({
+        userId: misc.userId, playKey: 'acceptance_hold',
+        objective: { kind: 'hold_shares', title: 'Own a share', shares: 2 },
+    });
+    await api('GET', '/api/toolbar-state', { cookie: misc.cookie });
+    check('hold_shares: open with no position',
+        (await pool.query(`SELECT completed_at FROM plays WHERE id = $1`, [holdPlay])).rows[0].completed_at === null);
+    await pool.query(
+        `INSERT INTO share_holdings (user_id, ticker_key, shares, avg_buy_price, held_since)
+         VALUES ($1, $2, 2, 100, NOW() - INTERVAL '2 days')`,
+        [misc.userId, tickerKey]);
+    await api('GET', '/api/toolbar-state', { cookie: misc.cookie });
+    check('hold_shares: completes once the position exists',
+        (await pool.query(`SELECT completed_at FROM plays WHERE id = $1`, [holdPlay])).rows[0].completed_at !== null);
+
+    // hold_through_close: false until a close lands after the position was opened. The
+    // position is re-opened NOW first: the one above is two days old, and real daily
+    // closes have genuinely landed since, so it has in fact held through one already.
+    // The seeded close carries delta 0 and a timestamp just ahead of the position, so
+    // it never moves a real index price and is removed in the finally.
+    const closeDate = '1999-01-04';
+    await pool.query(`UPDATE share_holdings SET held_since = NOW() WHERE user_id = $1 AND ticker_key = $2`, [misc.userId, tickerKey]);
+    try {
+        const closePlay = await startPlayDirect({
+            userId: misc.userId, playKey: 'acceptance_close',
+            objective: { kind: 'hold_through_close', title: 'Hold it overnight' },
+        });
+        await api('GET', '/api/toolbar-state', { cookie: misc.cookie });
+        check('hold_through_close: open before any close',
+            (await pool.query(`SELECT completed_at FROM plays WHERE id = $1`, [closePlay])).rows[0].completed_at === null);
+        await pool.query(
+            `INSERT INTO ticker_events (ticker_key, event_type, delta, source, close_date, occurred_at, metadata)
+             VALUES ($1, 'close', 0, 'slate', $2::date, NOW() + INTERVAL '1 minute', '{"acceptance": true}'::jsonb)`,
+            [tickerKey, closeDate]);
+        await api('GET', '/api/toolbar-state', { cookie: misc.cookie });
+        check('hold_through_close: completes once a close lands on a position older than it',
+            (await pool.query(`SELECT completed_at FROM plays WHERE id = $1`, [closePlay])).rows[0].completed_at !== null);
+    } finally {
+        await pool.query(`DELETE FROM ticker_events WHERE ticker_key = $1 AND close_date = $2::date`, [tickerKey, closeDate]);
+    }
+
+    // read_articles: any published Tank article the pet visits counts, once each.
+    const { rows: articles } = await pool.query(
+        `SELECT slug FROM tank_pages WHERE status = 'published' AND visibility = 'app' ORDER BY published_at DESC LIMIT 2`);
+    if (articles.length < 2) {
+        warn('read_articles: fewer than two published app-visible Tanks exist - skipping the visit walk');
+    } else {
+        const readPlay = await startPlayDirect({
+            userId: misc.userId, playKey: 'acceptance_read',
+            objective: { kind: 'read_articles', title: 'Read two Tanks', count: 2 },
+        });
+        await api('GET', at(`/the-tank/articles/${articles[0].slug}/`), { cookie: misc.cookie });
+        // The same article twice must not count twice.
+        await api('GET', at(`/the-tank/articles/${articles[0].slug}/`), { cookie: misc.cookie });
+        const { rows: midRead } = await pool.query(`SELECT visited, completed_at FROM plays WHERE id = $1`, [readPlay]);
+        check('read_articles: one article recorded once, Play still open',
+            midRead[0].visited.length === 1 && midRead[0].completed_at === null, JSON.stringify(midRead[0]));
+        await api('GET', at('/the-tank/articles/not-a-real-slug/'), { cookie: misc.cookie });
+        check('read_articles: an invented slug records nothing',
+            (await pool.query(`SELECT visited FROM plays WHERE id = $1`, [readPlay])).rows[0].visited.length === 1);
+        await api('GET', at(`/the-tank/articles/${articles[1].slug}/`), { cookie: misc.cookie });
+        check('read_articles: the second one completes it',
+            (await pool.query(`SELECT completed_at FROM plays WHERE id = $1`, [readPlay])).rows[0].completed_at !== null);
+    }
+
+    // =================================================================================
+    section("A whole arc, end to end - Puffington's diet, six scenes in order");
+    // =================================================================================
+    // The arcs are only as good as their chaining: each beat is its own scene, gated on
+    // the Play before it AND on the previous scene having been watched. This walks every
+    // beat through the real endpoints. Counters (feed_count) are set directly - the
+    // feeding path has its own suite, and fifty real feeds would prove nothing new.
+    const puff = await createSessionUser(`${EMAIL_PREFIX}puffington@example.com`);
+    const puffPet = await insertPet(puff.userId);
+    const puffKeys = ENCOUNTERS.filter((e) => e.character === 'puffington').map((e) => e.key);
+    await parkEncounters(puff.userId, puffKeys);
+    const watch = async (key: string) => {
+        const { rows } = await pool.query(`SELECT id FROM encounters WHERE user_id = $1 AND encounter_key = $2`, [puff.userId, key]);
+        if (rows[0]) await api('POST', '/api/encounters/seen', { cookie: puff.cookie, body: { id: rows[0].id } });
+        return Boolean(rows[0]);
+    };
+    const bumpFeeds = (n: number) => pool.query(`UPDATE pets SET feed_count = feed_count + $2 WHERE id = $1`, [puffPet, n]);
+    const load = (path?: string) => api('GET', path ? at(path) : '/api/toolbar-state', { cookie: puff.cookie });
+    const fired: string[] = [];
+    const expectScene = async (res: any, key: string, label: string) => {
+        const got = res.json?.encounter?.key;
+        check(`arc: ${label} -> '${key}' plays`, got === key, String(got));
+        if (got === key) fired.push(key);
+        await watch(key);
+    };
+
+    await bumpFeeds(3);
+    await expectScene(await load(), 'puffington_intro', 'three feeds');
+    await load('/champions-terrace/');
+    await expectScene(await load('/quickboost-delicacies/'), 'puffington_quest_done', 'both counters visited');
+    await expectScene(await load(), 'puffington_your_bowl', 'the next beat opens on its own');
+    await bumpFeeds(3);
+    await expectScene(await load(), 'puffington_fed_done', 'three more feeds');
+    await seedFood(puff.userId, 'food_loaded_nachos', 1);
+    await seedFood(puff.userId, 'food_chicken_wings', 1);
+    await expectScene(await load('/champions-terrace/'), 'puffington_last_plate_done', 'nachos and wings handed over');
+    await seedFood(puff.userId, 'food_sampler_platter', 1);
+    await seedFood(puff.userId, 'food_mint_julep', 1);
+    await seedFood(puff.userId, 'food_craft_beer', 1);
+    // The spread alone is not enough: the ten feeds are the other half of the beat.
+    const shortSpread = await load('/champions-terrace/');
+    check('arc: the farewell spread waits for its feeds', shortSpread.json?.encounter === null
+        && (await foodHeld(puff.userId, 'food_sampler_platter')) === 1, String(shortSpread.json?.encounter?.key));
+    await bumpFeeds(10);
+    await expectScene(await load('/champions-terrace/'), 'puffington_farewell_done', 'spread handed over with ten feeds');
+    await seedFood(puff.userId, 'food_fresh_salad', 1);
+    await seedFood(puff.userId, 'food_protein_shake', 1);
+    await seedFood(puff.userId, 'food_banana_shake', 1);
+    await bumpFeeds(25);
+    // Hungry: the diet beat's care part holds it back even with every item in hand.
+    await pool.query(`UPDATE pets SET satisfaction_at_last_feed = 10, last_fed_at = NOW() - INTERVAL '4 hours' WHERE id = $1`, [puffPet]);
+    const hungryDiet = await load('/champions-terrace/');
+    check('arc: the diet beat waits for a well-kept pet', hungryDiet.json?.encounter === null
+        && (await foodHeld(puff.userId, 'food_fresh_salad')) === 1, String(hungryDiet.json?.encounter?.key));
+    await pool.query(`UPDATE pets SET satisfaction_at_last_feed = 100, last_fed_at = NOW() - INTERVAL '4 hours' WHERE id = $1`, [puffPet]);
+    const ribeyeBefore = await foodHeld(puff.userId, 'food_ribeye');
+    await expectScene(await load('/champions-terrace/'), 'puffington_diet_done', 'the diet order with a well-kept pet');
+    check('arc: the finale hands over his saved ribeye', (await foodHeld(puff.userId, 'food_ribeye')) === ribeyeBefore + 1);
+    check('arc: every scene fired, once, in order', JSON.stringify(fired) === JSON.stringify(puffKeys), JSON.stringify(fired));
+    const puffBook = await api('GET', '/api/plays', { cookie: puff.cookie });
+    check('arc: the Playbook shows all five Plays completed, none current',
+        puffBook.json?.completed?.length === 5 && puffBook.json?.current?.length === 0,
+        `current=${puffBook.json?.current?.length} completed=${puffBook.json?.completed?.length}`);
+    const dietReceipt = puffBook.json?.completed?.find((p: any) => p.key === 'puffington_diet')?.receipt;
+    check('arc: the diet receipt lists all three bought items and the ribeye that came back',
+        dietReceipt?.gave?.length === 3 && dietReceipt?.got?.item?.catalogKey === 'food_ribeye', JSON.stringify(dietReceipt));
+    await assertItemsConsistent(puff.userId, 'the whole Puffington arc');
 
     // =================================================================================
     section('Endpoint gates');

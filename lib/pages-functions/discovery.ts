@@ -72,6 +72,22 @@ export interface DiscoveryPetRow extends PetRow {
 // write's WHERE, mirrored in JS to skip the round-trip.
 const MAX_FOOTPRINTS = 64;
 
+// Satisfied NOW and last fed at least sustained_hours ago - "kept fed", not "topped up
+// a moment ago". Satisfaction decays monotonically from the value stored at last_fed_at,
+// so satisfied-now plus that much elapsed time means satisfied for the whole window.
+//
+// Exported because the Plays system asks the same question (a character noticing how the
+// pet is looked after), and the two must never drift apart: this is the one definition.
+export function sustainedSatisfied(
+    pet: Pick<PetRow, 'satisfaction_at_last_feed' | 'last_fed_at'>,
+    feedingCfg: FeedingConfig,
+    sustainedHours: number,
+): boolean {
+    if (!Number.isFinite(sustainedHours)) return false;
+    return petState(computeSatisfaction(pet, feedingCfg), feedingCfg) === 'satisfied'
+        && Date.now() - new Date(pet.last_fed_at).getTime() >= sustainedHours * 3_600_000;
+}
+
 // A place the pet can be taken to. `check` names the existence predicate the footprint
 // write must pass before the key counts: article slugs and ticker keys come from the
 // URL, so they're verified against tank_pages / tickers inside the UPDATE (no extra
@@ -170,6 +186,10 @@ export async function maybeDiscover(
         // cadence. Returns a memorabilia catalog key this find must be, or null. Kept as a
         // callback so discovery owns none of the Plays rules: it just honours a named item.
         forcedFind?: (everyNth: number) => string | null;
+        // The active 'discovery' config, when the caller has already read it. toolbar-state
+        // reads it in its batch (the Plays care objective needs sustained_hours from it),
+        // so passing it here keeps one page load to one read rather than two.
+        cfg?: DiscoveryConfig;
     }
 ): Promise<DiscoveryOutcome> {
     const { userId, pet, feedingCfg, placePath } = input;
@@ -220,7 +240,7 @@ export async function maybeDiscover(
         return { kind: 'not_due' };
     }
 
-    const cfg = (await getGameConfig(sql, 'discovery')) as unknown as DiscoveryConfig;
+    const cfg = input.cfg ?? ((await getGameConfig(sql, 'discovery')) as unknown as DiscoveryConfig);
 
     // NULL = never scheduled (pre-feature pets, fresh hatches). Start the clock with a
     // long-range window and grant nothing - so a deploy never produces an instant-find
@@ -251,9 +271,7 @@ export async function maybeDiscover(
     // satisfied-now but fails the time gate, so last-second feeding never buys the
     // short window. (Conservative: a feed always restarts the sustained clock, because
     // pre-feed history is unrecoverable from the stored facts. Accepted.)
-    const sustained =
-        petState(computeSatisfaction(pet, feedingCfg), feedingCfg) === 'satisfied' &&
-        Date.now() - new Date(pet.last_fed_at).getTime() >= cfg.sustained_hours * 3_600_000;
+    const sustained = sustainedSatisfied(pet, feedingCfg, cfg.sustained_hours);
     const cooldownMinutes = sustained
         ? uniformMinutes(cfg.short_cooldown_minutes_min, cfg.short_cooldown_minutes_max)
         : uniformMinutes(cfg.long_cooldown_minutes_min, cfg.long_cooldown_minutes_max);

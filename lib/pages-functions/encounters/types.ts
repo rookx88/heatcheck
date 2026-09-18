@@ -62,26 +62,65 @@ export type Trigger =
     // That Play has been completed (plays.completed_at set).
     | { kind: 'play_completed'; key: string };
 
-// One line of a delivery. `name` and `art` are never authored: the fire statement fills
-// them from items_catalog when the Play starts, so the Playbook can picture an item the
-// player has never owned.
+// One line of a delivery. Only catalogKey and count are authored; everything else is
+// filled from items_catalog when the Play starts, so the Playbook can picture an item
+// the player has never owned and the rules never have to re-read the catalog:
+//   itemType  - 'memorabilia' or 'food'. Decides which inventory row the hand-over
+//               decrements and which conflict target it needs.
+//   forceable - can the pet FIND this? True for droppable memorabilia and the
+//               concession foods; false for a shop SKU, which is meant to be bought,
+//               so the find guarantee never hands over something purchasable.
 export interface DeliverItem {
     catalogKey: string;
     count: number;
     name?: string;
     art?: string | null;
+    itemType?: 'memorabilia' | 'food';
+    forceable?: boolean;
 }
 
-// Play objectives. The counting kinds measure FROM the moment the Play started
-// (baseline snapshot). deliver_items is the one that consumes: hold the items, then go
-// to the character's home, where they are taken (encounters/deliver.ts). Memorabilia
-// only - the encounters suite enforces it.
+// Play objectives.
+//
+// Three shapes, and the difference matters to whoever adds the next kind:
+//   COUNTING  - feeds, picks, win_picks, earn_ember, sell_profit, read_articles. Measured
+//               as "now minus the baseline snapshotted when the Play started", so
+//               progress earned before the character asked never counts.
+//   MOMENT    - deliver_items, hold_shares, hold_through_close, pet_sustained_satisfied,
+//               name_pet. True or false right now, with nothing to accumulate. These
+//               branch in playComplete rather than falling through to done >= target.
+//   COMPOUND  - all_of. Every part must be complete at the same moment, which is what
+//               makes the late beats of an arc hard: items AND results AND care at once.
+//
+// deliver_items is the only kind that consumes anything: hold the items, then go to the
+// character's home, where they are taken (encounters/deliver.ts). Memorabilia and food
+// only - the encounters suite enforces that, and food deliveries share the feeding lock.
 export type Objective =
     | { kind: 'feeds'; count: number }
     | { kind: 'picks'; count: number }
     | { kind: 'visit_places'; places: string[] }
     | { kind: 'earn_ember'; amount: number }
-    | { kind: 'deliver_items'; items: DeliverItem[] };
+    | { kind: 'deliver_items'; items: DeliverItem[] }
+    // Settled picks that came in, since the Play started.
+    | { kind: 'win_picks'; count: number }
+    // Distinct Tank articles read while the Play is open. Any 'article:<slug>' place the
+    // pet visits counts; the slug is verified against tank_pages before it is recorded.
+    | { kind: 'read_articles'; count: number }
+    // A TANKDAQ position held right now: `shares` is a total across every index,
+    // `indexes` is how many DIFFERENT indexes carry a position. At least one is set.
+    | { kind: 'hold_shares'; shares?: number; indexes?: number }
+    // Positions closed above what they cost, since the Play started.
+    | { kind: 'sell_profit'; count: number }
+    // A position carried through one of that index's daily closes. The clock belongs to
+    // the board, not the player (add_held_since_to_share_holdings.sql).
+    | { kind: 'hold_through_close' }
+    // Satisfied now AND last fed longer ago than discovery's sustained_hours - the same
+    // test the short find cooldown uses, so it means "kept fed", not "topped up once".
+    | { kind: 'pet_sustained_satisfied' }
+    // The pet has a name. One-shot and permanent.
+    | { kind: 'name_pet' }
+    // Two to four parts, all of which must hold at once. NEVER nested: the suite
+    // rejects an all_of inside an all_of, and playProgress recurses exactly one level.
+    | { kind: 'all_of'; parts: Objective[] };
 
 // What an author writes for a Play. `title` is the Playbook heading; the objective is
 // frozen into the plays row when the Play starts, together with the title and, for a
@@ -97,7 +136,7 @@ export interface PlayDefinition {
 }
 
 export type Effect =
-    | { kind: 'grant_item'; catalogKey: string; itemType: 'egg' | 'food' | 'collectible' }
+    | { kind: 'grant_item'; catalogKey: string; itemType: 'egg' | 'food' | 'collectible' | 'memorabilia' }
     // ruleKey is an ember_rules source whose config.amount is the gift.
     | { kind: 'grant_ember'; ruleKey: string }
     | { kind: 'start_play'; play: PlayDefinition };

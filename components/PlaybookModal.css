@@ -139,6 +139,43 @@
   color: var(--hc-gold, #ffc72c);
 }
 
+/* A compound beat's parts, stacked. Each part draws its own measure, so the reader can
+   see which leg is short rather than one meaningless total. */
+.playbook-parts {
+  margin-top: 0.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-left: 0.55rem;
+  border-left: 2px solid rgba(47, 230, 217, 0.25);
+}
+
+.playbook-parts .playbook-progress {
+  margin-top: 0;
+}
+
+/* A moment objective: true or false now, so it gets a tick, not a bar. */
+.playbook-tick {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-family: 'Nunito', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.playbook-tick.is-done {
+  color: var(--hc-teal, #2fe6d9);
+}
+
+.playbook-tick__mark {
+  flex: none;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
 .playbook-chips {
   display: flex;
   flex-wrap: wrap;

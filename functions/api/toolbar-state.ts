@@ -34,8 +34,8 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { getSession } from '../../lib/pages-functions/session';
 import { petPublic, type FeedingConfig } from '../../lib/pages-functions/pets';
-import { maybeDiscover, type DiscoveryPetRow } from '../../lib/pages-functions/discovery';
-import { buildFacts, encounterFactsStatement, evaluateEncounters, type EncounterFactsRow } from '../../lib/pages-functions/encounters/evaluate';
+import { maybeDiscover, sustainedSatisfied, type DiscoveryConfig, type DiscoveryPetRow } from '../../lib/pages-functions/discovery';
+import { buildFacts, encounterFactsStatement, evaluateEncounters, type EncounterFactsRow, type PetFacts } from '../../lib/pages-functions/encounters/evaluate';
 import { forcedFind } from '../../lib/pages-functions/encounters/plays';
 
 interface NotificationRow {
@@ -97,8 +97,10 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     `;
 
     // Independent reads, so the batched array form is right here - one Neon HTTP
-    // round-trip instead of five.
-    const [petRows, cfgRows, balanceRows, notificationRows, factsRows] = await sql.transaction([
+    // round-trip instead of six. The discovery config joins the batch because the Plays
+    // care objective needs its sustained_hours; it is then handed to maybeDiscover, which
+    // would otherwise read the same row again later in the request.
+    const [petRows, cfgRows, balanceRows, notificationRows, factsRows, discoveryCfgRows] = await sql.transaction([
         sql`
             SELECT id, user_id, color, render_mode, render_config, name, is_captain,
                    satisfaction_at_last_feed, last_fed_at, next_eligible_roll_at, places_since_find, feed_count, find_count
@@ -108,11 +110,24 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         balanceStatement(),
         notificationsStatement(),
         encounterFactsStatement(sql, session.userId),
+        sql`SELECT config FROM game_config WHERE key = 'discovery' AND active = true LIMIT 1`,
     ]);
     if (cfgRows.length === 0) throw new Error('No active game_config row for key "feeding"');
     const feedingCfg = (cfgRows[0] as unknown as { config: FeedingConfig }).config;
-    const pet = petRows.length ? (petRows[0] as unknown as DiscoveryPetRow & { feed_count: number }) : null;
+    if (discoveryCfgRows.length === 0) throw new Error('No active game_config row for key "discovery"');
+    const discoveryCfg = (discoveryCfgRows[0] as unknown as { config: DiscoveryConfig }).config;
+    const pet = petRows.length ? (petRows[0] as unknown as DiscoveryPetRow & { feed_count: number; name: string | null }) : null;
     const factsRow = factsRows.length ? (factsRows[0] as unknown as EncounterFactsRow) : null;
+    // What only this request knows about the pet. Sustained satisfaction uses discovery's
+    // own definition, so "kept fed" means the same thing to a Play as it does to the
+    // short find cooldown.
+    const petFacts: PetFacts | null = pet
+        ? {
+              feedCount: Number(pet.feed_count ?? 0),
+              named: typeof pet.name === 'string' && pet.name.length > 0,
+              sustainedSatisfied: sustainedSatisfied(pet, feedingCfg, discoveryCfg.sustained_hours),
+          }
+        : null;
 
     let balanceValue = balanceRows.length ? (balanceRows[0] as unknown as { balance: number }).balance : 0;
     let notifications = mapNotifications(notificationRows as unknown as NotificationRow[]);
@@ -125,12 +140,13 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         userId: session.userId,
         pet,
         feedingCfg,
+        cfg: discoveryCfg,
         placePath,
         // The Plays find guarantee, evaluated only if a roll is actually due. Reads the
         // batch facts already in hand, so it costs no query.
-        forcedFind: pet && factsRow
+        forcedFind: pet && factsRow && petFacts
             ? (everyNth) => {
-                  const facts = buildFacts(factsRow, Number(pet.feed_count ?? 0), placePath);
+                  const facts = buildFacts(factsRow, petFacts, placePath);
                   return forcedFind(facts.plays, facts, Number(pet.find_count ?? 0), everyNth);
               }
             : undefined,
@@ -140,18 +156,19 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     // skipped, which would leave that drop invisible until the NEXT poll - rare
     // enough to pass a casual test and confusing when it happens.
     const found = outcome.kind.startsWith('found_');
-    // A memorabilia find changed what a delivery counts. Fold it into the facts so a
-    // player who finds the item while standing at the character's home hands it over now.
-    if (factsRow && outcome.kind === 'found_memorabilia') {
-        const held = { ...(factsRow.memorabilia ?? {}) };
+    // A find changed what a delivery counts - memorabilia or food, since a Play can ask
+    // for either. Fold it into the facts so a player who finds the last item while
+    // standing at the character's home hands it over on this same page load.
+    if (factsRow && (outcome.kind === 'found_memorabilia' || outcome.kind === 'found_food')) {
+        const held = { ...(factsRow.holdings ?? {}) };
         held[outcome.catalogKey] = Number(held[outcome.catalogKey] ?? 0) + 1;
-        factsRow.memorabilia = held;
+        factsRow.holdings = held;
     }
 
     // Encounters: petless no-ops before any query, same as discovery.
     const encounters = await evaluateEncounters(sql, {
         userId: session.userId,
-        pet: pet ? { id: pet.id, feedCount: Number(pet.feed_count ?? 0) } : null,
+        pet: pet && petFacts ? { id: pet.id, ...petFacts } : null,
         placePath,
         facts: factsRow,
     });

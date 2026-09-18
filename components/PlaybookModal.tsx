@@ -8,7 +8,7 @@
 // as "on its way", never as a blank.
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { getPlays, type DeliveryLine, type PlayView, type PlaysResponse } from '../plays-client';
+import { getPlays, type DeliveryLine, type PlayProgress, type PlayView, type PlaysResponse } from '../plays-client';
 import { CHARACTERS, portraitSrc } from '../lib/pages-functions/encounters';
 import type { EncounterGrants } from '../lib/pages-functions/encounters/types';
 import { EmberIcon } from './MapHud';
@@ -46,14 +46,35 @@ function dateLabel(iso: string | null): string {
     return isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
-function unitLabel(play: PlayView): string {
-    switch (play.kind) {
+// The unit each kind counts in, for the line under its bar. The moment-shaped kinds
+// have no unit: they render as a single tick instead of a count.
+function unitLabel(kind: PlayView['kind']): string {
+    switch (kind) {
         case 'feeds': return 'feeds';
         case 'picks': return 'calls';
+        case 'win_picks': return 'calls won';
         case 'earn_ember': return 'Ember earned';
+        case 'read_articles': return 'Tanks read';
         case 'visit_places': return 'places';
         case 'deliver_items': return 'items';
+        case 'hold_shares': return 'held';
+        case 'sell_profit': return 'closed in profit';
+        case 'hold_through_close': return '';
+        case 'pet_sustained_satisfied': return '';
+        case 'name_pet': return '';
+        case 'all_of': return 'steps';
     }
+}
+
+// Moment-shaped kinds: true or false right now, so a progress bar would be a lie.
+const MOMENT_KINDS = new Set<PlayView['kind']>(['hold_through_close', 'pet_sustained_satisfied', 'name_pet']);
+
+// What a moment objective is waiting for, said plainly.
+function momentLabel(kind: PlayView['kind'], done: boolean): string {
+    if (kind === 'name_pet') return done ? 'Your pet has a name' : 'Give your pet a name';
+    if (kind === 'pet_sustained_satisfied') return done ? 'Your pet is well fed' : 'Keep your pet fed for a few hours';
+    if (kind === 'hold_through_close') return done ? 'A position survived a close' : 'Hold a position through an index close';
+    return done ? 'Done' : 'Not yet';
 }
 
 const Portrait: React.FC<{ characterKey: string }> = ({ characterKey }) => {
@@ -107,15 +128,24 @@ const GotChips: React.FC<{ got: EncounterGrants }> = ({ got }) => {
     );
 };
 
-const Progress: React.FC<{ play: PlayView }> = ({ play }) => {
-    const { progress } = play;
-    const characterName = CHARACTERS[play.character]?.name.split(' ')[0] ?? 'them';
+// One measured thing: a whole Play, or one part of a compound one. Deliveries draw item
+// chips, moment objectives draw a tick, everything else draws a bar.
+const Measure: React.FC<{
+    kind: PlayView['kind'];
+    progress: PlayProgress;
+    objective?: PlayView['objective'];
+    characterName: string;
+    label?: string;
+}> = ({ kind, progress, objective, characterName, label }) => {
+    const done = progress.done >= progress.target;
 
-    if (play.kind === 'deliver_items') {
+    if (kind === 'deliver_items') {
         const lines: DeliveryLine[] = progress.items ?? [];
-        const stocked = progress.target > 0 && progress.done >= progress.target;
         const home = progress.home ?? null;
         const place = home ? PLACES[home] : undefined;
+        // A shop SKU is never found on a walk, so the hint says where to buy it instead.
+        const buyable = lines.some((l) => l.forceable === false);
+        const many = lines.length > 1 || lines.some((l) => l.count > 1);
         return (
             <div className="playbook-progress">
                 <div className="playbook-chips">
@@ -129,9 +159,9 @@ const Progress: React.FC<{ play: PlayView }> = ({ play }) => {
                         />
                     ))}
                 </div>
-                <p className={`playbook-hint${stocked ? ' is-ready' : ''}`}>
-                    {stocked ? 'Ready! ' : 'Find it on your walks, then '}
-                    bring it to {characterName}
+                <p className={`playbook-hint${done ? ' is-ready' : ''}`}>
+                    {done ? 'Ready! ' : buyable ? 'Buy what you need, then ' : `Find ${many ? 'them' : 'it'} on your walks, then `}
+                    bring {many ? 'them' : 'it'} to {characterName}
                     {home && (
                         <>
                             {' at '}
@@ -144,8 +174,18 @@ const Progress: React.FC<{ play: PlayView }> = ({ play }) => {
         );
     }
 
+    if (MOMENT_KINDS.has(kind)) {
+        return (
+            <p className={`playbook-tick${done ? ' is-done' : ''}`}>
+                <span className="playbook-tick__mark" aria-hidden="true">{done ? '✓' : '○'}</span>
+                {momentLabel(kind, done)}
+            </p>
+        );
+    }
+
     const pct = progress.target > 0 ? Math.round((progress.done / progress.target) * 100) : 0;
-    const places = play.objective.kind === 'visit_places' ? play.objective.places : null;
+    const places = objective?.kind === 'visit_places' ? objective.places : null;
+    const unit = unitLabel(kind);
     return (
         <div className="playbook-progress">
             <div
@@ -154,12 +194,12 @@ const Progress: React.FC<{ play: PlayView }> = ({ play }) => {
                 aria-valuemin={0}
                 aria-valuemax={progress.target}
                 aria-valuenow={progress.done}
-                aria-label={`${progress.done} of ${progress.target} ${unitLabel(play)}`}
+                aria-label={`${label ? `${label}: ` : ''}${progress.done} of ${progress.target} ${unit}`}
             >
                 <span className="playbook-bar__fill" style={{ width: `${pct}%` }} />
             </div>
             <p className="playbook-hint">
-                {progress.done} / {progress.target} {unitLabel(play)}
+                {label ? `${label} · ` : ''}{progress.done} / {progress.target} {unit}
                 {places && (
                     <>
                         {' · '}
@@ -174,6 +214,33 @@ const Progress: React.FC<{ play: PlayView }> = ({ play }) => {
             </p>
         </div>
     );
+};
+
+const Progress: React.FC<{ play: PlayView }> = ({ play }) => {
+    const characterName = CHARACTERS[play.character]?.name.split(' ')[0] ?? 'them';
+
+    // A compound beat is listed part by part. One total bar would say "7 of 43" across
+    // items, wins and Ember at once, which tells the player nothing about what to do next.
+    if (play.progress.parts && play.progress.parts.length > 0) {
+        const parts = play.progress.parts;
+        const objectiveParts = play.objective.kind === 'all_of' ? play.objective.parts : [];
+        return (
+            <div className="playbook-parts">
+                {parts.map((part, i) => (
+                    <Measure
+                        key={`${part.kind}-${i}`}
+                        kind={part.kind}
+                        progress={part}
+                        objective={objectiveParts[i]}
+                        characterName={characterName}
+                        label={MOMENT_KINDS.has(part.kind) || part.kind === 'deliver_items' ? undefined : part.label}
+                    />
+                ))}
+            </div>
+        );
+    }
+
+    return <Measure kind={play.kind} progress={play.progress} objective={play.objective} characterName={characterName} />;
 };
 
 const CurrentRow: React.FC<{ play: PlayView }> = ({ play }) => {

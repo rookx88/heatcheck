@@ -17,8 +17,10 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { getSession, requireOnboarded } from '../../lib/pages-functions/session';
-import { buildFacts, encounterFactsStatement, type EncounterFactsRow } from '../../lib/pages-functions/encounters/evaluate';
-import { playProgress, type PlayView } from '../../lib/pages-functions/encounters/plays';
+import { buildFacts, encounterFactsStatement, type EncounterFactsRow, type PetFacts } from '../../lib/pages-functions/encounters/evaluate';
+import { deliveryOf, playProgress, type PlayView } from '../../lib/pages-functions/encounters/plays';
+import { sustainedSatisfied } from '../../lib/pages-functions/discovery';
+import type { FeedingConfig } from '../../lib/pages-functions/pets';
 import { PLAY_BY_KEY } from '../../lib/pages-functions/encounters/index';
 
 function iso(value: unknown): string | null {
@@ -36,23 +38,50 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(context.env);
     try {
-        const [petRows, factsRows] = await sql.transaction([
-            sql`SELECT feed_count FROM pets WHERE user_id = ${session.userId} LIMIT 1`,
+        const [petRows, factsRows, cfgRows] = await sql.transaction([
+            sql`
+                SELECT feed_count, name, satisfaction_at_last_feed, last_fed_at
+                FROM pets WHERE user_id = ${session.userId} LIMIT 1
+            `,
             encounterFactsStatement(sql, session.userId),
+            sql`
+                SELECT key, config FROM game_config
+                WHERE key IN ('feeding', 'discovery') AND active = true
+            `,
         ]);
         if (petRows.length === 0 || factsRows.length === 0) {
             return jsonResponse({ current: [], completed: [] }, { headers: authHeaders });
         }
-        const feedCount = Number((petRows[0] as unknown as { feed_count: number }).feed_count ?? 0);
-        const facts = buildFacts(factsRows[0] as unknown as EncounterFactsRow, feedCount, null);
+        const petRow = petRows[0] as unknown as {
+            feed_count: number; name: string | null; satisfaction_at_last_feed: number; last_fed_at: string;
+        };
+        const cfgByKey = new Map((cfgRows as unknown as Array<{ key: string; config: Record<string, number> }>)
+            .map((r) => [r.key, r.config]));
+        const feedingCfg = cfgByKey.get('feeding') as unknown as FeedingConfig | undefined;
+        const sustainedHours = Number(cfgByKey.get('discovery')?.sustained_hours);
+        // Same definition of "kept fed" the short find cooldown uses, so the Playbook's
+        // tick for a care objective matches the moment it actually completes.
+        const petFacts: PetFacts = {
+            feedCount: Number(petRow.feed_count ?? 0),
+            named: typeof petRow.name === 'string' && petRow.name.length > 0,
+            sustainedSatisfied: feedingCfg
+                ? sustainedSatisfied(petRow, feedingCfg, sustainedHours)
+                : false,
+        };
+        // No place: this endpoint reads, and a hand-over only ever happens on the page
+        // load that visits the character's home.
+        const facts = buildFacts(factsRows[0] as unknown as EncounterFactsRow, petFacts, null);
         const grantsByKey = new Map(facts.encounters.map((e) => [e.key, e.grants]));
 
         const views: PlayView[] = facts.plays.map((p) => {
             const def = PLAY_BY_KEY[p.key];
             const completedAt = iso(p.completedAt);
-            const gave = p.objective.kind === 'deliver_items'
-                ? p.objective.items.map((i) => ({ catalogKey: i.catalogKey, count: i.count, name: i.name, art: i.art ?? null }))
-                : [];
+            // What a completed Play took: the frozen item list, whether the delivery was
+            // the whole objective or one part of a compound beat. The hand-over is
+            // all-or-nothing for exactly these counts, so the list is a faithful record.
+            const gave = (deliveryOf(p)?.items ?? []).map((i) => ({
+                catalogKey: i.catalogKey, count: i.count, name: i.name, art: i.art ?? null,
+            }));
             return {
                 id: p.id,
                 key: p.key,

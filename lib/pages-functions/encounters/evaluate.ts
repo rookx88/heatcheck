@@ -23,8 +23,8 @@ import { encounterGiftEmber } from '../ledger';
 import { itemIdempotencyKey } from '../item-ledger';
 import { CHARACTERS, ENCOUNTERS, ENCOUNTER_BY_KEY } from './index';
 import { deliverPlay } from './deliver';
-import { placeMatches, playComplete, type PlayFacts, type PlayRow, type StoredObjective } from './plays';
-import type { Encounter, EncounterGrants, EncounterView, Trigger } from './types';
+import { deliveryOf, placeMatches, playComplete, type PlayFacts, type PlayRow, type StoredObjective } from './plays';
+import type { Encounter, EncounterGrants, EncounterView, Objective, PlayDefinition, Trigger } from './types';
 
 export { placeMatches };
 export type { PlayRow };
@@ -43,8 +43,26 @@ export interface EncounterFactsRow {
     collectibles: number;
     encounters: EncounterRow[];
     plays: PlayRow[];
-    // Memorabilia held, catalog key -> quantity (what a delivery Play counts).
-    memorabilia: Record<string, number>;
+    // Memorabilia AND food held, catalog key -> quantity. Both, because a delivery Play
+    // can ask for either.
+    holdings: Record<string, number>;
+    // Settled picks that came in.
+    wins: number;
+    // Positions closed above cost.
+    profit_sells: number;
+    // TANKDAQ positions held now, ticker key -> shares.
+    shares: Record<string, number>;
+    // Any held position older than one of its index's daily closes.
+    held_through_close: boolean;
+}
+
+// What only the request knows about the pet. `sustainedSatisfied` is computed by the
+// caller with discovery's own rule (discovery.ts sustainedSatisfied), so the Play and
+// the short find cooldown can never disagree about what "kept fed" means.
+export interface PetFacts {
+    feedCount: number;
+    named: boolean;
+    sustainedSatisfied: boolean;
 }
 
 // Everything a trigger or objective can ask about, in one object.
@@ -58,16 +76,35 @@ export interface Facts extends PlayFacts {
 // guard is an index probe), so evaluateEncounters no-ops for them without a query of
 // its own. This runs on every page load for every pet owner: every subquery must stay
 // index-backed - ember_balances PK, idx_picks_waitlist_created, idx_inventory_user_id,
-// idx_encounters_user_key, idx_plays_user_key. Do not join anything unindexed here.
+// idx_encounters_user_key, idx_plays_user_key, idx_share_holdings_user,
+// idx_share_trades_user_created, idx_ticker_events_key_time. Do not join anything
+// unindexed here.
+//
+// The picks and inventory facts are FILTERed aggregates over one scan each rather than
+// separate subqueries over the same index, so counting wins costs nothing beyond
+// counting picks, and holdings cover food and memorabilia in one pass.
 export function encounterFactsStatement(sql: NeonQueryFunction<false, false>, userId: string) {
     return sql`
         SELECT
             COALESCE((SELECT lifetime_earned FROM ember_balances WHERE user_id = ${userId}), 0)::int AS lifetime_earned,
             (SELECT COUNT(*) FROM picks WHERE waitlist_id = ${userId})::int AS picks,
+            (SELECT COUNT(*) FILTER (WHERE result = 'correct')
+             FROM picks WHERE waitlist_id = ${userId})::int AS wins,
             (SELECT COUNT(*) FROM inventory_items WHERE user_id = ${userId} AND item_type = 'collectible')::int AS collectibles,
             COALESCE((SELECT json_object_agg(m.catalog_key, m.quantity)
                       FROM inventory_items m
-                      WHERE m.user_id = ${userId} AND m.item_type = 'memorabilia'), '{}'::json) AS memorabilia,
+                      WHERE m.user_id = ${userId} AND m.item_type IN ('memorabilia', 'food')), '{}'::json) AS holdings,
+            (SELECT COUNT(*) FROM share_trades
+             WHERE user_id = ${userId} AND side = 'sell' AND realized_pnl > 0)::int AS profit_sells,
+            COALESCE((SELECT json_object_agg(h.ticker_key, h.shares)
+                      FROM share_holdings h
+                      WHERE h.user_id = ${userId} AND h.shares > 0), '{}'::json) AS shares,
+            EXISTS (SELECT 1
+                    FROM share_holdings h
+                    JOIN ticker_events e ON e.ticker_key = h.ticker_key
+                     AND e.source = 'slate' AND e.event_type = 'close'
+                     AND e.occurred_at > h.held_since
+                    WHERE h.user_id = ${userId} AND h.shares > 0) AS held_through_close,
             COALESCE((SELECT json_agg(json_build_object('id', e.id, 'key', e.encounter_key, 'status', e.status, 'grants', e.grants)
                                       ORDER BY e.created_at)
                       FROM encounters e WHERE e.user_id = ${userId}), '[]'::json) AS encounters,
@@ -85,17 +122,32 @@ export function encounterFactsStatement(sql: NeonQueryFunction<false, false>, us
 // The facts row plus what only the request knows (the pet's feed counter, the page).
 // Shared by evaluateEncounters, GET /api/plays and toolbar-state's forced-find callback,
 // so all three see a Play the same way.
-export function buildFacts(row: EncounterFactsRow, feedCount: number, placePath: string | null): Facts {
+export function buildFacts(row: EncounterFactsRow, pet: PetFacts, placePath: string | null): Facts {
     return {
         lifetimeEarned: Number(row.lifetime_earned),
         picks: Number(row.picks),
+        wins: Number(row.wins ?? 0),
         collectibles: Number(row.collectibles),
-        feeds: Number(feedCount),
+        feeds: Number(pet.feedCount),
         place: placeFromPath(placePath)?.key ?? null,
-        holdings: { ...(row.memorabilia ?? {}) },
+        holdings: { ...(row.holdings ?? {}) },
+        profitSells: Number(row.profit_sells ?? 0),
+        shares: Object.fromEntries(Object.entries(row.shares ?? {}).map(([k, v]) => [k, Number(v)])),
+        heldThroughClose: Boolean(row.held_through_close),
+        petSustainedSatisfied: Boolean(pet.sustainedSatisfied),
+        petNamed: Boolean(pet.named),
         encounters: (row.encounters ?? []).map((e) => ({ ...e, grants: e.grants ?? {} })),
         plays: (row.plays ?? []).map((p) => ({ ...p, visited: p.visited ?? [] })),
     };
+}
+
+// Does this objective want the place the request came from recorded? Recursing one level
+// means a compound beat's visit or reading part still gets its progress written.
+function placeWanted(o: StoredObjective | Objective, place: string): boolean {
+    if (o.kind === 'visit_places') return o.places.some((want) => placeMatches(place, want));
+    if (o.kind === 'read_articles') return place.startsWith('article:');
+    if (o.kind === 'all_of') return o.parts.some((part) => placeWanted(part, place));
+    return false;
 }
 
 export function triggerSatisfied(t: Trigger, facts: Facts, cfg: Record<string, number>): boolean {
@@ -138,6 +190,67 @@ export function toEncounterView(row: EncounterRow): EncounterView | null {
     };
 }
 
+// Freezes what a Play asks for at the moment it starts, so retuning the registry or
+// moving a character never changes an errand in progress, and the Playbook can picture
+// an item the player has never owned (no endpoint exposes an unowned catalog row).
+//
+// Resolved in JS rather than inside the fire statement because a delivery can be one
+// part of a compound objective, and enriching a nested jsonb array in SQL was the least
+// legible thing in this file. It costs one small indexed read, and only when a Play that
+// hands something over actually starts.
+//
+// `forceable` is the find guarantee's permission slip: droppable memorabilia and the
+// concession foods can be forced into a find, a shop SKU never can, because the ask
+// there is to go and buy it.
+async function freezeObjective(
+    sql: NeonQueryFunction<false, false>,
+    play: PlayDefinition,
+    home: string | null,
+): Promise<StoredObjective> {
+    const stored: StoredObjective = { ...play.objective, title: play.title };
+    const delivery = play.objective.kind === 'deliver_items'
+        ? play.objective
+        : play.objective.kind === 'all_of'
+            ? play.objective.parts.find((p): p is Extract<Objective, { kind: 'deliver_items' }> => p.kind === 'deliver_items')
+            : undefined;
+    // The home rides at the TOP level even for a compound objective: the hand-over gate
+    // reads it from there (plays.ts deliveryOf), and one Play has one place.
+    if (delivery) stored.home = home;
+    if (!delivery || delivery.items.length === 0) return stored;
+
+    const keys = delivery.items.map((i) => i.catalogKey);
+    const rows = (await sql`
+        SELECT key, name, item_type,
+               CASE item_type
+                   WHEN 'food'        THEN 'food/' || key || '.png'
+                   WHEN 'memorabilia' THEN config->>'image'
+                   WHEN 'collectible' THEN config->>'cover_image'
+                   ELSE NULL
+               END AS art,
+               ((config->>'discovery_droppable')::boolean IS TRUE
+                AND COALESCE((config->>'discovery_weight')::int, 1) > 0
+                AND NOT (config ? 'vendor')) AS forceable
+        FROM items_catalog WHERE key = ANY(${keys}::text[])
+    `) as unknown as Array<{ key: string; name: string; item_type: string; art: string | null; forceable: boolean }>;
+    const byKey = new Map(rows.map((r) => [r.key, r]));
+
+    const enriched = delivery.items.map((i) => {
+        const c = byKey.get(i.catalogKey);
+        return {
+            ...i,
+            name: c?.name,
+            art: c?.art ?? null,
+            itemType: (c?.item_type === 'food' ? 'food' : 'memorabilia') as 'food' | 'memorabilia',
+            forceable: Boolean(c?.forceable),
+        };
+    });
+    if (stored.kind === 'deliver_items') stored.items = enriched;
+    else if (stored.kind === 'all_of') {
+        stored.parts = stored.parts.map((p) => (p.kind === 'deliver_items' ? { ...p, items: enriched } : p));
+    }
+    return stored;
+}
+
 // Claim-and-grant in ONE statement. `ins` is the race guard (unique (user_id,
 // encounter_key)); every other leg selects FROM it, so a concurrent loser writes
 // nothing. Item legs are gated by the itemType param so one statement covers every
@@ -163,13 +276,7 @@ async function fireEncounter(
     const play = start?.kind === 'start_play' ? start.play : null;
     const hasPlay = play !== null;
     const playKey = play ? play.key : '';
-    const stored: StoredObjective | null = play
-        ? {
-              ...play.objective,
-              title: play.title,
-              ...(play.objective.kind === 'deliver_items' ? { home: CHARACTERS[encounter.character]?.home ?? null } : {}),
-          }
-        : null;
+    const stored = play ? await freezeObjective(sql, play, CHARACTERS[encounter.character]?.home ?? null) : null;
     const objective = stored ? JSON.stringify(stored) : '{}';
     const rewardKey = play ? play.rewardEncounter : '';
     const rows = await sql`
@@ -198,21 +305,19 @@ async function fireEncounter(
             ON CONFLICT (user_id, encounter_key) DO NOTHING
             RETURNING id, grants
         ), play AS (
-            -- A delivery's items are enriched here, in the order authored, with the
-            -- catalog's name and memorabilia image path. Anything else is stored as is.
+            -- The objective arrives already frozen (freezeObjective above): title, home,
+            -- and every delivery item's name, art, type and findability. The baseline is
+            -- snapshotted HERE, from the database, inside the claim - never from the
+            -- request - so a Play can never start measuring from a stale number.
             INSERT INTO plays (user_id, play_key, encounter_id, objective, baseline, reward_encounter_key)
-            SELECT ${userId}, ${playKey}::text, ins.id,
-                   CASE WHEN ${objective}::jsonb->>'kind' = 'deliver_items' THEN
-                       ${objective}::jsonb || jsonb_build_object('items', COALESCE((
-                           SELECT jsonb_agg(w.item || jsonb_build_object('name', c.name, 'art', c.config->>'image')
-                                            ORDER BY w.ord)
-                           FROM jsonb_array_elements(${objective}::jsonb->'items') WITH ORDINALITY AS w(item, ord)
-                           LEFT JOIN items_catalog c ON c.key = w.item->>'catalogKey'), '[]'::jsonb))
-                   ELSE ${objective}::jsonb END,
+            SELECT ${userId}, ${playKey}::text, ins.id, ${objective}::jsonb,
                    jsonb_build_object(
                        'feeds', COALESCE((SELECT feed_count FROM pets WHERE id = ${petId}), 0),
                        'finds', COALESCE((SELECT find_count FROM pets WHERE id = ${petId}), 0),
                        'picks', (SELECT COUNT(*) FROM picks WHERE waitlist_id = ${userId}),
+                       'wins', (SELECT COUNT(*) FROM picks WHERE waitlist_id = ${userId} AND result = 'correct'),
+                       'profit_sells', (SELECT COUNT(*) FROM share_trades
+                                        WHERE user_id = ${userId}::uuid AND side = 'sell' AND realized_pnl > 0),
                        'lifetime_earned', COALESCE((SELECT lifetime_earned FROM ember_balances WHERE user_id = ${userId}), 0)),
                    ${rewardKey}::text
             FROM ins WHERE ${hasPlay}::boolean
@@ -225,6 +330,16 @@ async function fireEncounter(
             INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
             SELECT ${userId}, ${catalogKey}::text, 'food', 1 FROM ins WHERE ${itemType}::text = 'food'
             ON CONFLICT (user_id, catalog_key) WHERE item_type = 'food'
+                DO UPDATE SET quantity = inventory_items.quantity + 1
+            RETURNING id
+        ), memo AS (
+            -- Memorabilia stacks like food, on its own partial unique index, so the
+            -- conflict target has to name the type (a bare target cannot choose between
+            -- the two). This is what lets a character hand over a keepsake - the GM
+            -- Whitelist passes exist for exactly this and nothing else could reach them.
+            INSERT INTO inventory_items (user_id, catalog_key, item_type, quantity)
+            SELECT ${userId}, ${catalogKey}::text, 'memorabilia', 1 FROM ins WHERE ${itemType}::text = 'memorabilia'
+            ON CONFLICT (user_id, catalog_key) WHERE item_type = 'memorabilia'
                 DO UPDATE SET quantity = inventory_items.quantity + 1
             RETURNING id
         ), minted AS (
@@ -250,6 +365,7 @@ async function fireEncounter(
                    ${JSON.stringify({ encounterKey: encounter.key, character: encounter.character })}::jsonb
             FROM (          SELECT id, NULL::int       AS serial_number FROM egg
                   UNION ALL SELECT id, NULL::int                        FROM food
+                  UNION ALL SELECT id, NULL::int                        FROM memo
                   UNION ALL SELECT id, serial_number                    FROM card) g
             ON CONFLICT (idempotency_key) DO NOTHING
             RETURNING 1
@@ -281,7 +397,7 @@ async function fireEncounter(
 export interface EvaluateInput {
     userId: string;
     // null = petless: nothing in this system runs (a character talks TO the pet).
-    pet: { id: string; feedCount: number } | null;
+    pet: ({ id: string } & PetFacts) | null;
     // Raw ?place= from the request; normalized here via placeFromPath.
     placePath: string | null;
     // The batch row from encounterFactsStatement, or null when it returned no row.
@@ -304,7 +420,7 @@ export async function evaluateEncounters(
     // Petless / no facts row: before any query.
     if (!pet || !input.facts) return { fired: false, delivered: false, pending: null };
 
-    const facts = buildFacts(input.facts, pet.feedCount, placePath);
+    const facts = buildFacts(input.facts, pet, placePath);
 
     // Thresholds only when something unfired actually needs one.
     const unfired = ENCOUNTERS.filter((e) => !facts.encounters.some((r) => r.key === e.key));
@@ -323,16 +439,29 @@ export async function evaluateEncounters(
         if (credited.credited) row.grants = { ...row.grants, ember: { amount: credited.amount } };
     }
 
-    // visit_places progress: one small UPDATE only when this page is a wanted place
-    // the Play hasn't recorded yet.
+    // Place progress: one small UPDATE only when this page is a place some open Play
+    // actually wants and has not recorded yet. Two kinds care - visit_places wants
+    // NAMED places, read_articles wants any Tank article - and both record into the
+    // same `visited` array, so their progress survives a find resetting the pet's
+    // footprints (which is exactly why the array exists).
     if (facts.place) {
         for (const p of facts.plays) {
-            if (p.completedAt || p.objective.kind !== 'visit_places') continue;
-            if (!p.objective.places.some((want) => placeMatches(facts.place, want))) continue;
+            if (p.completedAt) continue;
+            if (!placeWanted(p.objective, facts.place)) continue;
             if (p.visited.includes(facts.place)) continue;
+            // An article place comes straight from the URL, and the SPA fallback serves
+            // any path, so an invented slug would otherwise count as a Tank read and
+            // read_articles could be farmed with made-up links. The same existence test
+            // discovery's footprint write uses: published and app-visible, or it is not a
+            // place. Named places (visit_places) need no check - they only ever match a
+            // key the author wrote.
+            const articleSlug = facts.place.startsWith('article:') ? facts.place.slice('article:'.length) : null;
             const rows = await sql`
                 UPDATE plays SET visited = array_append(visited, ${facts.place}::text)
                 WHERE id = ${p.id} AND user_id = ${userId} AND NOT (${facts.place}::text = ANY(visited))
+                  AND (${articleSlug}::text IS NULL OR EXISTS (
+                        SELECT 1 FROM tank_pages
+                        WHERE slug = ${articleSlug}::text AND status = 'published' AND visibility = 'app'))
                 RETURNING visited
             `;
             if (rows.length) p.visited = (rows[0] as unknown as { visited: string[] }).visited;
@@ -344,16 +473,19 @@ export async function evaluateEncounters(
     let delivered = false;
     for (const p of facts.plays) {
         if (!playComplete(p, facts)) continue;
-        if (p.objective.kind === 'deliver_items') {
+        const handover = deliveryOf(p);
+        if (handover) {
             // The hand-over consumes items, so it completes itself (deliver.ts). A
             // no-op here (lost race, stock moved) just retries on the next page load.
+            // This covers a delivery that is one PART of a compound beat too: the other
+            // parts were already checked by playComplete a line above.
             const result = await deliverPlay(sql, { userId, play: p });
             if (!result.completedAt) continue;
             p.completedAt = result.completedAt;
             delivered = true;
             // Keep the in-memory holdings honest: a second open delivery wanting the same
             // item must not complete for free against the pre-burn snapshot.
-            for (const i of p.objective.items) {
+            for (const i of handover.items) {
                 facts.holdings[i.catalogKey] = Number(facts.holdings[i.catalogKey] ?? 0) - i.count;
             }
             continue;

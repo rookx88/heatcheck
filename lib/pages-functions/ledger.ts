@@ -419,9 +419,9 @@ export async function buyShares(sql: NeonQueryFunction<false, false>, input: Tra
             ON CONFLICT (idempotency_key) DO NOTHING
             RETURNING id
         ), held AS (
-            INSERT INTO share_holdings (id, user_id, ticker_key, shares, avg_buy_price, updated_at)
+            INSERT INTO share_holdings (id, user_id, ticker_key, shares, avg_buy_price, updated_at, held_since)
             SELECT ${holdingId}::uuid, ${input.userId}::uuid, ${input.tickerKey},
-                   ${input.shares}::numeric, ${cost}::numeric / ${input.shares}::numeric, NOW()
+                   ${input.shares}::numeric, ${cost}::numeric / ${input.shares}::numeric, NOW(), NOW()
             FROM led
             ON CONFLICT (user_id, ticker_key) DO UPDATE SET
                 -- Every share_holdings.* reference on the right is the PRE-update row, so
@@ -430,6 +430,10 @@ export async function buyShares(sql: NeonQueryFunction<false, false>, input: Tra
                                 / (share_holdings.shares + EXCLUDED.shares),
                 shares = share_holdings.shares + EXCLUDED.shares,
                 updated_at = NOW()
+                -- held_since is deliberately NOT touched here: adding to a position must
+                -- not restart the clock Beaks's hold-through-a-close Play reads
+                -- (add_held_since_to_share_holdings.sql). Selling to zero deletes the row,
+                -- so the next buy starts a fresh position and a fresh held_since.
             RETURNING shares, avg_buy_price
         ), trade AS (
             INSERT INTO share_trades (id, user_id, ticker_key, side, shares, price, ember_amount,

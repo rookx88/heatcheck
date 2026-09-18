@@ -15,7 +15,7 @@ import {
 } from '../fixtures';
 import { CHARACTERS, ENCOUNTERS, ENCOUNTER_BY_KEY, PLAY_BY_KEY, portraitSrc } from '../../../lib/pages-functions/encounters';
 import { triggerSatisfied, placeMatches, type Facts } from '../../../lib/pages-functions/encounters/evaluate';
-import { playComplete, type PlayRow } from '../../../lib/pages-functions/encounters/plays';
+import { forcedFind, playComplete, playProgress, type PlayRow } from '../../../lib/pages-functions/encounters/plays';
 import { placeFromPath } from '../../../lib/pages-functions/discovery';
 import { LIFETIME_EARNED_RULE_KEYS } from '../../../lib/pages-functions/ledger';
 
@@ -86,7 +86,9 @@ async function cleanup() {
 
 function fakeFacts(over: Partial<Facts>): Facts {
     return {
-        lifetimeEarned: 0, picks: 0, collectibles: 0, feeds: 0, place: null, holdings: {}, encounters: [], plays: [],
+        lifetimeEarned: 0, picks: 0, wins: 0, collectibles: 0, feeds: 0, place: null, holdings: {},
+        profitSells: 0, shares: {}, heldThroughClose: false, petSustainedSatisfied: false, petNamed: false,
+        encounters: [], plays: [],
         ...over,
     };
 }
@@ -154,27 +156,61 @@ async function run() {
                     Boolean(reward) && reward.trigger.every((t) =>
                         (t.kind === 'play_completed' && t.key === p.key) || (t.kind === 'after_encounter' && t.key === e.key)),
                     JSON.stringify(reward?.trigger));
-                if (p.objective.kind === 'deliver_items') {
+                // Every objective in the Play, flattened: a compound beat's parts are
+                // held to exactly the same rules as a standalone objective.
+                const parts = p.objective.kind === 'all_of' ? p.objective.parts : [p.objective];
+                if (p.objective.kind === 'all_of') {
+                    check(`${e.key}: '${p.key}' compound has 2-4 parts`,
+                        parts.length >= 2 && parts.length <= 4, String(parts.length));
+                    // playProgress recurses exactly one level; a nested compound would
+                    // silently measure nothing.
+                    check(`${e.key}: '${p.key}' compound is not nested`, parts.every((x) => x.kind !== 'all_of'));
+                    check(`${e.key}: '${p.key}' asks each kind at most once`,
+                        new Set(parts.map((x) => x.kind)).size === parts.length, JSON.stringify(parts.map((x) => x.kind)));
+                    // One Play, one hand-over place.
+                    check(`${e.key}: '${p.key}' has at most one delivery part`,
+                        parts.filter((x) => x.kind === 'deliver_items').length <= 1);
+                }
+                for (const part of parts) {
+                    if (part.kind === 'hold_shares') {
+                        check(`${e.key}: '${p.key}' hold_shares sets shares or indexes`,
+                            Number(part.shares ?? 0) > 0 || Number(part.indexes ?? 0) > 0, JSON.stringify(part));
+                    }
+                    if (part.kind === 'read_articles' || part.kind === 'win_picks' || part.kind === 'sell_profit') {
+                        check(`${e.key}: '${p.key}' ${part.kind} count is a positive integer`,
+                            Number.isInteger(part.count) && part.count >= 1, String(part.count));
+                    }
+                    if (part.kind !== 'deliver_items') continue;
                     const home = CHARACTERS[e.character]?.home;
                     check(`${e.key}: delivery '${p.key}' belongs to a character with a home`, typeof home === 'string');
                     check(`${e.key}: home '${home}' is a real place key`,
                         typeof home === 'string' && placeFromPath(`/${home}/`)?.key === home, String(home));
-                    const keys = p.objective.items.map((i) => i.catalogKey);
+                    const keys = part.items.map((i) => i.catalogKey);
                     check(`${e.key}: delivery '${p.key}' asks for at least one item, no duplicates`,
                         keys.length > 0 && new Set(keys).size === keys.length, JSON.stringify(keys));
-                    for (const i of p.objective.items) {
+                    for (const i of part.items) {
                         check(`${e.key}: '${i.catalogKey}' count is a positive integer`, Number.isInteger(i.count) && i.count >= 1, String(i.count));
                         const { rows } = await pool.query(`SELECT item_type, active, config FROM items_catalog WHERE key = $1`, [i.catalogKey]);
-                        // Memorabilia only: it stacks, has no serial, can't be bought, and
-                        // only deliveries decrement it (deliver.ts relies on that).
-                        check(`${e.key}: '${i.catalogKey}' is active memorabilia`,
-                            rows.length === 1 && rows[0].item_type === 'memorabilia' && rows[0].active === true, JSON.stringify(rows[0]));
-                        // Obtainable, or the find guarantee could never deliver it.
-                        check(`${e.key}: '${i.catalogKey}' is droppable with weight > 0`,
-                            rows[0]?.config?.discovery_droppable === true && Number(rows[0]?.config?.discovery_weight ?? 1) > 0,
-                            JSON.stringify(rows[0]?.config));
+                        const row = rows[0];
+                        // Memorabilia or food only. Both stack and have no serial; food is
+                        // allowed because the hand-over shares the feeding lock, which is
+                        // what keeps a delivery and a feed from spending the same unit.
+                        check(`${e.key}: '${i.catalogKey}' is active memorabilia or food`,
+                            rows.length === 1 && row.active === true
+                            && (row.item_type === 'memorabilia' || row.item_type === 'food'), JSON.stringify(row));
+                        // Every requested item has to be OBTAINABLE one way or the other:
+                        // findable (droppable with a weight, so the guarantee can deliver
+                        // it) or buyable (a shop SKU, which carries a vendor). A held-back
+                        // item would make the Play unfinishable.
+                        const findable = row?.config?.discovery_droppable === true
+                            && Number(row?.config?.discovery_weight ?? 1) > 0
+                            && !('vendor' in (row?.config ?? {}));
+                        const buyable = typeof row?.config?.vendor === 'string';
+                        check(`${e.key}: '${i.catalogKey}' can be found or bought`, findable || buyable,
+                            JSON.stringify(row?.config));
+                        const art = row?.item_type === 'food' ? `food/${i.catalogKey}.png` : row?.config?.image;
                         check(`${e.key}: '${i.catalogKey}' art exists on disk`,
-                            typeof rows[0]?.config?.image === 'string' && fs.existsSync(path.join(REPO_ROOT, 'assets/images', rows[0].config.image)));
+                            typeof art === 'string' && fs.existsSync(path.join(REPO_ROOT, 'assets/images', art)), String(art));
                     }
                 }
             }
@@ -182,6 +218,53 @@ async function run() {
     }
     const playKeys = ENCOUNTERS.flatMap((e) => e.effects.flatMap((f) => (f.kind === 'start_play' ? [f.play.key] : [])));
     check('every Play key is unique across the registry', new Set(playKeys).size === playKeys.length, JSON.stringify(playKeys));
+
+    // --- Arc shape: every beat of every chain is reachable, and nothing loops ---
+    section('Arcs - each character chain is reachable from its first scene and never cycles');
+    // An encounter is reachable when every one of its triggers can eventually hold: a
+    // play_completed needs a Play some reachable scene starts, an after_encounter needs a
+    // reachable scene. Anything else (a threshold, a place) is reachable on its own.
+    // Iterating to a fixed point is what proves there is no cycle: a scene that only
+    // waits on something downstream of itself never becomes reachable.
+    const reachable = new Set<string>();
+    const startedPlays = new Set<string>();
+    for (let pass = 0; pass < ENCOUNTERS.length + 1; pass++) {
+        let grew = false;
+        for (const e of ENCOUNTERS) {
+            if (reachable.has(e.key)) continue;
+            const ok = e.trigger.every((t) =>
+                t.kind === 'after_encounter' ? reachable.has(t.key)
+                : t.kind === 'play_completed' ? startedPlays.has(t.key)
+                : true);
+            if (!ok) continue;
+            reachable.add(e.key);
+            for (const f of e.effects) if (f.kind === 'start_play') startedPlays.add(f.play.key);
+            grew = true;
+        }
+        if (!grew) break;
+    }
+    const unreachable = ENCOUNTERS.filter((e) => !reachable.has(e.key)).map((e) => e.key);
+    check('every encounter is reachable (no cycles, no orphan beats)', unreachable.length === 0, unreachable.join(', '));
+    // A Play nobody starts can never appear; a Play two scenes start would be ambiguous.
+    const starters = new Map<string, string[]>();
+    for (const e of ENCOUNTERS) {
+        for (const f of e.effects) {
+            if (f.kind !== 'start_play') continue;
+            starters.set(f.play.key, [...(starters.get(f.play.key) ?? []), e.key]);
+        }
+    }
+    const multi = [...starters.entries()].filter(([, owners]) => owners.length > 1);
+    check('every Play is started by exactly one scene', multi.length === 0, JSON.stringify(multi));
+    // Each arc should read as a ladder: one scene per beat, each beat gated on the last.
+    for (const c of Object.values(CHARACTERS)) {
+        const mine = ENCOUNTERS.filter((e) => e.character === c.key);
+        const plays = mine.flatMap((e) => e.effects.flatMap((f) => (f.kind === 'start_play' ? [f.play.key] : [])));
+        check(`${c.key}: every Play it starts is its own reward chain (${plays.length} Plays, ${mine.length} scenes)`,
+            plays.every((k) => {
+                const reward = ENCOUNTERS.find((e) => e.trigger.some((t) => t.kind === 'play_completed' && t.key === k));
+                return reward?.character === c.key;
+            }), JSON.stringify(plays));
+    }
 
     // --- The quests -> plays rename ---
     section('Rename - quests are Plays in source and in the database');
@@ -275,7 +358,7 @@ async function run() {
     check("after_encounter: needs status 'seen'",
         !triggerSatisfied({ kind: 'after_encounter', key: 'x' }, fakeFacts({ encounters: [{ id: 'a', key: 'x', status: 'offered', grants: {} }] }), cfg)
         && triggerSatisfied({ kind: 'after_encounter', key: 'x' }, fakeFacts({ encounters: [{ id: 'a', key: 'x', status: 'seen', grants: {} }] }), cfg));
-    const q = (objective: PlayRow['objective'], baseline = { feeds: 1, picks: 1, lifetime_earned: 100 }, visited: string[] = []): PlayRow =>
+    const q = (objective: PlayRow['objective'], baseline: PlayRow['baseline'] = { feeds: 1, picks: 1, lifetime_earned: 100 }, visited: string[] = []): PlayRow =>
         ({ id: 'q', key: 'q', objective, baseline, visited, completedAt: null, rewardEncounterKey: 'r' });
     check('playComplete picks: baseline-relative (baseline 1, need 2, have 3)',
         playComplete(q({ kind: 'picks', count: 2 }), fakeFacts({ picks: 3 })) && !playComplete(q({ kind: 'picks', count: 2 }), fakeFacts({ picks: 2 })));
@@ -284,6 +367,77 @@ async function run() {
         playComplete(q({ kind: 'visit_places', places: ['tankdaq', 'the-hatchery'] }, undefined, ['tankdaq:dogs', 'the-hatchery']), fakeFacts({}))
         && !playComplete(q({ kind: 'visit_places', places: ['tankdaq', 'the-hatchery'] }, undefined, ['tankdaq:dogs']), fakeFacts({})));
     check('play_completed: needs completedAt', triggerSatisfied({ kind: 'play_completed', key: 'q' }, fakeFacts({ plays: [{ ...q({ kind: 'picks', count: 1 }), completedAt: '2026-01-01' }] }), cfg));
+
+    // --- The kinds the character arcs added ---
+    check('win_picks: baseline-relative',
+        playComplete(q({ kind: 'win_picks', count: 2 }, { feeds: 0, picks: 0, lifetime_earned: 0, wins: 1 }), fakeFacts({ wins: 3 }))
+        && !playComplete(q({ kind: 'win_picks', count: 2 }, { feeds: 0, picks: 0, lifetime_earned: 0, wins: 1 }), fakeFacts({ wins: 2 })));
+    check('read_articles: counts DISTINCT article places only',
+        playComplete(q({ kind: 'read_articles', count: 2 }, undefined, ['article:a', 'article:b', 'the-tank']), fakeFacts({}))
+        && !playComplete(q({ kind: 'read_articles', count: 2 }, undefined, ['article:a', 'the-tank', 'tankdaq']), fakeFacts({})));
+    check('hold_shares: by total shares, and by number of indexes',
+        playComplete(q({ kind: 'hold_shares', shares: 5 }), fakeFacts({ shares: { dogs: 5 } }))
+        && !playComplete(q({ kind: 'hold_shares', shares: 5 }), fakeFacts({ shares: { dogs: 4 } }))
+        && playComplete(q({ kind: 'hold_shares', indexes: 2 }), fakeFacts({ shares: { dogs: 1, chalk: 1 } }))
+        && !playComplete(q({ kind: 'hold_shares', indexes: 2 }), fakeFacts({ shares: { dogs: 50 } })));
+    check('sell_profit: baseline-relative',
+        playComplete(q({ kind: 'sell_profit', count: 3 }, { feeds: 0, picks: 0, lifetime_earned: 0, profit_sells: 2 }), fakeFacts({ profitSells: 5 }))
+        && !playComplete(q({ kind: 'sell_profit', count: 3 }, { feeds: 0, picks: 0, lifetime_earned: 0, profit_sells: 2 }), fakeFacts({ profitSells: 4 })));
+    check('moment kinds: true only while the fact is true',
+        playComplete(q({ kind: 'hold_through_close' }), fakeFacts({ heldThroughClose: true }))
+        && !playComplete(q({ kind: 'hold_through_close' }), fakeFacts({}))
+        && playComplete(q({ kind: 'pet_sustained_satisfied' }), fakeFacts({ petSustainedSatisfied: true }))
+        && !playComplete(q({ kind: 'pet_sustained_satisfied' }), fakeFacts({}))
+        && playComplete(q({ kind: 'name_pet' }), fakeFacts({ petNamed: true }))
+        && !playComplete(q({ kind: 'name_pet' }), fakeFacts({})));
+    // A missing baseline (a row written before the kind existed) measures from zero
+    // rather than throwing.
+    check('a counting kind with no baseline measures from zero',
+        playComplete(q({ kind: 'win_picks', count: 2 }, { feeds: 0, picks: 0, lifetime_earned: 0 }), fakeFacts({ wins: 2 })));
+
+    // --- Compound objectives ---
+    const compound = (parts: any[], visited: string[] = []) =>
+        q({ kind: 'all_of', parts }, { feeds: 0, picks: 0, lifetime_earned: 0, wins: 0 }, visited);
+    check('all_of: every part must hold at the same moment',
+        !playComplete(compound([{ kind: 'win_picks', count: 2 }, { kind: 'pet_sustained_satisfied' }]), fakeFacts({ wins: 5 }))
+        && !playComplete(compound([{ kind: 'win_picks', count: 2 }, { kind: 'pet_sustained_satisfied' }]), fakeFacts({ petSustainedSatisfied: true }))
+        && playComplete(compound([{ kind: 'win_picks', count: 2 }, { kind: 'pet_sustained_satisfied' }]), fakeFacts({ wins: 5, petSustainedSatisfied: true })));
+    const compoundProgress = playProgress(
+        compound([{ kind: 'win_picks', count: 4 }, { kind: 'read_articles', count: 2 }], ['article:a']),
+        fakeFacts({ wins: 1 }),
+    );
+    check('all_of: progress lists a part per objective, with its own numbers',
+        compoundProgress.parts?.length === 2
+        && compoundProgress.parts?.[0].done === 1 && compoundProgress.parts?.[0].target === 4
+        && compoundProgress.parts?.[1].done === 1 && compoundProgress.parts?.[1].target === 2
+        && compoundProgress.done === 2 && compoundProgress.target === 6, JSON.stringify(compoundProgress));
+    // A compound delivery is still gated on the character's home, like a plain one.
+    const compoundDelivery = (place: string | null) => playComplete(
+        {
+            ...compound([
+                { kind: 'deliver_items', items: [{ catalogKey: 'x', count: 1 }] },
+                { kind: 'win_picks', count: 1 },
+            ]),
+            objective: {
+                kind: 'all_of',
+                home: 'the-tank',
+                parts: [
+                    { kind: 'deliver_items', items: [{ catalogKey: 'x', count: 1 }] },
+                    { kind: 'win_picks', count: 1 },
+                ],
+            } as any,
+        },
+        fakeFacts({ wins: 1, holdings: { x: 1 }, place }),
+    );
+    check('all_of: a delivery part still completes only at the home', compoundDelivery('the-tank') && !compoundDelivery('tankdaq'));
+    check('forcedFind: never forces a shop item, and skips a stocked one',
+        forcedFind([{
+            ...compound([{ kind: 'deliver_items', items: [
+                { catalogKey: 'shop', count: 1, forceable: false },
+                { catalogKey: 'found', count: 1, forceable: true },
+            ] }]),
+            baseline: { feeds: 0, picks: 0, lifetime_earned: 0, finds: 0 },
+        }], fakeFacts({}), 2, 3) === 'found');
 
     // --- Petless ---
     section('Petless account - nothing runs, encounter: null');
