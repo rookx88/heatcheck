@@ -59,7 +59,7 @@ export async function computeSkillRatings(
 ): Promise<Map<string, number>> {
     if (discordUserIds.length === 0) return new Map();
 
-    const [tankRows, voteRows, pointsRows] = await Promise.all([
+    const [tankRows, voteRows, pointsRows, tankVoteRows] = await Promise.all([
         // Real-Tank picks: all of a member's settled picks, same (deliberately
         // guild-agnostic) scoping the accuracy leaderboard already uses - a pick is
         // one shared account-level thing, only the points below are guild-scoped.
@@ -94,19 +94,32 @@ export async function computeSkillRatings(
             SELECT discord_user_id, points FROM community_points
             WHERE guild_id = ${guildId} AND discord_user_id = ANY(${discordUserIds}::text[])
         ` as unknown as Promise<PointsRow[]>,
+        // Server-only Tank calls made in THIS guild (discord_tank_votes) - difficulty
+        // from the price frozen at vote time, the implied_prob_at_lock equivalent.
+        sql`
+            SELECT discord_user_id,
+                   COUNT(*)::int AS settled,
+                   COUNT(*) FILTER (WHERE result = 'correct')::int AS correct,
+                   COALESCE(SUM(1 - implied_prob_at_vote) FILTER (WHERE result = 'correct'), 0)::float8 AS win_difficulty_sum
+            FROM discord_tank_votes
+            WHERE guild_id = ${guildId} AND result IS NOT NULL AND discord_user_id = ANY(${discordUserIds}::text[])
+            GROUP BY discord_user_id
+        ` as unknown as Promise<VoteStatsRow[]>,
     ]);
 
     const tankById = new Map(tankRows.map((r) => [r.discord_user_id, r]));
     const votesById = new Map(voteRows.map((r) => [r.discord_user_id, r]));
+    const tankVotesById = new Map(tankVoteRows.map((r) => [r.discord_user_id, r]));
     const pointsById = new Map(pointsRows.map((r) => [r.discord_user_id, Number(r.points)]));
 
     const ratings = new Map<string, number>();
     for (const id of discordUserIds) {
         const tanks = tankById.get(id);
         const votes = votesById.get(id);
-        const settled = (tanks?.settled ?? 0) + (votes?.settled ?? 0);
-        const correct = (tanks?.correct ?? 0) + (votes?.correct ?? 0);
-        const winDifficultySum = (tanks?.win_difficulty_sum ?? 0) + (votes?.win_difficulty_sum ?? 0);
+        const tankVotes = tankVotesById.get(id);
+        const settled = (tanks?.settled ?? 0) + (votes?.settled ?? 0) + (tankVotes?.settled ?? 0);
+        const correct = (tanks?.correct ?? 0) + (votes?.correct ?? 0) + (tankVotes?.correct ?? 0);
+        const winDifficultySum = (tanks?.win_difficulty_sum ?? 0) + (votes?.win_difficulty_sum ?? 0) + (tankVotes?.win_difficulty_sum ?? 0);
         const points = pointsById.get(id) ?? 0;
 
         const accuracy = (correct + ACCURACY_PRIOR_STRENGTH / 2) / (settled + ACCURACY_PRIOR_STRENGTH);

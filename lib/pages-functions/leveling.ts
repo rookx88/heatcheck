@@ -59,7 +59,7 @@ export async function computeLevels(
 ): Promise<Map<string, LevelInfo>> {
     if (discordUserIds.length === 0) return new Map();
 
-    const [tankRows, voteRows, pointsRows] = await Promise.all([
+    const [tankRows, voteRows, pointsRows, tankVoteRows] = await Promise.all([
         sql`
             SELECT dl.discord_user_id,
                    COUNT(*)::int AS settled,
@@ -82,16 +82,26 @@ export async function computeLevels(
             SELECT discord_user_id, points FROM community_points
             WHERE guild_id = ${guildId} AND discord_user_id = ANY(${discordUserIds}::text[])
         ` as unknown as Promise<{ discord_user_id: string; points: number }[]>,
+        // Server-only Tank calls made in this guild (discord_tank_votes).
+        sql`
+            SELECT discord_user_id,
+                   COUNT(*)::int AS settled,
+                   COUNT(*) FILTER (WHERE result = 'correct')::int AS correct
+            FROM discord_tank_votes
+            WHERE guild_id = ${guildId} AND result IS NOT NULL AND discord_user_id = ANY(${discordUserIds}::text[])
+            GROUP BY discord_user_id
+        ` as unknown as Promise<{ discord_user_id: string; settled: number; correct: number }[]>,
     ]);
 
     const tanksById = new Map(tankRows.map((r) => [r.discord_user_id, r]));
     const votesById = new Map(voteRows.map((r) => [r.discord_user_id, r]));
+    const tankVotesById = new Map(tankVoteRows.map((r) => [r.discord_user_id, r]));
     const pointsById = new Map(pointsRows.map((r) => [r.discord_user_id, Number(r.points)]));
 
     const out = new Map<string, LevelInfo>();
     for (const id of discordUserIds) {
-        const participation = (tanksById.get(id)?.settled ?? 0) + (votesById.get(id)?.settled ?? 0);
-        const correct = (tanksById.get(id)?.correct ?? 0) + (votesById.get(id)?.correct ?? 0);
+        const participation = (tanksById.get(id)?.settled ?? 0) + (votesById.get(id)?.settled ?? 0) + (tankVotesById.get(id)?.settled ?? 0);
+        const correct = (tanksById.get(id)?.correct ?? 0) + (votesById.get(id)?.correct ?? 0) + (tankVotesById.get(id)?.correct ?? 0);
         const points = Math.max(0, pointsById.get(id) ?? 0);
         const xp = XP_PER_PARTICIPATION * participation + XP_PER_CORRECT * correct + points;
         out.set(id, levelInfoForXp(xp));

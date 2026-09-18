@@ -523,7 +523,21 @@ function homepageStyles(): string {
         @keyframes hc-world-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
         .hc-world-map-static, #hc-map-root svg { display: block; width: 100%; height: auto; }
 
+        /* Discord bot banner: the whole image, at the width of whatever it sits
+           under (Market Movers on desktop, the page column on phones). */
+        .hc-discord-banner {
+            display: block; margin-top: 1rem;
+            border-radius: 12px; overflow: hidden;
+            box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4), 0 0 0 2px rgba(88, 101, 242, 0.45);
+            transition: box-shadow 0.15s ease, transform 0.15s ease;
+        }
+        .hc-discord-banner img { display: block; width: 100%; height: auto; }
+        .hc-discord-banner:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45), 0 0 0 2px rgba(88, 101, 242, 0.8); }
+        .hc-discord-banner:focus-visible { outline: 2px solid var(--hc-teal); outline-offset: 3px; }
+        .hc-discord-banner--desktop { display: none; }
+
         @media (prefers-reduced-motion: reduce) {
+            .hc-discord-banner, .hc-discord-banner:hover { transition: none; transform: none; }
             .hc-sport-row { scroll-behavior: auto; }
             #hc-map-root { animation: none; }
         }
@@ -568,7 +582,11 @@ function homepageStyles(): string {
             .hc-tanks-column { grid-area: tanks; align-self: start; }
             /* align-self: start on both spanned/stacked items so neither panel gets
                stretched to fill a row it did not earn - each keeps its natural height. */
-            #market-movers { grid-area: movers; align-self: start; }
+            /* The rail (Market Movers + the Discord banner beneath it) takes the area,
+               same pattern as .hc-tanks-column. */
+            .hc-movers-column { grid-area: movers; align-self: start; }
+            .hc-discord-banner--desktop { display: block; margin-top: 0.9rem; }
+            .hc-discord-banner--mobile { display: none; }
             #explore { grid-area: explore; align-self: start; }
             .hc-footer { grid-area: footer; }
 
@@ -590,6 +608,19 @@ function homepageStyles(): string {
             .hc-footer { padding-top: 1.25rem; }
         }
     `;
+}
+
+// The Discord bot banner (discord-bot-banner.webp, 1200x400), linking to /discord-bot/.
+// Rendered twice - one copy per layout - because desktop wants it inside the Market
+// Movers rail while phones want it after Explore, and the two positions can't be one
+// element without restacking the whole mobile page.
+function renderDiscordBanner(variant: 'desktop' | 'mobile'): string {
+    return `
+        <a class="hc-discord-banner hc-discord-banner--${variant}" href="/discord-bot/">
+            <img src="/assets/images/discord-bot-banner.webp"
+                 alt="Bring the heat: add the free Heatchecks bot to your Discord - PvP battles, leaderboards, earn Ember, giveaways, profile cards, easy set-up. Read more."
+                 width="1200" height="400" loading="lazy" decoding="async">
+        </a>`;
 }
 
 export function renderHomepage(options: RenderHomepageOptions): string {
@@ -678,8 +709,16 @@ export function renderHomepage(options: RenderHomepageOptions): string {
                  alt="Ember Dash, coming soon. While AXO Corp has their system to mine ember, others are taking riskier approaches."
                  width="1120" height="630" loading="lazy" decoding="async">
         </div>
-        ${renderMarketMoversSection(data.marketMovers)}
+        <!-- Right rail on desktop: Market Movers with the Discord bot banner under it,
+             matching its width. On phones the rail is a plain block and the banner's
+             second copy (after Explore) takes over as the last thing before the footer;
+             the hidden copy is lazy, so it never downloads. -->
+        <div class="hc-movers-column">
+            ${renderMarketMoversSection(data.marketMovers)}
+            ${renderDiscordBanner('desktop')}
+        </div>
         ${renderExplore()}
+        ${renderDiscordBanner('mobile')}
         ${footer()}
     </main>
     <script type="application/json" id="homepage-data">${payloadJson}</script>

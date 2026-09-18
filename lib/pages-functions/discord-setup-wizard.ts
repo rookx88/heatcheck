@@ -130,7 +130,7 @@ export function buildWelcomeCardMessage(): { embeds: unknown[] } {
             title: 'Heatchecks is live in this server',
             description: [
                 '**What happens here**',
-                '• Daily **Tank cards** — real sports storylines with pick buttons. Picking links your Discord to a free [heatchecks.io](https://heatchecks.io) account and earns **Ember** when you call it right.',
+                '• Daily **Tank cards** — real sports storylines with pick buttons. Anyone can call them for Community Points, no account needed. Link your Discord to a free [heatchecks.io](https://heatchecks.io) account to earn **Ember** on your calls too.',
                 '• **Community Picks** — quick market votes anyone can join, no account needed. Correct calls earn Community Points toward this server\'s leaderboard.',
                 '',
                 '**Try it**',

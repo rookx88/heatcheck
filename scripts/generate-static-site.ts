@@ -57,6 +57,7 @@ import { generateTermsPageHtml } from './templates/terms-template';
 import { generatePrivacyPageHtml } from './templates/privacy-template';
 import { generateFaqPageHtml } from './templates/faq-template';
 import { generateContactPageHtml } from './templates/contact-template';
+import { generateDiscordBotPageHtml } from './templates/discord-bot-template';
 import { generateMyPortfolioPageHtml } from './templates/my-portfolio-template';
 import { generateTankPageHtml, TankPageEntry, type LinesBoardEntry } from './templates/tank-template';
 import { generateTankLandPageHtml } from './templates/tank-land-template';
@@ -200,6 +201,10 @@ const NEW_SITE_IMAGES = [
     // (.hc-ember-dash, server-rendered by homepage/render.ts). Downscaled from
     // Ember_Run_banner.png (2.2MB) to ~2x its rendered size.
     'ember-dash-banner.webp',
+    // Discord bot banner - homepage, under Market Movers on desktop and last before
+    // the footer on mobile (.hc-discord-banner, homepage/render.ts); links to
+    // /discord-bot/. From discord_banner.png (1200x400, 970KB) as a same-size WebP.
+    'discord-bot-banner.webp',
     // The Ember currency stone - every Ember pill (components/MapHud.tsx EmberIcon,
     // tankdaq-ticker-client.tsx EmberGlyph, homepage/render.ts). Downscaled to 96px.
     'ember_currency.png',
@@ -1219,7 +1224,8 @@ async function generateAllPages(): Promise<void> {
         writeHtmlFile('privacy/index.html', generatePrivacyPageHtml(baseUrl));
         writeHtmlFile('faq/index.html', generateFaqPageHtml(baseUrl));
         writeHtmlFile('contact/index.html', generateContactPageHtml(baseUrl));
-        console.log('✓ Built terms, privacy, FAQ and contact pages\n');
+        writeHtmlFile('discord-bot/index.html', generateDiscordBotPageHtml(baseUrl));
+        console.log('✓ Built terms, privacy, FAQ, contact and Discord bot pages\n');
 
         // My Portfolio page (formerly My Tanks; /my-tanks/ 301s here): a logged-in user's
         // Tank picks plus their TANKDAQ index holdings. Same standalone-bundle pattern as

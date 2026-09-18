@@ -1070,6 +1070,9 @@ export async function buildSrLeaderboardMessage(env: Env, guildId: string): Prom
         UNION
         SELECT discord_user_id FROM community_points
         WHERE guild_id = ${guildId} AND discord_user_id = ANY(${memberIds}::text[]) AND points > 0
+        UNION
+        SELECT discord_user_id FROM discord_tank_votes
+        WHERE guild_id = ${guildId} AND discord_user_id = ANY(${memberIds}::text[]) AND result IS NOT NULL
     `) as unknown as { discord_user_id: string }[];
     const candidates = candidateRows.map((r) => r.discord_user_id);
     if (candidates.length === 0) return { content: 'Nobody in this server has any settled activity yet.', headerLabel: '', rows: [] };
@@ -1187,17 +1190,29 @@ export async function handleMyResultsCommand(context: RequestContext, interactio
 async function myResultsData(context: RequestContext, guildId: string, discordUserId: string): Promise<DeferredMessageData> {
     const sql = getSql(context.env);
     const [tankRows, pickRows] = await Promise.all([
+        // Ember picks and server-only calls (discord_tank_votes, this guild's) together,
+        // newest settled first - both are "Real Tanks" to the member.
         sql`
-            SELECT t.slug, t.model_output, p.side, p.result, cpt.delta AS points_awarded
-            FROM picks p
-            JOIN discord_links dl ON dl.waitlist_id = p.waitlist_id
-            JOIN tank_pages t ON t.id = p.tank_page_id
-            JOIN discord_guild_posts dgp ON dgp.guild_id = ${guildId} AND dgp.tank_page_id = t.id
-            LEFT JOIN community_points_transactions cpt
-                ON cpt.guild_id = ${guildId} AND cpt.discord_user_id = ${discordUserId}
-                AND cpt.source_type = 'tank' AND cpt.source_id = t.id::text
-            WHERE dl.discord_user_id = ${discordUserId} AND p.result IS NOT NULL
-            ORDER BY p.settled_at DESC NULLS LAST
+            SELECT slug, model_output, side, result, points_awarded FROM (
+                SELECT t.slug, t.model_output, p.side, p.result, cpt.delta AS points_awarded, p.settled_at
+                FROM picks p
+                JOIN discord_links dl ON dl.waitlist_id = p.waitlist_id
+                JOIN tank_pages t ON t.id = p.tank_page_id
+                JOIN discord_guild_posts dgp ON dgp.guild_id = ${guildId} AND dgp.tank_page_id = t.id
+                LEFT JOIN community_points_transactions cpt
+                    ON cpt.guild_id = ${guildId} AND cpt.discord_user_id = ${discordUserId}
+                    AND cpt.source_type = 'tank' AND cpt.source_id = t.id::text
+                WHERE dl.discord_user_id = ${discordUserId} AND p.result IS NOT NULL
+                UNION ALL
+                SELECT t.slug, t.model_output, v.side, v.result, cpt.delta AS points_awarded, v.settled_at
+                FROM discord_tank_votes v
+                JOIN tank_pages t ON t.id = v.tank_page_id
+                LEFT JOIN community_points_transactions cpt
+                    ON cpt.guild_id = ${guildId} AND cpt.discord_user_id = ${discordUserId}
+                    AND cpt.source_type = 'tank' AND cpt.source_id = t.id::text
+                WHERE v.guild_id = ${guildId} AND v.discord_user_id = ${discordUserId} AND v.result IS NOT NULL
+            ) calls
+            ORDER BY settled_at DESC NULLS LAST
             LIMIT ${MY_RESULTS_LIMIT}
         ` as unknown as Promise<MyTankResultRow[]>,
         sql`

@@ -191,7 +191,7 @@ const GROUPS: FaqGroup[] = [
             },
             {
                 q: 'Is there a Discord bot?',
-                a: ['Yes. Servers that add the Heatchecks bot get Tanks posted to a channel, community picks and leaderboards, and members can make their calls right from Discord. Link your Discord on your [account page](/account/) and the Ember you earn there lands on your Heatchecks account.'],
+                a: ['Yes. Servers that add the Heatchecks bot get Tanks posted to a channel, community picks and leaderboards, and members can make their calls right from Discord. Link your Discord on your [account page](/account/) and the Ember you earn there lands on your Heatchecks account. It is free for every server — [see everything it does](/discord-bot/).'],
             },
         ],
     },

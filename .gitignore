@@ -78,6 +78,7 @@ assets/images/*
 !assets/images/register-banner.webp
 !assets/images/ember_currency.png
 !assets/images/tank-homepage-backdrop.webp
+!assets/images/discord-bot-banner.webp
 # The site-wide page background (sharedStyles' body::before). Must be committed for
 # the same reason as the game-screen art below: optimize-landing-images.ts is a manual
 # one-off, NOT part of build:static, so Cloudflare never regenerates it - it only

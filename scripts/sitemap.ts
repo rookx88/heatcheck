@@ -79,6 +79,7 @@ export function generateSitemap(
         { loc: `${baseUrl}/terms/`, lastmod: today, changefreq: 'yearly', priority: '0.3' },
         { loc: `${baseUrl}/faq/`, lastmod: today, changefreq: 'monthly', priority: '0.5' },
         { loc: `${baseUrl}/contact/`, lastmod: today, changefreq: 'yearly', priority: '0.4' },
+        { loc: `${baseUrl}/discord-bot/`, lastmod: today, changefreq: 'monthly', priority: '0.5' },
         { loc: `${baseUrl}/privacy/`, lastmod: today, changefreq: 'yearly', priority: '0.3' },
     ];
 

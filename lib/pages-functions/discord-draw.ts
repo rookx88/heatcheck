@@ -40,15 +40,19 @@ async function buildEligiblePool(
         // Guild scope isn't inherent for a real Tank (it can post to many guilds), so
         // the pool has to be cross-referenced against THIS guild's live membership -
         // same fetchGuildMembers call /leaderboard already uses (or the caller's copy).
+        // Server-only calls (discord_tank_votes) are cast inside one guild, so they join
+        // the pool without the roster check - same as Community Pick votes below.
         const members = input.guildMembers ?? await fetchGuildMembers(env, input.guildId);
         const memberIds = members.filter((m) => !m.user.bot).map((m) => m.user.id);
-        if (memberIds.length === 0) return [];
         const rows = await sql`
-            SELECT DISTINCT dl.discord_user_id
+            SELECT dl.discord_user_id
             FROM discord_links dl
             JOIN picks p ON p.waitlist_id = dl.waitlist_id
             WHERE dl.discord_user_id = ANY(${memberIds}::text[])
               AND p.tank_page_id = ${input.sourceId} AND p.result = 'correct'
+            UNION
+            SELECT discord_user_id FROM discord_tank_votes
+            WHERE guild_id = ${input.guildId} AND tank_page_id = ${input.sourceId} AND result = 'correct'
         `;
         return (rows as unknown as { discord_user_id: string }[]).map((r) => r.discord_user_id);
     }

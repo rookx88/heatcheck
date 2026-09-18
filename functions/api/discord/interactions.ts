@@ -59,6 +59,7 @@ import {
     buildMeCardInput,
 } from '../../../lib/pages-functions/discord-commands';
 import { sendMeCard } from '../../../lib/pages-functions/me-card';
+import { recordTankVote, findTankVote, type RecordTankVoteResult } from '../../../lib/pages-functions/discord-tank-votes';
 import { handlePvpCommand, handlePvpComponent } from '../../../lib/pages-functions/pvp';
 
 const DISCORD_PING = 1;
@@ -127,12 +128,16 @@ async function handlePickButton(context: RequestContext, interaction: any, custo
         WHERE dl.discord_user_id = ${discordUserId}
         LIMIT 1
     `;
-    if (linkRows.length === 0) {
-        return ephemeral('Connect your Heatchecks account first: heatchecks.io/api/discord/link — takes a few seconds, and creates an account for you if you don\'t have one yet.');
-    }
-    const link = linkRows[0] as unknown as { waitlist_id: string; onboarded_at: string | null };
-    if (!link.onboarded_at) {
-        return ephemeral('Finish setting up your Heatchecks account at heatchecks.io/welcome/ before picking from Discord.');
+    const link = linkRows[0] as unknown as { waitlist_id: string; onboarded_at: string | null } | undefined;
+
+    // Anyone in the server can call a Tank for Community Points; only a linked,
+    // onboarded account with an Ember pick left today gets an Ember pick. Everyone else
+    // (and a capped linked member) gets a server-only call - see discord-tank-votes.ts.
+    if (!link?.onboarded_at) {
+        const upsell = link
+            ? 'Finish setting up your account at heatchecks.io/welcome/ to earn **Ember** on your calls too.'
+            : 'Link your Discord at heatchecks.io/api/discord/link to earn **Ember** on your calls too — it takes a few seconds and creates a free account if you don\'t have one.';
+        return serverOnlyCall(sql, interaction, discordUserId, link?.waitlist_id ?? null, slug, sideIndex, upsell);
     }
 
     // custom_id only carries the slug + sideIndex (kept short - Discord caps custom_id
@@ -154,6 +159,10 @@ async function handlePickButton(context: RequestContext, interaction: any, custo
     const side = sides[sideIndex];
     if (!side) return ephemeral("Couldn't process that button.");
 
+    // A server-only call made before linking stays the one call on this Tank.
+    const priorVote = await findTankVote(sql, slug, discordUserId);
+    if (priorVote) return ephemeral(`You already made this call: **${priorVote.side}** (for server points).`);
+
     let result: SubmitPickResult;
     try {
         result = await submitPick(sql, context.env, { waitlistId: link.waitlist_id, slug, side, sideIndex, source: 'app' });
@@ -162,7 +171,50 @@ async function handlePickButton(context: RequestContext, interaction: any, custo
         return ephemeral('Something went wrong recording that pick. Try again shortly.');
     }
 
+    if (result.status === 'cap_reached') {
+        return serverOnlyCall(sql, interaction, discordUserId, link.waitlist_id, slug, sideIndex,
+            `You've used today's Ember picks (${result.dailyCap}), so this one counts for server points only. Ember picks reset tomorrow.`);
+    }
     return ephemeral(messageForResult(result));
+}
+
+function messageForVote(result: RecordTankVoteResult, pointsLabel: string, upsell: string): string {
+    switch (result.status) {
+        case 'not_found': return "Couldn't find that Tank anymore - it may have been unpublished.";
+        case 'not_settleable': return 'This Tank is not accepting picks.';
+        case 'game_started': return 'This game has already started - picks are closed.';
+        case 'no_odds': return 'This prop has no usable odds on record and cannot be picked.';
+        case 'side_index_out_of_range': return 'Something went wrong with that button - try again from the Tank page.';
+        case 'already_picked': return `You already made this call: **${result.side}**.`;
+        case 'already_voted': return `You already made this call: **${result.side}**.`;
+        case 'ok': {
+            const reward = result.pointsIfCorrect !== null ? ` Worth **+${result.pointsIfCorrect} ${pointsLabel}** if it lands.` : '';
+            return `Locked in: **${result.side}**.${reward}\n${upsell}`;
+        }
+    }
+}
+
+async function serverOnlyCall(
+    sql: ReturnType<typeof getSql>,
+    interaction: any,
+    discordUserId: string,
+    linkedHeatchecksUserId: string | null,
+    slug: string,
+    sideIndex: number,
+    upsell: string
+): Promise<Response> {
+    const guildId: string | undefined = interaction.guild_id;
+    if (!guildId) return ephemeral('Tank calls from Discord only count inside a server.');
+    try {
+        const [result, labels] = await Promise.all([
+            recordTankVote(sql, { guildId, discordUserId, linkedHeatchecksUserId, slug, sideIndex }),
+            getGuildLabels(sql, guildId),
+        ]);
+        return ephemeral(messageForVote(result, labels.communityPointsLabel, upsell));
+    } catch (err) {
+        console.error('[POST /api/discord/interactions] recordTankVote failed:', err);
+        return ephemeral('Something went wrong recording that call. Try again shortly.');
+    }
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {

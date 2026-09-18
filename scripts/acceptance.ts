@@ -59,6 +59,7 @@ async function loadSuites(): Promise<Suite[]> {
         import('./acceptance/suites/kalshi-live'),
         import('./acceptance/suites/discord-multi-guild-cap'),
         import('./acceptance/suites/community-points-isolation'),
+        import('./acceptance/suites/discord-tank-votes'),
         import('./acceptance/suites/shares'),
         import('./acceptance/suites/curation'),
         import('./acceptance/suites/market-movement'),
