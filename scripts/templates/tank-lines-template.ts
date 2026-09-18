@@ -127,7 +127,7 @@ export function generateTankLinesPage(
                 <section class="tank-lines-slot">
                     <h2 class="tank-lines-slot-title">${SLOT_TITLE[key]}</h2>
                     <p class="tank-lines-slot-label">${escapeHtml(label)}</p>
-${renderMarketSection(prop, game, row.created_at, { writtenVerb: 'this line was listed', heading: 'Market prices', note: LINES_PRICE_NOTE })}
+${renderMarketSection(prop, game, row.created_at, { writtenVerb: 'this line came through', heading: 'Market prices', note: LINES_PRICE_NOTE })}
                     <div class="tank-article-artifact-section">
                         <p class="tank-article-artifact-label">Make The Call</p>
                         <div class="tank-article-artifact">

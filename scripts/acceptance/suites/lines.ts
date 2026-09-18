@@ -19,6 +19,16 @@ const SLUG_PREFIX = 'acceptance-lines-';
 const EMAIL_PREFIX = 'acceptance-lines-';
 const TICKER_SECRET = process.env.TICKER_SECRET || '';
 
+// A lines wall is rendered untruncated into the same cube panel a story's card uses
+// (components/Fishtank.tsx), so the budget is "no longer than a story already is" rather
+// than a layout measurement. Re-measured 2026-09-17 over the 423 published story cards on
+// the live corpus: longest card 200, longest hook 187, p99 181, median 109. The previous
+// 189 was measured on a smaller corpus and had drifted below what stories really print -
+// it left the two-club records wall (the longest the builder can produce) with 1-3
+// characters of headroom once European club names and three-digit records met. Re-measure
+// this against the corpus rather than raising it to fit a wall that got too long.
+const WALL_CHARS = 200;
+
 async function cleanup() {
     await cleanupUsersByEmailPrefix(EMAIL_PREFIX);
     await cleanupTanksBySlugPrefix(SLUG_PREFIX);
@@ -42,7 +52,7 @@ async function insertLinesRow(opts: {
     const modelOutput = {
         seo: { title: 'Fixture Away @ Fixture Home — Moneyline', meta_description: 'fixture', slug: opts.slug },
         body: '', tagline: 'Moneyline', hook: 'Fixture Away @ Fixture Home — Moneyline',
-        cards: ['MLB · Fixture Away @ Fixture Home', 'Polymarket when this line was listed: 50% / 50%'],
+        cards: ['MLB · Fixture Away @ Fixture Home', 'Where this line stood when it came through: 50% / 50%'],
         call: { question: 'Who wins?', sides: opts.outcomes },
     };
     const { rows } = await pool.query(
@@ -145,16 +155,16 @@ async function run() {
 
     const ml = buildLinesArticle(mlProp, game, facts);
     check('moneyline hook states both prices as a pair that reads as 100%',
-        ml.hook === 'San Diego Padres 64.6%, Colorado Rockies 35.4%: the moneyline on San Diego Padres @ Colorado Rockies when it was listed.', ml.hook);
+        ml.hook === 'San Diego Padres 64.6%, Colorado Rockies 35.4%: the moneyline on San Diego Padres @ Colorado Rockies when it came through.', ml.hook);
     check('a club with 5+ games gets its record; a club with fewer is left out, not guessed',
         ml.cards[0] === 'San Diego Padres: 6 wins in 9 games on our board; their prices added up to 5.2.' && ml.cardHeaders?.[0] === 'Wins vs prices', ml.cards[0]);
     check('movement is two levels over a bounded interval, never a difference',
-        ml.cards[1].includes('The price on San Diego Padres went from 60% to 64.6% between Sep 16 and Sep 17.'), ml.cards[1]);
+        ml.cards[1].includes('Out there the price on San Diego Padres went from 60% to 64.6% between Sep 16 and Sep 17.'), ml.cards[1]);
     check('the volume wall names its header after what it says', ml.cardHeaders?.[1] === '$115K volume', String(ml.cardHeaders?.[1]));
 
     const unmoved = buildLinesArticle(mlProp, game, { ...facts, dayAgo: { prob: 0.641, ts: '2026-09-16T14:00:00.000Z' } });
     check('under a point is "didn\'t move", said once and plainly',
-        unmoved.cards[1].endsWith("The price on San Diego Padres didn't move between Sep 16 and Sep 17."), unmoved.cards[1]);
+        unmoved.cards[1].endsWith("Out there the price on San Diego Padres didn't move between Sep 16 and Sep 17."), unmoved.cards[1]);
 
     const spread = buildLinesArticle(spreadProp, game, { ...facts, volume: 0, liquidity: 221000, dayAgo: null, ladder: [{ line: -2.5, prob: 0.435 }, { line: -3.5, prob: 0.02 }] });
     check('a spread quoted with depth but no volume still shows its price (the dead-book rule reads liquidity)',
@@ -188,8 +198,30 @@ async function run() {
     check('no wall uses the banned price words', !banned, banned ? banned[0] : '');
     check('exactly two cards per line (the cube closes at four walls)', [ml, spread, total, bare].every((a) => a.cards.length === 2));
     const longest = Math.max(...[ml, unmoved, spread, nfl, total, bare].flatMap((a) => [a.hook, ...a.cards]).map((t) => t.length));
-    check('no wall runs longer than a story\'s longest card (189 chars measured on the live corpus)', longest <= 189, String(longest));
+    check(`no wall runs longer than a story's longest card (${WALL_CHARS} chars)`, longest <= WALL_CHARS, String(longest));
     check('card headers fit the wall (34 chars)', [ml, spread, total, bare].every((a) => (a.cardHeaders ?? []).every((h) => h.length <= 35)));
+
+    // The wall budget is only meaningful against the longest names that can actually
+    // reach one. The fixture clubs above are MLB (16-17 chars); European football is
+    // where the long ones live, and recordSentence - the one wall that names two clubs -
+    // is the binding case. Measured over every distinct club on the board 2026-09-17, the
+    // longest are 26 / 25 / 25 / 24, so this pairs the two longest with three-digit
+    // records and a three-digit expected-wins figure: the worst wall the code can build.
+    const longGame = {
+        ...game, league: 'Champions League',
+        away: 'Wolverhampton Wanderers FC', home: 'Brighton & Hove Albion FC',
+    } as Game;
+    const longProp = {
+        ...mlProp, player: 'Wolverhampton Wanderers FC vs. Brighton & Hove Albion FC',
+        odds: { outcomes: ['Wolverhampton Wanderers FC', 'Brighton & Hove Albion FC'], outcomePrices: [0.646, 0.355] },
+    } as Prop;
+    const longWalls = buildLinesArticle(longProp, longGame, {
+        ...facts, volume: 12400000, liquidity: 1200000,
+        records: { away: { games: 138, wins: 106, expectedWins: 104.7 }, home: { games: 124, wins: 118, expectedWins: 116.6 } },
+    });
+    const longest2 = Math.max(...[longWalls.hook, ...longWalls.cards].map((t) => t.length));
+    check(`the longest real club names still fit the wall (${WALL_CHARS} chars)`, longest2 <= WALL_CHARS,
+        `${longest2}: ${[longWalls.hook, ...longWalls.cards].find((t) => t.length === longest2)}`);
 
     const payload = buildLinesDeckPayload({ slug: 's', game_snapshot: { prop: spreadProp, game }, model_output: spread });
     check('the deck uses the row\'s own card headers', payload.contextLabel === 'Win vs cover' && payload.oddsOrMarketLabel === 'Next: -2.5 at 43.5%', `${payload.contextLabel} | ${payload.oddsOrMarketLabel}`);

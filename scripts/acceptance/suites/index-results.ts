@@ -19,7 +19,11 @@ import {
     cleanupIndexFixtures, insertIndexPositionDirect, insertSlateCloseDirect, sqlViaPool, INDEX_FIXTURE_PREFIX,
 } from '../fixtures';
 import { getTickerMovers, getTickerResults, type TickerResultItem } from '../../../lib/pages-functions/tickers';
-import { buildResultSentence, toResultSentences } from '../../../lib/pages-functions/market-movers';
+import {
+    buildResultSentence, buildNewsSentence, toResultSentences, SHARP_POINTS,
+    type TickerNewsMoveItem,
+} from '../../../lib/pages-functions/market-movers';
+import { BANNED_WORDS } from '../../../lib/pages-functions/team-copy';
 import { topMoversSince } from '../../../lib/pages-functions/ticker-window';
 import {
     closeDelta,
@@ -37,12 +41,29 @@ const FIXTURE_CLOSE_DATE = '1999-01-01';
 const AWAY = 'Acceptance FC';
 const HOME = 'Fixture United';
 const MONEY_FLOW = /Buyers|applaud|up in arms|climbs|sinks|local (high|low)/i;
+// The in-world rule (2026-09-17): a signal arrives and the world registers it. The market
+// and the index are never given a reaction, a feeling, or a will - and the mechanism is
+// never narrated, so the copy stays atmospheric rather than explaining where a story came
+// from. Mirrors market-movement.ts's BANNED_NEAR_PRICE for the personification half.
+const NOT_IN_WORLD = /\b(surged|jumped|spiked|plunged|soared|crashed|reacted|answered|shrugged|felt|tremor|panic|fear|greed|because|in response to)\b/i;
+const LITERAL_ELSEWHERE = /\b(earth|real world|our universe|another universe|parallel|dimension|portal)\b/i;
 
 function item(over: Partial<TickerResultItem>): TickerResultItem {
     return {
         tickerKey: 'chalk', won: true, delta: 0.5, occurredAt: '2026-09-11T02:01:02.000Z',
         marketType: 'moneyline', marketLine: null, sideLabel: 'Philadelphia Phillies', sideIndex: 1,
         away: 'Houston Astros', home: 'Philadelphia Phillies', league: 'MLB', question: null,
+        ...over,
+    };
+}
+
+// A totals-shaped tag by default: prop.player is the matchup fallback and the outcome
+// label is generic ("Over 8.5"), which is the subject rule subjectFor applies to game
+// lines. Overridden per case for the player-prop shape.
+function newsItem(over: Partial<TickerNewsMoveItem>): TickerNewsMoveItem {
+    return {
+        subject: 'Over 8.5', market: 'totals', outcomeLabel: 'Over', pickLabel: 'Over',
+        rawPoints: 2, fromPrice: 0.4, toPrice: 0.42, indexPct: 0.24,
         ...over,
     };
 }
@@ -172,6 +193,89 @@ async function run() {
     const vms = toResultSentences([cases[0].item, cases[1].item], '$X');
     check('toResultSentences keeps the {text, won} contract with won from the item, not the sign',
         vms.length === 2 && vms[0].won === true && vms[1].won === false && vms.every((v) => v.text.length > 0));
+
+    // --- 1b. Pure: news sentences - three tiers, two numbers, never conflated -------
+    // The article-page counterpart to the result sentences above, and the same contract:
+    // one form per case, past tense, no forecast, no crowd. Added with the in-world
+    // rewrite (2026-09-17), which is also the first time anything asserted this layer.
+    section('News sentences - one form per tier, in-world, no forecast and no crowd');
+    const newsCases: Array<{ name: string; item: TickerNewsMoveItem; expect: string }> = [
+        {
+            name: 'under FLAT_POINTS reads as no signal, and quotes no numbers',
+            item: newsItem({ rawPoints: 0.49, fromPrice: 0.5, toPrice: 0.502, indexPct: 0.059 }),
+            expect: 'In the 3 days before this story reached $OVERS, the price on Over 8.5 held where it was out there. Not much of a signal came through, and the index barely moved.',
+        },
+        {
+            name: 'at FLAT_POINTS both the levels and the index move appear',
+            item: newsItem({ rawPoints: 0.5, fromPrice: 0.44, toPrice: 0.445, indexPct: 0.06 }),
+            expect: 'In the 3 days before this story reached $OVERS, the price on Over 8.5 went from 44% to 45% out there. The signal came through, and the index moved 0.1 points higher with it.',
+        },
+        {
+            name: 'just under SHARP_POINTS is still the quiet arrival',
+            item: newsItem({ rawPoints: SHARP_POINTS - 0.1, fromPrice: 0.35, toPrice: 0.399, indexPct: 0.588 }),
+            expect: 'In the 3 days before this story reached $OVERS, the price on Over 8.5 went from 35% to 40% out there. The signal came through, and the index moved 0.6 points higher with it.',
+        },
+        {
+            name: 'at SHARP_POINTS the arrival is the loud one, with the same numbers either side',
+            item: newsItem({ rawPoints: SHARP_POINTS, fromPrice: 0.35, toPrice: 0.4, indexPct: 0.6 }),
+            expect: 'In the 3 days before this story reached $OVERS, the price on Over 8.5 went from 35% to 40% out there. That signal came through hard, and the index moved 0.6 points higher with it.',
+        },
+        {
+            name: 'a clamped tag (12.5 raw points saturates the cap) reads loud and claims no proportion',
+            item: newsItem({ rawPoints: 41.5, fromPrice: 0.125, toPrice: 0.54, indexPct: 1.5 }),
+            expect: 'In the 3 days before this story reached $OVERS, the price on Over 8.5 went from 13% to 54% out there. That signal came through hard, and the index moved 1.5 points higher with it.',
+        },
+        {
+            name: 'a downward move moves the index lower',
+            item: newsItem({ rawPoints: -6.2, fromPrice: 0.62, toPrice: 0.558, indexPct: -0.744 }),
+            expect: 'In the 3 days before this story reached $OVERS, the price on Over 8.5 went from 62% to 56% out there. That signal came through hard, and the index moved 0.7 points lower with it.',
+        },
+        {
+            name: 'no levels recorded falls back to PERCENTAGE points, never the index\'s unit',
+            item: newsItem({ rawPoints: 3, fromPrice: null, toPrice: null, indexPct: 0.36 }),
+            expect: 'In the 3 days before this story reached $OVERS, the price on Over 8.5 rose 3.0 percentage points out there. The signal came through, and the index moved 0.4 points higher with it.',
+        },
+        {
+            name: 'levels that round to the same whole percent fall back to points rather than "50% to 50%"',
+            item: newsItem({ rawPoints: 0.6, fromPrice: 0.502, toPrice: 0.504, indexPct: 0.072 }),
+            expect: 'In the 3 days before this story reached $OVERS, the price on Over 8.5 rose 0.6 percentage points out there. The signal came through, and the index moved 0.1 points higher with it.',
+        },
+        {
+            name: 'a zero index move says so instead of printing a 0.0',
+            item: newsItem({ rawPoints: 2, fromPrice: 0.4, toPrice: 0.42, indexPct: 0 }),
+            expect: 'In the 3 days before this story reached $OVERS, the price on Over 8.5 went from 40% to 42% out there. The signal came through, and the index held its level.',
+        },
+        {
+            name: 'a player prop takes the player as its subject, never the side label',
+            item: newsItem({ market: 'nba_player_points', subject: 'Nikola Jokic', outcomeLabel: 'Over 24.5', rawPoints: 2, fromPrice: 0.4, toPrice: 0.42, indexPct: 0.24 }),
+            expect: 'In the 3 days before this story reached $OVERS, the price on Nikola Jokic went from 40% to 42% out there. The signal came through, and the index moved 0.2 points higher with it.',
+        },
+    ];
+    for (const c of newsCases) {
+        const got = buildNewsSentence(c.item, '$OVERS', 0);
+        check(c.name, got === c.expect, `got: ${got}`);
+    }
+    check('templateIndex no longer rotates phrasing on news sentences either',
+        buildNewsSentence(newsCases[1].item, '$OVERS', 1) === newsCases[1].expect
+        && buildNewsSentence(newsCases[1].item, '$OVERS', 7) === newsCases[1].expect);
+
+    // Enumerate every sentence the layer can produce, then grep - the team-copy model
+    // (scripts/acceptance/suites/team-records.ts).
+    const allNews = newsCases.map((c) => buildNewsSentence(c.item, '$OVERS', 0));
+    const flagged = allNews.filter((s) => BANNED_WORDS.test(s) || NOT_IN_WORLD.test(s) || MONEY_FLOW.test(s));
+    check('no news sentence forecasts, rates, or gives the market a reaction', flagged.length === 0, flagged.slice(0, 2).join(' | '));
+    check('the index number is never printed as a percent (the two numbers stay in different units)',
+        allNews.every((s) => !/index moved [\d.]+%/.test(s)));
+    check('"the other side" stays reserved for the opposite side of a market',
+        allNews.every((s) => !/the other side/.test(s)));
+    check('the other universe is never spelled out',
+        allNews.every((s) => !LITERAL_ELSEWHERE.test(s)));
+    check('every non-flat sentence carries BOTH numbers - the market\'s and the index\'s',
+        allNews.filter((s) => !/Not much of a signal/.test(s))
+            .every((s) => /\d/.test(s.split('. ')[0]) && /(points|held its level)/.test(s)));
+    check('the flat tier never upgrades to the loud arrival, whatever the index did',
+        [0, 0.49, -0.49].every((raw) => /Not much of a signal came through/.test(
+            buildNewsSentence(newsItem({ rawPoints: raw, indexPct: 1.5 }), '$OVERS', 0))));
 
     // --- 2. Pure: draw exclusion + share formula -----------------------------------
     section('Slate lock - draw markets never represent a game; share-of-close formula');

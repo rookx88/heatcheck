@@ -5,9 +5,11 @@
 // Ember price, with the price's % change over the boards' adaptive window in
 // parentheses - the same quote form the homepage tape and the Index Board print)
 // beside a line composed server-side by /api/tickers/tank describing the
-// market's own price over the 3 days before the story was added to the index, and what
-// the index did ("Over the 3 days before this story was added to $DOGS, the price on the
-// Chiefs went from 52% to 57%. The index rose 0.6%.").
+// market's own price over the 3 days before the story reached the index, and what the
+// index did ("In the 3 days before this story reached $DOGS, the price on the Chiefs went
+// from 52% to 57% out there. That signal came through hard, and the index moved 0.6 points
+// higher with it."). The market's move prints in % and the index's in points, on purpose -
+// see the in-world note above buildNewsSentence in lib/pages-functions/market-movers.ts.
 //
 // FALLBACK IS THE DEFAULT, NOT THE ERROR PATH: this renders null until it has at least
 // one tag, and the caller only swaps the DOM when it returns something. So an untagged

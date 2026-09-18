@@ -281,6 +281,23 @@ export function toResultSentences(items: TickerResultItem[], displayName: string
 // toPrice, or rawPoints when the levels weren't recorded) is real and typically 1-10
 // points; indexPct is what the index actually did after tag_scale_pct, well under a
 // point. Each is attributed to its own subject: the price did X, the index did Y.
+//
+// IN-WORLD (rewritten 2026-09-17). The facts, the branches and the arithmetic are
+// unchanged; only the framing moved. A story is something that happened out there, past
+// the water, and what this sentence reports is that signal arriving and the index
+// registering it. Three things this copy must never do:
+//   - give the index a reaction. It moves WITH a signal; it never answers one, feels
+//     one, or is hit by one, and the market is never a crowd. That is the money-flow
+//     register the 2026-09-10 rewrite above deleted, and it stays deleted.
+//   - imply the two numbers are proportional. Past 12.5 raw points indexPct clamps at
+//     tag_delta_cap_pct while the quoted levels keep widening, so "so", "which sent" and
+//     "enough to push" become false exactly there. The clauses join with a plain "and".
+//   - say "the other side". That phrase is load-bearing a few dozen lines up - it means
+//     the opposite side of a two-way market (see buildResultSentence) - and these
+//     sentences render in the same article section as those.
+// The index's move prints in POINTS here, the unit buildResultSentence uses and the unit
+// tag_delta_cap_pct caps. The market's own move keeps "%" (levels) or "percentage
+// points" (the fallback), so the page never shows the two numbers in the same unit.
 // -----------------------------------------------------------------------------------
 
 export interface TickerNewsMoveItem {
@@ -302,34 +319,57 @@ export interface TickerNewsMoveItem {
 // must not manufacture drama on a quiet market.
 const FLAT_POINTS = 0.5;
 
+// And above this it did more than move. Keyed on the same number FLAT_POINTS is - the
+// market's own repricing in points of probability, never the index's move - so the three
+// tiers read as one scale: under 0.5 not much came through, 0.5 to 5 a signal, 5 and up a
+// loud one. Ten times FLAT_POINTS is also where the index's own move stops being small
+// change: rawPoints * tag_scale_pct (0.12) puts 5 points at 0.6 index points, 40% of the
+// +/-1.5 tag_delta_cap_pct. Deliberately far below the 12.5 points at which that cap
+// clamps, so every clamped tag already reads as the loud tier without a second test for a
+// mechanic no reader can see - and so the tier is not empty: measured over the 399 real
+// tags on 2026-09-17, 5 points splits them 143 flat / 185 signal / 71 loud, where 12.5
+// would have left 8. Exported so the suite can bracket the boundary rather than hard-code
+// it.
+export const SHARP_POINTS = 5;
+
 // _templateIndex is kept for callers (toNewsSentences passes a position) but no longer
 // rotates phrasings: there is one descriptive form per case, so the same move always
 // reads the same way.
 export function buildNewsSentence(item: TickerNewsMoveItem, displayName: string, _templateIndex: number): string {
     const subject = subjectFor(item);
-    const lead = `Over the 3 days before this story was added to ${displayName}`;
-    const moved = `${Math.abs(item.indexPct).toFixed(1)}%`;
+    const lead = `In the 3 days before this story reached ${displayName}`;
+    // Two decimals when one would print "0.0", via the same guard the result sentences
+    // use - a real move never renders as a zero.
+    const points = resultPoints(item.indexPct);
     const indexClause = item.indexPct > 0
-        ? `The index rose ${moved}.`
+        ? `the index moved ${points} points higher with it`
         : item.indexPct < 0
-            ? `The index fell ${moved}.`
-            : 'The index was unchanged.';
+            ? `the index moved ${points} points lower with it`
+            : 'the index held its level';
 
     if (Math.abs(item.rawPoints) < FLAT_POINTS) {
-        return `${lead}, the price on ${subject} held steady, and the index barely changed.`;
+        return `${lead}, the price on ${subject} held where it was out there. Not much of a signal came through, and the index barely moved.`;
     }
+
+    // The only thing the tier changes is how the arrival is named. The numbers either
+    // side of it are identical in both bands, so a tier can never overstate a move.
+    const arrival = Math.abs(item.rawPoints) >= SHARP_POINTS
+        ? 'That signal came through hard'
+        : 'The signal came through';
 
     const hasLevels = typeof item.fromPrice === 'number' && typeof item.toPrice === 'number'
         && Number.isFinite(item.fromPrice) && Number.isFinite(item.toPrice);
     if (hasLevels) {
         const from = Math.round((item.fromPrice as number) * 100);
         const to = Math.round((item.toPrice as number) * 100);
-        if (from !== to) return `${lead}, the price on ${subject} went from ${from}% to ${to}%. ${indexClause}`;
+        if (from !== to) return `${lead}, the price on ${subject} went from ${from}% to ${to}% out there. ${arrival}, and ${indexClause}.`;
     }
 
+    // No levels recorded on the tag: its own signed repricing, in PERCENTAGE points so it
+    // can never be read as the index's points in the clause that follows.
     const raw = Math.abs(item.rawPoints).toFixed(1);
     const direction = item.rawPoints > 0 ? 'rose' : 'fell';
-    return `${lead}, the price on ${subject} ${direction} ${raw} percentage points. ${indexClause}`;
+    return `${lead}, the price on ${subject} ${direction} ${raw} percentage points out there. ${arrival}, and ${indexClause}.`;
 }
 
 export function toNewsSentences(items: TickerNewsMoveItem[], displayName: string): string[] {

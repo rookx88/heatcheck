@@ -205,6 +205,14 @@ function livePrices(prop: Prop): number[] | null {
 // ("went from 50% to 57.3%", never "up 7 points"), a side named by its full label
 // including the line, no data source named, and the market never written as a character -
 // no "favorite", "chance", "likely", "expects", "the money".
+//
+// IN-WORLD (2026-09-17), on the same terms as the ticker news sentences (see
+// lib/pages-functions/market-movers.ts): a line is something that happened out there, past
+// the water, and it CAME THROUGH to the board. One world-marker per sentence and always a
+// preposition, never a verb - a verb-level rewrite would re-personify the market, which
+// the rules above forbid, and would not fit. Every wall has a hard 189-character budget
+// (scripts/acceptance/suites/lines.ts), so where two sentences share a wall the LEAD owns
+// the arrival and the follower takes the short anchor.
 function movementSentence(label: string, to: number, facts: LinesFacts): string | null {
     const opened = facts.dayAgo;
     if (!opened || !Number.isFinite(opened.prob)) return null;
@@ -212,16 +220,21 @@ function movementSentence(label: string, to: number, facts: LinesFacts): string 
     const d2 = shortDate(facts.asOf);
     if (!d1 || !d2) return null;
     const span = d1 === d2 ? `on ${d1}` : `between ${d1} and ${d2}`;
-    if (Math.abs(to - opened.prob) < UNCHANGED_BELOW) return `The price on ${label} didn't move ${span}.`;
-    return `The price on ${label} went from ${pct(opened.prob)} to ${pct(to)} ${span}.`;
+    if (Math.abs(to - opened.prob) < UNCHANGED_BELOW) return `Out there the price on ${label} didn't move ${span}.`;
+    return `Out there the price on ${label} went from ${pct(opened.prob)} to ${pct(to)} ${span}.`;
 }
 
-function volumeSentence(facts: LinesFacts): string | null {
+// `anchor` is how this sentence refers to the moment the line arrived: 'arrival' spells it
+// out (this sentence is leading its wall), 'then' points back at a lead that already did
+// (so a wall never says "came through" twice, and priceWall stays inside its budget).
+// "had traded" rather than any noun for the people doing it - the market is not a crowd.
+function volumeSentence(facts: LinesFacts, anchor: 'arrival' | 'then' = 'arrival'): string | null {
+    const when = anchor === 'arrival' ? 'when this line came through' : 'by then';
     const v = facts.volume ?? 0;
     const l = facts.liquidity ?? 0;
-    if (v >= 1 && l >= 1) return `${usd(v)} in volume on this line when it was listed, with ${usd(l)} resting in the order book.`;
-    if (v >= 1) return `${usd(v)} in volume on this line when it was listed.`;
-    if (l >= 1) return `No volume yet on this line when it was listed, with ${usd(l)} resting in the order book.`;
+    if (v >= 1 && l >= 1) return `${usd(v)} had traded ${when}, with ${usd(l)} resting in the book.`;
+    if (v >= 1) return `${usd(v)} had traded ${when}.`;
+    if (l >= 1) return `Nothing had traded ${when}, with ${usd(l)} resting in the book.`;
     return null;
 }
 
@@ -248,15 +261,19 @@ function gameWall(prop: Prop, game: Game): Wall {
 
 function priceWall(prop: Prop, facts: LinesFacts | undefined): Wall {
     const priceLine = formatOddsLabel(prop.odds, prop.book);
-    const money = facts ? volumeSentence(facts) : null;
+    // The lead sentence carries the arrival, so the volume tail takes the short anchor.
+    const money = facts ? volumeSentence(facts, priceLine ? 'then' : 'arrival') : null;
     return {
         header: priceLine ?? lineLabel(prop),
         text: priceLine
-            ? join(`When this line was listed: ${priceLine}.`, money)
-            : join('No price to quote on this line when it was listed.', money),
+            ? join(`Where this line stood when it came through: ${priceLine}.`, money)
+            : join('No price came through with this line.', money),
     };
 }
 
+// Already in-world: "on our board" is the tanks' own ledger, against prices from out
+// there. No marker is added here - this is the only wall that names two clubs, and at
+// 176 of its 189 characters with two long soccer names it has no room for one.
 function recordSentence(team: string, r: LinesTeamRecord | null | undefined): string | null {
     if (!r || r.games < MIN_TEAM_GAMES) return null;
     return `${team}: ${r.wins} ${r.wins === 1 ? 'win' : 'wins'} in ${r.games} games on our board; their prices added up to ${r.expectedWins.toFixed(1)}.`;
@@ -271,8 +288,8 @@ function moneylineWalls(prop: Prop, game: Game, sides: string[], facts: LinesFac
     const hook = !p
         ? `${matchup} — ${lineLabel(prop)}`
         : yesLabel
-            ? `${capitalize(yesLabel)} was priced at ${pct(p[0])} when this line was listed.`
-            : `${sides[0]} ${pctPair(p)[0]}, ${sides[1]} ${pctPair(p)[1]}: the moneyline on ${matchup} when it was listed.`;
+            ? `${capitalize(yesLabel)} was priced at ${pct(p[0])} out there when this line came through.`
+            : `${sides[0]} ${pctPair(p)[0]}, ${sides[1]} ${pctPair(p)[1]}: the moneyline on ${matchup} when it came through.`;
 
     const records = join(recordSentence(game.away, facts?.records?.away), recordSentence(game.home, facts?.records?.home));
     const first: Wall = records ? { header: 'Wins vs prices', text: records } : gameWall(prop, game);
@@ -290,7 +307,7 @@ function spreadWalls(prop: Prop, game: Game, sides: string[], facts: LinesFacts 
     const matchup = matchupName(game);
     const outcomes = prop.odds?.outcomes ?? [];
     const hook = p
-        ? `${sides[0]} ${pctPair(p)[0]}, ${sides[1]} ${pctPair(p)[1]}: the spread on ${matchup} when it was listed.`
+        ? `${sides[0]} ${pctPair(p)[0]}, ${sides[1]} ${pctPair(p)[1]}: the spread on ${matchup} when it came through.`
         : `${matchup} — ${lineLabel(prop)}`;
 
     // Win vs cover: the same club's moneyline price next to its cover price. The
@@ -334,7 +351,7 @@ function totalWalls(prop: Prop, game: Game, sides: string[], facts: LinesFacts |
     const matchup = matchupName(game);
     const line = typeof prop.line === 'number' && Number.isFinite(prop.line) ? prop.line : null;
     const hook = p && line !== null
-        ? `The total on ${matchup} was ${line} ${unitFor(game.league, line)}, with ${sides[0]} priced at ${pct(p[0])} when it was listed.`
+        ? `The total on ${matchup} was ${line} ${unitFor(game.league, line)}, with ${sides[0]} priced at ${pct(p[0])} when it came through.`
         : `${matchup} — ${lineLabel(prop)}`;
 
     // The ladder: this number next to its neighbours, all priced for the Over.
