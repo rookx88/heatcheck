@@ -217,7 +217,10 @@ ${renderMarketSection(prop, game, row.created_at, { writtenVerb: 'this line was 
         .tank-article-market-meta { margin: 0.6rem 0 0; font-size: 0.78rem; line-height: 1.5; color: rgba(255,255,255,0.55); }
         .tank-article-market-note { margin: 0.5rem 0 0; font-size: 0.72rem; color: rgba(255,255,255,0.45); }
 
-        .tank-article-artifact-section { margin: 0.5rem -1.4rem 0; text-align: center; }
+        /* Handed back all but 8px a side of the slot's padding: deckScale sizes the cube
+           and its turn arrows to this box, so the inset is the arrows' clearance from
+           the panel's dashed border. */
+        .tank-article-artifact-section { margin: 0.5rem calc(8px - 1.4rem) 0; text-align: center; }
         .tank-article-artifact-label {
             font-family: 'Montserrat', 'Nunito', sans-serif; font-weight: 800; font-size: 0.75rem;
             letter-spacing: 0.1em; text-transform: uppercase; color: var(--hc-gold); margin: 0 0 1rem;
@@ -249,6 +252,15 @@ ${renderMarketSection(prop, game, row.created_at, { writtenVerb: 'this line was 
         @media (min-width: 1180px) {
             .tank-article { max-width: 1180px; }
             .tank-lines-board { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+            /* Three panels share the 1180px page, so each deck gets ~337px, not the 480px
+               an article's rail gives it, and deckScale in tank-article-deck-client.tsx
+               shrinks the cube until it and its arrows fit inside that box. Measured,
+               not derived from this sheet alone: Tank HQ's .tank-lines-board frame
+               (components/TankScreen.css, shipped in tank-article-deck.css) also lands
+               on this board and takes ~35px of padding and border off the row. At a
+               337px box s = (337 - 76) / 400 = 0.65, and the reserve before hydration
+               is 420px times that. Change one, change both. */
+            .tank-article-artifact { min-height: 274px; }
         }
     </style>
 </head>

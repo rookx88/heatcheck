@@ -19,37 +19,57 @@ import { ArticleMarket, type MarketPanelSeed } from './components/ArticleMarket'
 // Fishtank's stage box is this tall at every scale - see its `scale` prop note.
 const STAGE_H = 420;
 
-// Phone sizing. The deck shrinks only as far as it must for the cube AND its turn
-// arrows to fit inside the rail's panel: each arrow sits (200s + 18)px from the cube's
-// centre and is 40px wide, so the pair spans 400s + 76px, plus ~16px of breathing
-// room, against a panel as wide as the viewport less the page's 8px side padding.
-// Solving 400s + 92 <= vw - 16 gives the line below. Full size wherever that fits,
-// which is every desktop and most tablets; floored so a very narrow phone still gets
-// a legible cube. Mirrored by the min-height clamp on .tank-article-artifact in
-// tank-article-template.ts, which reserves the space before this mounts - change one,
-// change both.
-function deckScale(): number {
+// The deck shrinks only as far as it must for the cube AND its turn arrows to fit
+// inside the panel it sits on: each arrow sits (200s + 18)px from the cube's centre
+// and is 40px wide, so the pair spans 400s + 76px. Two bounds, whichever binds:
+//
+//  - the viewport, plus ~16px of breathing room, against a panel as wide as the
+//    viewport less the page's 8px side padding: 400s + 92 <= vw - 16. This is the one
+//    that binds on a phone, where the panel spans the screen.
+//  - the panel's own width: 400s + 76 <= panelW. This is the one that binds on a
+//    lines page, whose three-column board gives each line's deck a ~337px box - a
+//    third of the page less an 8px inset, not the 480px rail an article's deck gets.
+//
+// Full size wherever both fit, which is every desktop article and most tablets;
+// floored so a very narrow phone still gets a legible cube. The reserved space before
+// this mounts is mirrored in CSS - the min-height clamp on .tank-article-artifact in
+// tank-article-template.ts and the desktop override in tank-lines-template.ts. Change
+// one, change both.
+//
+// The panel is the mount's PARENT: the mount point is a flex item sized by its content
+// (0px wide on an article page, where the cube just paints around that point), so its
+// own box says nothing about the room available - see Fishtank's wrapper note.
+function deckScale(host: HTMLElement): number {
     const vw = document.documentElement.clientWidth;
-    return Math.min(1, Math.max(0.6, (vw - 108) / 400));
+    const panelW = (host.parentElement ?? host).getBoundingClientRect().width;
+    const byPanel = panelW > 0 ? (panelW - 76) / 400 : 1;
+    return Math.min(1, Math.max(0.6, Math.min((vw - 108) / 400, byPanel)));
 }
 
-// Re-sized on resize so a phone rotated to landscape gets its full-size cube back.
+// Re-sized on resize so a phone rotated to landscape gets its full-size cube back,
+// and on the panel's own resize - a lines page's board reflows from one column to
+// three at 1180px, which changes the room without changing it by the same ratio.
 // Fishtank paints its stage scaled but keeps the 420px layout box, so a smaller cube
 // would leave STAGE_H * (1 - s) / 2 of unpainted stage above it and below it; the
 // wrapper pulls exactly that back so the panel tightens around the cube. Margins, not
 // a transform: a transformed ancestor would become the containing block for the fixed
 // captain widget and its modal overlays (same reason the homepage showcase gives).
-const ArticleDeck: React.FC<{ payload: DeckPayload; slug: string }> = ({ payload, slug }) => {
-    const [scale, setScale] = useState(deckScale);
+const ArticleDeck: React.FC<{ payload: DeckPayload; slug: string; host: HTMLElement }> = ({ payload, slug, host }) => {
+    const [scale, setScale] = useState(() => deckScale(host));
     useEffect(() => {
-        const onResize = () => setScale(deckScale());
-        window.addEventListener('resize', onResize);
-        window.addEventListener('orientationchange', onResize);
+        const remeasure = () => setScale(deckScale(host));
+        remeasure();
+        window.addEventListener('resize', remeasure);
+        window.addEventListener('orientationchange', remeasure);
+        const panel = host.parentElement;
+        const observer = panel && typeof ResizeObserver !== 'undefined' ? new ResizeObserver(remeasure) : null;
+        if (panel) observer?.observe(panel);
         return () => {
-            window.removeEventListener('resize', onResize);
-            window.removeEventListener('orientationchange', onResize);
+            window.removeEventListener('resize', remeasure);
+            window.removeEventListener('orientationchange', remeasure);
+            observer?.disconnect();
         };
-    }, []);
+    }, [host]);
     const reclaim = Math.round((STAGE_H * (1 - scale)) / 2);
     return (
         <div style={reclaim ? { margin: `${-reclaim}px 0` } : undefined}>
@@ -111,7 +131,7 @@ function mount() {
         if (!(dataEl instanceof HTMLScriptElement) || !dataEl.textContent) return;
         try {
             const { slug, ...payload } = JSON.parse(dataEl.textContent) as DeckPayload & { slug: string };
-            createRoot(root).render(<ArticleDeck payload={payload} slug={slug} />);
+            createRoot(root).render(<ArticleDeck payload={payload} slug={slug} host={root} />);
         } catch (err) {
             console.error('[Tank Article Deck] Failed to parse deck payload:', err);
         }
