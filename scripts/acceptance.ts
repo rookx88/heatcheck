@@ -45,7 +45,9 @@ dotenv.config();
 import { pool, initPool, setActiveSuite, printSummary, runTeardowns, type Suite } from './acceptance/harness';
 
 async function loadSuites(): Promise<Suite[]> {
-    const [tickers, discovery, settlement, pets, auth, homepage, concurrency, ledgerTrace, boundaries, security, kalshiLive, discordMultiGuildCap, communityPointsIsolation, shares, curation, marketMovement, indexResults, hallOfFame, indexQuotes, propSync, indexOverlay, encounters, teamRecords, lines, account] = await Promise.all([
+    // One name per import below, in the same order - a missing name shifts every later
+    // module onto the wrong variable and silently drops the last ones from the run.
+    const [tickers, discovery, settlement, pets, auth, homepage, concurrency, ledgerTrace, boundaries, security, kalshiLive, discordMultiGuildCap, communityPointsIsolation, discordTankVotes, shares, curation, marketMovement, indexResults, hallOfFame, indexQuotes, propSync, indexOverlay, encounters, plays, teamRecords, lines, account, securityGaps] = await Promise.all([
         import('./acceptance/suites/tickers'),
         import('./acceptance/suites/discovery'),
         import('./acceptance/suites/settlement'),
@@ -73,14 +75,15 @@ async function loadSuites(): Promise<Suite[]> {
         import('./acceptance/suites/team-records'),
         import('./acceptance/suites/lines'),
         import('./acceptance/suites/account'),
+        import('./acceptance/suites/security-gaps'),
     ]);
     return [
         tickers.suite, discovery.suite, settlement.suite, pets.suite, auth.suite,
         homepage.suite, concurrency.suite, ledgerTrace.suite, boundaries.suite, security.suite,
         kalshiLive.suite, discordMultiGuildCap.suite, communityPointsIsolation.suite,
-        shares.suite, curation.suite, marketMovement.suite, indexResults.suite, hallOfFame.suite,
-        indexQuotes.suite, propSync.suite, indexOverlay.suite, encounters.suite, teamRecords.suite,
-        lines.suite, account.suite,
+        discordTankVotes.suite, shares.suite, curation.suite, marketMovement.suite, indexResults.suite,
+        hallOfFame.suite, indexQuotes.suite, propSync.suite, indexOverlay.suite, encounters.suite,
+        plays.suite, teamRecords.suite, lines.suite, account.suite, securityGaps.suite,
     ];
 }
 
