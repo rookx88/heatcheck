@@ -20,39 +20,85 @@
 // regardless of the earlier step's outcome" posture worker-curate's sweep chain uses -
 // both depend on settlement/resolution having just run, which only happens on THIS
 // cron, not worker-curate's, so neither can live there instead.
+//
+// Observability (pre-launch Audit 4): every call is timed and classified from its status
+// AND body (lib/ops-classify.ts - a 200 carrying errors is a failure), the whole chain is
+// reported to /api/ops/job-report, and the run pings Healthchecks.io (with /fail when
+// anything failed) so a chain that errors - or never runs at all - emails the founder.
+// The hourly slot runs only /api/ops/health-check: the standing ledger-invariant, job
+// freshness, security-burst and daily-summary check.
+
+import { classifyRun, type JobRun } from '../../lib/ops-classify';
 
 export interface Env {
     SETTLE_URL: string;
     PREVIEW_SETTLE_URL?: string;
     SETTLE_SECRET: string;
+    // Healthchecks.io ping URLs (secrets). Optional - unset means that ping is skipped.
+    HC_PING_SETTLE?: string;
+    HC_PING_OPS?: string;
 }
 
-async function callWithSecret(label: string, url: string, secret: string, header: string): Promise<string> {
-    try {
-        const res = await fetch(url, {
-            method: 'POST',
-            headers: { [header]: secret },
-        });
-        const text = await res.text();
-        if (!res.ok) {
-            console.error(`[worker-settle] ${label} (${url}) returned ${res.status}: ${text}`);
-        } else {
-            console.log(`[worker-settle] ${label} run complete: ${text}`);
+const SETTLE_CRON = '0 9 * * *';
+const OPS_CRON = '0 * * * *';
+
+class Chain {
+    runs: JobRun[] = [];
+    constructor(private secret: string) {}
+
+    async call(job: string, target: JobRun['target'], url: string): Promise<string> {
+        const started = Date.now();
+        try {
+            const res = await fetch(url, { method: 'POST', headers: { 'X-Settle-Secret': this.secret } });
+            const text = await res.text();
+            if (!res.ok) {
+                console.error(`[worker-settle] ${target} ${job} (${url}) returned ${res.status}: ${text}`);
+            } else {
+                console.log(`[worker-settle] ${target} ${job} run complete: ${text}`);
+            }
+            this.runs.push(classifyRun(job, target, res.status, text, Date.now() - started));
+            return text;
+        } catch (err) {
+            console.error(`[worker-settle] ${target} ${job} (${url}) call failed:`, err);
+            this.runs.push(classifyRun(job, target, null, String(err), Date.now() - started));
+            return '';
         }
-        return text;
-    } catch (err) {
-        console.error(`[worker-settle] ${label} (${url}) call failed:`, err);
-        return '';
+    }
+
+    sibling(job: string, target: JobRun['target'], settleUrl: string): Promise<string> {
+        return this.call(job, target, new URL(`/api/${job}`, settleUrl).toString());
+    }
+
+    get failed(): JobRun[] {
+        return this.runs.filter((r) => !r.ok);
     }
 }
 
-async function callSettle(label: string, url: string, secret: string): Promise<string> {
-    return callWithSecret(label, url, secret, 'X-Settle-Secret');
+// Reports the chain to the preview's /api/ops/job-report (the ops endpoints only exist
+// on the preview branch until the port) and pings Healthchecks. Both best-effort: a
+// failure to report must never look like - or cause - a settlement failure.
+async function report(env: Env, trigger: string, chain: Chain, pingUrl: string | undefined): Promise<void> {
+    const opsBase = env.PREVIEW_SETTLE_URL ?? env.SETTLE_URL;
+    try {
+        const res = await fetch(new URL('/api/ops/job-report', opsBase).toString(), {
+            method: 'POST',
+            headers: { 'X-Settle-Secret': env.SETTLE_SECRET, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trigger, runs: chain.runs }),
+        });
+        if (!res.ok) console.error(`[worker-settle] job-report returned ${res.status}: ${await res.text()}`);
+    } catch (err) {
+        console.error('[worker-settle] job-report failed:', err);
+    }
+    await ping(pingUrl, chain.failed.length > 0, chain.failed.map((r) => `${r.target} ${r.job}: ${r.status}`).join('\n'));
 }
 
-async function callSiblingSweep(name: string, path: string, label: string, settleUrl: string, secret: string): Promise<string> {
-    const url = new URL(path, settleUrl).toString();
-    return callWithSecret(`${label} ${name}`, url, secret, 'X-Settle-Secret');
+async function ping(pingUrl: string | undefined, fail: boolean, body = ''): Promise<void> {
+    if (!pingUrl) return;
+    try {
+        await fetch(fail ? `${pingUrl.replace(/\/$/, '')}/fail` : pingUrl, { method: 'POST', body: body.slice(0, 10000) });
+    } catch (err) {
+        console.error('[worker-settle] healthchecks ping failed:', err);
+    }
 }
 
 async function runSettle(env: Env): Promise<string> {
@@ -64,55 +110,71 @@ async function runSettle(env: Env): Promise<string> {
     // Running preview first means the guarded code settles everything and production's
     // pass is a redundant no-op fallback (kept in case the preview deploy ever breaks).
     // At promotion this ordering stops mattering and PREVIEW_SETTLE_URL goes away.
-    let preview = '';
-    let previewDiscord = '';
-    let previewCommunityPicks = '';
-    let previewPvp = '';
-    let previewIndexSlate = '';
-    let previewTankResolution = '';
+    const chain = new Chain(env.SETTLE_SECRET);
     if (env.PREVIEW_SETTLE_URL) {
-        preview = await callSettle('preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
-        previewDiscord = await callSiblingSweep('discord-settlement-sweep', '/api/discord-settlement-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
-        previewCommunityPicks = await callSiblingSweep('community-pick-settlement-sweep', '/api/community-pick-settlement-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
-        previewPvp = await callSiblingSweep('pvp-settlement-sweep', '/api/pvp-settlement-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
+        const p = env.PREVIEW_SETTLE_URL;
+        await chain.call('settle', 'preview', p);
+        await chain.sibling('discord-settlement-sweep', 'preview', p);
+        await chain.sibling('community-pick-settlement-sweep', 'preview', p);
+        await chain.sibling('pvp-settlement-sweep', 'preview', p);
         // Exchange slate settlement: scores each index's locked positions against the
         // real results and writes the day's close per index. Preview-only for the same
         // reason as the rest of this block - only preview carries the slate code.
-        previewIndexSlate = await callSiblingSweep('index-settle', '/api/index-settle', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
+        await chain.sibling('index-settle', 'preview', p);
         // Tank resolution callbacks (Stage 3): writes "what was claimed vs. what
         // happened" onto settled Tanks, which the next static build renders at the foot
-        // of the article. Preview-only for the same reason as index-settle above - only
-        // preview carries the v2 curation code, and only v2-curated Tanks have the
-        // verified trend_claim this stage calls back to. Moves alongside the production
-        // calls below at promotion.
+        // of the article. Preview-only for the same reason as index-settle above.
         //
         // Runs LAST in the preview chain: it is the only step here that spends Anthropic
         // credits, and nothing else depends on it, so if the invocation is going to run
         // out of room it should be the thing that misses a day - never settlement itself.
-        previewTankResolution = await callSiblingSweep('tank-resolution-sweep', '/api/tank-resolution-sweep', 'preview', env.PREVIEW_SETTLE_URL, env.SETTLE_SECRET);
+        await chain.sibling('tank-resolution-sweep', 'preview', p);
     }
 
-    const live = await callSettle('production', env.SETTLE_URL, env.SETTLE_SECRET);
-    const liveDiscord = await callSiblingSweep('discord-settlement-sweep', '/api/discord-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
-    const liveCommunityPicks = await callSiblingSweep('community-pick-settlement-sweep', '/api/community-pick-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
-    // PvP rides this same cron rather than getting its own trigger - the Workers Free
-    // plan's 5 account-wide cron triggers are all spent (see worker-curate's toml).
-    const livePvp = await callSiblingSweep('pvp-settlement-sweep', '/api/pvp-settlement-sweep', 'production', env.SETTLE_URL, env.SETTLE_SECRET);
+    await chain.call('settle', 'production', env.SETTLE_URL);
+    await chain.sibling('discord-settlement-sweep', 'production', env.SETTLE_URL);
+    await chain.sibling('community-pick-settlement-sweep', 'production', env.SETTLE_URL);
+    // PvP rides this same cron rather than getting its own trigger.
+    await chain.sibling('pvp-settlement-sweep', 'production', env.SETTLE_URL);
 
-    return JSON.stringify({
-        production: live, productionDiscordSweep: liveDiscord, productionCommunityPickSweep: liveCommunityPicks, productionPvpSweep: livePvp,
-        preview, previewDiscordSweep: previewDiscord, previewCommunityPickSweep: previewCommunityPicks, previewPvpSweep: previewPvp, previewIndexSlate,
-        previewTankResolution,
-    });
+    await report(env, SETTLE_CRON, chain, env.HC_PING_SETTLE);
+    return JSON.stringify(chain.runs.map((r) => ({ job: r.job, target: r.target, ok: r.ok, status: r.status, errors: r.errors })));
+}
+
+// The hourly standing check. Its own ping: if this stops arriving, Healthchecks emails -
+// which covers the case where the Worker, Pages or the database is down entirely.
+async function runOpsCheck(env: Env): Promise<string> {
+    const opsBase = env.PREVIEW_SETTLE_URL ?? env.SETTLE_URL;
+    try {
+        const res = await fetch(new URL('/api/ops/health-check', opsBase).toString(), {
+            method: 'POST', headers: { 'X-Settle-Secret': env.SETTLE_SECRET },
+        });
+        const text = await res.text();
+        let ok = res.ok;
+        try { ok = ok && JSON.parse(text)?.ok === true; } catch { ok = false; }
+        if (!res.ok) console.error(`[worker-settle] ops health-check returned ${res.status}: ${text}`);
+        else console.log(`[worker-settle] ops health-check: ${text}`);
+        await ping(env.HC_PING_OPS, !ok, text);
+        return text;
+    } catch (err) {
+        console.error('[worker-settle] ops health-check call failed:', err);
+        await ping(env.HC_PING_OPS, true, String(err));
+        return '';
+    }
 }
 
 export default {
-    async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-        ctx.waitUntil(runSettle(env));
+    async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+        if (event.cron === OPS_CRON) {
+            ctx.waitUntil(runOpsCheck(env));
+        } else {
+            ctx.waitUntil(runSettle(env));
+        }
     },
 
     // Manual-trigger shortcut for testing without waiting for the cron:
     //   curl -H "X-Trigger-Secret: $SETTLE_SECRET" https://<worker>.workers.dev/
+    //   curl -H "X-Trigger-Secret: $SETTLE_SECRET" https://<worker>.workers.dev/?ops=1   (health check only)
     // Requires the same secret this Worker already holds. Before this it was open to
     // anyone with the workers.dev URL (launch audit, 2026-09-07): every target endpoint
     // is idempotent, but a stranger could still burn the whole chain's subrequests,
@@ -122,7 +184,7 @@ export default {
         if (!env.SETTLE_SECRET || provided !== env.SETTLE_SECRET) {
             return new Response(null, { status: 401 });
         }
-        const text = await runSettle(env);
+        const text = new URL(req.url).searchParams.get('ops') ? await runOpsCheck(env) : await runSettle(env);
         return new Response(text, { headers: { 'Content-Type': 'application/json' } });
     },
 };

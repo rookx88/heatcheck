@@ -15,9 +15,46 @@
 // the one step here that spends real Anthropic API credits every time it fires - and
 // the weekly Tuesday slot runs ONLY the NFL league auto-slate.
 
+import { classifyRun, type JobRun } from '../../lib/ops-classify';
+
 export interface Env {
     CURATE_URL: string;
     CURATE_SECRET: string;
+    // Healthchecks.io ping URL per cron slot (secrets; optional - unset skips the ping).
+    // Pre-launch Audit 4: each slot pings when its chain finishes (with /fail if any job
+    // in it failed), and Healthchecks emails the founder if a ping is late or failed.
+    HC_PING_CURATE_10?: string;
+    HC_PING_SWEEPS_18?: string;
+    HC_PING_SWEEPS_02?: string;
+    HC_PING_LEAGUE?: string;
+}
+
+// Every call in one cron run, classified from status AND body (lib/ops-classify.ts): a
+// 200 with group_error or errors > 0 inside is a failure. Reported to
+// /api/ops/job-report at the end of the run - the hourly health check alerts on a job
+// that failed or stopped running.
+type Runs = JobRun[];
+
+async function reportRun(env: Env, trigger: string, runs: Runs, pingUrl: string | undefined): Promise<void> {
+    try {
+        const res = await fetch(new URL('/api/ops/job-report', env.CURATE_URL).toString(), {
+            method: 'POST',
+            headers: { 'X-Curate-Secret': env.CURATE_SECRET, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ trigger, runs }),
+        });
+        if (!res.ok) console.error(`[worker-curate] job-report returned ${res.status}: ${await res.text()}`);
+    } catch (err) {
+        console.error('[worker-curate] job-report failed:', err);
+    }
+    if (!pingUrl) return;
+    const failed = runs.filter((r) => !r.ok);
+    try {
+        await fetch(failed.length ? `${pingUrl.replace(/\/$/, '')}/fail` : pingUrl, {
+            method: 'POST', body: failed.map((r) => `${r.job}: ${r.status} (${r.errors} errors)`).join('\n').slice(0, 10000),
+        });
+    } catch (err) {
+        console.error('[worker-curate] healthchecks ping failed:', err);
+    }
 }
 
 // The one slot allowed to spend Anthropic credits - see the event.cron branch in
@@ -60,7 +97,7 @@ const SPORT_GROUPS = ['Soccer', 'Basketball', 'Baseball', 'Football'] as const;
 // the request may well have created drafts before the caller gave up, and re-running
 // would duplicate them. The 7-day dedupe covers most of it, but "most" isn't a guarantee.
 // A missed sport waits for tomorrow.
-async function runCurate(env: Env): Promise<string> {
+async function runCurate(env: Env, runs: Runs): Promise<string> {
     const perSport: Record<string, string> = {};
 
     for (const sport of SPORT_GROUPS) {
@@ -82,28 +119,30 @@ async function runCurate(env: Env): Promise<string> {
                 // this number is how that gets caught before it starts truncating runs.
                 console.log(`[worker-curate] curate ${sport} complete in ${elapsed}ms: ${text}`);
             }
+            runs.push(classifyRun(`curate-sport:${sport}`, 'preview', res.status, text, elapsed));
             perSport[sport] = text;
         } catch (err) {
             console.error(`[worker-curate] curate ${sport} call failed:`, err);
+            runs.push(classifyRun(`curate-sport:${sport}`, 'preview', null, String(err), Date.now() - startedAt));
             perSport[sport] = '';
         }
     }
 
-    const sweeps = await runSweeps(env);
+    const sweeps = await runSweeps(env, runs);
     return JSON.stringify({ curate: perSport, ...sweeps });
 }
 
 // The three free, idempotent housekeeping sweeps - none call Anthropic, all are safe to
 // re-run any number of times in a day (see each endpoint's own header comment). Split
 // out so the more-frequent cron slots can fire these without ever touching /api/curate.
-async function runSweeps(env: Env): Promise<{ indexLock: string; indexSettle: string; tickerSweep: string; notifySweep: string; discordSweep: string }> {
+async function runSweeps(env: Env, runs: Runs): Promise<{ indexLock: string; indexSettle: string; tickerSweep: string; notifySweep: string; discordSweep: string }> {
     // Exchange index slate lock - FIRST in the chain, because it is the only step here
     // whose window can close permanently. It records each index's position on games
     // kicking off in the next ~9 hours at the price they're trading at right now;
     // polymarket_props keeps no price history, so a game that isn't locked before
     // kickoff can never be scored later. The other sweeps are all catch-up tolerant and
     // lose nothing by running after it. Own request, own budget, same secret.
-    const indexLock = await postSibling(env, '/api/index-lock');
+    const indexLock = await postSibling(env, runs, '/api/index-lock');
 
     // Exchange slate settlement - scores finished games and writes each index's daily
     // close. It has no cron slot of its own (the Free plan's five triggers are all
@@ -125,22 +164,22 @@ async function runSweeps(env: Env): Promise<{ indexLock: string; indexSettle: st
     // DRAINED rather than called once: one pass settles at most MAX_MARKETS (30) markets,
     // which no longer covers a busy day's slate on its own. See drainSibling's header for
     // the measurements and for why looping is free.
-    const indexSettle = await drainSibling(env, '/api/index-settle');
+    const indexSettle = await drainSibling(env, runs, '/api/index-settle');
 
     // Exchange ticker tag sweep - a SEPARATE request on purpose: each Pages Function
     // invocation has its own subrequest budget, and curation's traffic already runs
     // close to it (see functions/api/ticker-sweep.ts). Same secret, sibling path.
     // Runs even when curation errored/didn't run this cycle: the sweep is the catch-all
     // for untagged published Tanks and doesn't depend on curation having succeeded.
-    const tickerSweep = await postSibling(env, '/api/ticker-sweep');
+    const tickerSweep = await postSibling(env, runs, '/api/ticker-sweep');
 
     // Notification sweep (pet-hungry + new-Tanks digest) - same posture: own request,
     // own budget, runs regardless of the earlier steps' outcomes.
-    const notifySweep = await postSibling(env, '/api/notify-sweep');
+    const notifySweep = await postSibling(env, runs, '/api/notify-sweep');
 
     // Post newly-published Tanks to Discord - same posture again: own request, own
     // budget, runs regardless of the earlier steps' outcomes.
-    const discordSweep = await postSibling(env, '/api/discord-sweep');
+    const discordSweep = await postSibling(env, runs, '/api/discord-sweep');
 
     return { indexLock, indexSettle, tickerSweep, notifySweep, discordSweep };
 }
@@ -149,8 +188,8 @@ async function runSweeps(env: Env): Promise<{ indexLock: string; indexSettle: st
 // moneyline market for every guild with an active league_seasons row. Own request,
 // same X-Curate-Secret trust domain as the other sweeps - see
 // functions/api/league-slate-sweep.ts.
-async function runLeagueSlateSweep(env: Env): Promise<string> {
-    return postSibling(env, '/api/league-slate-sweep');
+async function runLeagueSlateSweep(env: Env, runs: Runs): Promise<string> {
+    return postSibling(env, runs, '/api/league-slate-sweep');
 }
 
 // POST a sibling endpoint repeatedly until it reports its queue is drained.
@@ -177,10 +216,10 @@ async function runLeagueSlateSweep(env: Env): Promise<string> {
 // does today.
 const MAX_DRAIN_CALLS = 8;
 
-async function drainSibling(env: Env, path: string): Promise<string> {
+async function drainSibling(env: Env, runs: Runs, path: string): Promise<string> {
     let last = '';
     for (let i = 0; i < MAX_DRAIN_CALLS; i++) {
-        last = await postSibling(env, path);
+        last = await postSibling(env, runs, path);
         let more = false;
         try {
             // hasMore is shipped as a boolean for exactly this caller. An unparseable or
@@ -199,7 +238,9 @@ async function drainSibling(env: Env, path: string): Promise<string> {
     return last;
 }
 
-async function postSibling(env: Env, path: string): Promise<string> {
+async function postSibling(env: Env, runs: Runs, path: string): Promise<string> {
+    const job = path.replace(/^\/api\//, '');
+    const startedAt = Date.now();
     try {
         const url = new URL(path, env.CURATE_URL).toString();
         const res = await fetch(url, {
@@ -212,11 +253,41 @@ async function postSibling(env: Env, path: string): Promise<string> {
         } else {
             console.log(`[worker-curate] ${path} complete: ${text}`);
         }
+        runs.push(classifyRun(job, 'preview', res.status, text, Date.now() - startedAt));
         return text;
     } catch (err) {
         console.error(`[worker-curate] ${path} call failed:`, err);
+        runs.push(classifyRun(job, 'preview', null, String(err), Date.now() - startedAt));
         return '';
     }
+}
+
+// Which Healthchecks.io check a cron slot pings.
+function pingFor(env: Env, cron: string): string | undefined {
+    if (cron === FULL_CHAIN_CRON) return env.HC_PING_CURATE_10;
+    if (cron === LEAGUE_SLATE_CRON) return env.HC_PING_LEAGUE;
+    if (cron === NIGHTLY_SWEEP_CRON) return env.HC_PING_SWEEPS_02;
+    return env.HC_PING_SWEEPS_18;
+}
+
+async function runSlot(env: Env, cron: string): Promise<string> {
+    const runs: Runs = [];
+    let out: string;
+    if (cron === FULL_CHAIN_CRON) {
+        out = await runCurate(env, runs);
+    } else if (cron === LEAGUE_SLATE_CRON) {
+        out = await runLeagueSlateSweep(env, runs);
+    } else {
+        out = JSON.stringify(await runSweeps(env, runs));
+        // Weekly leaderboard piggyback (see WEEKLY_LEADERBOARD_UTC_DAY comment): the
+        // endpoint itself only touches guilds that opted in, so a quiet week costs one
+        // no-op request. Part of the same run now, so it's reported with it.
+        if (cron === NIGHTLY_SWEEP_CRON && new Date().getUTCDay() === WEEKLY_LEADERBOARD_UTC_DAY) {
+            await postSibling(env, runs, '/api/weekly-leaderboard-sweep');
+        }
+    }
+    await reportRun(env, cron, runs, pingFor(env, cron));
+    return out;
 }
 
 export default {
@@ -226,19 +297,8 @@ export default {
         // to reach /api/curate; every other slot is sweeps-only by construction, so a
         // new cron slot added to wrangler.toml without updating this check safely
         // defaults to sweeps-only rather than accidentally spending Anthropic credits.
-        if (event.cron === FULL_CHAIN_CRON) {
-            ctx.waitUntil(runCurate(env));
-        } else if (event.cron === LEAGUE_SLATE_CRON) {
-            ctx.waitUntil(runLeagueSlateSweep(env));
-        } else {
-            ctx.waitUntil(runSweeps(env));
-            // Weekly leaderboard piggyback (see WEEKLY_LEADERBOARD_UTC_DAY comment):
-            // the endpoint itself only touches guilds that opted in, so a quiet week
-            // costs one no-op request.
-            if (event.cron === NIGHTLY_SWEEP_CRON && new Date().getUTCDay() === WEEKLY_LEADERBOARD_UTC_DAY) {
-                ctx.waitUntil(postSibling(env, '/api/weekly-leaderboard-sweep'));
-            }
-        }
+        // runSlot() keeps that branching (FULL_CHAIN_CRON / LEAGUE_SLATE_CRON / sweeps).
+        ctx.waitUntil(runSlot(env, event.cron));
     },
 
     // Manual-trigger shortcut for testing without waiting for the cron, e.g.
@@ -254,7 +314,7 @@ export default {
         if (!env.CURATE_SECRET || provided !== env.CURATE_SECRET) {
             return new Response(null, { status: 401 });
         }
-        const text = await runCurate(env);
+        const text = await runSlot(env, FULL_CHAIN_CRON);
         return new Response(text, { headers: { 'Content-Type': 'application/json' } });
     },
 };

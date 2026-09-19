@@ -2,10 +2,13 @@ name = "heatchecks-settle-cron"
 main = "src/index.ts"
 compatibility_date = "2026-08-12"
 
-# Once daily. 9am UTC is a placeholder chosen to land after West Coast games finish -
-# retune once real game-finality timing matters.
+# "0 9 * * *": settlement, once daily. 9am UTC is a placeholder chosen to land after
+# West Coast games finish - retune once real game-finality timing matters.
+# "0 * * * *": the hourly standing health check (pre-launch Audit 4) - ledger invariant,
+# scheduled-job freshness, security bursts, and the daily summary email. Runs ONLY
+# /api/ops/health-check (see scheduled() in src/index.ts), never settlement.
 [triggers]
-crons = ["0 9 * * *"]
+crons = ["0 9 * * *", "0 * * * *"]
 
 [vars]
 SETTLE_URL = "https://heatchecks.io/api/settle"

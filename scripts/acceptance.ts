@@ -47,7 +47,7 @@ import { pool, initPool, setActiveSuite, printSummary, runTeardowns, type Suite 
 async function loadSuites(): Promise<Suite[]> {
     // One name per import below, in the same order - a missing name shifts every later
     // module onto the wrong variable and silently drops the last ones from the run.
-    const [tickers, discovery, settlement, pets, auth, homepage, concurrency, ledgerTrace, boundaries, security, kalshiLive, discordMultiGuildCap, communityPointsIsolation, discordTankVotes, shares, curation, marketMovement, indexResults, hallOfFame, indexQuotes, propSync, indexOverlay, encounters, plays, teamRecords, lines, account, securityGaps] = await Promise.all([
+    const [tickers, discovery, settlement, pets, auth, homepage, concurrency, ledgerTrace, boundaries, security, kalshiLive, discordMultiGuildCap, communityPointsIsolation, discordTankVotes, shares, curation, marketMovement, indexResults, hallOfFame, indexQuotes, propSync, indexOverlay, encounters, plays, teamRecords, lines, account, securityGaps, ops] = await Promise.all([
         import('./acceptance/suites/tickers'),
         import('./acceptance/suites/discovery'),
         import('./acceptance/suites/settlement'),
@@ -76,6 +76,7 @@ async function loadSuites(): Promise<Suite[]> {
         import('./acceptance/suites/lines'),
         import('./acceptance/suites/account'),
         import('./acceptance/suites/security-gaps'),
+        import('./acceptance/suites/ops'),
     ]);
     return [
         tickers.suite, discovery.suite, settlement.suite, pets.suite, auth.suite,
@@ -83,7 +84,7 @@ async function loadSuites(): Promise<Suite[]> {
         kalshiLive.suite, discordMultiGuildCap.suite, communityPointsIsolation.suite,
         discordTankVotes.suite, shares.suite, curation.suite, marketMovement.suite, indexResults.suite,
         hallOfFame.suite, indexQuotes.suite, propSync.suite, indexOverlay.suite, encounters.suite,
-        plays.suite, teamRecords.suite, lines.suite, account.suite, securityGaps.suite,
+        plays.suite, teamRecords.suite, lines.suite, account.suite, securityGaps.suite, ops.suite,
     ];
 }
 

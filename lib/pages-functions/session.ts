@@ -47,6 +47,15 @@ function isTrustedHost(hostname: string): boolean {
     );
 }
 
+// Set on requireSameOrigin's 403 so functions/_middleware.ts can count cross-site
+// rejections apart from other 403s (e.g. the onboarding gate) without reading bodies.
+// The middleware strips it before the response leaves.
+export const REJECT_REASON_HEADER = 'X-Heatchecks-Reject-Reason';
+
+function csrfReject(): Response {
+    return jsonResponse({ message: 'Cross-origin request rejected.' }, { status: 403, headers: { [REJECT_REASON_HEADER]: 'csrf' } });
+}
+
 function isLocalHost(hostname: string): boolean {
     return hostname === 'localhost' || hostname === '127.0.0.1';
 }
@@ -114,23 +123,23 @@ export function resolveLoginOrigin(requestUrl: string, env: Env): string {
 export function requireSameOrigin(request: RequestLike): Response | null {
     const secFetchSite = request.headers.get('Sec-Fetch-Site');
     if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
-        return jsonResponse({ message: 'Cross-origin request rejected.' }, { status: 403 });
+        return csrfReject();
     }
     const origin = request.headers.get('Origin');
     if (origin) {
         try {
             const originHost = new URL(origin).hostname;
             if (!isTrustedHost(originHost)) {
-                return jsonResponse({ message: 'Cross-origin request rejected.' }, { status: 403 });
+                return csrfReject();
             }
             // A localhost Origin is only ever our own page when the request is ALSO to
             // localhost (the dev server). Against a deployed host it's some other app on
             // the visitor's machine, whatever its port (pre-launch security audit).
             if (isLocalHost(originHost) && !isLocalHost(new URL(request.url).hostname)) {
-                return jsonResponse({ message: 'Cross-origin request rejected.' }, { status: 403 });
+                return csrfReject();
             }
         } catch {
-            return jsonResponse({ message: 'Cross-origin request rejected.' }, { status: 403 });
+            return csrfReject();
         }
     }
     return null;

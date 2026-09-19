@@ -80,6 +80,11 @@ export interface Env {
     // 5 (functions/api/discord/interactions.ts) so someone 1-for-1 can't top the
     // board. Same tunable-via-env-var pattern as DAILY_PICK_CAP.
     LEADERBOARD_MIN_PICKS?: string;
+    // Observability (pre-launch Audit 4): where founder alerts are emailed
+    // (lib/pages-functions/alerts.ts), and the Sentry project that functions/_middleware.ts
+    // reports errors to. Both optional - unset means alerts/Sentry are simply off.
+    ALERT_EMAIL?: string;
+    SENTRY_DSN?: string;
 }
 
 export function getSql(env: Env): NeonQueryFunction<false, false> {
