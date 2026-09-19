@@ -34,6 +34,7 @@ import {
 } from '../../lib/pages-functions/index-slate';
 import { resolvePositionTeams } from '../../lib/pages-functions/team-identity';
 import { teamAt, toSlateMarketRow } from '../../lib/pages-functions/slate-rows';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 // Matches the gap between worker-curate's sweep slots (10:00 / 18:00 / 02:00 UTC), with
 // an hour of overlap so a game can't fall between two runs.
@@ -41,7 +42,7 @@ const LOCK_LOOKAHEAD_HOURS = 9;
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Curate-Secret');
-    if (!secret || secret !== context.env.CURATE_SECRET) {
+    if (!(await secretMatches(secret, context.env.CURATE_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 

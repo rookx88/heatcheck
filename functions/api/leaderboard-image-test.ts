@@ -11,6 +11,7 @@ import { renderLeaderboardImage, renderWelcomeImage, getLastRenderError } from '
 import { renderMeCard, getLastMeError } from '../../lib/pages-functions/me-card';
 import { renderCommunityPickImage, getLastCpImageError } from '../../lib/pages-functions/community-pick-image';
 import { renderPvpHubImage, getLastPvpHubError } from '../../lib/pages-functions/pvp-hub-image';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 const SAMPLE_ROWS = [
     { rank: 1, displayName: 'Sample One', avatarUrl: 'https://cdn.discordapp.com/embed/avatars/0.png', scoreLine: '3694 Community Points', scoreValue: '3,694', sr: 712 },
@@ -21,7 +22,7 @@ const SAMPLE_ROWS = [
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Curate-Secret');
-    if (!secret || secret !== context.env.CURATE_SECRET) {
+    if (!(await secretMatches(secret, context.env.CURATE_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 

@@ -19,7 +19,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ContentChrome } from './components/ContentChrome';
-import { formatGameTime, formatSettleDate, hasKickoffPassed } from './tank-deck-format';
+import { formatGameTime, formatSettleDate, picksClosed } from './tank-deck-format';
 import { getHoldings, type HoldingsResponse, type HoldingPosition, type TradeHistoryItem } from './tankdaq-shares-client';
 
 // The page is a stadium scoreboard (styles: my-portfolio-template.ts). LED face for
@@ -126,7 +126,7 @@ function PendingList({ picks }: { picks: PendingPick[] }) {
     return (
         <ul className="hc-portfolio-list">
             {picks.map((p) => {
-                const started = p.kickoff ? hasKickoffPassed(p.kickoff, now) : false;
+                const started = p.kickoff ? picksClosed(p.kickoff, now) : false;
                 const pct = typeof p.impliedProb === 'number' && isFinite(p.impliedProb)
                     ? Math.round(p.impliedProb * 100)
                     : null;

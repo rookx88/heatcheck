@@ -11,6 +11,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, UUID_RE, type Env } from '../../lib/pages-functions/db';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 import {
     RETROSPECTIVE_NOTE,
     TaggingError,
@@ -41,7 +42,7 @@ function reject(status: number, code: string, message: string, extra?: Record<st
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Ticker-Secret');
-    if (!secret || secret !== context.env.TICKER_SECRET) {
+    if (!(await secretMatches(secret, context.env.TICKER_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 

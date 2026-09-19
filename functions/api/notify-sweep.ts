@@ -28,10 +28,11 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Curate-Secret');
-    if (!secret || secret !== context.env.CURATE_SECRET) {
+    if (!(await secretMatches(secret, context.env.CURATE_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 

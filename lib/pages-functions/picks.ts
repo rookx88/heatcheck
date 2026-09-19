@@ -12,7 +12,7 @@
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import type { Env } from './db';
-import { hasKickoffPassed } from '../../tank-deck-format';
+import { picksClosed } from '../../tank-deck-format';
 import type { PropOdds } from '../../tank-types';
 
 function numEnv(value: string | undefined, fallback: number): number {
@@ -69,7 +69,7 @@ export async function submitPick(
     if (validSides.length > 0 && !validSides.includes(side)) return { status: 'side_mismatch' };
 
     const snapshot = tankRows[0].game_snapshot as { prop?: { odds?: PropOdds | null }; game?: { kickoff?: string } } | null;
-    if (hasKickoffPassed(snapshot?.game?.kickoff)) return { status: 'game_started' };
+    if (picksClosed(snapshot?.game?.kickoff)) return { status: 'game_started' };
 
     const odds = snapshot?.prop?.odds ?? null;
     if (!odds || !Array.isArray(odds.outcomes) || !Array.isArray(odds.outcomePrices)) return { status: 'no_odds' };

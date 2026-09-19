@@ -60,6 +60,7 @@ import { buildGiveawayResultMessage, buildNoEligiblePoolMessage, buildDrawButton
 import type { PropOdds } from '../../tank-types';
 import { fetchMarket, outcomeOrderMismatch, resolveMarket, type MarketResolution } from '../../lib/pages-functions/gamma';
 import { fetchMarket as fetchKalshiMarket, resolveMarket as resolveKalshiMarket, type KalshiMarketResolution } from '../../lib/pages-functions/kalshi';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 const MAX_ANNOUNCEMENTS_PER_RUN = 20;
 const VOTE_GIVE_UP_DAYS = 14;
@@ -110,7 +111,7 @@ interface PickerRow {
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Settle-Secret');
-    if (!secret || secret !== context.env.SETTLE_SECRET) {
+    if (!(await secretMatches(secret, context.env.SETTLE_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 

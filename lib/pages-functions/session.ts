@@ -47,6 +47,10 @@ function isTrustedHost(hostname: string): boolean {
     );
 }
 
+function isLocalHost(hostname: string): boolean {
+    return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
 // Structural request type rather than @cloudflare/workers-types' Request, so this
 // stays importable from Node-checked programs (same motivation as
 // lib/auth-token-payloads.ts's split).
@@ -115,7 +119,14 @@ export function requireSameOrigin(request: RequestLike): Response | null {
     const origin = request.headers.get('Origin');
     if (origin) {
         try {
-            if (!isTrustedHost(new URL(origin).hostname)) {
+            const originHost = new URL(origin).hostname;
+            if (!isTrustedHost(originHost)) {
+                return jsonResponse({ message: 'Cross-origin request rejected.' }, { status: 403 });
+            }
+            // A localhost Origin is only ever our own page when the request is ALSO to
+            // localhost (the dev server). Against a deployed host it's some other app on
+            // the visitor's machine, whatever its port (pre-launch security audit).
+            if (isLocalHost(originHost) && !isLocalHost(new URL(request.url).hostname)) {
                 return jsonResponse({ message: 'Cross-origin request rejected.' }, { status: 403 });
             }
         } catch {

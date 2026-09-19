@@ -31,7 +31,7 @@ import {
 } from '../tank-pick-client';
 import { trackEvent } from '../tank-analytics-client';
 import { AllSetModal } from './AllSetModal';
-import { hasKickoffPassed } from '../tank-deck-format';
+import { picksClosed } from '../tank-deck-format';
 
 // DeckPayload moved to tank-types.ts (pure, importable from lib/pages-functions
 // without a DOM/React module graph); re-exported here so existing consumers keep
@@ -708,10 +708,10 @@ const CallContent: React.FC<{ call: DeckPayload['call']; slug: string; kickoff?:
         todayStatus?.pickHere ?? todayStatus?.picks.find((p) => p.slug === slug) ?? conflictPick;
     const remaining = todayStatus?.remaining ?? 3;
     // UI-only convenience so a reader isn't offered a pick that would just 400 -
-    // functions/api/picks.ts's own hasKickoffPassed() check is what actually enforces
+    // functions/api/picks.ts's own picksClosed() check is what actually enforces
     // this. Reuses the `now` tick already running for the cap-reset countdown, so this
     // flips live within a minute of kickoff without needing a page reload.
-    const gameStarted = hasKickoffPassed(kickoff, now);
+    const gameStarted = picksClosed(kickoff, now);
 
     const submitPickFor = async (side: string, sideIndex: number, submitterEmail: string) => {
         setSubmitState('submitting');

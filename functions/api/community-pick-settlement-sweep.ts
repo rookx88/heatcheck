@@ -22,6 +22,7 @@ import { postDiscordChannelMessage } from '../../lib/pages-functions/discord-api
 import { buildCommunitySettlementRecapMessage, buildGiveawayResultMessage, buildMultiWinnerGiveawayMessage, buildNoEligiblePoolMessage } from '../../lib/pages-functions/discord-community-card';
 import { awardCommunityPoints } from '../../lib/pages-functions/community-points';
 import { drawGiveawayWinner, drawMultipleGiveawayWinners } from '../../lib/pages-functions/discord-draw';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 const MAX_PER_RUN = 20;
 
@@ -51,7 +52,7 @@ interface VoteRow {
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Settle-Secret');
-    if (!secret || secret !== context.env.SETTLE_SECRET) {
+    if (!(await secretMatches(secret, context.env.SETTLE_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 

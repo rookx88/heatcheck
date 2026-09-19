@@ -25,6 +25,7 @@ import { fetchLiveGames } from '../../tank-gamma-live';
 import { createAndPostCommunityPick, communityPickCardInput } from '../../lib/pages-functions/community-pick-creation';
 import { renderCommunityPickImage } from '../../lib/pages-functions/community-pick-image';
 import { computePointsSplit } from '../../lib/pages-functions/community-points-formula';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 const LEAGUE_SPORT = 'NFL';
 
@@ -35,7 +36,7 @@ interface ActiveLeagueGuildRow {
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Curate-Secret');
-    if (!secret || secret !== context.env.CURATE_SECRET) {
+    if (!(await secretMatches(secret, context.env.CURATE_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 

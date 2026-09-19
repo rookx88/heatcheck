@@ -285,7 +285,7 @@ export function parseKalshiMatchup(subTitle: string | undefined | null): { away:
 // been observed wrong on a live market (its value was 3 hours later than the game
 // time Kalshi's own rules text advertised for that same event, which let a pick land
 // after the real game had already started - functions/api/discord/interactions.ts and
-// functions/api/picks.ts both gate on Game.kickoff via hasKickoffPassed). Parsing the
+// functions/api/picks.ts both gate on Game.kickoff via picksClosed). Parsing the
 // ticker gives an independent second source not subject to that same bug; callers
 // should take whichever of the two resolves earlier, never later, so a wrong-and-late
 // occurrence_datetime can never win.

@@ -7,6 +7,12 @@
 
 const HEX_RE = /^[0-9a-f]+$/i;
 
+// How far X-Signature-Timestamp may sit from our clock. The timestamp is inside the
+// signed message, so it can't be altered - but without an age check a captured request
+// verifies forever and can be replayed (pre-launch security audit, 2026-09-18). Real
+// deliveries arrive within a second or two; five minutes absorbs clock skew.
+export const DISCORD_MAX_SKEW_SECONDS = 300;
+
 function hexToBytes(hex: string): Uint8Array | null {
     if (hex.length === 0 || hex.length % 2 !== 0 || !HEX_RE.test(hex)) return null;
     const bytes = new Uint8Array(hex.length / 2);
@@ -18,16 +24,20 @@ function hexToBytes(hex: string): Uint8Array | null {
  * Verifies a Discord interaction request against DISCORD_PUBLIC_KEY. `signatureHex`
  * and `timestamp` come from the X-Signature-Ed25519 / X-Signature-Timestamp headers;
  * `rawBody` must be the exact, unparsed request body text (Discord signs the raw
- * bytes, not any re-serialization of the parsed JSON). Never throws on malformed
+ * bytes, not any re-serialization of the parsed JSON). A timestamp (Unix seconds)
+ * more than DISCORD_MAX_SKEW_SECONDS from `nowMs` fails too. Never throws on malformed
  * input - returns false.
  */
 export async function verifyDiscordRequest(
     rawBody: string,
     signatureHex: string | null,
     timestamp: string | null,
-    publicKeyHex: string
+    publicKeyHex: string,
+    nowMs: number = Date.now()
 ): Promise<boolean> {
     if (!signatureHex || !timestamp) return false;
+    if (!/^\d{1,12}$/.test(timestamp)) return false;
+    if (Math.abs(nowMs / 1000 - Number(timestamp)) > DISCORD_MAX_SKEW_SECONDS) return false;
     const signatureBytes = hexToBytes(signatureHex);
     const publicKeyBytes = hexToBytes(publicKeyHex);
     if (!signatureBytes || !publicKeyBytes) return false;

@@ -37,6 +37,7 @@ import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { postDiscordChannelMessage } from '../../lib/pages-functions/discord-api';
 import { buildTankCardMessage, type TankCardModelOutput } from '../../lib/pages-functions/discord-tank-card';
 import type { PropOdds } from '../../tank-types';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 // Per-guild cap per run - bounds one guild's backlog from starving the others' budget
 // within a single sweep invocation.
@@ -60,7 +61,7 @@ interface GuildConfigRow {
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Curate-Secret');
-    if (!secret || secret !== context.env.CURATE_SECRET) {
+    if (!(await secretMatches(secret, context.env.CURATE_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 

@@ -9,7 +9,7 @@
 // call is refused in exactly the cases an Ember pick would be.
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
-import { hasKickoffPassed } from '../../tank-deck-format';
+import { picksClosed } from '../../tank-deck-format';
 import type { PropOdds } from '../../tank-types';
 import { pointsForProbability } from './community-points-formula';
 
@@ -64,7 +64,7 @@ export async function recordTankVote(
         : (typeof rawSides === 'string' ? JSON.parse(rawSides) : []);
 
     const snapshot = tankRows[0].game_snapshot as { prop?: { odds?: PropOdds | null }; game?: { kickoff?: string } } | null;
-    if (hasKickoffPassed(snapshot?.game?.kickoff)) return { status: 'game_started' };
+    if (picksClosed(snapshot?.game?.kickoff)) return { status: 'game_started' };
 
     const odds = snapshot?.prop?.odds ?? null;
     if (!odds || !Array.isArray(odds.outcomes) || !Array.isArray(odds.outcomePrices)) return { status: 'no_odds' };

@@ -31,6 +31,7 @@ import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { fetchMarket, resolveMarket } from '../../lib/pages-functions/gamma';
 import { getTickerConfig } from '../../lib/pages-functions/tickers';
 import { closeDelta, contributionFor } from '../../lib/pages-functions/index-slate';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 // A run's cost is driven by DISTINCT MARKETS, not positions: resolution is one Gamma
 // call per market, and every index holding the same game shares that one call. Capping
@@ -87,9 +88,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // either avoids provisioning a second secret onto worker-curate for no added safety.
     const settleSecret = context.request.headers.get('X-Settle-Secret');
     const curateSecret = context.request.headers.get('X-Curate-Secret');
-    const authorized =
-        (settleSecret && settleSecret === context.env.SETTLE_SECRET) ||
-        (curateSecret && curateSecret === context.env.CURATE_SECRET);
+    const [settleOk, curateOk] = await Promise.all([
+        secretMatches(settleSecret, context.env.SETTLE_SECRET),
+        secretMatches(curateSecret, context.env.CURATE_SECRET),
+    ]);
+    const authorized = settleOk || curateOk;
     if (!authorized) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }

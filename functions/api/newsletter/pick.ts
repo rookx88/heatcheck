@@ -19,7 +19,7 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../../lib/pages-functions/db';
 import { verifyToken } from '../../../lib/pages-functions/tokens';
 import { logEvent } from '../../../lib/pages-functions/events';
-import { hasKickoffPassed } from '../../../tank-deck-format';
+import { picksClosed } from '../../../tank-deck-format';
 import type { NewsletterPickTokenPayload } from '../../../lib/newsletter-pick-token';
 
 interface PropOdds {
@@ -120,7 +120,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const snapshot = tank.game_snapshot as { prop?: { odds?: PropOdds | null }; game?: { kickoff?: string } } | null;
-    if (hasKickoffPassed(snapshot?.game?.kickoff)) {
+    if (picksClosed(snapshot?.game?.kickoff)) {
         return jsonResponse({ message: 'This game has already started - picks are closed.' }, { status: 400 });
     }
     const odds = snapshot?.prop?.odds ?? null;

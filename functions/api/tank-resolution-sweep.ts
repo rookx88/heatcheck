@@ -48,6 +48,7 @@ import {
     TANK_RESOLUTION_SCHEMA,
 } from '../../scripts/prompts/tank-resolution-prompt';
 import { effectiveSettleDate } from '../../tank-deck-format';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 // Local rather than imported from curate.ts: this endpoint has nothing else to do with
 // curation, and importing one three-line helper from there would pull that module's
@@ -90,7 +91,7 @@ interface PendingTank {
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Settle-Secret');
-    if (!secret || secret !== context.env.SETTLE_SECRET) {
+    if (!(await secretMatches(secret, context.env.SETTLE_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 

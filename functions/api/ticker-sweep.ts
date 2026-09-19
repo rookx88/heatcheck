@@ -17,6 +17,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { sweepUntaggedTanks } from '../../lib/pages-functions/tickers';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 const DEFAULT_TAG_SWEEP_DAYS = 14;
 
@@ -28,7 +29,7 @@ function numEnv(value: string | undefined, fallback: number): number {
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Curate-Secret');
-    if (!secret || secret !== context.env.CURATE_SECRET) {
+    if (!(await secretMatches(secret, context.env.CURATE_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 

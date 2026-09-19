@@ -30,6 +30,7 @@ import type { GammaMarketLite } from '../../lib/pages-functions/gamma';
 import { fetchMarket, resolveMarket, outcomeOrderMismatch } from '../../lib/pages-functions/gamma';
 import { postDiscordChannelMessage, fetchGuildMemberName } from '../../lib/pages-functions/discord-api';
 import { buildPvpResultMessage, type PvpResultPick } from '../../lib/pages-functions/pvp-card';
+import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 // Each unresolved pick costs one Gamma request, each settled battle costs up to three
 // Discord requests (two name lookups + one post) - both well inside a single
@@ -83,7 +84,7 @@ interface ResultPickRow {
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Settle-Secret');
-    if (!secret || secret !== context.env.SETTLE_SECRET) {
+    if (!(await secretMatches(secret, context.env.SETTLE_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
 
