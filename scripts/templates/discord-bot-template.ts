@@ -153,6 +153,7 @@ export function generateDiscordBotPageHtml(baseUrl: string): string {
 <html lang="en">
 <head>
     ${head}
+    <link rel="stylesheet" href="/assets/teams.css">
     <style>${documentStyles()}
         .hc-bot-lede { font-size: 1.05rem !important; color: rgba(255, 255, 255, 0.9) !important; }
         .hc-bot-free {
@@ -306,7 +307,10 @@ export function generateDiscordBotPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page hc-page--doc">
-        ${topbar('/beta/')}
+        ${topbar(null)}
+        <!-- Identity chrome (username + Ember chip, or Log in) via the teams bundle,
+             which only mounts the roots a page has - same as league-template.ts. -->
+        <div id="teams-chrome-root"></div>
 
         <article class="hc-doc" id="top">
             <p class="hc-doc-eyebrow">Discord bot</p>
@@ -415,6 +419,7 @@ export function generateDiscordBotPageHtml(baseUrl: string): string {
 
         ${footer()}
     </main>
+    <script type="module" src="/assets/teams.js" defer></script>
 </body>
 </html>`;
 }
