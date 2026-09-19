@@ -75,6 +75,10 @@ export async function submitPick(
     if (!odds || !Array.isArray(odds.outcomes) || !Array.isArray(odds.outcomePrices)) return { status: 'no_odds' };
     if (odds.outcomes.length !== validSides.length) return { status: 'odds_mismatch' };
     if (sideIndex < 0 || sideIndex >= odds.outcomes.length) return { status: 'side_index_out_of_range' };
+    // The label and the index must name the same side: settlement scores outcome_index
+    // while history, notifications and emails show `side`, so a mismatch would pay one
+    // side and tell the player they called the other.
+    if (validSides.length > 0 && validSides[sideIndex] !== side) return { status: 'side_mismatch' };
     const impliedProbAtLock = odds.outcomePrices[sideIndex];
     if (typeof impliedProbAtLock !== 'number' || Number.isNaN(impliedProbAtLock)) return { status: 'malformed_odds' };
 

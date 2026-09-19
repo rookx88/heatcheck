@@ -94,6 +94,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(context.env);
 
+    // The token outlives the account (30-day TTL): a deleted account must not act
+    // (functions/api/account/delete.ts), so its links answer like any invalid one.
+    const owner = await sql`SELECT 1 FROM waitlist WHERE id = ${payload.userId} AND deleted_at IS NULL LIMIT 1`;
+    if (owner.length === 0) {
+        return jsonResponse({ message: 'This link is invalid or has expired.' }, { status: 400 });
+    }
+
     const tank = await loadExclusiveTank(sql, payload.newsletterIssueId);
     if (!tank) {
         return jsonResponse({ message: 'This week’s exclusive Tank is not available.' }, { status: 404 });
@@ -125,6 +132,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
     if (sideIndex < 0 || sideIndex >= odds.outcomes.length) {
         return jsonResponse({ message: 'sideIndex out of range.' }, { status: 400 });
+    }
+    // Same rule as lib/pages-functions/picks.ts: the label shown must be the side scored.
+    if (sides.length > 0 && sides[sideIndex] !== side) {
+        return jsonResponse({ message: "Side does not match this Tank's call." }, { status: 400 });
     }
     const impliedProbAtLock = odds.outcomePrices[sideIndex];
     if (typeof impliedProbAtLock !== 'number' || Number.isNaN(impliedProbAtLock)) {
