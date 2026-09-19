@@ -491,7 +491,9 @@ export async function insertTank(f: TankFixture): Promise<string> {
             odds: { outcomes: f.outcomes, outcomePrices: f.outcomePrices },
             settleDate: new Date().toISOString(),
         },
-        game: { id: `acceptance-${f.slug}`, home: 'FIX', away: 'TURE' },
+        // A week out: picksClosed() treats a missing kickoff as closed, so a fixture
+        // Tank needs a real future kickoff to be pickable at all.
+        game: { id: `acceptance-${f.slug}`, home: 'FIX', away: 'TURE', kickoff: new Date(Date.now() + 7 * 86400_000).toISOString() },
     };
     const modelOutput = { call: { question: 'Acceptance fixture call?', sides: f.outcomes } };
     const { rows } = await pool.query(

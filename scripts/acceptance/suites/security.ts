@@ -473,22 +473,33 @@ async function runNoPetNoRollSection() {
         `guardIndex=${guardMatch?.index} firstAwaitSqlIndex=${firstAwaitSqlIdx}`,
     );
 
-    // Dynamic: deactivate game_config['discovery'] entirely (getGameConfig('discovery')
-    // now throws if it's ever reached). A petless account's toolbar-state must still be
-    // 200 with pet: null - proof the discovery-config read was never reached. A
-    // pet-HAVING account with a genuinely due roll on the SAME deactivated config must
-    // fail/error - proof the code path really does need that config, so the petless
-    // 200 above wasn't a coincidence or an unrelated pass-through.
+    // Dynamic, by outcome: a petless account visiting a real place gets pet: null and
+    // nothing is written for it. (This used to deactivate the discovery config and expect
+    // the petless request to sail past it, but toolbar-state now batch-reads that config
+    // up front for the Plays care objective - functions/api/toolbar-state.ts's comment -
+    // so a missing config fails every account's request. The guard above is what keeps a
+    // petless account from rolling, and this proves it end to end.)
+    const petless = await createSessionUser(`${PREFIX}nopet-petless@example.com`);
+    const petlessRes = await api('GET', '/api/toolbar-state?place=/the-hatchery', { cookie: petless.cookie });
+    check(
+        'petless account visiting a place -> 200 with pet: null',
+        petlessRes.status === 200 && petlessRes.json?.pet === null,
+        JSON.stringify(petlessRes.json),
+    );
+    const { rows: petlessWrites } = await pool.query(
+        `SELECT
+            (SELECT COUNT(*)::int FROM pets WHERE user_id = $1) +
+            (SELECT COUNT(*)::int FROM ember_ledger WHERE user_id = $1) +
+            (SELECT COUNT(*)::int FROM inventory_items WHERE user_id = $1) +
+            (SELECT COUNT(*)::int FROM notifications WHERE user_id = $1 AND idempotency_key LIKE 'discovery:%') AS n`,
+        [petless.userId],
+    );
+    check('petless account visiting a place -> no pet, no find, no grant written', petlessWrites[0].n === 0, `rows=${petlessWrites[0].n}`);
+
+    // The config really is load-bearing for a pet that is due - so the petless 200 above
+    // is the guard at work, not a path that never needed discovery at all.
     try {
         await deactivateConfig('discovery');
-
-        const petless = await createSessionUser(`${PREFIX}nopet-petless@example.com`);
-        const petlessRes = await api('GET', '/api/toolbar-state', { cookie: petless.cookie });
-        check(
-            'petless account, discovery config deactivated -> still 200 with pet: null (discovery-config read never reached)',
-            petlessRes.status === 200 && petlessRes.json?.pet === null,
-            JSON.stringify(petlessRes.json),
-        );
 
         const haver = await createSessionUser(`${PREFIX}nopet-haver@example.com`);
         // Genuinely due on BOTH gates (clock + footprints, add_pet_footprints.sql) so the

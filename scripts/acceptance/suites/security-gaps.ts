@@ -29,6 +29,10 @@ import {
 import { fireParallel, countStatus, tally } from '../concurrency';
 import { signToken } from '../../../lib/pages-functions/tokens';
 import type { NewsletterPickTokenPayload } from '../../../lib/newsletter-pick-token';
+import { requireSameOrigin } from '../../../lib/pages-functions/session';
+import { verifyDiscordRequest } from '../../../lib/pages-functions/discord-verify';
+import { secretMatches } from '../../../lib/pages-functions/secret-compare';
+import { picksClosed } from '../../../tank-deck-format';
 
 const PREFIX = 'acceptance-secgaps-';
 const NEWSLETTER_TOKEN_SECRET = process.env.NEWSLETTER_TOKEN_SECRET || '';
@@ -191,8 +195,18 @@ async function run(): Promise<void> {
         // Documented allowances of requireSameOrigin, surfaced so they are decided on, not forgotten.
         const noHeaders = await api('POST', '/api/notifications/read', { cookie: u.cookie, body: { id: crypto.randomUUID() } });
         if (noHeaders.status !== 403) warn(`requireSameOrigin allows a cookie-bearing POST with neither Origin nor Sec-Fetch-Site (got ${noHeaders.status}) - by design for non-browser clients, audit decision item`);
-        const localhostPort = await api('POST', '/api/notifications/read', { cookie: u.cookie, body: { id: crypto.randomUUID() }, headers: { Origin: 'http://localhost:9999' } });
-        if (localhostPort.status !== 403) warn(`Origin http://localhost:<any port> is trusted (got ${localhostPort.status}) - isTrustedHost ignores the port, audit decision item`);
+        // A localhost Origin is trusted only when the request is itself to localhost. The dev
+        // server is localhost, so this is proven against requireSameOrigin directly with a
+        // deployed-host request rather than over HTTP.
+        const fakeReq = (url: string, origin: string) => ({ url, headers: { get: (n: string) => (n.toLowerCase() === 'origin' ? origin : null) } });
+        check('requireSameOrigin: localhost Origin against a deployed host -> 403',
+            requireSameOrigin(fakeReq('https://heatchecks.io/api/picks', 'http://localhost:9999'))?.status === 403);
+        check('requireSameOrigin: 127.0.0.1 Origin against a preview host -> 403',
+            requireSameOrigin(fakeReq('https://auth-sessions.heatcheck.pages.dev/api/picks', 'http://127.0.0.1:3000'))?.status === 403);
+        check('requireSameOrigin: localhost Origin against the local dev server -> allowed',
+            requireSameOrigin(fakeReq('http://127.0.0.1:8788/api/picks', 'http://localhost:8788')) === null);
+        check('requireSameOrigin: the real site Origin against itself -> allowed',
+            requireSameOrigin(fakeReq('https://heatchecks.io/api/picks', 'https://heatchecks.io')) === null);
         const crossGet = await api('GET', '/api/toolbar-state', { cookie: u.cookie, headers: { 'Sec-Fetch-Site': 'cross-site' } });
         if (crossGet.status === 200) warn('GET /api/toolbar-state (which can roll discovery, fire encounters and consume items) runs on a cross-site request - audit decision item');
     }
@@ -355,6 +369,20 @@ async function run(): Promise<void> {
         check('pick: stored odds are the snapshot price (0.4), not the client value', p.length === 1 && Math.abs(p[0].p - 0.4) < 1e-9, JSON.stringify(p[0]));
         check('pick: stored outcome_index is sideIndex (0), not the client outcome_index', p[0]?.outcome_index === 0, JSON.stringify(p[0]));
 
+        // A Tank that can't say when its game starts is closed to picks, not open forever.
+        const noKickoff = `${PREFIX}no-kickoff`;
+        await pool.query(
+            `INSERT INTO tank_pages (slug, provider, league, angle, game_snapshot, model_output, status, visibility)
+             VALUES ($1, 'polymarket', 'NBA', 'acceptance fixture', $2, $3, 'published', 'app')`,
+            [noKickoff,
+                JSON.stringify({ prop: { id: `${noKickoff}-market`, odds: { outcomes: ['Yes', 'No'], outcomePrices: [0.4, 0.6] } }, game: { id: `acceptance-${noKickoff}`, home: 'FIX', away: 'TURE' } }),
+                JSON.stringify({ call: { question: 'Acceptance fixture call?', sides: ['Yes', 'No'] } })],
+        );
+        const closed = await api('POST', '/api/picks', { cookie: u.cookie, body: { slug: noKickoff, side: 'Yes', sideIndex: 0 } });
+        check('pick on a Tank with no kickoff -> 400 picks closed', closed.status === 400 && /picks are closed/.test(closed.json?.message ?? ''), `${closed.status} ${JSON.stringify(closed.json)}`);
+        check('pick lock: picksClosed treats missing/unparseable kickoff as closed, future as open',
+            picksClosed(undefined) && picksClosed('') && picksClosed('not a date') && !picksClosed(new Date(Date.now() + 3600_000).toISOString()));
+
         const tank2 = await pickableTank('tamper-mismatch');
         const mismatch = await api('POST', '/api/picks', { cookie: u.cookie, body: { slug: tank2.slug, side: 'No', sideIndex: 0 } });
         check("pick: a side label that doesn't match sideIndex -> 400", mismatch.status === 400, `${mismatch.status} ${JSON.stringify(mismatch.json)}`);
@@ -389,6 +417,29 @@ async function run(): Promise<void> {
         const neverHeld = await api('POST', '/api/tankdaq/sell', { cookie: (await createSessionUser(email('tamper-empty'))).cookie, body: { tickerKey: TICKER, shares: 1, tradeToken: crypto.randomUUID() } });
         check('selling shares never held -> 409', neverHeld.status === 409, `status ${neverHeld.status}`);
         await ledgerConsistent('tampered trades', trader.userId);
+    }
+
+    // =================================================================================
+    section('5b. Signed-request freshness and secret comparison');
+    // =================================================================================
+    {
+        // A real Ed25519 key pair, so the only variable is the timestamp's age.
+        const kp = await crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']) as CryptoKeyPair;
+        const pubHex = Buffer.from(await crypto.subtle.exportKey('raw', kp.publicKey)).toString('hex');
+        const body = '{"type":1}';
+        const signAt = async (ts: string) => Buffer.from(await crypto.subtle.sign('Ed25519', kp.privateKey, new TextEncoder().encode(ts + body))).toString('hex');
+        const now = Math.floor(Date.now() / 1000);
+        const fresh = String(now);
+        const stale = String(now - 3600);
+        check('Discord: a correctly signed, current request verifies', await verifyDiscordRequest(body, await signAt(fresh), fresh, pubHex));
+        check('Discord: a correctly signed request an hour old is refused (replay)', !(await verifyDiscordRequest(body, await signAt(stale), stale, pubHex)));
+        check('Discord: a malformed timestamp is refused', !(await verifyDiscordRequest(body, await signAt('abc'), 'abc', pubHex)));
+
+        check('secretMatches: equal -> true', await secretMatches('s3cret-value', 's3cret-value'));
+        check('secretMatches: different, same length -> false', !(await secretMatches('s3cret-valuf', 's3cret-value')));
+        check('secretMatches: prefix -> false', !(await secretMatches('s3cret', 's3cret-value')));
+        check('secretMatches: missing header or unset env -> false',
+            !(await secretMatches(null, 'x')) && !(await secretMatches('x', undefined)) && !(await secretMatches('', '')));
     }
 
     // =================================================================================
