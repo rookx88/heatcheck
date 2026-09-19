@@ -153,8 +153,9 @@ export interface JobStatus {
     lastOk: boolean | null;
     lastSuccessAt: string | null;
     failures24h: number;
-    stale: boolean;        // no successful run inside maxAgeHours
+    stale: boolean;        // has run before, but not successfully inside maxAgeHours
     failingNow: boolean;   // most recent run failed
+    awaitingFirstRun: boolean; // never reported at all yet
 }
 
 export async function checkJobs(sql: Sql, nowMs: number = Date.now()): Promise<JobStatus[]> {
@@ -178,14 +179,20 @@ export async function checkJobs(sql: Sql, nowMs: number = Date.now()): Promise<J
         const lastRun = latest('last_run_at');
         const lastSuccess = latest('last_success_at');
         const newest = mine.slice().sort((a, b) => new Date(b.last_run_at).getTime() - new Date(a.last_run_at).getTime())[0];
+        // A job that has NEVER reported is not "missed" - it is a job whose cron slot
+        // hasn't come round since reporting was deployed. Alerting on that turns every
+        // first deploy into a flood of false misses (seen live, 2026-09-19); it becomes
+        // alertable the moment it has one run to be late against.
+        const awaitingFirstRun = !lastRun;
         return {
             label: e.label, job: e.job, target: e.target,
             lastRunAt: lastRun?.toISOString() ?? null,
             lastOk: newest ? Boolean(newest.last_ok) : null,
             lastSuccessAt: lastSuccess?.toISOString() ?? null,
             failures24h: mine.reduce((n, r) => n + Number(r.failures_24h), 0),
-            stale: !lastSuccess || nowMs - lastSuccess.getTime() > e.maxAgeHours * 3600_000,
+            stale: !awaitingFirstRun && (!lastSuccess || nowMs - lastSuccess.getTime() > e.maxAgeHours * 3600_000),
             failingNow: newest ? !newest.last_ok : false,
+            awaitingFirstRun,
         };
     });
 }
@@ -281,8 +288,8 @@ export function renderDigest(input: {
         `${mark(jobProblems.length === 0)}  Scheduled jobs: ${jobProblems.length === 0 ? 'every job ran and succeeded on schedule' : `${jobProblems.length} need attention`}`,
     ];
     for (const j of jobs) {
-        const flag = j.stale ? 'MISSED' : j.failingNow ? 'FAILED' : j.failures24h > 0 ? `${j.failures24h} fail/24h` : 'ok';
-        lines.push(`        ${flag.padEnd(12)} ${j.label} - last success ${fmt(j.lastSuccessAt)}`);
+        const flag = j.awaitingFirstRun ? 'first run due' : j.stale ? 'MISSED' : j.failingNow ? 'FAILED' : j.failures24h > 0 ? `${j.failures24h} fail/24h` : 'ok';
+        lines.push(`        ${flag.padEnd(14)} ${j.label} - last success ${fmt(j.lastSuccessAt)}`);
     }
     lines.push(
         `${mark(!errors.elevated)}  Server errors: ${errors.last24h} in 24h (prev 7-day avg ${errors.dailyAvgPrev7d}/day)${errors.topPaths.length ? ' - top: ' + errors.topPaths.map((p) => `${p.path} x${p.n}`).join(', ') : ''}`,

@@ -137,6 +137,19 @@ async function run(): Promise<void> {
         const curateAuth = await api('POST', '/api/ops/job-report', { headers: { 'X-Curate-Secret': process.env.CURATE_SECRET || '' }, body: { trigger: TRIGGER, runs: [{ job: 'ticker-sweep', target: 'preview', ok: true, status: 200, durationMs: 1, errors: 0 }] } });
         check('worker-curate\'s secret is accepted too', curateAuth.status === 200, `status ${curateAuth.status}`);
         await pool.query(`DELETE FROM ops_job_runs WHERE trigger = $1`, [TRIGGER]);
+
+        // A job that has never reported is "awaiting first run", NOT missed. Without this
+        // the first deploy alerts once per expected job, before any cron slot has come
+        // round - which is exactly what happened live on 2026-09-19 (14 false alerts).
+        const fresh = await api('GET', '/api/ops/health', { headers: secret });
+        const never = (fresh.json?.jobs ?? []).filter((j: any) => j.lastRunAt === null);
+        check('jobs with no run history are awaiting-first-run, never stale',
+            never.length > 0 && never.every((j: any) => j.awaitingFirstRun === true && j.stale === false),
+            JSON.stringify(never.map((j: any) => [j.job, j.stale, j.awaitingFirstRun])));
+        check('no job reads as missed while every one is awaiting its first run',
+            (fresh.json?.jobs ?? []).every((j: any) => j.stale === false), JSON.stringify((fresh.json?.jobs ?? []).filter((j: any) => j.stale)));
+        const summary = await (await fetch(`${process.env.BASE_URL || 'http://localhost:8788'}/api/ops/health?format=text`, { headers: secret })).text();
+        check('the summary says "first run due", not MISSED', summary.includes('first run due') && !summary.includes('MISSED'), summary.slice(0, 300));
     }
 
     // ===============================================================================
