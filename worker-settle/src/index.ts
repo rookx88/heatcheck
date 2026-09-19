@@ -25,8 +25,9 @@
 // AND body (lib/ops-classify.ts - a 200 carrying errors is a failure), the whole chain is
 // reported to /api/ops/job-report, and the run pings Healthchecks.io (with /fail when
 // anything failed) so a chain that errors - or never runs at all - emails the founder.
-// The hourly slot runs only /api/ops/health-check: the standing ledger-invariant, job
-// freshness, security-burst and daily-summary check.
+// This Worker fires hourly on ONE trigger (wrangler.toml explains why one): every pass
+// runs /api/ops/health-check - the standing ledger-invariant, job-freshness,
+// security-burst and daily-summary check - and the 09:00 UTC pass runs settlement first.
 
 import { classifyRun, type JobRun } from '../../lib/ops-classify';
 
@@ -39,8 +40,11 @@ export interface Env {
     HC_PING_OPS?: string;
 }
 
-const SETTLE_CRON = '0 9 * * *';
-const OPS_CRON = '0 * * * *';
+// One cron trigger fires this Worker every hour (see wrangler.toml for why it is one
+// and not two). The health check runs on every pass; settlement runs on the 09:00 UTC
+// pass only, which is the cadence it has always had.
+const SETTLE_HOUR_UTC = 9;
+const SETTLE_TRIGGER = 'hourly@09';
 
 class Chain {
     runs: JobRun[] = [];
@@ -137,7 +141,7 @@ async function runSettle(env: Env): Promise<string> {
     // PvP rides this same cron rather than getting its own trigger.
     await chain.sibling('pvp-settlement-sweep', 'production', env.SETTLE_URL);
 
-    await report(env, SETTLE_CRON, chain, env.HC_PING_SETTLE);
+    await report(env, SETTLE_TRIGGER, chain, env.HC_PING_SETTLE);
     return JSON.stringify(chain.runs.map((r) => ({ job: r.job, target: r.target, ok: r.ok, status: r.status, errors: r.errors })));
 }
 
@@ -165,11 +169,15 @@ async function runOpsCheck(env: Env): Promise<string> {
 
 export default {
     async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-        if (event.cron === OPS_CRON) {
-            ctx.waitUntil(runOpsCheck(env));
-        } else {
-            ctx.waitUntil(runSettle(env));
-        }
+        // scheduledTime is when this pass was DUE, not when it started - a retried or
+        // delayed invocation still settles for the hour it belongs to, never twice and
+        // never on the wrong hour. Settlement is idempotent regardless (every payout
+        // rides an idempotency key), so the worst case of a double pass is a no-op.
+        const hour = new Date(event.scheduledTime).getUTCHours();
+        ctx.waitUntil((async () => {
+            if (hour === SETTLE_HOUR_UTC) await runSettle(env);
+            await runOpsCheck(env);
+        })());
     },
 
     // Manual-trigger shortcut for testing without waiting for the cron:

@@ -2,13 +2,22 @@ name = "heatchecks-settle-cron"
 main = "src/index.ts"
 compatibility_date = "2026-08-12"
 
-# "0 9 * * *": settlement, once daily. 9am UTC is a placeholder chosen to land after
-# West Coast games finish - retune once real game-finality timing matters.
-# "0 * * * *": the hourly standing health check (pre-launch Audit 4) - ledger invariant,
-# scheduled-job freshness, security bursts, and the daily summary email. Runs ONLY
-# /api/ops/health-check (see scheduled() in src/index.ts), never settlement.
+# ONE hourly trigger, not two, and deliberately so: the account is capped at 5 cron
+# triggers (Workers Free) and worker-curate holds the other four, so a sixth is rejected
+# at deploy (tried 2026-08-29). scheduled() in src/index.ts branches on the hour instead:
+# every hour runs the standing health check (pre-launch Audit 4 - ledger invariant,
+# scheduled-job freshness, security bursts, daily summary), and the 09:00 UTC pass ALSO
+# runs settlement, exactly the cadence the single "0 9 * * *" trigger used to give.
+#
+# 9am UTC for settlement is a placeholder chosen to land after West Coast games finish -
+# retune SETTLE_HOUR_UTC in src/index.ts once real game-finality timing matters.
+#
+# The cost of sharing one trigger: if it ever stops firing, settlement and the health
+# check stop together, and no in-Cloudflare check would notice. That is precisely what
+# the Healthchecks.io pings cover - they are watched from outside this account, and a
+# missing ping emails regardless of what happened here.
 [triggers]
-crons = ["0 9 * * *", "0 * * * *"]
+crons = ["0 * * * *"]
 
 [vars]
 SETTLE_URL = "https://heatchecks.io/api/settle"
