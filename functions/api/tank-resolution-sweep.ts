@@ -35,7 +35,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import Anthropic from '@anthropic-ai/sdk';
-import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
+import { getSql, jsonResponse, type Env, numEnv } from '../../lib/pages-functions/db';
 import { fetchMarket, outcomeOrderMismatch, resolveMarket } from '../../lib/pages-functions/gamma';
 import {
     fetchMarket as fetchKalshiMarket,
@@ -54,12 +54,6 @@ import { secretMatches } from '../../lib/pages-functions/secret-compare';
 // curation, and importing one three-line helper from there would pull that module's
 // entire graph - the Anthropic matching prompt, the verify prompt, Gamma's live fetch,
 // the filter - into this bundle for no reason.
-function numEnv(value: string | undefined, fallback: number): number {
-    if (!value) return fallback;
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
-}
-
 // Ten per run keeps the worst case at roughly 1 + 10 Gamma + 10 Anthropic + 1 batched
 // write = ~22 subrequests, comfortably inside the 50 ceiling with room for retries.
 export const DEFAULT_MAX_PER_RUN = 10;

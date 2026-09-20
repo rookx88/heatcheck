@@ -33,6 +33,7 @@ import ORBITRON_BOLD from './fonts/orbitron-bold.bin';
 import ORBITRON_BLACK from './fonts/orbitron-black.bin';
 import { MAX_LEVEL } from './leveling';
 import { formatPvpRecord, type PvpRecord } from './pvp-record';
+import { patchInteractionOriginal } from './discord-api';
 
 // Canvas matches the committed art assets (540x960 - the 1080x1920 reference scaled
 // by 0.5). Half-size is deliberate CPU management, not a quality tradeoff: the first
@@ -200,41 +201,32 @@ ${pvpLine ? `<text x="53" y="866" font-family="Orbitron" font-weight="700" font-
 // render fallback, and a final plain-content fallback so the interaction can never
 // hang - same layered posture as sendLeaderboardResult.
 export async function sendMeCard(applicationId: string, token: string, input: MeCardInput): Promise<void> {
-    const patchUrl = `https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`;
+    // Each rung is one patchInteractionOriginal call (discord-api.ts), which also brings
+    // the 429 retry this path never had.
     try {
         const png = await renderMeCard(input);
         if (png) {
-            const form = new FormData();
-            form.append('payload_json', JSON.stringify({ content: '' }));
-            form.append('files[0]', new Blob([png], { type: 'image/png' }), 'me.png');
-            const res = await fetch(patchUrl, { method: 'PATCH', body: form });
+            const res = await patchInteractionOriginal(applicationId, token, { content: '', file: { name: 'me.png', data: png } });
             if (res.ok) return;
             console.error(`[me-card] Multipart PATCH failed (${res.status}): ${await res.text().catch(() => '')}`);
         }
-        await fetch(patchUrl, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                content: '',
-                embeds: [{
-                    author: { name: input.displayName },
-                    // Carries the same stats the card does, PvP included - a stat
-                    // that only exists in the SVG silently disappears whenever the
-                    // render fails.
-                    description: `**#${input.rank}** · ${input.points.toLocaleString('en-US')} points · SR ${input.sr} · LVL ${input.level}${formatPvpRecord(input.pvpRecord) ? ` · PvP ${formatPvpRecord(input.pvpRecord)}` : ''}`,
-                    thumbnail: { url: input.avatarUrl },
-                    color: 0xf97316,
-                }],
-            }),
+        await patchInteractionOriginal(applicationId, token, {
+            sparse: true,
+            content: '',
+            embeds: [{
+                author: { name: input.displayName },
+                // Carries the same stats the card does, PvP included - a stat
+                // that only exists in the SVG silently disappears whenever the
+                // render fails.
+                description: `**#${input.rank}** · ${input.points.toLocaleString('en-US')} points · SR ${input.sr} · LVL ${input.level}${formatPvpRecord(input.pvpRecord) ? ` · PvP ${formatPvpRecord(input.pvpRecord)}` : ''}`,
+                thumbnail: { url: input.avatarUrl },
+                color: 0xf97316,
+            }],
         });
     } catch (err) {
         console.error('[me-card] sendMeCard failed entirely:', err);
         try {
-            await fetch(patchUrl, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: 'Could not build your card right now — try again shortly.' }),
-            });
+            await patchInteractionOriginal(applicationId, token, { sparse: true, content: 'Could not build your card right now — try again shortly.' });
         } catch (finalErr) {
             console.error('[me-card] Final fallback PATCH also failed:', finalErr);
         }

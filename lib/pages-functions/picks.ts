@@ -11,15 +11,9 @@
 // `picks` row with source='app', so it shares the same daily cap pool as a site pick.
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
-import type { Env } from './db';
+import { numEnv, type Env } from './db';
 import { picksClosed } from '../../tank-deck-format';
 import type { PropOdds } from '../../tank-types';
-
-function numEnv(value: string | undefined, fallback: number): number {
-    if (!value) return fallback;
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
-}
 
 export interface SubmitPickInput {
     waitlistId: string;

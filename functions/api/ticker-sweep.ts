@@ -15,17 +15,11 @@
 // violation skips, CLOB-dead markets age out of the CURATE_TAG_SWEEP_DAYS window.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
-import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
+import { getSql, jsonResponse, type Env, numEnv } from '../../lib/pages-functions/db';
 import { sweepUntaggedTanks } from '../../lib/pages-functions/tickers';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 const DEFAULT_TAG_SWEEP_DAYS = 14;
-
-function numEnv(value: string | undefined, fallback: number): number {
-    if (!value) return fallback;
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
-}
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
     const secret = context.request.headers.get('X-Curate-Secret');

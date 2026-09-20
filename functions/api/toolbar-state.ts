@@ -33,7 +33,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { getSession } from '../../lib/pages-functions/session';
-import { petPublic, type FeedingConfig } from '../../lib/pages-functions/pets';
+import { petPublic, unwrapGameConfig, type FeedingConfig } from '../../lib/pages-functions/pets';
 import { maybeDiscover, sustainedSatisfied, type DiscoveryConfig, type DiscoveryPetRow } from '../../lib/pages-functions/discovery';
 import { buildFacts, encounterFactsStatement, evaluateEncounters, type EncounterFactsRow, type PetFacts } from '../../lib/pages-functions/encounters/evaluate';
 import { forcedFind } from '../../lib/pages-functions/encounters/plays';
@@ -112,10 +112,11 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         encounterFactsStatement(sql, session.userId),
         sql`SELECT config FROM game_config WHERE key = 'discovery' AND active = true LIMIT 1`,
     ]);
-    if (cfgRows.length === 0) throw new Error('No active game_config row for key "feeding"');
-    const feedingCfg = (cfgRows[0] as unknown as { config: FeedingConfig }).config;
-    if (discoveryCfgRows.length === 0) throw new Error('No active game_config row for key "discovery"');
-    const discoveryCfg = (discoveryCfgRows[0] as unknown as { config: DiscoveryConfig }).config;
+    // Same guard the getGameConfig helper applies, shared rather than re-typed: these two
+    // rows ride the batch above (one round trip for six statements), so they can't call
+    // the helper itself without giving that up.
+    const feedingCfg = unwrapGameConfig(cfgRows, 'feeding') as unknown as FeedingConfig;
+    const discoveryCfg = unwrapGameConfig(discoveryCfgRows, 'discovery') as unknown as DiscoveryConfig;
     const pet = petRows.length ? (petRows[0] as unknown as DiscoveryPetRow & { feed_count: number; name: string | null }) : null;
     const factsRow = factsRows.length ? (factsRows[0] as unknown as EncounterFactsRow) : null;
     // What only this request knows about the pet. Sustained satisfaction uses discovery's

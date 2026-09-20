@@ -20,6 +20,7 @@
 // AREA is league-scoped (fixtures in that competition).
 
 import type { SqlReader } from './tickers';
+import { getGameConfigOrNull } from './pets';
 import { contributionFor } from './index-slate';
 import { DEFAULT_MIN_GAMES, qualifies, type TeamRecord, type TeamSideRow } from './team-records';
 import { DEFAULT_TEAM_PRICE_BASELINE, DEFAULT_TEAM_PRICE_SCALE, type TeamPricing } from './team-price';
@@ -84,8 +85,8 @@ export async function readTeamConfig(sql: SqlReader): Promise<TeamConfig> {
         source: 'default',
     };
     try {
-        const rows = await sql`SELECT config FROM game_config WHERE key = ${TEAM_RECORDS_CONFIG_KEY} AND active = true LIMIT 1`;
-        const cfg = (rows[0]?.config ?? null) as { min_games?: unknown; price_baseline?: unknown; price_scale?: unknown } | null;
+        const cfg = await getGameConfigOrNull(sql, TEAM_RECORDS_CONFIG_KEY) as
+            { min_games?: unknown; price_baseline?: unknown; price_scale?: unknown } | null;
         if (!cfg) return defaults;
         const num = (v: unknown, ok: (n: number) => boolean, fallback: number) =>
             typeof v === 'number' && Number.isFinite(v) && ok(v) ? v : fallback;

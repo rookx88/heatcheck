@@ -192,6 +192,78 @@ export async function postDiscordChannelMessage(
     }
 }
 
+export interface InteractionPatchBody {
+    content?: string;
+    embeds?: unknown[];
+    components?: unknown[];
+    /** Attach a rendered image (card, leaderboard) - sent as multipart with the payload. */
+    file?: { name: string; data: ArrayBuffer | Uint8Array; contentType?: string };
+    /**
+     * Replace the message's attachment list with just this file. Discord keeps existing
+     * attachments on an edit unless told otherwise, so a card that replaces an earlier
+     * card needs this; a first reply does not (see lib/pages-functions/pvp.ts).
+     */
+    replaceAttachments?: boolean;
+    /**
+     * Send only the keys that were set, leaving Discord's stored values for the rest.
+     * The default fills content/embeds/components so a follow-up clears whatever the
+     * deferred placeholder had - the two behaviours the six call sites actually needed.
+     */
+    sparse?: boolean;
+}
+
+/**
+ * Edits the original response to an interaction (the PATCH .../@original every deferred
+ * reply eventually makes). This exact request was written six times across
+ * discord-commands.ts, pvp.ts, leaderboard-image.ts, me-card.ts and interactions.ts -
+ * same URL, same multipart-vs-JSON branch, differing only in the two flags above
+ * (efficiency audit, 2026-09-19).
+ *
+ * Retries on 429 honouring retry_after, like postDiscordChannelMessage: none of the six
+ * copies retried, and a rate-limited follow-up is exactly the "The application did not
+ * respond" failure their own comments describe. Returns the Response so callers can keep
+ * their existing fallback ladders (leaderboard-image.ts and me-card.ts degrade from
+ * image to embed to text); it never throws on a non-2xx.
+ */
+export async function patchInteractionOriginal(
+    applicationId: string,
+    interactionToken: string,
+    body: InteractionPatchBody
+): Promise<Response> {
+    const url = `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`;
+    const payload: Record<string, unknown> = body.sparse
+        ? {
+            ...(body.content !== undefined ? { content: body.content } : {}),
+            ...(body.embeds !== undefined ? { embeds: body.embeds } : {}),
+            ...(body.components !== undefined ? { components: body.components } : {}),
+        }
+        : { content: body.content ?? '', embeds: body.embeds ?? [], components: body.components ?? [] };
+    if (body.file && body.replaceAttachments) payload.attachments = [{ id: 0, filename: body.file.name }];
+
+    for (let attempt = 0; ; attempt++) {
+        let res: Response;
+        if (body.file) {
+            const form = new FormData();
+            form.append('payload_json', JSON.stringify(payload));
+            form.append('files[0]', new Blob([body.file.data as BlobPart], { type: body.file.contentType ?? 'image/png' }), body.file.name);
+            res = await fetch(url, { method: 'PATCH', body: form });
+        } else {
+            res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        }
+        if (res.status !== 429 || attempt >= MAX_RATE_LIMIT_RETRIES) return res;
+        const text = await res.text();
+        let retryAfterSeconds = Number(res.headers.get('Retry-After'));
+        try {
+            const parsed = JSON.parse(text) as { retry_after?: number };
+            if (typeof parsed.retry_after === 'number') retryAfterSeconds = parsed.retry_after;
+        } catch {
+            // Fall back to the header value already read above.
+        }
+        if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds < 0) retryAfterSeconds = 1;
+        await sleep(retryAfterSeconds * 1000 + 100);
+    }
+}
+
 // Strips the components off an already-posted message - used after a one-shot button
 // is consumed (the "Draw a winner" button on a settlement recap), so the recap can't
 // be clicked again once it's done its job. Best-effort by design: the draw itself is

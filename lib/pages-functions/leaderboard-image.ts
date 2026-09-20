@@ -58,6 +58,7 @@ import HEATCHECKS_LOGO from './heatchecks-logo.bin';
 // the footer's visual pointer to the invite, replacing the old URL text.
 import DISCORD_ICON from './discord-icon.bin';
 import { buildLeaderboardRowEmbeds, colorForRank, type LeaderboardRowInput } from './discord-leaderboard-card';
+import { patchInteractionOriginal } from './discord-api';
 
 // Heatchecks' own community server - the footer's Discord icon points at it visually
 // (pixels can't be clicked, but a screenshot/re-share keeps the association) AND it's
@@ -663,35 +664,32 @@ export async function sendLeaderboardResult(
     headerLabel: string,
     rows: LeaderboardRowInput[]
 ): Promise<void> {
-    const patchUrl = `https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`;
-
     // Top-level guard: renderLeaderboardImage already catches its own failures, but
-    // this wraps EVERYTHING else too (FormData/Blob construction, the multipart PATCH
-    // itself) - a Discord interaction that never gets its follow-up PATCH shows the
-    // user "The application did not respond" with no way to retry, which is worse
-    // than any fallback content this function could send instead. Nothing here should
-    // ever throw past this function.
+    // this wraps EVERYTHING else too (Blob construction, the multipart PATCH itself) -
+    // a Discord interaction that never gets its follow-up PATCH shows the user "The
+    // application did not respond" with no way to retry, which is worse than any
+    // fallback content this function could send instead. Nothing here should ever throw
+    // past this function. Each rung PATCHes through discord-api.ts's shared wrapper,
+    // which also retries a 429 rather than burning the rung on a rate limit.
     try {
         const png = rows.length > 0 ? await renderLeaderboardImage(headerLabel, rows) : null;
 
         if (png) {
-            const form = new FormData();
             // The image's Discord-icon watermark can't be clickable (pixels never
             // are). Belt and suspenders for the invite: a style-5 link button
             // (payload shape verified accepted by Discord's API directly), the
             // clickable embed title, AND the raw link in the message content -
             // Discord linkifies content URLs in every client with no components-API
             // subtleties, wrapped in <> so it doesn't unfurl a second invite embed.
-            form.append('payload_json', JSON.stringify({
+            const res = await patchInteractionOriginal(applicationId, token, {
                 content: `-# Join the Heatchecks Discord → <${HEATCHECKS_DISCORD_INVITE}>`,
                 embeds: [{ title: 'Heatchecks', url: HEATCHECKS_DISCORD_INVITE, image: { url: 'attachment://leaderboard.png' } }],
                 components: [{
                     type: 1,
                     components: [{ type: 2, style: 5, label: 'Join the Heatchecks Discord', url: HEATCHECKS_DISCORD_INVITE }],
                 }],
-            }));
-            form.append('files[0]', new Blob([png], { type: 'image/png' }), 'leaderboard.png');
-            const res = await fetch(patchUrl, { method: 'PATCH', body: form });
+                file: { name: 'leaderboard.png', data: png },
+            });
             if (res.ok) return;
             const bodyText = await res.text().catch(() => '');
             lastRenderError = `Multipart PATCH ${res.status}: ${bodyText.slice(0, 300)}`;
@@ -700,18 +698,13 @@ export async function sendLeaderboardResult(
 
         const embeds = buildLeaderboardRowEmbeds(rows);
         const debugSuffix = lastRenderError ? `\n-# debug: ${lastRenderError}` : '';
-        await fetch(patchUrl, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: content + debugSuffix, embeds }),
-        });
+        await patchInteractionOriginal(applicationId, token, { sparse: true, content: content + debugSuffix, embeds });
     } catch (err) {
         console.error('[leaderboard-image] sendLeaderboardResult failed entirely, sending plain content:', err);
         try {
-            await fetch(patchUrl, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content: content || 'Could not build the leaderboard right now — try again shortly.' }),
+            await patchInteractionOriginal(applicationId, token, {
+                sparse: true,
+                content: content || 'Could not build the leaderboard right now — try again shortly.',
             });
         } catch (finalErr) {
             console.error('[leaderboard-image] Final fallback PATCH also failed:', finalErr);

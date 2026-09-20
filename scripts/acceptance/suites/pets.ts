@@ -21,7 +21,7 @@
 // colour.
 
 import { pool, api, check, section, type Suite } from '../harness';
-import { createSessionUser, cleanupUsersByEmailPrefix, cheapestActiveSku, secondActiveSku } from '../fixtures';
+import { createSessionUser, cleanupUsersByEmailPrefix, cheapestActiveSku, secondActiveSku, seedBalance } from '../fixtures';
 
 const EMAIL_PREFIX = 'acceptance-pets-';
 
@@ -76,24 +76,10 @@ function user(tag: string): string {
     return `${EMAIL_PREFIX}${tag}@example.com`;
 }
 
-// Hand-grants Ember exactly the way lib/pages-functions/ledger.ts's post() does: one
-// ember_ledger row (FK'd to an already-active, already-seeded ember_rules row so we
-// don't need to insert our own rule) whose amount folds into ember_balances in the same
-// statement. Never writes ember_balances without a corresponding ember_ledger row.
-async function seedBalance(userId: string, amount: number): Promise<void> {
-    const idempotencyKey = `acceptance-pets-seed:${userId}:${crypto.randomUUID()}`;
-    await pool.query(
-        `WITH ins AS (
-            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
-            VALUES ($1, $2, 'adjustment', 'participation', 1, $3, '{"acceptance":"pets fixture seed"}')
-            RETURNING amount
-        )
-        INSERT INTO ember_balances (user_id, balance, updated_at)
-        SELECT $1, amount, NOW() FROM ins
-        ON CONFLICT (user_id) DO UPDATE SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()`,
-        [userId, amount, idempotencyKey],
-    );
-}
+// Ember is granted through fixtures.ts's shared seedBalance (imported below): one
+// ember_ledger row whose amount folds into ember_balances in the same statement, so a
+// fixture can never break the invariant ledger-trace exists to enforce. This file used
+// to carry its own byte-identical copy (efficiency audit, 2026-09-19).
 
 async function currentBalance(userId: string): Promise<number> {
     const { rows } = await pool.query(`SELECT balance FROM ember_balances WHERE user_id = $1`, [userId]);

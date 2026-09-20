@@ -75,7 +75,8 @@ export interface Env {
     DISCORD_CLIENT_SECRET: string;
     DISCORD_BOT_TOKEN: string;
     DISCORD_PUBLIC_KEY: string;
-    DISCORD_CHANNEL_ID: string;
+    // (No DISCORD_CHANNEL_ID: a single global channel was never read by anything -
+    // every post target comes from discord_guild_configs.channel_id, per guild.)
     // Minimum settled picks before an account qualifies for /leaderboard - defaults to
     // 5 (functions/api/discord/interactions.ts) so someone 1-for-1 can't top the
     // board. Same tunable-via-env-var pattern as DAILY_PICK_CAP.
@@ -106,6 +107,15 @@ export function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
             ...(init.headers as Record<string, string> | undefined),
         },
     });
+}
+
+// Numeric env override with a code default: unset, empty or non-numeric all fall back,
+// and "0" is honoured. Lived as six identical private copies across the functions that
+// read tunables (efficiency audit, 2026-09-19).
+export function numEnv(value: string | undefined, fallback: number): number {
+    if (!value) return fallback;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
 }
 
 export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

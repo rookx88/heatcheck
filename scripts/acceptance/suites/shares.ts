@@ -21,7 +21,7 @@
 // a status code proves what one response said; the rows prove what was written.
 
 import { pool, api, check, section, near, registerTeardown, warn, type Suite } from '../harness';
-import { createSessionUser, cleanupUsersByEmailPrefix, ledgerTotals } from '../fixtures';
+import { createSessionUser, cleanupUsersByEmailPrefix, ledgerTotals, seedBalance } from '../fixtures';
 import { priceFromValue, buyCost, sellCredit, PRICE_DECIMALS } from '../../../lib/pages-functions/ticker-price';
 
 const EMAIL_PREFIX = 'acceptance-shares-';
@@ -37,23 +37,8 @@ function user(tag: string): string {
     return `${EMAIL_PREFIX}${tag}@example.com`;
 }
 
-// Same as suites/pets.ts's seedBalance: one ember_ledger row whose amount folds into
-// ember_balances in the same statement, so the cache == SUM(ledger) invariant that
-// ledger-trace asserts is never broken by a fixture.
-async function seedBalance(userId: string, amount: number): Promise<void> {
-    const idempotencyKey = `acceptance-shares-seed:${userId}:${crypto.randomUUID()}`;
-    await pool.query(
-        `WITH ins AS (
-            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
-            VALUES ($1, $2, 'adjustment', 'participation', 1, $3, '{"acceptance":"shares fixture seed"}')
-            RETURNING amount
-        )
-        INSERT INTO ember_balances (user_id, balance, updated_at)
-        SELECT $1, amount, NOW() FROM ins
-        ON CONFLICT (user_id) DO UPDATE SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()`,
-        [userId, amount, idempotencyKey],
-    );
-}
+// Ember is granted through fixtures.ts's shared seedBalance (imported below) - this
+// file used to carry its own byte-identical copy (efficiency audit, 2026-09-19).
 
 async function currentBalance(userId: string): Promise<number> {
     const { rows } = await pool.query(`SELECT balance FROM ember_balances WHERE user_id = $1`, [userId]);

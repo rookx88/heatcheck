@@ -64,7 +64,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import Anthropic from '@anthropic-ai/sdk';
-import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
+import { getSql, jsonResponse, type Env, numEnv } from '../../lib/pages-functions/db';
 import { fetchLiveGames, DEFAULT_WINDOW_HOURS } from '../../tank-gamma-live';
 import { filterProps, GAME_LINE_MARKETS } from '../../tank-filter';
 import { generateTankArticle, extractJson, parseModelJson, type GenerationConfig } from '../../tank-generate';
@@ -194,12 +194,6 @@ export const SPORT_GROUPS: Record<string, string[]> = {
 // this curator deliberately ignores. Note curate-sport.ts fetches only ONE group's
 // leagues, which is most of why a per-sport request is cheaper rather than 4x costlier.
 export const CURATE_LEAGUES = Object.values(SPORT_GROUPS).flat();
-
-export function numEnv(value: string | undefined, fallback: number): number {
-    if (!value) return fallback;
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
-}
 
 export interface CandidateEntry {
     prop: Prop;

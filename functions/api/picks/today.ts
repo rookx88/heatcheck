@@ -11,18 +11,12 @@
 // -> 401; the client treats that as "logged-out state", not an error.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
-import { getSql, jsonResponse, type Env } from '../../../lib/pages-functions/db';
+import { getSql, jsonResponse, type Env, numEnv } from '../../../lib/pages-functions/db';
 import { getSession, requireOnboarded } from '../../../lib/pages-functions/session';
 
 // Same env-gated default as functions/api/picks.ts (1/day for Phase 0, raised to 3 via
 // the DAILY_PICK_CAP Cloudflare env var whenever Phase 1 is ready - no redeploy needed).
 // Kept in sync manually since these are separate small Functions, not shared modules.
-function numEnv(value: string | undefined, fallback: number): number {
-    if (!value) return fallback;
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
-}
-
 interface TodayPickRow {
     side: string;
     tank_slug: string;

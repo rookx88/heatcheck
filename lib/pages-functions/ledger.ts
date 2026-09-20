@@ -35,11 +35,10 @@ interface RuleRow {
     version: number;
     kind: 'source' | 'sink';
     // correct_call's config is {base, cap} (difficulty-scaled formula); every other
-    // rule (participation, the shop's price rules, and whatever post() gets used for
-    // later) is a flat {amount}. Left as a loose record rather than a union so post()
-    // and purchaseConsumable() - which only ever handle the flat shape - don't need to
-    // know about the formula shape at all; settleCall() is the only caller that narrows
-    // per rule key.
+    // rule (participation, the shop's price rules, the gifts) is a flat {amount}. Left
+    // as a loose record rather than a union so the flat-shape callers - purchaseConsumable
+    // and the gift paths - don't need to know about the formula shape at all; settleCall()
+    // is the only caller that narrows per rule key.
     config: Record<string, number>;
 }
 
@@ -59,42 +58,12 @@ export function buildIdempotencyKey(ruleKey: string, userId: string, scope: stri
     return `${ruleKey}:${userId}:${scope}`;
 }
 
-export interface PostInput {
-    userId: string;
-    ruleKey: string;
-    idempotencyKey: string;
-    metadata?: unknown;
-}
-
-// Generic earn append: looks up the active rule's payout, then writes the ledger row and
-// folds the amount into ember_balances as ONE CTE-chained statement (not a two-step
-// sql.transaction([...]) array). A two-statement array can't make the balance UPDATE
-// conditional on whether the INSERT actually happened versus no-op'd on a retried
-// idempotency key — that gap would double-credit the balance on retry even though the
-// ledger correctly wrote nothing. A single statement is atomic by construction and
-// closes it: the balance CTE only ever sees a row from `ins` when the insert was real.
-//
-// No production caller today (the acceptance fixtures' seed rows take this shape). It
-// folds `balance` only - never lifetime_earned - so a seed/adjustment can't put an
-// account on the Hall of Fame. A future real source that should count must fold both
-// columns the way settleCall() and discoveryFindEmber() do.
-export async function post(sql: NeonQueryFunction<false, false>, input: PostInput): Promise<void> {
-    const rule = await getActiveRule(sql, input.ruleKey);
-    const entryType: EntryType = rule.kind === 'source' ? 'earn' : 'adjustment';
-    await sql`
-        WITH ins AS (
-            INSERT INTO ember_ledger (user_id, amount, entry_type, rule_key, rule_version, idempotency_key, metadata)
-            VALUES (${input.userId}, ${rule.config.amount}, ${entryType}, ${input.ruleKey}, ${rule.version},
-                    ${input.idempotencyKey}, ${JSON.stringify(input.metadata ?? {})})
-            ON CONFLICT (idempotency_key) DO NOTHING
-            RETURNING amount
-        )
-        INSERT INTO ember_balances (user_id, balance, updated_at)
-        SELECT ${input.userId}, amount, NOW() FROM ins
-        ON CONFLICT (user_id) DO UPDATE
-            SET balance = ember_balances.balance + EXCLUDED.balance, updated_at = NOW()
-    `;
-}
+// There is no generic earn append either (efficiency audit, 2026-09-19): post() had no
+// caller in production OR in the acceptance harness - the fixtures write that statement
+// themselves (scripts/acceptance/fixtures.ts seedBalance) - and an unused entry point
+// into the ledger reads as load-bearing when it isn't. Every real credit path below
+// carries its own guard (a rule lookup, a claim CTE, a lifetime_earned fold, a
+// notification), which is exactly what a generic one could not have.
 
 // Serializes all Ember spends for one user inside the calling transaction. Without it,
 // two truly-simultaneous spends with the SAME idempotency key double-debit the balance
@@ -572,6 +541,10 @@ export interface SettleCallInput {
 
 export interface SettleCallResult {
     payoutAmount: number;
+    // The account's balance after this payout, straight from the write - null when the
+    // payout no-op'd on its idempotency key (a replayed settlement), where the caller
+    // must read it if it needs it.
+    newBalance: number | null;
 }
 
 // correct_call's payout scales with how unlikely the pick was: round(base * min(1/p, cap)).
@@ -640,7 +613,7 @@ export async function settleCall(sql: NeonQueryFunction<false, false>, input: Se
                 : `Your call settled — +${payoutAmount} Ember.`);
     const notificationKey = `settle:call:${input.pickId}`;
 
-    await sql.transaction([
+    const [, balanceRows] = await sql.transaction([
         sql`UPDATE picks SET result = ${input.result}, settled_at = NOW() WHERE id = ${input.pickId} AND result IS NULL`,
         sql`
             WITH ins AS (
@@ -656,6 +629,7 @@ export async function settleCall(sql: NeonQueryFunction<false, false>, input: Se
                 SET balance = ember_balances.balance + EXCLUDED.balance,
                     lifetime_earned = ember_balances.lifetime_earned + EXCLUDED.lifetime_earned,
                     updated_at = NOW()
+            RETURNING balance
         `,
         sql`
             INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key, mood)
@@ -665,7 +639,12 @@ export async function settleCall(sql: NeonQueryFunction<false, false>, input: Se
         `,
     ]);
 
-    return { payoutAmount };
+    // The settlement email needs the new balance, and this write just produced it -
+    // returning it here saves settle.ts a SELECT per settled pick (efficiency audit,
+    // 2026-09-19). Empty only when the payout no-op'd on its idempotency key (a replay),
+    // in which case the caller falls back to reading the balance itself.
+    const newBalance = (balanceRows as unknown as Array<{ balance: number }>)[0]?.balance;
+    return { payoutAmount, newBalance: typeof newBalance === 'number' ? newBalance : null };
 }
 
 export interface DiscoveryFindEmberInput {

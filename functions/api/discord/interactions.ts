@@ -29,10 +29,10 @@
 //   discord-commands.ts - see that file's own header for the full rundown.
 
 import type { PagesFunction } from '@cloudflare/workers-types';
-import { getSql, type Env } from '../../../lib/pages-functions/db';
+import { getSql, type Env, numEnv } from '../../../lib/pages-functions/db';
 import { verifyDiscordRequest } from '../../../lib/pages-functions/discord-verify';
 import { submitPick, type SubmitPickResult } from '../../../lib/pages-functions/picks';
-import { fetchGuildMembers, getGuildLabels, buildDiscordAvatarUrl, hasManageGuildPermission } from '../../../lib/pages-functions/discord-api';
+import { fetchGuildMembers, getGuildLabels, buildDiscordAvatarUrl, hasManageGuildPermission, patchInteractionOriginal } from '../../../lib/pages-functions/discord-api';
 import type { LeaderboardMessage } from '../../../lib/pages-functions/discord-leaderboard-card';
 import { sendLeaderboardResult, postLeaderboardToChannel } from '../../../lib/pages-functions/leaderboard-image';
 import { computeSkillRatings } from '../../../lib/pages-functions/skill-rating';
@@ -78,12 +78,6 @@ function ephemeral(content: string): Response {
         JSON.stringify({ type: RESPONSE_CHANNEL_MESSAGE_WITH_SOURCE, data: { content, flags: EPHEMERAL_FLAG } }),
         { headers: { 'Content-Type': 'application/json' } }
     );
-}
-
-function numEnv(value: string | undefined, fallback: number): number {
-    if (!value) return fallback;
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
 }
 
 function messageForResult(result: SubmitPickResult): string {
@@ -387,9 +381,7 @@ async function handlePostLeaderboardCommand(context: RequestContext, interaction
     if (view === 'league' && !sport) return ephemeral('Pick a sport for the league leaderboard (e.g. sport:NFL).');
 
     context.waitUntil((async () => {
-        const patchUrl = `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`;
-        const patch = (content: string) =>
-            fetch(patchUrl, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }) });
+        const patch = (content: string) => patchInteractionOriginal(applicationId, interactionToken, { sparse: true, content });
         try {
             const sql = getSql(context.env);
             const cfgRows = await sql`SELECT channel_id, community_pick_channel_ids FROM discord_guild_configs WHERE guild_id = ${guildId}`;
@@ -461,10 +453,8 @@ async function handleMeCommand(context: RequestContext, interaction: any): Promi
             .then((input) => sendMeCard(applicationId, interactionToken, input))
             .catch((err) => {
                 console.error('[POST /api/discord/interactions] /me failed:', err);
-                return fetch(`https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}/messages/@original`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content: 'Could not build your card right now — try again shortly.' }),
+                return patchInteractionOriginal(applicationId, interactionToken, {
+                    sparse: true, content: 'Could not build your card right now — try again shortly.',
                 }).then(() => undefined);
             })
     );

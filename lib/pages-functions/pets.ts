@@ -7,6 +7,7 @@
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import { itemIdempotencyKey } from './item-ledger';
+import type { SqlReader } from './tickers';
 
 export interface FeedingConfig {
     decay_rate_per_hour: number;
@@ -16,10 +17,32 @@ export interface FeedingConfig {
 }
 
 // Active row for a game_config key (mirrors ledger.getActiveRule's shape/contract).
-export async function getGameConfig(sql: NeonQueryFunction<false, false>, key: string): Promise<Record<string, number>> {
+//
+// Takes SqlReader, not NeonQueryFunction: the structural read shape tickers.ts already
+// defines, which Neon's tagged template satisfies directly and which the build-time pg
+// adapter also satisfies. Typing it narrowly is why team-pages.ts and team-price.ts had
+// to hand-roll this same query (efficiency audit, 2026-09-19).
+export async function getGameConfig(sql: SqlReader, key: string): Promise<Record<string, number>> {
+    const config = await getGameConfigOrNull(sql, key);
+    if (config === null) throw new Error(`No active game_config row for key "${key}"`);
+    return config;
+}
+
+// Same read, for the callers that must degrade rather than fail: the static-site build
+// (team pages) renders with documented defaults when a config row is missing, instead of
+// failing the whole build over one absent row.
+export async function getGameConfigOrNull(sql: SqlReader, key: string): Promise<Record<string, number> | null> {
     const rows = await sql`SELECT config FROM game_config WHERE key = ${key} AND active = true LIMIT 1`;
-    if (rows.length === 0) throw new Error(`No active game_config row for key "${key}"`);
+    if (rows.length === 0) return null;
     return (rows[0] as unknown as { config: Record<string, number> }).config;
+}
+
+// The guard the batched readers share: toolbar-state reads several config rows inside one
+// sql.transaction (it cannot call the helpers without giving up that batching), so it
+// unwraps each result through this rather than copying the error string.
+export function unwrapGameConfig(rows: unknown[], key: string): Record<string, number> {
+    if (rows.length === 0) throw new Error(`No active game_config row for key "${key}"`);
+    return (rows[0] as { config: Record<string, number> }).config;
 }
 
 // A pet row as the feed/hatch CTEs return it. satisfaction_at_last_feed/last_fed_at are

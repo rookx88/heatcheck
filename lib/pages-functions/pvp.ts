@@ -23,7 +23,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { postDiscordChannelMessage, deleteChannelMessage, fetchGuildMemberBrief, buildAvatarUrlForRender } from './discord-api';
+import { postDiscordChannelMessage, deleteChannelMessage, fetchGuildMemberBrief, buildAvatarUrlForRender, patchInteractionOriginal } from './discord-api';
 import { brandEmbed } from './discord-brand';
 import { buildPvpChallengeMessage } from './pvp-card';
 import { computePvpRecords, formatPvpRecord, type PvpRecord } from './pvp-record';
@@ -126,33 +126,25 @@ function deferredUpdate(context: RequestContext, interaction: any, work: Promise
                 console.error('[pvp] Deferred screen failed:', err);
                 return screenData('Something went wrong — try again shortly.') as DeferredMessageData;
             })
-            .then((data) => {
-                const url = `https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`;
-                // Only fields the caller SET are sent. Discord retains anything
-                // omitted, which is what lets a selection re-render swap the
-                // components while the card image and body stay exactly as they were.
-                const payload: Record<string, unknown> = { components: data.components ?? [] };
-                if (data.content !== undefined) payload.content = data.content;
-                if (data.embeds !== undefined) payload.embeds = data.embeds;
-                if (data.file) {
-                    // `attachments` naming ONLY the new upload is what makes this a
-                    // replacement. Discord's rule is that omitting the field RETAINS
-                    // whatever the message already carries (which is exactly what the
-                    // setup wizard relies on to keep its banner pinned) - so a re-render
-                    // that PATCHes a fresh PNG without this would leave the message
-                    // carrying both the stale and the new image.
-                    payload.attachments = [{ id: 0, filename: data.file.name }];
-                    const form = new FormData();
-                    form.append('payload_json', JSON.stringify(payload));
-                    // No Content-Type header: fetch has to set the multipart boundary.
-                    form.append('files[0]', new Blob([new Uint8Array(data.file.data)], { type: 'image/png' }), data.file.name);
-                    return fetch(url, { method: 'PATCH', body: form });
-                }
-                // No file: omit `attachments` so an image already on the message stays.
-                // That's what makes the dropdown "hold" re-renders free - they change
-                // only which option is marked and which buttons show.
-                return fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            })
+            // sparse: only fields the caller SET are sent, so a selection re-render can
+            // swap the components while the card image and body stay exactly as they
+            // were (Discord retains anything omitted).
+            //
+            // replaceAttachments: `attachments` naming ONLY the new upload is what makes
+            // a file PATCH a replacement. Omitting the field RETAINS whatever the message
+            // already carries - which is what the setup wizard relies on to keep its
+            // banner pinned - so a re-render that PATCHes a fresh PNG without this would
+            // leave the message carrying both the stale and the new image. With no file,
+            // `attachments` is omitted entirely, which is what makes the dropdown "hold"
+            // re-renders free.
+            .then((data) => patchInteractionOriginal(applicationId, token, {
+                sparse: true,
+                content: data.content,
+                embeds: data.embeds,
+                components: data.components ?? [],
+                file: data.file ? { name: data.file.name, data: new Uint8Array(data.file.data) } : undefined,
+                replaceAttachments: true,
+            }))
             .catch((err) => console.error('[pvp] Deferred PATCH failed:', err))
     );
 

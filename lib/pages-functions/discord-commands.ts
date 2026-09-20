@@ -24,7 +24,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, clearMessageComponents, getGuildLabels, buildDiscordAvatarUrl, fetchGuildIconUrl, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL } from './discord-api';
+import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, clearMessageComponents, getGuildLabels, buildDiscordAvatarUrl, fetchGuildIconUrl, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL, patchInteractionOriginal } from './discord-api';
 import type { LeaderboardMessage } from './discord-leaderboard-card';
 import { computeSkillRatings } from './skill-rating';
 import { brandEmbed } from './discord-brand';
@@ -159,17 +159,13 @@ export function deferredEphemeral(context: RequestContext, interaction: any, wor
                 console.error('[discord-commands] Deferred command failed:', err);
                 return { content: 'Something went wrong — try again shortly.' } as DeferredMessageData;
             })
-            .then((data) => {
-                const url = `https://discord.com/api/v10/webhooks/${applicationId}/${token}/messages/@original`;
-                const payload = { content: data.content ?? '', embeds: data.embeds ?? [], components: data.components ?? [] };
-                if (data.file) {
-                    const form = new FormData();
-                    form.append('payload_json', JSON.stringify(payload));
-                    form.append('files[0]', new Blob([new Uint8Array(data.file.data)], { type: 'image/png' }), data.file.name);
-                    return fetch(url, { method: 'PATCH', body: form });
-                }
-                return fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-            })
+            // Default (non-sparse) fill: content/embeds/components are all sent, so the
+            // follow-up replaces whatever the deferred placeholder showed.
+            .then((data) => patchInteractionOriginal(applicationId, token, {
+                content: data.content, embeds: data.embeds, components: data.components,
+                file: data.file ? { name: data.file.name, data: new Uint8Array(data.file.data) } : undefined,
+            }))
+            .catch((err) => console.error('[discord-commands] Deferred PATCH failed:', err))
     );
 
     return new Response(

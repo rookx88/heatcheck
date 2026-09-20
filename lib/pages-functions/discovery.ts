@@ -376,8 +376,8 @@ export async function maybeDiscover(
         const msgPre = `WHOA. I dug up something SHINY while you were away — a ${picked.name} card, serial #`;
         const msgPost = ` of ${picked.mint_size}! Tucked it into our Collectibles. Do NOT let me eat it.`;
         // Same one-statement shape as the food branch (claimed = the window race
-        // guard), plus `minted`: the discovery-pool check-and-decrement in spend()'s
-        // guarded-UPDATE idiom. The collectible_pools row lock serializes all mints of
+        // guard), plus `minted`: the discovery-pool check-and-decrement in
+        // purchaseConsumable()'s guarded-UPDATE idiom (ledger.ts). The collectible_pools row lock serializes all mints of
         // this SKU globally; a loser re-evaluates minted_count < mint_size against the
         // winner's committed version, so the cap can't be exceeded, and RETURNING
         // minted_count IS the freshly allocated 1-based serial - allocation and cap

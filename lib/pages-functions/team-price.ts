@@ -37,6 +37,7 @@
 // that a residual does not.
 
 import type { SqlReader } from './tickers';
+import { getGameConfigOrNull } from './pets';
 import { closeDelta, contributionFor } from './index-slate';
 import { priceFromValue, priceReturnPct, type PriceParams } from './ticker-price';
 import { WINDOWS, sumSince, type WindowSums, type WindowedEvent } from './ticker-window';
@@ -163,8 +164,7 @@ const DEFAULT_TAG_CAP_PCT = 1.5;
  * fall back to their stored delta clamped to the current cap, which can only shrink it.
  */
 export async function getTeamTagEvents(sql: SqlReader): Promise<TeamTagReport> {
-    const cfgRows = await sql`SELECT config FROM game_config WHERE key = 'tickers' AND active = true LIMIT 1`;
-    const cfg = (cfgRows[0]?.config ?? null) as { tag_scale_pct?: unknown; tag_delta_cap_pct?: unknown } | null;
+    const cfg = await getGameConfigOrNull(sql, 'tickers') as { tag_scale_pct?: unknown; tag_delta_cap_pct?: unknown } | null;
     const num = (v: unknown, fallback: number) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback);
     const tagScalePct = num(cfg?.tag_scale_pct, DEFAULT_TAG_SCALE_PCT);
     const tagCapPct = num(cfg?.tag_delta_cap_pct, DEFAULT_TAG_CAP_PCT);
