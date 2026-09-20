@@ -343,6 +343,7 @@ export function mappedRawNames(): string[] {
 export type SubjectSource =
     | 'side_label'           // the label IS the club (MLB)
     | 'side_label_nickname'  // the label is a nickname of exactly one of the two (NFL)
+    | 'side_label_abbr'      // the label is the abbreviation of exactly one of the two (NFL spreads)
     | 'question'             // soccer 'Yes', club named in the question
     | 'totals'               // not team-directional
     | 'game_property'        // both-teams-to-score: a fact about the game, not a side
@@ -376,6 +377,14 @@ export interface PositionTeamsInput {
     sideLabel: string | null;
     /** polymarket_props.question - only read for Yes/No markets. */
     question: string | null;
+    /**
+     * event_teams[].abbreviation for each side, as index_positions.away_abbr/home_abbr
+     * already store them (slate-rows.ts lowercases at source). Optional: callers that
+     * don't have them - team-price.ts reads a game_snapshot, not a position row - simply
+     * lose the abbreviation arm, exactly as before.
+     */
+    awayAbbr?: string | null;
+    homeAbbr?: string | null;
 }
 
 const YES_NO_LABEL = /^(yes|no)$/i;
@@ -445,7 +454,15 @@ export function resolvePositionTeams(input: PositionTeamsInput): PositionTeams {
     if (isDrawMarket({ question: input.question })) return done(null, 'draw_market');
 
     // 3. Polymarket's soccer moneylines: "Will <TEAM> win on <date>?" over ['Yes','No'].
-    if (YES_NO_LABEL.test(label)) {
+    //
+    //    SCOPED TO MONEYLINE (2026-09-20). This arm used to run for spreads too, and a
+    //    spread on the New Orleans Saints has the side label 'NO' - which matched here,
+    //    before any team matching, and returned 'three_way_no'. That is an
+    //    honest-refusal code, so it sits in no BUG_SOURCES list: the row was silently
+    //    mis-attributed and invisible to the acceptance invariant, to index-lock's
+    //    attributionBugs counter and to the backfill's gate. A spread outcome is never a
+    //    three-way leg, so the arm belongs to the market shape it was written for.
+    if (input.marketType === 'moneyline' && YES_NO_LABEL.test(label)) {
         // 'No' is "opponent win OR draw" - a three-way leg, not a club. The only honest
         // fact is that the named club did not win, so no club owns this side.
         // market-movers.ts:186-189 makes the same refusal for the same reason.
@@ -481,6 +498,26 @@ export function resolvePositionTeams(input: PositionTeamsInput): PositionTeams {
     if (awayHit !== homeHit) {
         const id = resolve(awayHit ? away : home);
         return done(id, id ? 'side_label_nickname' : 'unmapped_team');
+    }
+
+    // 6. The label is the fixture's ABBREVIATION ('BAL' for 'Baltimore Ravens'): what an
+    //    NFL SPREAD's outcomes actually carry. The nickname rule above cannot reach these
+    //    - it is a suffix test, and an abbreviation is a contraction, not a trailing word.
+    //
+    //    Safe for the same reason the nickname rule is: matching is scoped to THIS
+    //    FIXTURE'S two abbreviations and requires EXACTLY one hit, so a globally ambiguous
+    //    abbreviation is locally unambiguous. No new registry data is involved -
+    //    event_teams[].abbreviation is a strict bijection with name inside a league, and
+    //    index_positions froze both onto the row for exactly this re-resolve
+    //    (add_team_identity_to_index_positions.sql). Case-insensitive: Gamma publishes
+    //    'BAL' while slate-rows.ts lowercases at source.
+    const abbrMatches = (abbr: string | null | undefined) =>
+        !!abbr && abbr.trim().length > 0 && abbr.trim().toLowerCase() === label.toLowerCase();
+    const awayAbbrHit = abbrMatches(input.awayAbbr);
+    const homeAbbrHit = abbrMatches(input.homeAbbr);
+    if (awayAbbrHit !== homeAbbrHit) {
+        const id = resolve(awayAbbrHit ? away : home);
+        return done(id, id ? 'side_label_abbr' : 'unmapped_team');
     }
 
     return done(null, 'label_matches_neither');

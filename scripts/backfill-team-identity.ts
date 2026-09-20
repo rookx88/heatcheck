@@ -93,6 +93,11 @@ async function main(): Promise<void> {
                 marketType: r.market_type,
                 sideLabel: r.side_label,
                 question: r.question,
+                // Already selected above and already written back below - passing them
+                // is what lets a re-run re-resolve NFL spread labels ('BAL') that the
+                // resolver could not read before (add_side_label_abbr_subject_src.sql).
+                awayAbbr: r.away_abbr,
+                homeAbbr: r.home_abbr,
             });
             bySrc.set(res.subjectSource, (bySrc.get(res.subjectSource) ?? 0) + 1);
             for (const u of res.unmapped) unmapped.set(u, (unmapped.get(u) ?? 0) + 1);

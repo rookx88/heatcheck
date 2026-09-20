@@ -151,6 +151,59 @@ async function run(): Promise<void> {
         ambiguous.subjectTeamId === null && ambiguous.subjectSource === 'label_matches_neither', JSON.stringify(ambiguous));
 
     // -------------------------------------------------------------------------------
+    section('Team identity - spread labels are abbreviations');
+    // -------------------------------------------------------------------------------
+    // The shape that shipped unattributed: an NFL SPREAD labels its sides with the
+    // fixture's abbreviations, which the nickname rule structurally cannot read (it is a
+    // suffix test - 'baltimore ravens' ends with ' ravens', never with ' bal'). There was
+    // no spread case in this tier at all, which is how it went unnoticed until a live row
+    // tripped the bug-class invariant on 2026-09-20.
+    const SAINTS_AT_RAVENS = {
+        league: 'NFL', away: 'New Orleans Saints', home: 'Baltimore Ravens',
+        awayAbbr: 'no', homeAbbr: 'bal',
+    };
+    const spreadAbbr = resolvePositionTeams({ ...SAINTS_AT_RAVENS, marketType: 'spreads', sideLabel: 'BAL', question: null });
+    check('an NFL spread abbreviation resolves to its club',
+        spreadAbbr.subjectTeamId === 'baltimore-ravens' && spreadAbbr.subjectSource === 'side_label_abbr', JSON.stringify(spreadAbbr));
+
+    // The one nobody would have caught: 'NO' is New Orleans AND matches the Yes/No arm.
+    // That arm ran before any team matching and returned 'three_way_no' - an
+    // honest-refusal code in no BUG_SOURCES list, so the row was silently wrong and
+    // invisible to every guard. The arm is now scoped to moneyline.
+    const spreadNO = resolvePositionTeams({ ...SAINTS_AT_RAVENS, marketType: 'spreads', sideLabel: 'NO', question: null });
+    check('[REGRESSION] a spread on the Saints is New Orleans, not a three-way No',
+        spreadNO.subjectTeamId === 'new-orleans-saints' && spreadNO.subjectSource === 'side_label_abbr', JSON.stringify(spreadNO));
+
+    // A soccer moneyline No must still refuse - scoping the arm must not break it.
+    check('a soccer moneyline No still refuses', no.subjectSource === 'three_way_no');
+
+    // Exactly-one-hit, same discipline as the nickname rule: if both sides somehow carry
+    // the label, guessing between the two clubs of a game is the one guess that produces
+    // a wrong-but-plausible record.
+    const bothAbbr = resolvePositionTeams({
+        league: 'NFL', away: 'New Orleans Saints', home: 'Baltimore Ravens',
+        awayAbbr: 'bal', homeAbbr: 'bal', marketType: 'spreads', sideLabel: 'BAL', question: null,
+    });
+    check('an abbreviation matching BOTH sides is refused, not guessed',
+        bothAbbr.subjectTeamId === null && bothAbbr.subjectSource === 'label_matches_neither', JSON.stringify(bothAbbr));
+
+    // Callers without abbreviations (team-price.ts reads a game_snapshot) keep the old
+    // behaviour exactly - the arm is additive, never required.
+    const noAbbrs = resolvePositionTeams({
+        league: 'NFL', away: 'New Orleans Saints', home: 'Baltimore Ravens',
+        marketType: 'spreads', sideLabel: 'BAL', question: null,
+    });
+    check('with no abbreviations supplied, an unreadable spread label is still a BUG class',
+        noAbbrs.subjectSource === 'label_matches_neither', JSON.stringify(noAbbrs));
+
+    // A spread whose outcomes ARE full names (soccer) must keep resolving as before.
+    const spreadNamed = resolvePositionTeams({
+        ...EPL, marketType: 'spreads', sideLabel: 'Liverpool FC', question: null,
+    });
+    check('a spread labelled with the full club name still resolves as side_label',
+        spreadNamed.subjectTeamId === 'liverpool' && spreadNamed.subjectSource === 'side_label', JSON.stringify(spreadNamed));
+
+    // -------------------------------------------------------------------------------
     section('Team records - the residual');
     // -------------------------------------------------------------------------------
     // An 8% longshot winning is worth +0.92; an 85% favourite winning is worth +0.15.
@@ -352,7 +405,7 @@ async function run(): Promise<void> {
             WHERE market_type = 'moneyline' AND result IN ('win', 'loss') AND subject_team_id IS NOT NULL
             ORDER BY event_id, market_type, side_index, locked_at, id
         ) d
-        WHERE subject_src IN ('side_label', 'side_label_nickname')
+        WHERE subject_src IN ('side_label', 'side_label_nickname', 'side_label_abbr')
         GROUP BY event_id HAVING COUNT(*) = 2
     `;
     const worst = pairRows.reduce((m: number, r: any) => Math.max(m, Math.abs(r.s)), 0);

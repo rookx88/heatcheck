@@ -120,6 +120,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             marketType: s.row.market_type,
             sideLabel: s.sideLabel,
             question: s.row.question,
+            // The same abbreviations frozen onto the row below. A spread's outcomes are
+            // abbreviations ('BAL'), which no other arm of the resolver can read - they
+            // were being collected here and never passed
+            // (add_side_label_abbr_subject_src.sql).
+            awayAbbr: abbrByEvent.get(s.row.event_id)?.away ?? null,
+            homeAbbr: abbrByEvent.get(s.row.event_id)?.home ?? null,
         }),
     );
 
