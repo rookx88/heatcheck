@@ -678,6 +678,12 @@ export async function getTickerSeries(sql: SqlReader, key?: string | null): Prom
 // slices of that same log, and a window sum that disagreed with sumSince over the chart
 // would print a different "(+1.2%)" on an article than on the board. `>=` matches
 // sumSince's cutoff comparison; the 3-dp rounding matches it too.
+//
+// The 30-day floor on occurred_at is not a filter on the result - the widest FILTER here
+// is 30 days, so older rows contribute 0 to all three sums - it is what lets
+// idx_ticker_events_key_time serve the scan. Without it this read the entire event log,
+// which is append-only and never pruned, on every article page (efficiency audit,
+// 2026-09-19). It must stay >= the widest window above.
 export async function getTickerWindowSums(sql: SqlReader, keys: string[] | null = null): Promise<Record<string, WindowSums>> {
     const rows = await sql`
         SELECT e.ticker_key,
@@ -686,7 +692,8 @@ export async function getTickerWindowSums(sql: SqlReader, keys: string[] | null 
                COALESCE(SUM(e.delta) FILTER (WHERE e.occurred_at >= NOW() - INTERVAL '30 days'), 0)::float8 AS d30
         FROM ticker_events e
         LEFT JOIN tank_pages t ON t.id = e.tank_id
-        WHERE (e.source = 'slate' OR t.visibility = 'app')
+        WHERE e.occurred_at >= NOW() - INTERVAL '30 days'
+          AND (e.source = 'slate' OR t.visibility = 'app')
           AND (${keys}::text[] IS NULL OR e.ticker_key = ANY(${keys}::text[]))
         GROUP BY e.ticker_key
     `;

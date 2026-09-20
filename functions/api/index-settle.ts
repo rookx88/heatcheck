@@ -189,6 +189,29 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // Every settled-but-unclosed position, grouped by index. Positions settled on an
     // earlier run today are included, so a deferred remainder still lands in the right
     // day's close rather than being stranded.
+    //
+    // Skipped entirely when this pass settled nothing: the close write REPLACES the day's
+    // delta from the same set of linked positions, so recomputing it without a new
+    // settlement rewrites identical rows. This endpoint runs 5+ times a day and most
+    // passes have nothing due - that idle pass cost 5 round trips and 2 writes for no
+    // change (efficiency audit, 2026-09-19). `deferred` still returns work to the drain
+    // loop, and the next pass that does settle something recomputes the whole day, which
+    // is exactly the property the 2026-09-13 fix above relies on.
+    if (settled.length === 0) {
+        const hasMore = marketsConsidered === MAX_MARKETS;
+        return jsonResponse({
+            pendingConsidered: pending.length,
+            marketsConsidered,
+            settled: 0,
+            voided: 0,
+            voidedStale,
+            skipped,
+            hasMore,
+            deferred: hasMore ? 'more may remain; next run continues' : 'none',
+            closes: [],
+        });
+    }
+
     const cfg = await getTickerConfig(sql);
     const scalePct = cfg.close_scale_pct;
     const smoothing = cfg.close_smoothing;
@@ -210,14 +233,28 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         //
         // Re-reading them makes EXCLUDED.delta the whole day, so the replace is correct.
         // Re-stamping close_id on rows that already carry it is a no-op.
+        // UNION ALL of the two arms, not one OR: the OR form could not use
+        // idx_index_positions_unclosed (a query predicate only reaches a partial index
+        // when it implies the index's own), so add_hot_path_indexes.sql's index sat
+        // unused while this went back to a sequential scan of every position ever
+        // locked - 5 runs a day (efficiency audit, 2026-09-19). Split, the first arm
+        // hits that partial index and the second hits idx_index_positions_close. The
+        // arms are disjoint by construction (close_id IS NULL vs NOT NULL), so no row
+        // can appear twice and the result is identical to the OR.
         const openRows = await sql`
             SELECT ip.ticker_key, ip.id, ip.contrib::float8 AS contrib, ip.result
             FROM index_positions ip
-            LEFT JOIN ticker_events te ON te.id = ip.close_id
             WHERE ip.settled_at IS NOT NULL
               AND ip.result IN ('win', 'loss')
-              AND (ip.close_id IS NULL
-                   OR (te.source = 'slate' AND te.close_date = CURRENT_DATE))
+              AND ip.close_id IS NULL
+            UNION ALL
+            SELECT ip.ticker_key, ip.id, ip.contrib::float8 AS contrib, ip.result
+            FROM index_positions ip
+            JOIN ticker_events te ON te.id = ip.close_id
+            WHERE ip.settled_at IS NOT NULL
+              AND ip.result IN ('win', 'loss')
+              AND te.source = 'slate'
+              AND te.close_date = CURRENT_DATE
         `;
         const byTicker = new Map<string, Array<{ id: string; contrib: number; won: boolean }>>();
         for (const r of openRows) {
