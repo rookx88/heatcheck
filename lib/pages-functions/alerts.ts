@@ -71,6 +71,32 @@ export async function resolveAlert(sql: Sql, env: Env, key: string, subject: str
     }
 }
 
+// Resolves MANY keys in one statement - the all-clear path of the hourly health check,
+// which has one key per expected job plus the ledger/security/error ones. Calling
+// resolveAlert per key cost ~18 Neon round trips an hour to usually close nothing
+// (efficiency audit, 2026-09-19). Only keys that were actually open come back, so the
+// email loop below runs as rarely as it did before.
+export async function resolveAlerts(sql: Sql, env: Env, entries: Array<{ key: string; subject: string }>): Promise<AlertOutcome[]> {
+    if (entries.length === 0) return [];
+    const keys = entries.map((e) => e.key);
+    const closed = await sql`
+        UPDATE ops_alerts SET resolved_at = NOW()
+        WHERE key = ANY(${keys}::text[]) AND resolved_at IS NULL
+        RETURNING key, first_at
+    ` as any[];
+    const out: AlertOutcome[] = [];
+    for (const row of closed) {
+        const subject = entries.find((e) => e.key === row.key)?.subject ?? row.key;
+        try {
+            await sendAlertEmail(env, `[resolved] ${subject}`, `Cleared at ${new Date().toISOString()} (open since ${new Date(row.first_at as string).toISOString()}).`);
+            out.push({ key: row.key, emailed: true });
+        } catch (err) {
+            out.push({ key: row.key, emailed: false, error: String(err) });
+        }
+    }
+    return out;
+}
+
 // Once-only sends (the daily summary): true for exactly one caller per key, ever.
 export async function claimOnce(sql: Sql, key: string): Promise<boolean> {
     const rows = await sql`

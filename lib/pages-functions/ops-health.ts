@@ -60,24 +60,42 @@ export async function checkLedgers(sql: Sql): Promise<LedgerReport> {
     // (ledger-trace's rule: an absent row is fine when nothing was ever earned).
     const diverged = (emberRows as any[]).filter((r) => r.stored !== null || Number(r.ledger_sum) !== 0);
     const ember: EmberMismatch[] = [];
-    for (const r of diverged) {
-        const recent = await sql`
-            SELECT created_at, amount, entry_type, rule_key, idempotency_key
-            FROM ember_ledger WHERE user_id = ${r.user_id} ORDER BY created_at DESC LIMIT 10
-        `;
-        const stored = r.stored === null ? null : Number(r.stored);
-        ember.push({
-            userId: r.user_id,
-            username: r.username ?? null,
-            ledgerSum: Number(r.ledger_sum),
-            stored,
-            diff: (stored ?? 0) - Number(r.ledger_sum),
-            balanceUpdatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
-            recentRows: (recent as any[]).map((x) => ({
+    if (diverged.length > 0) {
+        // ONE windowed query for every diverging account's recent rows, not one per
+        // account: this path runs exactly when the ledger is already broken, which is
+        // the worst moment for the alerting path to fan out into N round trips.
+        const ids = diverged.map((r) => r.user_id as string);
+        const recentRows = await sql`
+            SELECT user_id, created_at, amount, entry_type, rule_key, idempotency_key
+            FROM (
+                SELECT user_id, created_at, amount, entry_type, rule_key, idempotency_key,
+                       ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY created_at DESC) AS rn
+                FROM ember_ledger WHERE user_id = ANY(${ids}::uuid[])
+            ) ranked
+            WHERE rn <= 10
+            ORDER BY user_id, created_at DESC
+        ` as any[];
+        const byUser = new Map<string, EmberMismatch['recentRows']>();
+        for (const x of recentRows) {
+            const list = byUser.get(x.user_id) ?? [];
+            list.push({
                 at: new Date(x.created_at).toISOString(), amount: Number(x.amount),
                 entryType: x.entry_type, ruleKey: x.rule_key, key: x.idempotency_key,
-            })),
-        });
+            });
+            byUser.set(x.user_id, list);
+        }
+        for (const r of diverged) {
+            const stored = r.stored === null ? null : Number(r.stored);
+            ember.push({
+                userId: r.user_id,
+                username: r.username ?? null,
+                ledgerSum: Number(r.ledger_sum),
+                stored,
+                diff: (stored ?? 0) - Number(r.ledger_sum),
+                balanceUpdatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
+                recentRows: byUser.get(r.user_id) ?? [],
+            });
+        }
     }
     return {
         accountsChecked: Number((countRows as any[])[0].n),
@@ -158,8 +176,11 @@ export interface JobStatus {
     awaitingFirstRun: boolean; // never reported at all yet
 }
 
-export async function checkJobs(sql: Sql, nowMs: number = Date.now()): Promise<JobStatus[]> {
-    const rows = await sql`
+// The six reads below are split into a statement builder and a pure mapper so
+// opsSnapshot() can send them as ONE batched round trip (see its comment). Each
+// checkX() wrapper keeps the standalone form for callers that want just one.
+
+export const jobsStatement = (sql: Sql) => sql`
         SELECT job, target,
                MAX(created_at) AS last_run_at,
                MAX(created_at) FILTER (WHERE ok) AS last_success_at,
@@ -168,7 +189,9 @@ export async function checkJobs(sql: Sql, nowMs: number = Date.now()): Promise<J
         FROM ops_job_runs
         WHERE created_at > NOW() - INTERVAL '9 days'
         GROUP BY job, target
-    ` as any[];
+    `;
+
+export function mapJobs(rows: any[], nowMs: number = Date.now()): JobStatus[] {
     return EXPECTED_JOBS.map((e) => {
         const mine = rows.filter((r) => r.target === e.target && (e.job.endsWith(':') ? String(r.job).startsWith(e.job) : r.job === e.job));
         const latest = (field: string) => mine.reduce<Date | null>((acc, r) => {
@@ -197,6 +220,10 @@ export async function checkJobs(sql: Sql, nowMs: number = Date.now()): Promise<J
     });
 }
 
+export async function checkJobs(sql: Sql, nowMs: number = Date.now()): Promise<JobStatus[]> {
+    return mapJobs(await jobsStatement(sql) as any[], nowMs);
+}
+
 // ---------------------------------------------------------------------------------
 // 3. Security bursts and error rate (ops_events, written by functions/_middleware.ts)
 // ---------------------------------------------------------------------------------
@@ -213,8 +240,7 @@ export interface SecurityReport {
     bursts: string[];
 }
 
-export async function checkSecurity(sql: Sql): Promise<SecurityReport> {
-    const [counts] = await sql`
+export const securityCountsStatement = (sql: Sql) => sql`
         SELECT
           COUNT(*) FILTER (WHERE kind = 'auth_reject' AND created_at > NOW() - INTERVAL '1 hour')::int AS auth_1h,
           COUNT(*) FILTER (WHERE kind = 'csrf_reject' AND created_at > NOW() - INTERVAL '1 hour')::int AS csrf_1h,
@@ -225,12 +251,17 @@ export async function checkSecurity(sql: Sql): Promise<SecurityReport> {
           COUNT(*) FILTER (WHERE kind = 'throttle')::int AS throttle_24h,
           COUNT(*) FILTER (WHERE kind = 'rejected')::int AS rejected_24h
         FROM ops_events WHERE created_at > NOW() - INTERVAL '24 hours' AND kind <> 'server_error' AND NOT (detail ? 'local')
-    ` as any[];
-    const top = await sql`
+    `;
+
+export const topIpStatement = (sql: Sql) => sql`
         SELECT ip_hash, COUNT(*)::int AS n FROM ops_events
         WHERE created_at > NOW() - INTERVAL '1 hour' AND kind <> 'server_error' AND ip_hash IS NOT NULL AND NOT (detail ? 'local')
         GROUP BY ip_hash ORDER BY n DESC LIMIT 1
-    ` as any[];
+    `;
+
+export function mapSecurity(countRows: any[], topRows: any[]): SecurityReport {
+    const counts = countRows[0];
+    const top = topRows;
     const topIp = top.length ? { ipHash: top[0].ip_hash as string, n: Number(top[0].n) } : null;
     const bursts: string[] = [];
     if (counts.auth_1h >= BURST.machineSecretRejectsPerHour) bursts.push(`${counts.auth_1h} machine-secret rejections in the last hour`);
@@ -243,27 +274,65 @@ export async function checkSecurity(sql: Sql): Promise<SecurityReport> {
     };
 }
 
+export async function checkSecurity(sql: Sql): Promise<SecurityReport> {
+    const [counts, top] = await sql.transaction([securityCountsStatement(sql), topIpStatement(sql)]);
+    return mapSecurity(counts as any[], top as any[]);
+}
+
 export interface ErrorReport { last24h: number; dailyAvgPrev7d: number; elevated: boolean; topPaths: Array<{ path: string; n: number }> }
 
 // "Elevated" = at least 10 server errors in 24h AND at least 3x the previous week's
 // daily average - a small absolute floor so one bad request on a quiet day isn't news.
-export async function checkErrors(sql: Sql): Promise<ErrorReport> {
-    const [c] = await sql`
+export const errorCountsStatement = (sql: Sql) => sql`
         SELECT COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours')::int AS d1,
                COUNT(*) FILTER (WHERE created_at <= NOW() - INTERVAL '24 hours')::int AS prev
         FROM ops_events WHERE kind = 'server_error' AND created_at > NOW() - INTERVAL '8 days' AND NOT (detail ? 'local')
-    ` as any[];
-    const paths = await sql`
+    `;
+
+export const errorPathsStatement = (sql: Sql) => sql`
         SELECT path, COUNT(*)::int AS n FROM ops_events
         WHERE kind = 'server_error' AND created_at > NOW() - INTERVAL '24 hours' AND NOT (detail ? 'local')
         GROUP BY path ORDER BY n DESC LIMIT 5
-    ` as any[];
+    `;
+
+export function mapErrors(countRows: any[], pathRows: any[]): ErrorReport {
+    const c = countRows[0];
+    const paths = pathRows;
     const avg = Number(c.prev) / 7;
     return {
         last24h: Number(c.d1),
         dailyAvgPrev7d: Math.round(avg * 10) / 10,
         elevated: Number(c.d1) >= 10 && Number(c.d1) >= 3 * Math.max(avg, 1),
         topPaths: paths.map((p) => ({ path: p.path, n: Number(p.n) })),
+    };
+}
+
+export async function checkErrors(sql: Sql): Promise<ErrorReport> {
+    const [counts, paths] = await sql.transaction([errorCountsStatement(sql), errorPathsStatement(sql)]);
+    return mapErrors(counts as any[], paths as any[]);
+}
+
+export const openAlertsStatement = (sql: Sql) => sql`
+    SELECT key FROM ops_alerts WHERE resolved_at IS NULL AND key NOT LIKE 'digest:%' ORDER BY key
+`;
+
+export interface OpsSnapshot { jobs: JobStatus[]; security: SecurityReport; errors: ErrorReport; openAlerts: string[] }
+
+// Everything the hourly check and the on-demand view read, in ONE batched round trip.
+// It used to be six separate awaits, and with the 14 per-job alert statements the whole
+// check cost ~28 Neon round trips every hour (efficiency audit, 2026-09-19). The
+// statements are independent reads, so batching changes nothing but the wire cost - and
+// it gives them all one consistent snapshot, which the split reads never had.
+export async function opsSnapshot(sql: Sql, nowMs: number = Date.now()): Promise<OpsSnapshot> {
+    const [jobRows, secCounts, topIp, errCounts, errPaths, openRows] = await sql.transaction([
+        jobsStatement(sql), securityCountsStatement(sql), topIpStatement(sql),
+        errorCountsStatement(sql), errorPathsStatement(sql), openAlertsStatement(sql),
+    ], { isolationLevel: 'RepeatableRead', readOnly: true });
+    return {
+        jobs: mapJobs(jobRows as any[], nowMs),
+        security: mapSecurity(secCounts as any[], topIp as any[]),
+        errors: mapErrors(errCounts as any[], errPaths as any[]),
+        openAlerts: (openRows as any[]).map((r) => r.key as string),
     };
 }
 

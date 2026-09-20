@@ -141,15 +141,18 @@ async function run(): Promise<void> {
         // A job that has never reported is "awaiting first run", NOT missed. Without this
         // the first deploy alerts once per expected job, before any cron slot has come
         // round - which is exactly what happened live on 2026-09-19 (14 false alerts).
+        //
+        // Asserted per job, not across all of them: once real crons start reporting, most
+        // jobs DO have history, and a genuinely failing one SHOULD read as stale. The
+        // property under test is only "no history => not stale".
         const fresh = await api('GET', '/api/ops/health', { headers: secret });
         const never = (fresh.json?.jobs ?? []).filter((j: any) => j.lastRunAt === null);
-        check('jobs with no run history are awaiting-first-run, never stale',
-            never.length > 0 && never.every((j: any) => j.awaitingFirstRun === true && j.stale === false),
+        check('every job with no run history is awaiting-first-run and not stale',
+            never.every((j: any) => j.awaitingFirstRun === true && j.stale === false),
             JSON.stringify(never.map((j: any) => [j.job, j.stale, j.awaitingFirstRun])));
-        check('no job reads as missed while every one is awaiting its first run',
-            (fresh.json?.jobs ?? []).every((j: any) => j.stale === false), JSON.stringify((fresh.json?.jobs ?? []).filter((j: any) => j.stale)));
         const summary = await (await fetch(`${process.env.BASE_URL || 'http://localhost:8788'}/api/ops/health?format=text`, { headers: secret })).text();
-        check('the summary says "first run due", not MISSED', summary.includes('first run due') && !summary.includes('MISSED'), summary.slice(0, 300));
+        check('the summary prints "first run due" for those jobs',
+            never.length === 0 || summary.includes('first run due'), summary.slice(0, 300));
     }
 
     // ===============================================================================

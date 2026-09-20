@@ -18,8 +18,8 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../../lib/pages-functions/db';
 import { secretMatches } from '../../../lib/pages-functions/secret-compare';
-import { raiseAlert, resolveAlert, claimOnce, releaseOnce, sendAlertEmail, type AlertOutcome } from '../../../lib/pages-functions/alerts';
-import { checkLedgers, describeLedger, checkJobs, checkSecurity, checkErrors, renderDigest } from '../../../lib/pages-functions/ops-health';
+import { raiseAlert, resolveAlerts, claimOnce, releaseOnce, sendAlertEmail, type AlertOutcome } from '../../../lib/pages-functions/alerts';
+import { checkLedgers, describeLedger, opsSnapshot, renderDigest } from '../../../lib/pages-functions/ops-health';
 
 const DIGEST_HOUR_UTC = 10;
 
@@ -30,6 +30,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const sql = getSql(context.env);
     const env = context.env;
     const alerts: AlertOutcome[] = [];
+    // Every condition that is currently CLEAR, collected and closed in one statement at
+    // the end. Raising still happens per condition (each one sends its own email), but
+    // the all-green path - which is almost every run - is a single write.
+    const clear: Array<{ key: string; subject: string }> = [];
 
     // --- Ledger (highest priority: checked first, and its failure alone fails the run)
     const ledger = await checkLedgers(sql);
@@ -37,17 +41,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         alerts.push(await raiseAlert(sql, env, 'ledger:ember',
             `LEDGER DIVERGENCE: ${ledger.ember.length} account(s) - Ember balance != ledger`, describeLedger({ ...ledger, items: [] })));
     } else {
-        alerts.push(await resolveAlert(sql, env, 'ledger:ember', 'Ember ledger divergence'));
+        clear.push({ key: 'ledger:ember', subject: 'Ember ledger divergence' });
     }
     if (ledger.items.length) {
         alerts.push(await raiseAlert(sql, env, 'ledger:items',
             `ITEM LEDGER DIVERGENCE: ${ledger.items.length} (account, SKU) pair(s)`, describeLedger({ ...ledger, ember: [] })));
     } else {
-        alerts.push(await resolveAlert(sql, env, 'ledger:items', 'Item ledger divergence'));
+        clear.push({ key: 'ledger:items', subject: 'Item ledger divergence' });
     }
 
-    // --- Scheduled jobs
-    const jobs = await checkJobs(sql);
+    // --- Jobs, security, errors and the open-alert list: one batched read
+    const { jobs, security, errors, openAlerts: openBefore } = await opsSnapshot(sql);
     for (const j of jobs) {
         const key = `job:${j.job}:${j.target}`;
         if (j.stale || j.failingNow) {
@@ -58,34 +62,39 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 `${j.label} (${j.job}, ${j.target}): ${why}.\nFailures in the last 24h: ${j.failures24h}.\n\n` +
                 `The failing response body is in ops_job_runs.summary and in the cron Worker's logs (Cloudflare dashboard > Workers > Logs).`));
         } else {
-            alerts.push(await resolveAlert(sql, env, key, `Scheduled job problem: ${j.label}`));
+            clear.push({ key, subject: `Scheduled job problem: ${j.label}` });
         }
     }
 
-    // --- Security and errors
-    const security = await checkSecurity(sql);
     if (security.bursts.length) {
         alerts.push(await raiseAlert(sql, env, 'security:burst', `Unusual request activity: ${security.bursts[0]}`,
             security.bursts.join('\n') + `\n\nLast hour: ${JSON.stringify(security.lastHour)}\nDetails: SELECT * FROM ops_events WHERE created_at > NOW() - INTERVAL '1 hour' ORDER BY created_at DESC;`));
     } else {
-        alerts.push(await resolveAlert(sql, env, 'security:burst', 'Unusual request activity'));
+        clear.push({ key: 'security:burst', subject: 'Unusual request activity' });
     }
-    const errors = await checkErrors(sql);
     if (errors.elevated) {
         alerts.push(await raiseAlert(sql, env, 'errors:elevated', `Server errors elevated: ${errors.last24h} in 24h`,
             `${errors.last24h} server errors in the last 24h vs a ${errors.dailyAvgPrev7d}/day average over the previous week.\n` +
             `Top paths: ${errors.topPaths.map((p) => `${p.path} x${p.n}`).join(', ')}\nStack traces: Sentry.`));
     } else {
-        alerts.push(await resolveAlert(sql, env, 'errors:elevated', 'Server errors elevated'));
+        clear.push({ key: 'errors:elevated', subject: 'Server errors elevated' });
     }
 
-    // --- Housekeeping
-    await sql`DELETE FROM ops_events WHERE created_at < NOW() - INTERVAL '30 days'`;
-    await sql`DELETE FROM ops_events WHERE detail ? 'local' AND created_at < NOW() - INTERVAL '1 day'`; // harness traffic
-    await sql`DELETE FROM ops_job_runs WHERE created_at < NOW() - INTERVAL '90 days'`;
+    const resolved = await resolveAlerts(sql, env, clear);
+    alerts.push(...resolved);
 
-    const open = await sql`SELECT key FROM ops_alerts WHERE resolved_at IS NULL AND key NOT LIKE 'digest:%' ORDER BY key` as any[];
-    const openAlerts = open.map((r) => r.key as string);
+    // --- Housekeeping, one round trip
+    await sql.transaction([
+        sql`DELETE FROM ops_events WHERE created_at < NOW() - INTERVAL '30 days'`,
+        sql`DELETE FROM ops_events WHERE detail ? 'local' AND created_at < NOW() - INTERVAL '1 day'`, // harness traffic
+        sql`DELETE FROM ops_job_runs WHERE created_at < NOW() - INTERVAL '90 days'`,
+    ]);
+
+    // openBefore was read before this run's own raises/resolves; fold both in rather
+    // than paying another read for a list that only this handler just changed.
+    const raisedKeys = alerts.filter((a) => !resolved.includes(a)).map((a) => a.key);
+    const resolvedKeys = new Set(resolved.map((a) => a.key));
+    const openAlerts = Array.from(new Set([...openBefore.filter((k) => !resolvedKeys.has(k)), ...raisedKeys])).sort();
 
     // --- Daily summary
     let digest: 'sent' | 'not_due' | 'already_sent' | 'failed' = 'not_due';

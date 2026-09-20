@@ -41,23 +41,38 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     const sql = getSql(context.env);
     const failedUrgent: string[] = [];
-    let recorded = 0;
+    // Validate every run first, then write them in ONE multi-row insert (the unnest
+    // shape index-settle.ts already uses for its bulk writes). A chain reports up to
+    // MAX_RUNS rows and paid a Neon round trip each (efficiency audit, 2026-09-19).
+    const jobs: string[] = [], targets: string[] = [], oks: boolean[] = [];
+    const statuses: Array<number | null> = [], durations: Array<number | null> = [];
+    const errorCounts: number[] = [], summaries: string[] = [];
     for (const r of runs) {
         const job = typeof r.job === 'string' ? r.job.slice(0, 80) : '';
-        const target = r.target === 'production' ? 'production' : 'preview';
         if (!job) continue;
+        const target = r.target === 'production' ? 'production' : 'preview';
         const ok = r.ok === true;
         const status = Number.isInteger(r.status) ? (r.status as number) : null;
-        const durationMs = Number.isInteger(r.durationMs) ? (r.durationMs as number) : null;
         const errors = Number.isInteger(r.errors) ? Math.max(0, r.errors as number) : 0;
         let summary = JSON.stringify(r.summary ?? {});
         if (summary.length > MAX_SUMMARY_CHARS) summary = JSON.stringify({ truncated: summary.slice(0, MAX_SUMMARY_CHARS) });
+        jobs.push(job); targets.push(target); oks.push(ok);
+        statuses.push(status);
+        durations.push(Number.isInteger(r.durationMs) ? (r.durationMs as number) : null);
+        errorCounts.push(errors); summaries.push(summary);
+        if (!ok && URGENT_JOBS.has(job)) failedUrgent.push(`${job} (${target}): HTTP ${status ?? 'no response'}, ${errors} error(s)\n${summary.slice(0, 1500)}`);
+    }
+    let recorded = 0;
+    if (jobs.length > 0) {
         await sql`
             INSERT INTO ops_job_runs (job, trigger, target, ok, status, duration_ms, errors, summary)
-            VALUES (${job}, ${trigger}, ${target}, ${ok}, ${status}, ${durationMs}, ${errors}, ${summary}::jsonb)
+            SELECT * FROM unnest(
+                ${jobs}::text[], ${jobs.map(() => trigger)}::text[],
+                ${targets}::text[], ${oks}::boolean[], ${statuses}::int[], ${durations}::int[],
+                ${errorCounts}::int[], ${summaries}::jsonb[]
+            )
         `;
-        recorded++;
-        if (!ok && URGENT_JOBS.has(job)) failedUrgent.push(`${job} (${target}): HTTP ${status ?? 'no response'}, ${errors} error(s)\n${summary.slice(0, 1500)}`);
+        recorded = jobs.length;
     }
 
     if (failedUrgent.length) {

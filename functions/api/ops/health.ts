@@ -7,22 +7,20 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../../lib/pages-functions/db';
 import { secretMatches } from '../../../lib/pages-functions/secret-compare';
-import { checkLedgers, checkJobs, checkSecurity, checkErrors, renderDigest } from '../../../lib/pages-functions/ops-health';
+import { checkLedgers, opsSnapshot, renderDigest } from '../../../lib/pages-functions/ops-health';
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
     if (!(await secretMatches(context.request.headers.get('X-Settle-Secret'), context.env.SETTLE_SECRET))) {
         return jsonResponse({ message: 'Unauthorized' }, { status: 401 });
     }
     const sql = getSql(context.env);
-    const [ledger, jobs, security, errors, open] = await Promise.all([
-        checkLedgers(sql), checkJobs(sql), checkSecurity(sql), checkErrors(sql),
-        sql`SELECT key, first_at, last_at, count FROM ops_alerts WHERE resolved_at IS NULL AND key NOT LIKE 'digest:%' ORDER BY key`,
-    ]);
-    const openAlerts = (open as any[]).map((r) => r.key as string);
+    // Two round trips: the ledger snapshot, and everything else batched (opsSnapshot).
+    const [ledger, snapshot] = await Promise.all([checkLedgers(sql), opsSnapshot(sql)]);
+    const { jobs, security, errors, openAlerts } = snapshot;
     const digest = renderDigest({ ledger, jobs, security, errors, openAlerts });
 
     if (new URL(context.request.url).searchParams.get('format') === 'text') {
         return new Response(digest.text, { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' } });
     }
-    return jsonResponse({ allGood: digest.allGood, openAlerts: open, ledger, jobs, security, errors });
+    return jsonResponse({ allGood: digest.allGood, openAlerts, ledger, jobs, security, errors });
 };
