@@ -187,7 +187,13 @@ async function upsertChannel(sql: ReturnType<typeof getSql>, guildId: string, ch
         ON CONFLICT (guild_id) DO UPDATE
             SET channel_id = EXCLUDED.channel_id,
                 configured_by_discord_user_id = EXCLUDED.configured_by_discord_user_id,
-                configured_at = NOW()
+                configured_at = NOW(),
+                -- Running setup proves the bot is in this guild again, so a previous
+                -- "unreachable" mark (add_guild_unreachable.sql) is cleared and the
+                -- scheduled sweeps pick it back up. This is the recovery path after a
+                -- remove-and-re-invite; the rest of the guild's settings survive.
+                unreachable_at = NULL,
+                unreachable_reason = NULL
     `;
 }
 

@@ -132,6 +132,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         JOIN discord_guild_configs dgc ON dgc.guild_id = dgp.guild_id
         JOIN tank_pages t ON t.id = dgp.tank_page_id
         WHERE dgp.settlement_posted_at IS NULL
+          AND dgc.unreachable_at IS NULL -- bot removed from that guild (add_guild_unreachable.sql)
           AND (
             EXISTS (SELECT 1 FROM picks p WHERE p.tank_page_id = dgp.tank_page_id AND p.result IS NOT NULL)
             OR (

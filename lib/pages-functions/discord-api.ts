@@ -133,6 +133,48 @@ export async function sendDiscordDirectMessage(env: Env, discordUserId: string, 
 
 const MAX_RATE_LIMIT_RETRIES = 3;
 
+/** A non-2xx from Discord, carrying the status so callers can tell "this guild is gone"
+ *  (404/403) from "this post failed" (everything else). */
+export class DiscordApiError extends Error {
+    constructor(message: string, readonly status: number) {
+        super(message);
+        this.name = 'DiscordApiError';
+    }
+}
+
+/** 404 = the bot is not in that guild (or it no longer exists); 403 = it is there but
+ *  cannot post in that channel. Both mean "stop sweeping this guild until something
+ *  changes"; a 500 or a timeout does not. */
+export function isGuildUnreachable(err: unknown): number | null {
+    return err instanceof DiscordApiError && (err.status === 404 || err.status === 403) ? err.status : null;
+}
+
+/**
+ * Stops the scheduled sweeps posting to a guild the bot can no longer reach. The config
+ * row is KEPT - it holds the admin's channel, sport filters, daily limit and labels, and
+ * someone re-inviting the bot should get their setup back, not a blank slate (the wizard
+ * clears this mark on its next save).
+ *
+ * Found live 2026-09-20: one guild 404'd on every post, so the sweep failed 10 posts per
+ * run forever and the health check alerted daily about a job that could never succeed.
+ */
+export async function markGuildUnreachable(sql: NeonQueryFunction<false, false>, guildId: string, status: number, note: string): Promise<void> {
+    await sql`
+        UPDATE discord_guild_configs
+        SET unreachable_at = NOW(), unreachable_reason = ${`HTTP ${status}: ${note}`.slice(0, 300)}
+        WHERE guild_id = ${guildId} AND unreachable_at IS NULL
+    `;
+}
+
+/** Clears the mark - the bot is demonstrably back in the guild. */
+export async function clearGuildUnreachable(sql: NeonQueryFunction<false, false>, guildId: string): Promise<void> {
+    await sql`
+        UPDATE discord_guild_configs
+        SET unreachable_at = NULL, unreachable_reason = NULL
+        WHERE guild_id = ${guildId} AND unreachable_at IS NOT NULL
+    `;
+}
+
 function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -188,7 +230,7 @@ export async function postDiscordChannelMessage(
             await sleep(retryAfterSeconds * 1000 + 100); // +100ms slack past Discord's own window
             continue;
         }
-        throw new Error(`Discord message post failed: ${res.status} ${await res.text()}`);
+        throw new DiscordApiError(`Discord message post failed: ${res.status} ${await res.text()}`, res.status);
     }
 }
 

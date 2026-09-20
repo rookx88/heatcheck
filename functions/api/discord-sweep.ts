@@ -34,7 +34,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
-import { postDiscordChannelMessage } from '../../lib/pages-functions/discord-api';
+import { postDiscordChannelMessage, isGuildUnreachable, markGuildUnreachable } from '../../lib/pages-functions/discord-api';
 import { buildTankCardMessage, type TankCardModelOutput } from '../../lib/pages-functions/discord-tank-card';
 import type { PropOdds } from '../../tank-types';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
@@ -92,8 +92,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     const sql = getSql(context.env);
+    // unreachable_at IS NULL: guilds the bot has been removed from are skipped entirely
+    // rather than re-failing every post, every run (add_guild_unreachable.sql).
     const guildRows = (await sql`
         SELECT guild_id, channel_id, disabled_sports, tank_posts_enabled, daily_post_limit FROM discord_guild_configs
+        WHERE unreachable_at IS NULL
     `) as unknown as GuildConfigRow[];
 
     let candidates = 0;
@@ -101,6 +104,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     let skippedByFilter = 0;
     let skippedNotLive = 0;
     const errors: string[] = [];
+    const unreachableGuilds: string[] = [];
 
     for (const guild of guildRows) {
         // Wizard setting: this guild opted out of Tank posts entirely.
@@ -188,16 +192,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 posted++;
                 postedThisGuild++;
             } catch (err: any) {
-                // Most commonly: the bot was removed from this guild since it was
-                // configured (posting now 403s). Left for a human to notice/reconfig
-                // rather than auto-deleting the guild's config row - this bot has no
-                // gateway connection to react to a GUILD_DELETE event in real time,
-                // so lazy failure-on-post is the honest signal here, not a listener.
                 console.error(`[POST /api/discord-sweep] Failed to post Tank ${rawRow.slug} to guild ${guild.guild_id}:`, err);
                 errors.push(`${guild.guild_id}:${rawRow.slug}`);
+                // 404/403 means the bot is not in that guild any more (or cannot post in
+                // the configured channel). This bot has no gateway connection, so a
+                // failed post is the only signal it gets - and without acting on it the
+                // sweep retried the same dead guild every run forever, failing every post
+                // and alerting daily (seen live 2026-09-20). Mark it unreachable, stop
+                // this guild's loop, and leave the config intact for a re-invite; the
+                // wizard clears the mark on its next save.
+                const status = isGuildUnreachable(err);
+                if (status !== null) {
+                    await markGuildUnreachable(sql, guild.guild_id, status, `discord-sweep: ${rawRow.slug}`);
+                    unreachableGuilds.push(guild.guild_id);
+                    break;
+                }
             }
         }
     }
 
-    return jsonResponse({ guilds: guildRows.length, candidates, posted, skippedByFilter, skippedNotLive, errors });
+    return jsonResponse({ guilds: guildRows.length, candidates, posted, skippedByFilter, skippedNotLive, errors, unreachableGuilds });
 };

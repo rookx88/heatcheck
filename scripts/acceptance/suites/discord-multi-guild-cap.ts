@@ -15,11 +15,14 @@ import { pool, check, section, type Suite } from '../harness';
 import { createUser, insertTank, cleanupUsersByEmailPrefix, cleanupTanksBySlugPrefix } from '../fixtures';
 import { getSql, type Env } from '../../../lib/pages-functions/db';
 import { submitPick } from '../../../lib/pages-functions/picks';
+import { DiscordApiError, isGuildUnreachable, markGuildUnreachable, clearGuildUnreachable } from '../../../lib/pages-functions/discord-api';
 
 const PREFIX = 'acceptance-discord-cap-';
 const TEST_DAILY_CAP = 3;
+const GONE_GUILD_ID = 'acceptance-gone-guild';
 
 async function cleanup() {
+    await pool.query(`DELETE FROM discord_guild_configs WHERE guild_id = $1`, [GONE_GUILD_ID]);
     await cleanupUsersByEmailPrefix(PREFIX);
     await cleanupTanksBySlugPrefix(PREFIX);
 }
@@ -76,6 +79,48 @@ async function run() {
 
     const { rows } = await pool.query(`SELECT COUNT(*)::int AS n FROM picks WHERE waitlist_id = $1`, [userId]);
     check(`exactly ${TEST_DAILY_CAP} picks rows exist for this account, not 4`, rows[0].n === TEST_DAILY_CAP, `rows=${rows[0].n}`);
+
+    // ===============================================================================
+    section('A guild the bot was removed from is marked unreachable and skipped');
+    // ===============================================================================
+    // Found live 2026-09-20: one guild returned 404 from Discord (the bot had been
+    // removed), and the posting sweep re-failed all ten of its posts every run, alerting
+    // daily about a job that could never succeed. The mark is what stops that; the config
+    // row survives so a re-invite keeps the admin's settings.
+    {
+        // discord_guild_configs.guild_id is VARCHAR(32) (real snowflakes are ~19 chars),
+        // so this fixture id is short rather than PREFIX-based.
+        const guildId = GONE_GUILD_ID;
+        await pool.query(
+            `INSERT INTO discord_guild_configs (guild_id, channel_id, configured_by_discord_user_id)
+             VALUES ($1, 'acceptance-channel', 'acceptance-admin')
+             ON CONFLICT (guild_id) DO UPDATE SET channel_id = EXCLUDED.channel_id, unreachable_at = NULL, unreachable_reason = NULL`,
+            [guildId],
+        );
+        const sweepSees = async () => {
+            const { rows: r } = await pool.query(
+                `SELECT COUNT(*)::int AS n FROM discord_guild_configs WHERE guild_id = $1 AND unreachable_at IS NULL`, [guildId]);
+            return r[0].n === 1;
+        };
+        check('a freshly configured guild is swept', await sweepSees());
+
+        check('isGuildUnreachable: 404 and 403 mark it, other failures do not',
+            isGuildUnreachable(new DiscordApiError('gone', 404)) === 404
+            && isGuildUnreachable(new DiscordApiError('forbidden', 403)) === 403
+            && isGuildUnreachable(new DiscordApiError('server error', 500)) === null
+            && isGuildUnreachable(new Error('fetch failed')) === null);
+
+        await markGuildUnreachable(sql, guildId, 404, 'discord-sweep: acceptance');
+        check('after marking, the sweeps no longer see it', (await sweepSees()) === false);
+        const { rows: reason } = await pool.query(`SELECT unreachable_reason FROM discord_guild_configs WHERE guild_id = $1`, [guildId]);
+        check('the reason records the status for a human', String(reason[0].unreachable_reason).startsWith('HTTP 404'), reason[0].unreachable_reason);
+
+        const { rows: kept } = await pool.query(`SELECT channel_id FROM discord_guild_configs WHERE guild_id = $1`, [guildId]);
+        check('the guild config survives - a re-invite keeps the admin\'s settings', kept[0].channel_id === 'acceptance-channel');
+
+        await clearGuildUnreachable(sql, guildId);
+        check('clearing the mark (what the setup wizard does on re-setup) puts it back in the sweeps', await sweepSees());
+    }
 
     await cleanup();
 }

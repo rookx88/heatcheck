@@ -46,6 +46,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         FROM league_seasons ls
         JOIN discord_guild_configs dgc ON dgc.guild_id = ls.guild_id
         WHERE ls.sport = ${LEAGUE_SPORT} AND ls.end_date > NOW()
+          AND dgc.unreachable_at IS NULL -- bot removed from that guild (add_guild_unreachable.sql)
     `) as unknown as ActiveLeagueGuildRow[];
 
     if (guildRows.length === 0) {

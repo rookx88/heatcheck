@@ -34,6 +34,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const guilds = (await sql`
         SELECT guild_id, channel_id, weekly_leaderboard FROM discord_guild_configs
         WHERE weekly_leaderboard IS NOT NULL AND weekly_leaderboard != '[]'::jsonb
+          AND unreachable_at IS NULL -- bot removed from that guild (add_guild_unreachable.sql)
     `) as unknown as GuildRow[];
 
     let posted = 0;
