@@ -90,16 +90,29 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // rows whose window ended more than a day ago, so request_throttles never grows
     // past the set of recently active IPs. Rides this sweep because it already runs
     // on every free cron slot; one set-based DELETE, nothing per row.
-    const prunedRows = await sql`
-        DELETE FROM request_throttles
-        WHERE window_start < NOW() - INTERVAL '1 day'
-        RETURNING bucket
-    `;
+    //
+    // Batched with the expired-session prune: both are independent set-based deletes
+    // with nothing to say to each other, so they cost one round trip together rather
+    // than two (efficiency audit, 2026-09-19). Sessions had no pruner at all - rows
+    // stayed forever, one per device-login, slowing every per-account session read.
+    const [prunedRows, prunedSessions] = await sql.transaction([
+        sql`
+            DELETE FROM request_throttles
+            WHERE window_start < NOW() - INTERVAL '1 day'
+            RETURNING bucket
+        `,
+        sql`
+            DELETE FROM sessions
+            WHERE expires_at < NOW() - INTERVAL '30 days'
+            RETURNING session_id
+        `,
+    ]);
 
     return jsonResponse({
         hungryNotifications: hungryRows.length,
         newTanksLast24h: newTanks,
         digestNotifications: digestCount,
         throttleRowsPruned: prunedRows.length,
+        expiredSessionsPruned: prunedSessions.length,
     });
 };

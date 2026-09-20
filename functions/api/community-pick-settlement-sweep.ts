@@ -20,7 +20,7 @@ import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { fetchMarket, resolveMarket, outcomeOrderMismatch } from '../../lib/pages-functions/gamma';
 import { postDiscordChannelMessage } from '../../lib/pages-functions/discord-api';
 import { buildCommunitySettlementRecapMessage, buildGiveawayResultMessage, buildMultiWinnerGiveawayMessage, buildNoEligiblePoolMessage } from '../../lib/pages-functions/discord-community-card';
-import { awardCommunityPoints } from '../../lib/pages-functions/community-points';
+import { awardCommunityPointsBatch } from '../../lib/pages-functions/community-points';
 import { drawGiveawayWinner, drawMultipleGiveawayWinners } from '../../lib/pages-functions/discord-draw';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
@@ -110,16 +110,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
             const correctVotes = votes.filter((v) => v.side_chosen === winningSide);
             const payout = winningSide === 0 ? row.side_a_points : row.side_b_points;
-            for (const vote of correctVotes) {
-                await awardCommunityPoints(sql, {
-                    guildId: row.guild_id,
-                    discordUserId: vote.discord_user_id,
-                    linkedHeatchecksUserId: vote.linked_heatchecks_user_id,
-                    delta: payout,
-                    sourceType: 'community_pick',
-                    sourceId: row.id,
-                });
-            }
+            // One write for every correct voter, not one per voter.
+            await awardCommunityPointsBatch(sql, correctVotes.map((vote) => ({
+                guildId: row.guild_id,
+                discordUserId: vote.discord_user_id,
+                linkedHeatchecksUserId: vote.linked_heatchecks_user_id,
+                delta: payout,
+                sourceType: 'community_pick' as const,
+                sourceId: row.id,
+            })));
 
             const winningLabel = correctVotes.length > 0
                 ? (winningSide === 0 ? row.side_a_label : row.side_b_label)

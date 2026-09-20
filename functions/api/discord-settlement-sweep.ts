@@ -52,7 +52,7 @@ import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import { postDiscordChannelMessage, fetchGuildMembers, DEFAULT_COMMUNITY_POINTS_LABEL } from '../../lib/pages-functions/discord-api';
 import { deriveTaglineFallback } from '../../tank-deck-format';
-import { awardCommunityPoints } from '../../lib/pages-functions/community-points';
+import { awardCommunityPointsBatch } from '../../lib/pages-functions/community-points';
 import { pointsForProbability } from '../../lib/pages-functions/community-points-formula';
 import { drawGiveawayWinner } from '../../lib/pages-functions/discord-draw';
 import { brandEmbed } from '../../lib/pages-functions/discord-brand';
@@ -286,16 +286,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 ...correctPickers.map((p) => ({ discordUserId: p.discord_user_id, linked: p.waitlist_id as string | null })),
                 ...correctVoters.map((v) => ({ discordUserId: v.discord_user_id, linked: v.linked_heatchecks_user_id })),
             ];
-            for (const w of winners) {
-                await awardCommunityPoints(sql, {
-                    guildId: row.guild_id,
-                    discordUserId: w.discordUserId,
-                    linkedHeatchecksUserId: w.linked,
-                    delta: pointsAwarded,
-                    sourceType: 'tank',
-                    sourceId: row.tank_page_id,
-                });
-            }
+            // One write for every winner in this guild, not one per winner.
+            await awardCommunityPointsBatch(sql, winners.map((w) => ({
+                guildId: row.guild_id,
+                discordUserId: w.discordUserId,
+                linkedHeatchecksUserId: w.linked,
+                delta: pointsAwarded,
+                sourceType: 'tank' as const,
+                sourceId: row.tank_page_id,
+            })));
             const tagline = modelOutput?.tagline?.trim() || (modelOutput ? deriveTaglineFallback(modelOutput.hook) : row.slug);
             const tankUrl = `${baseUrl}/the-tank/articles/${row.slug}/`;
 

@@ -21,7 +21,6 @@ import { settleCall, type CallResult } from '../../lib/pages-functions/ledger';
 import { sendSettlementEmail } from '../../lib/pages-functions/email';
 import { buildManagePrefsUrl, buildUnsubscribeUrl } from '../../lib/pages-functions/unsubscribe-links';
 import { resolveLoginOrigin } from '../../lib/pages-functions/session';
-import { logEvent } from '../../lib/pages-functions/events';
 import {
     fetchMarket,
     outcomeOrderMismatch,
@@ -130,6 +129,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const unresolved = rows as unknown as UnresolvedPick[];
 
     const results: Array<{ pickId: string; status: string; payoutAmount?: number; email?: EmailOutcome }> = [];
+    // pick_settled analytics, flushed in one insert after the loop (see below).
+    const settledEvents: Array<{ visitorId: string; waitlistId: string; pickId: string; result: CallResult; payoutAmount: number }> = [];
 
     // Footer links for every settlement email this run sends: the request origin is the
     // Pages deployment the cron hit (preview or prod), hardened the same way the login
@@ -164,7 +165,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 continue;
             }
             const result: CallResult = pick.outcome_index === resolution.winningIndex ? 'correct' : 'incorrect';
-            const { payoutAmount } = await settleCall(sql, {
+            const settleResult = await settleCall(sql, {
                 pickId: pick.id,
                 userId: pick.waitlist_id,
                 result,
@@ -174,6 +175,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 pickLabel: pick.side ?? undefined,
                 matchup: pick.away && pick.home ? `${pick.away} vs ${pick.home}` : pick.call_question ?? undefined,
             });
+            const { payoutAmount } = settleResult;
             const entry: { pickId: string; status: string; payoutAmount?: number; email?: EmailOutcome } =
                 { pickId: pick.id, status: `settled_${result}`, payoutAmount };
             results.push(entry);
@@ -187,8 +189,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 entry.email = 'skipped';
             } else {
                 try {
-                    const balanceRows = await sql`SELECT balance FROM ember_balances WHERE user_id = ${pick.waitlist_id} LIMIT 1`;
-                    const newBalance = balanceRows.length ? (balanceRows[0].balance as number) : payoutAmount;
+                    // settleCall returns the balance its own write produced; only a
+                    // replayed payout (idempotency no-op) leaves it null and needs a read.
+                    let newBalance = settleResult.newBalance;
+                    if (newBalance === null) {
+                        const balanceRows = await sql`SELECT balance FROM ember_balances WHERE user_id = ${pick.waitlist_id} LIMIT 1`;
+                        newBalance = balanceRows.length ? (balanceRows[0].balance as number) : payoutAmount;
+                    }
                     const unsubscribeUrl = await buildUnsubscribeUrl(emailOrigin, context.env.SESSION_TOKEN_SECRET, pick.waitlist_id, 'settlement');
                     await sendSettlementEmail(context.env, pick.email, {
                         tankQuestion: pick.call_question || 'Your Tank call',
@@ -204,22 +211,34 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                     console.error(`[POST /api/settle] Settlement email failed for pick ${pick.id}:`, emailErr);
                 }
             }
-            try {
-                // No real "visitor" for a cron-triggered settlement - a fresh random id
-                // per event (rather than a fixed shared constant) avoids falsely
-                // clustering unrelated settlement events under one synthetic visitor.
-                await logEvent(sql, {
-                    visitorId: crypto.randomUUID(),
-                    waitlistId: pick.waitlist_id,
-                    eventType: 'pick_settled',
-                    metadata: { pickId: pick.id, result, payoutAmount },
-                });
-            } catch (eventErr) {
-                console.error(`[POST /api/settle] Failed to log pick_settled event for pick ${pick.id}:`, eventErr);
-            }
+            // Analytics rows are collected and written once after the loop rather than
+            // one INSERT per settled pick (efficiency audit, 2026-09-19). No real
+            // "visitor" for a cron-triggered settlement - a fresh random id per event
+            // (rather than a fixed shared constant) avoids falsely clustering unrelated
+            // settlement events under one synthetic visitor.
+            settledEvents.push({ visitorId: crypto.randomUUID(), waitlistId: pick.waitlist_id, pickId: pick.id, result, payoutAmount });
         } catch (err) {
             console.error(`[POST /api/settle] Failed to settle pick ${pick.id}:`, err);
             results.push({ pickId: pick.id, status: 'error' });
+        }
+    }
+
+    // One insert for the whole run's analytics. Still fire-and-forget: settlement has
+    // already committed for every pick above, so a failed analytics write must never
+    // make a settled pick look unsettled.
+    if (settledEvents.length > 0) {
+        try {
+            await sql`
+                INSERT INTO events (visitor_id, waitlist_id, event_type, metadata)
+                SELECT * FROM unnest(
+                    ${settledEvents.map((e) => e.visitorId)}::uuid[],
+                    ${settledEvents.map((e) => e.waitlistId)}::uuid[],
+                    ${settledEvents.map(() => 'pick_settled')}::varchar[],
+                    ${settledEvents.map((e) => JSON.stringify({ pickId: e.pickId, result: e.result, payoutAmount: e.payoutAmount }))}::jsonb[]
+                )
+            `;
+        } catch (eventErr) {
+            console.error(`[POST /api/settle] Failed to log ${settledEvents.length} pick_settled event(s):`, eventErr);
         }
     }
 

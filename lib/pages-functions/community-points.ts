@@ -38,16 +38,49 @@ export interface AwardCommunityPointsInput {
 // only ever sees a row (and only ever updates the cache) when the transaction was
 // genuinely new.
 export async function awardCommunityPoints(sql: NeonQueryFunction<false, false>, input: AwardCommunityPointsInput): Promise<void> {
-    const idempotencyKey = buildCommunityPointsIdempotencyKey(input.guildId, input.discordUserId, input.sourceType, input.sourceId);
+    await awardCommunityPointsBatch(sql, [input]);
+}
+
+// Every award in one statement. The settlement sweeps award one row per correct picker
+// or voter per Tank per guild, and calling the single form in a loop was the only
+// unbounded per-row round trip left in the codebase - a popular Tank in a busy guild
+// meant one Neon call per participant (efficiency audit, 2026-09-19).
+//
+// Same guarantees as the single form, and they matter here: the transactions insert is
+// the idempotent one (ON CONFLICT DO NOTHING on the key), so the cache upsert below
+// only ever sees genuinely new rows. Deltas are summed per (guild, user) BEFORE the
+// cache upsert, because one batch can legitimately carry several awards for the same
+// person - without the sum, ON CONFLICT DO UPDATE would apply only the last one.
+export async function awardCommunityPointsBatch(sql: NeonQueryFunction<false, false>, inputs: AwardCommunityPointsInput[]): Promise<void> {
+    if (inputs.length === 0) return;
+    const guildIds = inputs.map((i) => i.guildId);
+    const userIds = inputs.map((i) => i.discordUserId);
+    const linked = inputs.map((i) => i.linkedHeatchecksUserId);
+    const deltas = inputs.map((i) => i.delta);
+    const sourceTypes = inputs.map((i) => i.sourceType);
+    const sourceIds = inputs.map((i) => i.sourceId);
+    const keys = inputs.map((i) => buildCommunityPointsIdempotencyKey(i.guildId, i.discordUserId, i.sourceType, i.sourceId));
     await sql`
-        WITH ins AS (
+        WITH input AS (
+            SELECT * FROM unnest(
+                ${guildIds}::text[], ${userIds}::text[], ${linked}::uuid[], ${deltas}::int[],
+                ${sourceTypes}::text[], ${sourceIds}::text[], ${keys}::text[]
+            ) AS t(guild_id, discord_user_id, linked_heatchecks_user_id, delta, source_type, source_id, idempotency_key)
+        ), ins AS (
             INSERT INTO community_points_transactions (guild_id, discord_user_id, delta, source_type, source_id, idempotency_key)
-            VALUES (${input.guildId}, ${input.discordUserId}, ${input.delta}, ${input.sourceType}, ${input.sourceId}, ${idempotencyKey})
+            SELECT guild_id, discord_user_id, delta, source_type, source_id, idempotency_key FROM input
             ON CONFLICT (idempotency_key) DO NOTHING
-            RETURNING delta
+            RETURNING guild_id, discord_user_id, delta
+        ), agg AS (
+            SELECT guild_id, discord_user_id, SUM(delta)::int AS delta FROM ins GROUP BY guild_id, discord_user_id
+        ), known_link AS (
+            SELECT DISTINCT ON (guild_id, discord_user_id) guild_id, discord_user_id, linked_heatchecks_user_id
+            FROM input WHERE linked_heatchecks_user_id IS NOT NULL
+            ORDER BY guild_id, discord_user_id
         )
         INSERT INTO community_points (guild_id, discord_user_id, linked_heatchecks_user_id, points, updated_at)
-        SELECT ${input.guildId}, ${input.discordUserId}, ${input.linkedHeatchecksUserId}, delta, NOW() FROM ins
+        SELECT a.guild_id, a.discord_user_id, l.linked_heatchecks_user_id, a.delta, NOW()
+        FROM agg a LEFT JOIN known_link l ON l.guild_id = a.guild_id AND l.discord_user_id = a.discord_user_id
         ON CONFLICT (guild_id, discord_user_id) DO UPDATE
             SET points = community_points.points + EXCLUDED.points,
                 linked_heatchecks_user_id = COALESCE(EXCLUDED.linked_heatchecks_user_id, community_points.linked_heatchecks_user_id),
