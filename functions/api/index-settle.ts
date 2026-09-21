@@ -28,7 +28,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
-import { fetchMarket, resolveMarket } from '../../lib/pages-functions/gamma';
+import { fetchClosedMarkets, fetchMarket, resolveMarket } from '../../lib/pages-functions/gamma';
 import { getTickerConfig } from '../../lib/pages-functions/tickers';
 import { closeDelta, contributionFor } from '../../lib/pages-functions/index-slate';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
@@ -132,6 +132,23 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // of looking like a quiet run. A number that climbs here is a real signal (Polymarket
     // leaving markets open, or our market ids drifting), not routine noise.
     const voidedStale: Record<string, number> = {};
+
+    // One request for the whole run's closed markets, instead of one per market. Only
+    // the markets Gamma RETURNS are seeded: an id missing from a closed-only batch means
+    // "not closed, or not a market", and the loop below turns that status on a stale
+    // position into a permanent void. That decision is too expensive to make on an
+    // absence, so a missing id still gets its own authoritative fetchMarket call below.
+    // The saving lands where it matters anyway - a run that settles nothing is a run
+    // where nothing was closed (efficiency audit, 2026-09-20).
+    //
+    // A throw here is a batch-level failure, never an answer about any market: log it and
+    // fall through to the per-market path, which is exactly what this ran before.
+    try {
+        const closed = await fetchClosedMarkets([...new Set(pending.map((p) => p.market_id))]);
+        for (const [marketId, market] of closed) resolutions.set(marketId, resolveMarket(market));
+    } catch (err) {
+        console.error('[index-settle] batched market fetch failed, falling back to one call per market:', err);
+    }
 
     for (const p of pending) {
         try {

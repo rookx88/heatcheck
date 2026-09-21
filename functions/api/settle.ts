@@ -22,6 +22,7 @@ import { sendSettlementEmail } from '../../lib/pages-functions/email';
 import { buildManagePrefsUrl, buildUnsubscribeUrl } from '../../lib/pages-functions/unsubscribe-links';
 import { resolveLoginOrigin } from '../../lib/pages-functions/session';
 import {
+    fetchClosedMarkets,
     fetchMarket,
     outcomeOrderMismatch,
     resolveMarket,
@@ -108,6 +109,29 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         return resolution;
     }
 
+    // Fill that cache for the Polymarket side in ONE request rather than one per market
+    // (gamma.ts's fetchClosedMarkets - read its notes, the list endpoint has two traps).
+    // Only ids Gamma actually returned are seeded: an absence from a closed-only batch
+    // means "not closed, or not a market", and resolveOnce's own call is the honest way
+    // to tell those apart. Kalshi has no id-list form, so its tickers are untouched.
+    // A throw is a batch failure, never a verdict - it is logged and the per-market path
+    // below runs exactly as it did before (efficiency audit, 2026-09-20).
+    async function prewarmPolymarket(items: Array<{ provider: string; market_id: string | null }>): Promise<void> {
+        const ids = items
+            .filter((i) => i.provider === 'polymarket' && i.market_id)
+            .map((i) => i.market_id as string)
+            .filter((id) => !resolutionCache.has(`polymarket:${id}`));
+        if (new Set(ids).size < 2) return; // one market is one call either way
+        try {
+            const closed = await fetchClosedMarkets(ids);
+            for (const [marketId, market] of closed) {
+                resolutionCache.set(`polymarket:${marketId}`, resolveMarket(market));
+            }
+        } catch (err) {
+            console.error('[settle] batched market fetch failed, falling back to one call per market:', err);
+        }
+    }
+
     // Belt-and-suspenders on `t.provider IN ('polymarket','kalshi')`: functions/api/picks.ts
     // already refuses to create picks on Tanks from other providers, but this keeps
     // settlement correct even if that invariant is ever bypassed by a future code path.
@@ -142,6 +166,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // picks per account per day - functions/api/picks.ts), and Polymarket's Gamma API
     // has rate limits (see polymarket.ts's existing throttle/backoff handling for the
     // bulk sync path).
+    await prewarmPolymarket(unresolved);
     for (const pick of unresolved) {
         if (!pick.market_id) {
             results.push({ pickId: pick.id, status: 'missing_market_id' });
@@ -282,6 +307,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // pending tags so the pick-only path can't be blocked by a ticker config problem.
     const tickerCfg = pendingTags.length > 0 ? await getTickerConfig(sql) : null;
 
+    // Tags on markets the pick loop already resolved are skipped inside prewarm, so this
+    // only ever asks about markets no pick covered.
+    await prewarmPolymarket(pendingTags);
     for (const tag of pendingTags) {
         if (!tag.market_id) {
             tickerResults.push({ tagId: tag.id, tickerKey: tag.ticker_key, status: 'missing_market_id' });

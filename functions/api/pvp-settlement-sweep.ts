@@ -27,7 +27,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import type { GammaMarketLite } from '../../lib/pages-functions/gamma';
-import { fetchMarket, resolveMarket, outcomeOrderMismatch } from '../../lib/pages-functions/gamma';
+import { fetchClosedMarkets, fetchMarket, resolveMarket, outcomeOrderMismatch } from '../../lib/pages-functions/gamma';
 import { postDiscordChannelMessage, fetchGuildMemberName } from '../../lib/pages-functions/discord-api';
 import { buildPvpResultMessage, type PvpResultPick } from '../../lib/pages-functions/pvp-card';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
@@ -119,6 +119,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         marketCache.set(marketId, market);
         return market;
     };
+
+    // Seed that cache with ONE request for the closed markets in this run (gamma.ts's
+    // fetchClosedMarkets). Only the markets Gamma returned are seeded - an id absent from
+    // a closed-only batch means "not closed, or not a market", which fetchCached is the
+    // honest way to tell apart, and a throw is a batch failure rather than a verdict
+    // about any market (efficiency audit, 2026-09-20).
+    if (new Set(unresolved.map((p) => p.source_market_id)).size > 1) {
+        try {
+            const closed = await fetchClosedMarkets(unresolved.map((p) => p.source_market_id));
+            for (const [marketId, market] of closed) marketCache.set(marketId, market);
+        } catch (err) {
+            console.error('[pvp-settlement-sweep] batched market fetch failed, falling back to one call per market:', err);
+        }
+    }
 
     let resolvedPicks = 0;
     let pendingMarkets = 0;

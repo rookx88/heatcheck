@@ -11,6 +11,7 @@
 // /api/settle resolves a genuine closed market instead of a stub.
 
 import { pool, api, check, section, type Suite } from '../harness';
+import { fetchClosedMarkets } from '../../../lib/pages-functions/gamma';
 import {
     insertTank, insertUserWithPick, findMarkets, findKalshiMarkets, ledgerTotals,
     cleanupUsersByEmailPrefix, cleanupTanksBySlugPrefix,
@@ -233,6 +234,74 @@ async function run() {
     check(`kalshi loss settles incorrect, paid the participation floor (${expectedLoss})`,
         kPrFor(kLoss.pickId)?.status === 'settled_incorrect' && kPrFor(kLoss.pickId)?.payoutAmount === expectedLoss,
         JSON.stringify(kPrFor(kLoss.pickId)));
+
+    // --- The batched Gamma read, against a stubbed fetch. Pure tier: no network, no DB.
+    // Every case here is a live-probed property of Polymarket's /markets list endpoint
+    // (see gamma.ts's fetchClosedMarkets notes), and each guard exists because failing it
+    // silently would make a market look UNRESOLVED - which on a stale index position is a
+    // permanent void, and on an old Tank is a retirement. ---
+    section('Batched Gamma reads - the guards that stop an absence reading as a verdict');
+    const realFetch = globalThis.fetch;
+    const calls: string[] = [];
+    const stub = (body: unknown, status = 200) => {
+        globalThis.fetch = (async (url: any) => {
+            calls.push(String(url));
+            return new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+                status,
+                headers: { 'Content-Type': 'application/json' },
+            });
+        }) as typeof fetch;
+    };
+    const throws = async (fn: () => Promise<unknown>): Promise<string | null> => {
+        try { await fn(); return null; } catch (err: any) { return String(err?.message ?? err); }
+    };
+    try {
+        calls.length = 0;
+        stub([{ id: '2', closed: true }, { id: '1', closed: true }]);
+        const reKeyed = await fetchClosedMarkets(['1', '2']);
+        check('re-keys on market.id, not on array position (response came back reversed)',
+            reKeyed.get('1')?.id === '1' && reKeyed.get('2')?.id === '2',
+            JSON.stringify([...reKeyed.keys()]));
+        check('asks closed=true (the list endpoint hides closed markets by default)',
+            calls[0]?.includes('closed=true'), calls[0]);
+        check('asks for one MORE than it needs, so a full response is detectably truncated',
+            calls[0]?.includes('limit=3'), calls[0]);
+
+        calls.length = 0;
+        stub([{ id: '1', closed: true }]);
+        const partial = await fetchClosedMarkets(['1', '2']);
+        check('an id the batch did not return is simply absent (never a fabricated verdict)',
+            partial.size === 1 && !partial.has('2'));
+
+        // limit was asked as n+1, so a response OF n+1 rows is Gamma truncating, not answering.
+        stub([{ id: '1' }, { id: '2' }, { id: '3' }]);
+        check('a response that reaches the limit throws rather than losing rows silently',
+            (await throws(() => fetchClosedMarkets(['1', '2'])))?.includes('truncated') === true);
+
+        stub([{ id: '99', closed: true }]);
+        check('an id we never asked about throws (the filter did not apply)',
+            (await throws(() => fetchClosedMarkets(['1', '2'])))?.includes('unrequested') === true);
+
+        stub({ message: 'nope' }, 500);
+        check('a failed request throws instead of reading as "none of these resolved"',
+            (await throws(() => fetchClosedMarkets(['1', '2'])))?.includes('500') === true);
+
+        stub({ message: 'not a list' });
+        check('a non-array body throws',
+            (await throws(() => fetchClosedMarkets(['1', '2'])))?.includes('array') === true);
+
+        calls.length = 0;
+        stub([]);
+        await fetchClosedMarkets(Array.from({ length: 41 }, (_, i) => `m${i}`));
+        check('41 ids go out as 2 requests (chunked), not one unbounded URL', calls.length === 2, `${calls.length} request(s)`);
+
+        calls.length = 0;
+        stub([]);
+        const none = await fetchClosedMarkets([]);
+        check('no ids -> no request at all', calls.length === 0 && none.size === 0);
+    } finally {
+        globalThis.fetch = realFetch;
+    }
 
     await cleanup();
 }

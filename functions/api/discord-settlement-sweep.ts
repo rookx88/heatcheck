@@ -58,7 +58,7 @@ import { drawGiveawayWinner } from '../../lib/pages-functions/discord-draw';
 import { brandEmbed } from '../../lib/pages-functions/discord-brand';
 import { buildGiveawayResultMessage, buildNoEligiblePoolMessage, buildDrawButtonRow } from '../../lib/pages-functions/discord-community-card';
 import type { PropOdds } from '../../tank-types';
-import { fetchMarket, outcomeOrderMismatch, resolveMarket, type MarketResolution } from '../../lib/pages-functions/gamma';
+import { fetchClosedMarkets, fetchMarket, outcomeOrderMismatch, resolveMarket, type MarketResolution } from '../../lib/pages-functions/gamma';
 import { fetchMarket as fetchKalshiMarket, resolveMarket as resolveKalshiMarket, type KalshiMarketResolution } from '../../lib/pages-functions/kalshi';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
@@ -148,17 +148,50 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         LIMIT ${MAX_ANNOUNCEMENTS_PER_RUN}
     `) as unknown as CandidateRow[];
 
-    // One market fetch per Tank per run, only for Tanks that need it (pending votes,
-    // no correct linked picker to read the winner off). Thrown fetch errors aren't
-    // cached, same as settle.ts's resolveOnce.
+    // TWO caches, because the two things being cached have different keys. The winner is
+    // per TANK - the outcome-order cross-check below compares the live outcome names
+    // against that Tank's frozen snapshot, so two Tanks on the same market can legitimately
+    // reach different answers. The market RESOLUTION is per market, and Tanks do share
+    // markets, so keying the fetch on tank_page_id fetched the same market twice
+    // (efficiency audit, 2026-09-20). Thrown fetch errors aren't cached, same as
+    // settle.ts's resolveOnce.
     const winnerCache = new Map<string, number | null>();
+    const resolutionCache = new Map<string, MarketResolution | KalshiMarketResolution>();
+    async function resolveOnce(provider: string, marketId: string): Promise<MarketResolution | KalshiMarketResolution> {
+        const cacheKey = `${provider}:${marketId}`;
+        const cached = resolutionCache.get(cacheKey);
+        if (cached) return cached;
+        const resolution = provider === 'kalshi'
+            ? resolveKalshiMarket(await fetchKalshiMarket(marketId))
+            : resolveMarket(await fetchMarket(marketId));
+        resolutionCache.set(cacheKey, resolution);
+        return resolution;
+    }
+
+    // And one batched request for the Polymarket markets this run will ask about, seeding
+    // only what Gamma returned - the same conservative shape as settle.ts, for the same
+    // reason (gamma.ts's fetchClosedMarkets).
+    {
+        const ids = [...new Set(candidates
+            .filter((c) => c.provider === 'polymarket' && c.market_id)
+            .map((c) => c.market_id as string))];
+        if (ids.length > 1) {
+            try {
+                const closed = await fetchClosedMarkets(ids);
+                for (const [marketId, market] of closed) {
+                    resolutionCache.set(`polymarket:${marketId}`, resolveMarket(market));
+                }
+            } catch (err) {
+                console.error('[discord-settlement-sweep] batched market fetch failed, falling back to one call per market:', err);
+            }
+        }
+    }
+
     async function resolveWinningIndex(row: CandidateRow): Promise<number | null> {
         if (winnerCache.has(row.tank_page_id)) return winnerCache.get(row.tank_page_id)!;
         let winningIndex: number | null = null;
         if (row.market_id && (row.provider === 'polymarket' || row.provider === 'kalshi')) {
-            const resolution: MarketResolution | KalshiMarketResolution = row.provider === 'kalshi'
-                ? resolveKalshiMarket(await fetchKalshiMarket(row.market_id))
-                : resolveMarket(await fetchMarket(row.market_id));
+            const resolution = await resolveOnce(row.provider, row.market_id);
             if (resolution.status === 'resolved'
                 && !('outcomes' in resolution && outcomeOrderMismatch(resolution.outcomes, row.snapshot_outcomes))) {
                 winningIndex = resolution.winningIndex;

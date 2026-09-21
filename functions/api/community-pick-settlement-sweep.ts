@@ -17,7 +17,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
-import { fetchMarket, resolveMarket, outcomeOrderMismatch } from '../../lib/pages-functions/gamma';
+import { fetchClosedMarkets, fetchMarket, resolveMarket, outcomeOrderMismatch, type GammaMarketLite } from '../../lib/pages-functions/gamma';
 import { postDiscordChannelMessage } from '../../lib/pages-functions/discord-api';
 import { buildCommunitySettlementRecapMessage, buildGiveawayResultMessage, buildMultiWinnerGiveawayMessage, buildNoEligiblePoolMessage } from '../../lib/pages-functions/discord-community-card';
 import { awardCommunityPointsBatch } from '../../lib/pages-functions/community-points';
@@ -72,9 +72,23 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     let pendingNotClosed = 0;
     const errors: string[] = [];
 
+    // The closed markets among this run's picks, in one request (gamma.ts's
+    // fetchClosedMarkets). A market Gamma didn't return is still asked about
+    // individually below: an absence from a closed-only batch is not an answer, and a
+    // throw here is a batch failure, not a verdict (efficiency audit, 2026-09-20).
+    let closedMarkets = new Map<string, GammaMarketLite>();
+    if (new Set(openPicks.map((r) => r.source_market_id)).size > 1) {
+        try {
+            closedMarkets = await fetchClosedMarkets(openPicks.map((r) => r.source_market_id));
+        } catch (err) {
+            console.error('[community-pick-settlement-sweep] batched market fetch failed, falling back to one call per market:', err);
+        }
+    }
+
     for (const row of openPicks) {
         try {
-            const resolution = resolveMarket(await fetchMarket(row.source_market_id));
+            const batched = closedMarkets.get(row.source_market_id);
+            const resolution = resolveMarket(batched ?? (await fetchMarket(row.source_market_id)));
             if (resolution.status !== 'resolved') {
                 pendingNotClosed++;
                 continue;

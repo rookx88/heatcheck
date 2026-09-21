@@ -18,6 +18,10 @@ const GAMMA_BASE_URL = 'https://gamma-api.polymarket.com';
 export const WINNER_THRESHOLD = 0.99;
 
 export interface GammaMarketLite {
+    // Only the LIST endpoint carries this (the single endpoint is addressed by id
+    // already). fetchClosedMarkets keys its result map on it - never on array position,
+    // because /markets returns its own ordering, not the requested one.
+    id?: string | number;
     outcomes?: string;       // JSON-encoded string array
     outcomePrices?: string;  // JSON-encoded string array
     clobTokenIds?: string;   // JSON-encoded string array, positional with outcomes
@@ -48,6 +52,66 @@ export async function fetchMarket(marketId: string): Promise<GammaMarketLite | n
     });
     if (!res.ok) return null;
     return (await res.json()) as GammaMarketLite;
+}
+
+// How many ids ride in one /markets URL. No cap was found (70 ids in one request came
+// back complete), so this is chosen for a short URL and a small blast radius per
+// request, not because Gamma requires it.
+const GAMMA_ID_CHUNK = 40;
+
+/**
+ * The CLOSED markets among `marketIds`, in one request per 40 ids instead of one per
+ * market. For the settlement paths, which ask about 30+ markets a run and care about
+ * exactly one thing: has this market resolved yet.
+ *
+ * Probed live 2026-09-20, and every line below is a finding rather than a preference:
+ *
+ *  - `?id=a&id=b` works, but the list endpoint applies a closed-state filter and the
+ *    DEFAULT excludes closed markets. Without `closed=true`, a batch of 8 settled
+ *    markets returned 1. So this helper is closed-only by construction, which is also
+ *    exactly what settlement wants.
+ *  - The default `limit` is 20 and over-length responses are TRUNCATED SILENTLY - a 200
+ *    with a short array. A batch of 30 ids without a limit returns 20, and the 10 lost
+ *    rows would read as "not closed yet", which on a stale position means voiding it
+ *    permanently. Hence `limit = chunk.length + 1`: at most chunk.length rows can match,
+ *    so a response that REACHES the limit is a truncation and throws.
+ *  - The response is ordered by Gamma, not by the request, so it is re-keyed on
+ *    `market.id`. A positional map would settle picks against another game's result.
+ *  - A request failure THROWS rather than returning an empty map. `fetchMarket` folds
+ *    every failure into `null`, which `resolveMarket` reads as `not_closed_yet` - fine
+ *    for one market, but a thrown batch must never be mistaken for "none of these 30
+ *    have resolved."
+ *
+ * An id absent from the result means "not closed, or not a market" - callers that treat
+ * absence as a settlement input should confirm it with `fetchMarket` rather than trust a
+ * silence (see functions/api/index-settle.ts).
+ */
+export async function fetchClosedMarkets(marketIds: string[]): Promise<Map<string, GammaMarketLite>> {
+    const out = new Map<string, GammaMarketLite>();
+    const unique = [...new Set(marketIds.filter((id) => !!id))];
+    for (let i = 0; i < unique.length; i += GAMMA_ID_CHUNK) {
+        const chunk = unique.slice(i, i + GAMMA_ID_CHUNK);
+        const params = chunk.map((id) => `id=${encodeURIComponent(id)}`).join('&');
+        const res = await fetch(`${GAMMA_BASE_URL}/markets?${params}&closed=true&limit=${chunk.length + 1}`, {
+            headers: { Accept: 'application/json' },
+        });
+        if (!res.ok) throw new Error(`Gamma /markets batch failed: ${res.status}`);
+        const body = (await res.json()) as unknown;
+        if (!Array.isArray(body)) throw new Error('Gamma /markets batch: expected an array');
+        if (body.length > chunk.length) {
+            throw new Error(`Gamma /markets batch returned ${body.length} rows for ${chunk.length} ids (truncated or over-matched)`);
+        }
+        for (const market of body as GammaMarketLite[]) {
+            const id = market?.id == null ? '' : String(market.id);
+            // An id we did not ask for means the filter did not apply - the one failure
+            // mode that would quietly settle the wrong game, so it is fatal, not skipped.
+            if (!chunk.includes(id)) {
+                throw new Error(`Gamma /markets batch returned an unrequested id: ${id || '(none)'}`);
+            }
+            out.set(id, market);
+        }
+    }
+    return out;
 }
 
 export type MarketResolution =

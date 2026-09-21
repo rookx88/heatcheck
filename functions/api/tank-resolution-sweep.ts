@@ -36,7 +36,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import Anthropic from '@anthropic-ai/sdk';
 import { getSql, jsonResponse, type Env, numEnv } from '../../lib/pages-functions/db';
-import { fetchMarket, outcomeOrderMismatch, resolveMarket } from '../../lib/pages-functions/gamma';
+import { fetchClosedMarkets, fetchMarket, outcomeOrderMismatch, resolveMarket } from '../../lib/pages-functions/gamma';
 import {
     fetchMarket as fetchKalshiMarket,
     resolveMarket as resolveKalshiMarket,
@@ -148,6 +148,29 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // Two Tanks can share a market (the canonical-cluster case), so cache per run exactly
     // as settle.ts's resolveOnce does.
     const resolutionCache = new Map<string, any>();
+
+    // One request for this run's closed Polymarket markets (gamma.ts's fetchClosedMarkets;
+    // Kalshi has no id-list form). Only what Gamma returned is seeded: a non-terminal
+    // status here can RETIRE a Tank once it runs out of road, and that is not a call to
+    // make on an id's absence from a closed-only batch - those still get their own fetch
+    // below. A throw is a batch failure, not a verdict (efficiency audit, 2026-09-20).
+    {
+        // provider by market id, so the seeded keys match the cache keys the loop builds.
+        const providerById = new Map<string, string>();
+        for (const t of pending) {
+            if (t.market_id && t.provider !== 'kalshi') providerById.set(t.market_id, t.provider);
+        }
+        if (providerById.size > 1) {
+            try {
+                const closed = await fetchClosedMarkets([...providerById.keys()]);
+                for (const [marketId, market] of closed) {
+                    resolutionCache.set(`${providerById.get(marketId)}:${marketId}`, resolveMarket(market));
+                }
+            } catch (err) {
+                console.error('[tank-resolution-sweep] batched market fetch failed, falling back to one call per market:', err);
+            }
+        }
+    }
 
     for (const tank of pending) {
         if (!tank.market_id) {
