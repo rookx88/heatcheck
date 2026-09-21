@@ -69,14 +69,47 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const authHeaders = session.refreshedSetCookie ? { 'Set-Cookie': session.refreshedSetCookie } : undefined;
 
     const sql = getSql(context.env);
-    const rows = await sql`
-        SELECT i.catalog_key, i.item_type, c.name, c.config, i.quantity, i.is_equipped, i.slot
-        FROM inventory_items i
-        JOIN items_catalog c ON c.key = i.catalog_key
-        WHERE i.user_id = ${session.userId}
-          AND (i.item_type = 'food' AND i.quantity > 0 OR i.item_type = 'equipment')
-        ORDER BY i.item_type, c.name
-    `;
+
+    // Four independent reads of the same table, so they go in ONE batched round trip
+    // rather than four sequential ones (the shape toolbar-state.ts uses, and for the
+    // same reason). The inventory modal opens all four tabs' data at once, so this was
+    // the single most round-trip-heavy read on the site (efficiency audit, 2026-09-20).
+    // Newest-first orderings below are contracts the UI shuffles in - id DESC tiebreaks
+    // rows sharing created_at (migrated clones, rapid buys).
+    const [rows, eggRows, collectibleRows, memorabiliaRows] = await sql.transaction([
+        sql`
+            SELECT i.catalog_key, i.item_type, c.name, c.config, i.quantity, i.is_equipped, i.slot
+            FROM inventory_items i
+            JOIN items_catalog c ON c.key = i.catalog_key
+            WHERE i.user_id = ${session.userId}
+              AND (i.item_type = 'food' AND i.quantity > 0 OR i.item_type = 'equipment')
+            ORDER BY i.item_type, c.name
+        `,
+        sql`
+            SELECT i.id, i.catalog_key, c.name, c.config, i.created_at
+            FROM inventory_items i
+            JOIN items_catalog c ON c.key = i.catalog_key
+            WHERE i.user_id = ${session.userId} AND i.item_type = 'egg'
+            ORDER BY i.created_at DESC, i.id DESC
+        `,
+        sql`
+            SELECT i.id, i.catalog_key, c.name, c.config, i.serial_number, i.created_at
+            FROM inventory_items i
+            JOIN items_catalog c ON c.key = i.catalog_key
+            WHERE i.user_id = ${session.userId} AND i.item_type = 'collectible'
+            ORDER BY i.created_at DESC, i.id DESC
+        `,
+        // Stacked like food, so one row per SKU with a quantity - created_at is when the
+        // stack STARTED, which is the honest "first found" date and what the tab shows.
+        sql`
+            SELECT i.catalog_key, c.name, c.config, i.quantity, i.created_at
+            FROM inventory_items i
+            JOIN items_catalog c ON c.key = i.catalog_key
+            WHERE i.user_id = ${session.userId} AND i.item_type = 'memorabilia' AND i.quantity > 0
+            ORDER BY i.created_at DESC, i.catalog_key
+        `,
+    ]);
+
     const items = (rows as unknown as InventoryRow[]).map((r) => ({
         catalogKey: r.catalog_key,
         itemType: r.item_type,
@@ -87,15 +120,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         description: (r.config.description as string) ?? null,
     }));
 
-    // Newest-first is the contract the inventory/incubator UI shuffles in. id DESC
-    // tiebreaks rows sharing created_at (migrated clones, rapid buys).
-    const eggRows = await sql`
-        SELECT i.id, i.catalog_key, c.name, c.config, i.created_at
-        FROM inventory_items i
-        JOIN items_catalog c ON c.key = i.catalog_key
-        WHERE i.user_id = ${session.userId} AND i.item_type = 'egg'
-        ORDER BY i.created_at DESC, i.id DESC
-    `;
     const eggs = (eggRows as unknown as EggRow[]).map((r) => ({
         id: r.id,
         catalogKey: r.catalog_key,
@@ -108,13 +132,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         acquiredAt: r.created_at,
     }));
 
-    const collectibleRows = await sql`
-        SELECT i.id, i.catalog_key, c.name, c.config, i.serial_number, i.created_at
-        FROM inventory_items i
-        JOIN items_catalog c ON c.key = i.catalog_key
-        WHERE i.user_id = ${session.userId} AND i.item_type = 'collectible'
-        ORDER BY i.created_at DESC, i.id DESC
-    `;
     const collectibles = (collectibleRows as unknown as CollectibleRow[]).map((r) => ({
         id: r.id,
         catalogKey: r.catalog_key,
@@ -130,15 +147,6 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
         acquiredAt: r.created_at,
     }));
 
-    // Stacked like food, so one row per SKU with a quantity - created_at is when the
-    // stack STARTED, which is the honest "first found" date and what the tab shows.
-    const memorabiliaRows = await sql`
-        SELECT i.catalog_key, c.name, c.config, i.quantity, i.created_at
-        FROM inventory_items i
-        JOIN items_catalog c ON c.key = i.catalog_key
-        WHERE i.user_id = ${session.userId} AND i.item_type = 'memorabilia' AND i.quantity > 0
-        ORDER BY i.created_at DESC, i.catalog_key
-    `;
     const memorabilia = (memorabiliaRows as unknown as MemorabiliaRow[]).map((r) => ({
         catalogKey: r.catalog_key,
         name: r.name,

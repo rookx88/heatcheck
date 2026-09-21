@@ -10,7 +10,7 @@ import ItemTooltip from './ItemTooltip';
 import {
     getPet,
     getOwnedFood,
-    getShopFood,
+    getShopFoods,
     feedPet,
     PetFullError,
     type PetInfo,
@@ -43,16 +43,19 @@ export const FeedModal: React.FC<FeedModalProps> = ({ onClose, onPetChange }) =>
     const hydrate = useCallback(async () => {
         setLoadError(null);
         try {
-            const [p, owned, quickboost, champions] = await Promise.all([
+            // The menu is fetched ONCE, not once per vendor: the two vendors' lists were
+            // immediately concatenated into the one catalogKey -> points map below, so
+            // the vendor split was thrown away and the second /api/shop request bought
+            // nothing (efficiency audit, 2026-09-20).
+            const [p, owned, menu] = await Promise.all([
                 getPet(),
                 getOwnedFood(),
-                getShopFood('quickboost'),
-                getShopFood('champions'),
+                getShopFoods(),
             ]);
             setPet(p);
             setFood(owned ?? []);
             const points: Record<string, number> = {};
-            for (const item of [...(quickboost ?? []), ...(champions ?? [])]) {
+            for (const item of menu ?? []) {
                 if (item.satisfactionPoints != null) points[item.catalogKey] = item.satisfactionPoints;
             }
             setPointsByKey(points);

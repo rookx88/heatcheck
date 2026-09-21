@@ -167,7 +167,47 @@ export interface SessionInfo {
 // "Am I logged in?" - the identity source of truth on load, replacing the old role of
 // the hc_account localStorage cache (which survives only as a best-effort prefill
 // hint for logged-out states). 401 -> null, same reasoning as getTodayStatus.
-export async function getSessionInfo(): Promise<SessionInfo | null> {
+//
+// A Lines page renders up to three decks (tank-lines-template.ts's three slots), each
+// mounting its own React root and calling this from its own effect - three identical
+// /api/session requests, each a getSession round trip that also slides the session's
+// expiry (efficiency audit, 2026-09-20).
+//
+// An in-flight share alone does NOT fix that, which is worth recording: the roots mount
+// in separate tasks, and against a local server each 401 returns before the next root
+// mounts, so the promise has already settled and been dropped. Measured on a three-deck
+// page: still three requests. What the callers actually need is a short BURST window -
+// long enough to cover a page's mounts, far too short to be a session cache.
+//
+// 3 seconds, and deliberately nothing longer: the only other caller is Fishtank's
+// bfcache-restore refetch (components/Fishtank.tsx's pageshow handler), which is exactly
+// the case that must reach the server, and it fires minutes or hours later. Nothing in
+// this app mutates the session in-page - login, logout and verification all navigate -
+// so within one burst the answer cannot have changed.
+const SESSION_BURST_MS = 3000;
+let sessionInflight: Promise<SessionInfo | null> | null = null;
+let sessionBurst: { at: number; value: SessionInfo | null } | null = null;
+
+export function getSessionInfo(): Promise<SessionInfo | null> {
+    if (sessionInflight) return sessionInflight;
+    if (sessionBurst && Date.now() - sessionBurst.at < SESSION_BURST_MS) {
+        return Promise.resolve(sessionBurst.value);
+    }
+    sessionInflight = fetchSessionInfo()
+        .then((value) => {
+            sessionBurst = { at: Date.now(), value };
+            return value;
+        })
+        .finally(() => { sessionInflight = null; });
+    return sessionInflight;
+}
+
+/** Drops the burst window - for a caller that has just changed the session itself. */
+export function clearSessionCache(): void {
+    sessionBurst = null;
+}
+
+async function fetchSessionInfo(): Promise<SessionInfo | null> {
     const res = await fetch('/api/session');
     if (res.status === 401) return null;
     const data = await parseJsonSafe(res);

@@ -11,10 +11,8 @@ import { EGG_IMAGE_SRC, eggImageFilter } from './eggRender';
 import CollectibleCard from './CollectibleCard';
 import ItemTooltip from './ItemTooltip';
 import {
-    getOwnedCollectibles,
-    getOwnedEggs,
-    getOwnedFood,
-    getOwnedMemorabilia,
+    getInventory,
+    foodFrom,
     type OwnedCollectible,
     type OwnedEgg,
     type OwnedFood,
@@ -59,16 +57,15 @@ export const PetInventoryModal: React.FC<PetInventoryModalProps> = ({ onClose })
     const hydrate = useCallback(async () => {
         setLoadError(null);
         try {
-            const [e, f, c, m] = await Promise.all([
-                getOwnedEggs(),
-                getOwnedFood(),
-                getOwnedCollectibles(),
-                getOwnedMemorabilia(),
-            ]);
-            setEggs(e ?? []);
-            setFood(f ?? []);
-            setCollectibles(c ?? []);
-            setMemorabilia(m ?? []);
+            // ONE request for all four tabs. This used to be a Promise.all of four
+            // accessors that each fetched the identical /api/inventory URL - four
+            // requests, and (before that endpoint batched its own reads) sixteen
+            // queries to open one modal (efficiency audit, 2026-09-20).
+            const inv = await getInventory();
+            setEggs(inv?.eggs ?? []);
+            setFood(inv ? foodFrom(inv) : []);
+            setCollectibles(inv?.collectibles ?? []);
+            setMemorabilia(inv?.memorabilia ?? []);
             setLoading(false);
         } catch (err: any) {
             setLoadError(err?.message || 'Something went wrong.');

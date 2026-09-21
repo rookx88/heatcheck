@@ -174,24 +174,61 @@ export async function getShopEggs(): Promise<ShopEgg[] | null> {
     return (data.items as (ShopEgg & { itemType: string })[]).filter((i) => i.itemType === 'egg');
 }
 
-// One vendor's food menu ('quickboost' | 'champions').
-export async function getShopFood(vendor: string): Promise<ShopFood[] | null> {
+// Every food on sale, whatever vendor stocks it. For callers that want the menu as a
+// whole - the feed modal only needs catalogKey -> satisfactionPoints and was fetching
+// /api/shop once per vendor to build it (efficiency audit, 2026-09-20).
+export async function getShopFoods(): Promise<ShopFood[] | null> {
     const res = await fetch('/api/shop');
     if (res.status === 401 || res.status === 403) return null;
     const data = await parseJsonSafe(res);
     if (!res.ok) throw new Error(data.message || `GET /api/shop failed: ${res.status}`);
-    return (data.items as (ShopFood & { itemType: string })[]).filter(
-        (i) => i.itemType === 'food' && i.vendor === vendor
-    );
+    return (data.items as (ShopFood & { itemType: string })[]).filter((i) => i.itemType === 'food');
 }
 
-// Owned food stacks (catalogKey -> quantity), for "Owned: N" badges in the shops.
-export async function getOwnedFood(): Promise<OwnedFood[] | null> {
+// One vendor's food menu ('quickboost' | 'champions') - what each shop screen lists.
+export async function getShopFood(vendor: string): Promise<ShopFood[] | null> {
+    const foods = await getShopFoods();
+    return foods ? foods.filter((i) => i.vendor === vendor) : null;
+}
+
+/**
+ * The WHOLE inventory payload in one request. The four single-purpose accessors below
+ * (eggs / food / collectibles / memorabilia) now read from this, so a caller that wants
+ * one list still writes one line - but a caller that wants several asks once. The
+ * inventory modal wanted all four and made four IDENTICAL requests, each of which cost
+ * the server four queries (efficiency audit, 2026-09-20).
+ *
+ * Same 401/403 -> null contract as every other accessor here.
+ */
+export interface InventoryPayload {
+    items: (OwnedFood & { itemType: string })[];
+    eggs: OwnedEgg[];
+    collectibles: OwnedCollectible[];
+    memorabilia: OwnedMemorabilia[];
+}
+
+export async function getInventory(): Promise<InventoryPayload | null> {
     const res = await fetch('/api/inventory');
     if (res.status === 401 || res.status === 403) return null;
     const data = await parseJsonSafe(res);
     if (!res.ok) throw new Error(data.message || `GET /api/inventory failed: ${res.status}`);
-    return ((data.items ?? []) as (OwnedFood & { itemType: string })[]).filter((i) => i.itemType === 'food');
+    return {
+        items: (data.items ?? []) as (OwnedFood & { itemType: string })[],
+        eggs: (data.eggs ?? []) as OwnedEgg[],
+        collectibles: (data.collectibles ?? []) as OwnedCollectible[],
+        memorabilia: (data.memorabilia ?? []) as OwnedMemorabilia[],
+    };
+}
+
+/** Food stacks out of a payload getInventory() already fetched. */
+export function foodFrom(payload: InventoryPayload): OwnedFood[] {
+    return payload.items.filter((i) => i.itemType === 'food');
+}
+
+// Owned food stacks (catalogKey -> quantity), for "Owned: N" badges in the shops.
+export async function getOwnedFood(): Promise<OwnedFood[] | null> {
+    const payload = await getInventory();
+    return payload ? foodFrom(payload) : null;
 }
 
 // Food buys ride the same atomic spend-and-grant as eggs, but the grant is a quantity
@@ -212,28 +249,19 @@ export async function buyFood(catalogKey: string, purchaseToken: string): Promis
 
 // Server-ordered newest-first (created_at DESC) - the UI must not re-sort.
 export async function getOwnedEggs(): Promise<OwnedEgg[] | null> {
-    const res = await fetch('/api/inventory');
-    if (res.status === 401 || res.status === 403) return null;
-    const data = await parseJsonSafe(res);
-    if (!res.ok) throw new Error(data.message || `GET /api/inventory failed: ${res.status}`);
-    return (data.eggs ?? []) as OwnedEgg[];
+    const payload = await getInventory();
+    return payload ? payload.eggs : null;
 }
 
 // Server-ordered newest-first, same contract as eggs - the UI must not re-sort.
 export async function getOwnedCollectibles(): Promise<OwnedCollectible[] | null> {
-    const res = await fetch('/api/inventory');
-    if (res.status === 401 || res.status === 403) return null;
-    const data = await parseJsonSafe(res);
-    if (!res.ok) throw new Error(data.message || `GET /api/inventory failed: ${res.status}`);
-    return (data.collectibles ?? []) as OwnedCollectible[];
+    const payload = await getInventory();
+    return payload ? payload.collectibles : null;
 }
 
 export async function getOwnedMemorabilia(): Promise<OwnedMemorabilia[] | null> {
-    const res = await fetch('/api/inventory');
-    if (res.status === 401 || res.status === 403) return null;
-    const data = await parseJsonSafe(res);
-    if (!res.ok) throw new Error(data.message || `GET /api/inventory failed: ${res.status}`);
-    return (data.memorabilia ?? []) as OwnedMemorabilia[];
+    const payload = await getInventory();
+    return payload ? payload.memorabilia : null;
 }
 
 export async function getEmberBalance(): Promise<number | null> {
