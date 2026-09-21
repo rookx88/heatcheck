@@ -420,15 +420,56 @@ export function isSyncInProgress(): boolean {
 // prop-sync.ts fails when any league's freshest sync is over an hour old.
 const DEFAULT_SYNC_INTERVAL_MS = 15 * 60 * 1000;
 
+// Dead-man's switch for this scheduler (Healthchecks.io), following worker-settle's
+// HC_PING_* contract exactly: the env var holds the whole ping URL, unset skips the
+// ping entirely, a failure appends /fail, and the ping is best-effort - it must never
+// be able to break a sync.
+//
+// WHY THIS EXISTS. This process is the only writer of polymarket_props, and on
+// 2026-09-18 it stopped at 06:41 and nothing noticed for 78 HOURS: the admin console
+// had no games, curation found 0 matches against 78-hour-old props so nothing was
+// published for three days, the slate lock saw no fixtures, and the homepage emptied
+// out as the last live games kicked off. None of that raised anything, because the
+// Pages health check (lib/pages-functions/ops-health.ts's EXPECTED_JOBS) only watches
+// jobs that report in from a cron - and this one runs on the admin machine, outside
+// all of it. Everything downstream depends on this process; its silence has to be
+// audible from outside the machine it runs on.
+async function pingHealthchecks(fail: boolean, body = ''): Promise<void> {
+    const url = process.env.HC_PING_PROPSYNC;
+    if (!url) return;
+    try {
+        await fetch(fail ? `${url.replace(/\/$/, '')}/fail` : url, { method: 'POST', body: body.slice(0, 10000) });
+    } catch (err) {
+        console.error('[Polymarket] healthchecks ping failed:', err);
+    }
+}
+
+// One scheduled cycle: sync every league, then report the outcome to Healthchecks.
+async function runScheduledCycle(pool: Pool, label: string): Promise<void> {
+    try {
+        const { skipped } = await syncAllLeagues(pool);
+        // A SKIPPED tick is deliberately silent. It means the previous cycle is still
+        // running, and pinging here would say "alive" on the strength of work that has
+        // not finished - which is precisely the state a dead-man's switch exists to
+        // catch. If a cycle ever wedges, every later tick skips, no ping goes out, and
+        // Healthchecks raises it. The in-flight cycle does its own pinging when it ends.
+        if (skipped) return;
+        await pingHealthchecks(false);
+    } catch (err) {
+        // syncAllLeagues has no per-league try/catch, so one league throwing aborts the
+        // whole cycle and every league after it in LEAGUE_TAGS order is silently starved.
+        // That failure now leaves the building instead of sitting in a console nobody is
+        // watching.
+        console.error(`[Polymarket] ${label} sync error:`, err);
+        await pingHealthchecks(true, err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err));
+    }
+}
+
 export function startPolymarketScheduler(pool: Pool, intervalMs: number = DEFAULT_SYNC_INTERVAL_MS): NodeJS.Timeout {
     // Kick off an initial sync shortly after boot so the cache isn't empty, then
     // repeat on a fixed interval. syncAllLeagues's single-flight lock guarantees
     // this never overlaps with a manually-triggered sync.
-    setTimeout(() => {
-        syncAllLeagues(pool).catch(err => console.error('[Polymarket] Initial sync error:', err));
-    }, 5000);
+    setTimeout(() => { void runScheduledCycle(pool, 'Initial'); }, 5000);
 
-    return setInterval(() => {
-        syncAllLeagues(pool).catch(err => console.error('[Polymarket] Scheduled sync error:', err));
-    }, intervalMs);
+    return setInterval(() => { void runScheduledCycle(pool, 'Scheduled'); }, intervalMs);
 }
