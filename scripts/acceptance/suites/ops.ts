@@ -159,7 +159,14 @@ async function run(): Promise<void> {
     section('6. The middleware records rejections, and never leaks its signal header');
     // ===============================================================================
     {
-        const since = new Date();
+        // Read the cut-off off the DATABASE clock, not this machine's. ops_events.created_at
+        // is stamped by Postgres, and Neon's clock runs ~100ms behind this laptop - the 401
+        // path is fast enough that the whole request fits inside that skew, so a
+        // client-generated `new Date()` could sort AFTER rows the request had already
+        // written, and the assertion read [] while the rows sat there. Measured 2026-09-22:
+        // client 15:05:08.271Z, row created_at 15:05:08.187Z. This suite passed for weeks on
+        // the skew happening to fall the other way.
+        const since: Date = (await pool.query('SELECT NOW() AS now')).rows[0].now;
         const bad = await api('POST', '/api/settle', { headers: { 'X-Settle-Secret': 'wrong' } });
         check('bad secret on /api/settle -> 401', bad.status === 401);
         const csrf = await api('POST', '/api/logout', { headers: { Origin: 'https://evil.example' }, body: {} });
