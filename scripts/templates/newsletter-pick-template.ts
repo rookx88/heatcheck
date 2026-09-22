@@ -33,7 +33,7 @@ export function generateNewsletterPickPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page">
-        ${topbar('/')}
+        ${topbar()}
         <div id="newsletter-pick-root"></div>
         ${footer()}
     </main>

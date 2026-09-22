@@ -465,7 +465,7 @@ export function generateMyPortfolioPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page hc-portfolio-page">
-        ${topbar(null)}
+        ${topbar()}
         <div id="my-portfolio-root"></div>
         ${footer()}
     </main>

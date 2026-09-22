@@ -209,35 +209,8 @@ function sharedStyles(): string {
             height: auto;
             display: block;
         }
-        .hc-learn-more {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.25rem;
-            text-decoration: none;
-            flex-shrink: 0;
-        }
-        .hc-learn-more .hc-check-box {
-            width: 56px;
-            height: 56px;
-            border: 2px solid rgba(47, 230, 217, 0.6);
-            border-radius: 12px;
-            background: rgba(47, 230, 217, 0.08);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 0 18px rgba(47, 230, 217, 0.25);
-        }
-        .hc-learn-more .hc-check-box img { width: 34px; height: auto; }
-        .hc-learn-more span {
-            font-family: 'Montserrat', 'Nunito', sans-serif;
-            font-weight: 800;
-            font-size: 0.7rem;
-            letter-spacing: 0.04em;
-            color: var(--hc-teal);
-            text-transform: uppercase;
-        }
-        /* The signed-in chrome's slot, in "Learn more"'s place (topbar(null)).
+        /* The signed-in chrome's slot - the topbar's only right-hand element now
+           that the marketing "Learn more" link is gone (see topbar()).
            MapHud pins .map-hud absolutely to its containing block, so this slot IS
            that block: the chip's right edge lands on the topbar's right edge and the
            dropdown overlays the page instead of growing the topbar. Centred against
@@ -384,31 +357,26 @@ function sharedStyles(): string {
 }
 
 /**
- * The shared page topbar: logo left, one slot right.
+ * The shared page topbar: logo left, HUD slot right.
  *
- * Pass a href for the marketing "Learn more" link (the logged-out funnel pages -
- * landing, /beta/, claim-your-spot, login, newsletter, 404 - where it still belongs).
+ * The slot is empty in the markup. ContentChrome fills it with the identity chip
+ * (username + Ember, with the mini nav) on the pages that mount it - account,
+ * my-portfolio, the Tank pages - so the chip lands on the logo's line. Everywhere
+ * else it stays empty and the topbar is just the logo.
  *
- * Pass null on pages that carry the signed-in chrome. Those get an empty HUD slot
- * instead, which ContentChrome fills with the identity chip (username + Ember, with
- * the mini nav) - so the chip lands on the logo's line rather than "Learn more"
- * sitting next to a second nav the page already has.
+ * It used to take a href and render a marketing "Learn more" link into that slot on
+ * the logged-out funnel pages. That link pointed at the waitlist (/beta/ or /), which
+ * this branch has moved past - it was sitting on top of working login and welcome
+ * pages. NOTE for anyone porting this to main: main's production home IS the waitlist
+ * landing, so the link still belongs there.
  */
-export function topbar(learnMoreHref: string | null): string {
-    const right = learnMoreHref === null
-        ? '<div class="hc-topbar-hud" data-hc-hud-slot></div>'
-        : `<a class="hc-learn-more" href="${learnMoreHref}">
-                <span class="hc-check-box">
-                    <img src="/assets/images/checknav.webp" alt="" width="140" height="200">
-                </span>
-                <span>Learn more</span>
-            </a>`;
+export function topbar(): string {
     return `
         <div class="hc-topbar">
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
                 <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="150">
             </a>
-            ${right}
+            <div class="hc-topbar-hud" data-hc-hud-slot></div>
         </div>`;
 }
 
@@ -451,7 +419,7 @@ export function generateLandingPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page">
-        ${topbar('/beta/')}
+        ${topbar()}
 
         <div class="hc-hero">
             <div class="hc-hero-inner">
@@ -514,7 +482,7 @@ export function generateBetaInfoPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page">
-        ${topbar('/beta/')}
+        ${topbar()}
 
         <div class="hc-card">
             <h1>Something new is coming.</h1>

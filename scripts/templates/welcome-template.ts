@@ -76,7 +76,7 @@ export function generateWelcomePageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page">
-        ${topbar('/')}
+        ${topbar()}
         <div id="welcome-root"></div>
         ${footer()}
     </main>

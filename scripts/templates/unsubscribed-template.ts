@@ -54,7 +54,7 @@ export function generateUnsubscribedPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page">
-        ${topbar('/')}
+        ${topbar()}
         <section class="hc-unsub" aria-live="polite">
             <p class="hc-unsub-eyebrow">Email preferences</p>
             <h1 data-unsub-heading>Updating your preference…</h1>

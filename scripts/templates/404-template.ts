@@ -88,7 +88,7 @@ export function generate404Page(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page">
-        ${topbar('/beta/')}
+        ${topbar()}
         <section class="hc-404">
             <p class="hc-404-code">404</p>
             <h1>This one got away.</h1>

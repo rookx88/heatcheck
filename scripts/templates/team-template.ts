@@ -145,7 +145,7 @@ export function generateTeamPageHtml(baseUrl: string, model: TeamPageModel): str
 </head>
 <body>
     <main class="hc-page hc-tq-page">
-        ${topbar(null)}
+        ${topbar()}
         <div id="teams-chrome-root"></div>
         <div class="hc-tq-board">
             ${leadLeague && leadLeagueSlug ? `<a class="hc-tq-back" href="/leagues/${escapeHtml(leadLeagueSlug)}/">&larr; ${escapeHtml(leadLeague)} board</a>` : `<a class="hc-tq-back" href="/teams/">&larr; All leagues</a>`}

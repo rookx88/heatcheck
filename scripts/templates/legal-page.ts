@@ -249,7 +249,7 @@ export function renderLegalDocument(doc: LegalDocument, baseUrl: string): string
 </head>
 <body>
     <main class="hc-page hc-page--doc">
-        ${topbar('/beta/')}
+        ${topbar()}
 
         <article class="hc-doc" id="top">
             <p class="hc-doc-eyebrow">Legal</p>

@@ -210,7 +210,7 @@ export function generateAccountPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page hc-account-page">
-        ${topbar(null)}
+        ${topbar()}
         <div id="account-root"></div>
         ${footer()}
     </main>

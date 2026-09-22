@@ -307,7 +307,7 @@ export function generateDiscordBotPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page hc-page--doc">
-        ${topbar(null)}
+        ${topbar()}
         <!-- Identity chrome (username + Ember chip, or Log in) via the teams bundle,
              which only mounts the roots a page has - same as league-template.ts. -->
         <div id="teams-chrome-root"></div>

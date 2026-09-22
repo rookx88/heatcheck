@@ -59,7 +59,7 @@ export function generateLeaguePageHtml(baseUrl: string, board: LeagueBoardModel)
 </head>
 <body>
     <main class="hc-page hc-tq-page">
-        ${topbar(null)}
+        ${topbar()}
         <div id="teams-chrome-root"></div>
         <div class="hc-tq-board">
             <a class="hc-tq-back" href="/teams/">&larr; All leagues</a>

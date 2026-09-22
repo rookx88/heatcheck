@@ -57,7 +57,7 @@ export function generateTeamsHubPageHtml(baseUrl: string, leagues: HubLeague[]):
 </head>
 <body>
     <main class="hc-page hc-tq-page">
-        ${topbar(null)}
+        ${topbar()}
         <div id="teams-chrome-root"></div>
         <div class="hc-tq-board">
             <a class="hc-tq-back" href="/tankdaq/indexes/">&larr; TANKDAQ indexes</a>

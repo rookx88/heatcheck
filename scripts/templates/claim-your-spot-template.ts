@@ -65,7 +65,7 @@ export function generateClaimYourSpotPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page">
-        ${topbar('/beta/')}
+        ${topbar()}
 
         <div class="hc-bubble">
             <h1>Claim your spot</h1>

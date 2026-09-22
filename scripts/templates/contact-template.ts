@@ -90,7 +90,7 @@ export function generateContactPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page hc-page--doc">
-        ${topbar('/beta/')}
+        ${topbar()}
 
         <article class="hc-doc" id="top">
             <p class="hc-doc-eyebrow">Get in touch</p>

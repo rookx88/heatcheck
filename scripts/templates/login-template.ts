@@ -55,7 +55,7 @@ export function generateLoginPageHtml(baseUrl: string): string {
 </head>
 <body>
     <main class="hc-page">
-        ${topbar('/')}
+        ${topbar()}
         <div id="login-root"></div>
         ${footer()}
     </main>
