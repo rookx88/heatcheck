@@ -64,7 +64,11 @@
 
 .register-modal__logo {
   display: block;
-  height: 2.1em;
-  width: auto;
+  /* Width-sized rather than height-sized: the one-line wordmark is aspect 3.33 vs
+     the old script mark's 2.08, so keeping `height: 2.1em` would have stretched it
+     ~60% wider and blown out the "Join / Log in to [logo]" title row. 4.36em is the
+     width 2.1em used to resolve to. */
+  width: 4.36em;
+  height: auto;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55));
 }

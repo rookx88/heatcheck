@@ -30,7 +30,10 @@ interface ImageJob {
 }
 
 const jobs: ImageJob[] = [
-    { source: 'heatcheckslogo-new.svg', outName: 'heatchecks-logo', width: 500, blackBackground: true },
+    // heatcheckslogo-new.svg deliberately absent: the wordmark is now the one-line
+    // header art, derived by scripts/make-logo-assets.ts from a plain PNG. Leaving the
+    // job here would let a re-run of this script silently overwrite it with the old
+    // script mark.
     { source: 'CheckNavBar.svg', outName: 'checknav', width: 140, blackBackground: true },
     { source: 'MudPuppyDefault.svg', outName: 'mudpuppy-default', width: 800, blackBackground: true },
     { source: 'MudPuppyJersey.svg', outName: 'mudpuppy-jersey', width: 800, blackBackground: true },

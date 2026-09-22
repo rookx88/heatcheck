@@ -268,7 +268,7 @@ ${renderMarketSection(prop, game, row.created_at, { writtenVerb: 'this line came
     <main class="hc-page tank-article tank-article--lines">
         <div class="hc-topbar">
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
-                <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
+                <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="150">
             </a>
             <div class="tank-article-topbar-right">
                 <a class="tank-article-register-banner" href="${baseUrl}/login/" aria-label="Register for HeatChecks - free to play">

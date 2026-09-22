@@ -74,7 +74,7 @@ function renderHeader(user: HomepageUser | null): string {
     return `
         <header class="hc-home-header">
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
-                <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
+                <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="150">
             </a>
             <div class="hc-header-right">
                 ${renderRegisterBanner(user)}
@@ -169,7 +169,12 @@ function homepageStyles(): string {
         html, body { overflow-x: hidden; }
         .hc-home { max-width: 1080px; margin: 0 auto; padding: 0.75rem 1.25rem 1rem; min-height: 100vh; display: flex; flex-direction: column; }
         .hc-home-header { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; }
-        .hc-home-header .hc-logo img { width: clamp(120px, 26vw, 240px); height: auto; display: block; }
+        /* Widths are ~1.6x what the old script wordmark used, because the one-line
+           lockup is far wider than it is tall (aspect 3.33 vs the old 2.08). Sizing
+           is by width with height auto, so matching the old widths would have made
+           the mark a third shorter and sunk it in the header - these keep the same
+           rendered HEIGHT it had before. */
+        .hc-home-header .hc-logo img { width: clamp(193px, 42vw, 385px); height: auto; display: block; }
         /* Register banner (logged out) + auth area, grouped so the whole cluster
            pins to the header's right edge as one unit - margin-left:auto lives on
            the wrapper, not the individual pieces, so it works whichever is first. */

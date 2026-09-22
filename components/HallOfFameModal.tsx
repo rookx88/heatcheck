@@ -166,7 +166,7 @@ export const HallOfFameModal: React.FC<HallOfFameModalProps> = ({ onClose }) => 
                             src="/assets/images/heatchecks-logo-solid.webp"
                             alt="HeatChecks"
                             width="500"
-                            height="241"
+                            height="150"
                             decoding="async"
                         />
                     </span>

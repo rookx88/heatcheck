@@ -50,9 +50,9 @@ import NUNITO_EXTRABOLD from './fonts/nunito-extrabold.bin';
 import ORBITRON_BOLD from './fonts/orbitron-bold.bin';
 import ORBITRON_BLACK from './fonts/orbitron-black.bin';
 // The real site logo, pre-converted to PNG (resvg can't rasterize webp - the OG
-// generator does the same webp->png conversion, via sharp at build time; this one was
-// converted once with sharp locally and committed: 149x72, from
-// public/assets/images/heatchecks-logo.webp).
+// generator does the same webp->png conversion, via sharp at build time; this one is
+// committed, emitted at 240x72 by scripts/make-logo-assets.ts alongside the web
+// assets, so it can't drift from them).
 import HEATCHECKS_LOGO from './heatchecks-logo.bin';
 // Discord's mark (simple-icons SVG, rasterized once locally to a white 80x80 PNG) -
 // the footer's visual pointer to the invite, replacing the old URL text.
@@ -65,6 +65,25 @@ import { patchInteractionOriginal } from './discord-api';
 // the clickable url on the Discord embed that carries the image (see
 // sendLeaderboardResult).
 export const HEATCHECKS_DISCORD_INVITE = 'https://discord.gg/z3XUVvG4Nh';
+
+/**
+ * Native aspect ratio of heatchecks-logo.bin, shared with the other card generators
+ * (community-pick-image.ts, pvp-hub-image.ts) that stamp the same watermark - they
+ * each used to carry their own copy of these numbers, which is exactly the kind of
+ * thing that drifts the next time the brand art changes.
+ */
+export const LOGO_ASPECT = 240 / 72;
+
+/**
+ * Watermark size for the flat-SVG cards (community-pick-image.ts, pvp-hub-image.ts).
+ * Shorter than the leaderboard's 48 below, because those two lay the mark in the
+ * bottom-left corner of a band whose centre is already taken by a full-width caption
+ * ("RESOLVES ... · VOTE BELOW · ..."). The one-line lockup is 3.3x as wide as it is
+ * tall where the old script mark was 2.1x, so at the previous height of 40 it grew
+ * from 83px to 133px wide and ran straight into that caption. 34 keeps a ~20px gap.
+ */
+export const SVG_WATERMARK_HEIGHT = 34;
+export const SVG_WATERMARK_WIDTH = Math.round(SVG_WATERMARK_HEIGHT * LOGO_ASPECT);
 
 const IMAGE_WIDTH = 720;
 const CARD_PAD = 26;
@@ -79,7 +98,7 @@ const RANK_PLATE_W = 96;
 const WHITE_BOX_LEFT = 84; // white box starts under the plate's right edge (overlap)
 const WATERMARK_HEIGHT = 56;
 const WATERMARK_LOGO_HEIGHT = 48;
-const WATERMARK_LOGO_WIDTH = Math.round(WATERMARK_LOGO_HEIGHT * (149 / 72)); // source PNG's native aspect ratio
+const WATERMARK_LOGO_WIDTH = Math.round(WATERMARK_LOGO_HEIGHT * LOGO_ASPECT);
 const DISCORD_ICON_SIZE = 36;
 
 const COLOR_CARD_BLUE = '#0e0a38'; // very dark navy (was the mockup's royal #2712d8 - Sammy asked for really dark)

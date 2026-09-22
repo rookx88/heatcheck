@@ -683,7 +683,7 @@ export function generateTankArticlePage(
     <main class="hc-page tank-article">
         <div class="hc-topbar">
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
-                <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
+                <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="150">
             </a>
             <!-- The right-hand cluster, grouped like the homepage header's
                  .hc-header-right: the register banner (logged out) and the identity

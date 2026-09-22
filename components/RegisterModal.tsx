@@ -60,7 +60,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, variant =
                             src="/assets/images/heatchecks-logo.webp"
                             alt="HeatChecks"
                             width="500"
-                            height="241"
+                            height="150"
                             decoding="async"
                         />
                     </span>

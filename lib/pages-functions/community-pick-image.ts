@@ -7,7 +7,13 @@
 // never fail to post.
 
 import { Resvg } from '@resvg/resvg-wasm';
-import { ensureWasmInit, getLogoDataUri, getDiscordIconDataUri } from './leaderboard-image';
+import {
+    ensureWasmInit,
+    getLogoDataUri,
+    getDiscordIconDataUri,
+    SVG_WATERMARK_HEIGHT,
+    SVG_WATERMARK_WIDTH,
+} from './leaderboard-image';
 import { FONT_BUFFERS, escapeXml } from './me-card';
 
 const W = 720;
@@ -83,7 +89,7 @@ ${qLines.map((line, i) => `<text x="${W / 2}" y="${qLines.length > 1 ? 144 + i *
 ${pill(qLines.length > 1 ? 226 : 200, input.sideALabel, input.sideAPoints)}
 ${pill(qLines.length > 1 ? 292 : 266, input.sideBLabel, input.sideBPoints)}
 <text x="${W / 2}" y="${H - 44}" text-anchor="middle" font-family="Orbitron" font-weight="700" font-size="16" letter-spacing="1" fill="rgba(255,255,255,0.6)">RESOLVES ${escapeXml(resolveDateLabel.toUpperCase())} · VOTE BELOW · NO ACCOUNT NEEDED</text>
-<image xlink:href="${getLogoDataUri()}" x="34" y="${H - 66}" width="${Math.round(40 * (149 / 72))}" height="40"/>
+<image xlink:href="${getLogoDataUri()}" x="34" y="${H - 63}" width="${SVG_WATERMARK_WIDTH}" height="${SVG_WATERMARK_HEIGHT}"/>
 <image xlink:href="${getDiscordIconDataUri()}" x="${W - 64}" y="${H - 60}" width="30" height="30" opacity="0.85"/>
 </svg>`;
 

@@ -57,8 +57,11 @@
   min-width: 0;
   display: flex;
   justify-content: center;
-  /* Room for the part of the wordmark that rises above the ribbon. */
-  padding-top: 2.35em;
+  /* Room for the part of the wordmark that rises above the ribbon. Tracks the
+     wordmark's height (~0.75x of it): the one-line mark resolves to ~1.93em tall
+     where the old script mark was 3.1em, and leaving this at 2.35em floated it clear
+     of the ribbon instead of overlapping its top edge. */
+  padding-top: 1.45em;
   margin-right: -2.4rem; /* re-center under the absolutely-sized close button */
   /* Purely decorative, and it extends under the close button (the negative margin
      above): being positioned it would otherwise paint over the X and eat its clicks. */
@@ -75,8 +78,12 @@
   top: 0;
   left: 50%;
   transform: translateX(-50%) rotate(-3deg);
-  height: 3.1em;
-  width: auto;
+  /* Sized by WIDTH, not height. The one-line wordmark is aspect 3.33 where the old
+     script mark was 2.08, so the previous `height: 3.1em` would have made it ~60%
+     wider and pushed it off the crest ribbon. 6.43em is the width 3.1em used to
+     resolve to, so the crest keeps its footprint. */
+  width: 6.43em;
+  height: auto;
   z-index: 2;
   filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.6));
   pointer-events: none;
@@ -400,10 +407,10 @@
     letter-spacing: 0.1em;
   }
   .hof-title {
-    padding-top: 2.1em;
+    padding-top: 1.26em; /* same ~0.75x ratio against the 5.6em-wide mark below */
   }
   .hof-logo {
-    height: 2.7em;
+    width: 5.6em; /* the width the old `height: 2.7em` resolved to - see .hof-logo above */
   }
 }
 

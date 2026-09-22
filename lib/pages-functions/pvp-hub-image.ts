@@ -18,7 +18,14 @@
 // screen can never be lost.
 
 import { Resvg } from '@resvg/resvg-wasm';
-import { ensureWasmInit, toBase64, getLogoDataUri, getDiscordIconDataUri } from './leaderboard-image';
+import {
+    ensureWasmInit,
+    toBase64,
+    getLogoDataUri,
+    getDiscordIconDataUri,
+    SVG_WATERMARK_HEIGHT,
+    SVG_WATERMARK_WIDTH,
+} from './leaderboard-image';
 import { tierForLevel, escapeXml, FONT_BUFFERS } from './me-card';
 import NUNITO_BOLD from './fonts/nunito-bold.bin';
 import NUNITO_EXTRABOLD from './fonts/nunito-extrabold.bin';
@@ -204,7 +211,7 @@ ${clips}
 ${pill(W / 2 - recordW / 2, recordY, recordText, GREEN, 16)}
 ${rowSvg}
 ${footer}
-<image xlink:href="${getLogoDataUri()}" x="${CARD_PAD}" y="${H - 66}" width="${Math.round(40 * (149 / 72))}" height="40"/>
+<image xlink:href="${getLogoDataUri()}" x="${CARD_PAD}" y="${H - 63}" width="${SVG_WATERMARK_WIDTH}" height="${SVG_WATERMARK_HEIGHT}"/>
 <image xlink:href="${getDiscordIconDataUri()}" x="${W - CARD_PAD - 30}" y="${H - 60}" width="30" height="30" opacity="0.85"/>
 </svg>`;
 

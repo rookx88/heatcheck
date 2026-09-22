@@ -193,8 +193,19 @@ function sharedStyles(): string {
             justify-content: space-between;
             gap: 1rem;
         }
+        /* The one-line lockup is aspect 3.33 against the old script mark's 2.08, and
+           sizing here is by width with height auto, so the max is scaled ~1.6x (280 ->
+           450) to hold the same rendered height the old mark had on desktop.
+           The vw term is NOT scaled that far, and the min is deliberately small: this
+           topbar also carries the "Learn more" column (~87px) beside the logo, inside
+           1.25rem page padding and a 1rem gap, so the logo has to stay under
+           (viewport - 123px) or the "LEARN MORE" label is pushed off-screen. 58vw
+           clears that from 320px up; a min big enough to look right on desktop would
+           pin the logo above the limit at every phone width instead of letting the vw
+           term shrink it. The mark is therefore a little shorter than the old one on
+           phones - the alternative is wrapping the topbar onto two rows. */
         .hc-logo img {
-            width: clamp(190px, 54vw, 280px);
+            width: clamp(170px, 58vw, 450px);
             height: auto;
             display: block;
         }
@@ -395,7 +406,7 @@ export function topbar(learnMoreHref: string | null): string {
     return `
         <div class="hc-topbar">
             <a class="hc-logo" href="/" aria-label="Heatchecks home">
-                <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="241">
+                <img src="/assets/images/heatchecks-logo.webp" alt="Heatchecks logo" width="500" height="150">
             </a>
             ${right}
         </div>`;

@@ -17,8 +17,9 @@
 // (lib/pages-functions/email.ts's sendSettlementEmail) for a consistent brand voice
 // across every Heatchecks email, not just this one.
 //
-// Logo: assets/images/heatchecks-logo-email.png, a 400x193 PNG rasterized+recompressed
-// from the source assets/images/heatchecks-logo.png (43KB vs the source's 253KB - see
+// Logo: assets/images/heatchecks-logo-email.png, a 400x120 palettised PNG emitted by
+// scripts/make-logo-assets.ts from the same source art as the web logo (19KB vs the
+// full-colour asset's 93KB - see
 // scripts/generate-static-site.ts's NEW_SITE_IMAGES for how it reaches
 // /assets/images/ in production). Deliberately NOT public/images/Heatchecksbanner.svg,
 // which the settlement email currently uses - that file isn't actually a Heatchecks

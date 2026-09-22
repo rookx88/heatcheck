@@ -30,7 +30,7 @@ const LOGO_PATH = join(__dirname, '..', 'public', 'assets', 'images', 'heatcheck
 const CARD_WIDTH = 1200;
 const CARD_HEIGHT = 630;
 const LOGO_HEIGHT = 44;
-const LOGO_WIDTH = Math.round(LOGO_HEIGHT * (500 / 241)); // source logo's native aspect ratio
+const LOGO_WIDTH = Math.round(LOGO_HEIGHT * (500 / 150)); // source logo's native aspect ratio
 
 const COLORS = {
     navyDark: '#0b0713',
