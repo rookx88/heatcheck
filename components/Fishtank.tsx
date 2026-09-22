@@ -12,7 +12,7 @@
 // ===================================================================================
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { motion, useMotionValue, useSpring, AnimatePresence, useReducedMotion } from 'motion/react';
+import { motion, useMotionValue, useSpring, useTransform, AnimatePresence, useReducedMotion, type MotionValue } from 'motion/react';
 import { Flame, Zap, Swords, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
 import {
     getCachedAccount,
@@ -155,6 +155,27 @@ const Face3D: React.FC<{
     </div>
 );
 
+// How visible a wall is at a given angle to the camera. A flat panel projects to
+// `width * |cos(angle)|`, so a wall the reader has turned to within a few degrees of
+// edge-on is no longer a readable page - it is a two-or-three-pixel dark sliver standing
+// at the cube's corner. Against the dark panels that sliver is invisible, but it lands
+// exactly on the left end of the gold StoryLink bar, the one full-bleed bright element
+// on the Call wall, and reads as a black line ruled down through "See every line".
+//
+// So a wall fades out over the last ~6 degrees into edge-on rather than collapsing to a
+// hairline: 1 while it still projects wide enough to read as a page (|cos| >= 0.10, ~17px
+// at the homepage's scale), 0 by the time it would be a line (|cos| <= 0.02). The wall
+// facing AWAY is already handled by backfaceVisibility - this is only about the one
+// turning through the seam.
+const EDGE_ON_HIDDEN = 0.02;
+const EDGE_ON_VISIBLE = 0.10;
+function edgeOnOpacity(angleDeg: number): number {
+    const facing = Math.abs(Math.cos((angleDeg * Math.PI) / 180));
+    if (facing >= EDGE_ON_VISIBLE) return 1;
+    if (facing <= EDGE_ON_HIDDEN) return 0;
+    return (facing - EDGE_ON_HIDDEN) / (EDGE_ON_VISIBLE - EDGE_ON_HIDDEN);
+}
+
 // Content is always visible on each wall - no glass cover, no flip-to-read.
 const WallPanel: React.FC<{
     wall: Wall;
@@ -167,16 +188,21 @@ const WallPanel: React.FC<{
     // Rendered between the masthead rule and the scrollable body, so it never
     // scrolls out of view however tall the body's content gets.
     pinned?: React.ReactNode;
-}> = ({ wall, content, index, total, pinned }) => {
+    // The cube's LIVE rotation (the spring, not the target), so this wall knows how
+    // near edge-on it currently is - see edgeOnOpacity.
+    containerRotateY: MotionValue<number>;
+}> = ({ wall, content, index, total, pinned, containerRotateY }) => {
     const Icon = wall.icon;
+    const opacity = useTransform(containerRotateY, (deg) => edgeOnOpacity(deg + wall.rotateY));
     // The Call wall is where the pick actually happens - give it a fiery-orange glow
     // so it reads as "check this side out" against the other panels' cyan.
     const isCall = wall.kind === 'call';
 
     return (
         <Face3D width={TANK_W} height={TANK_H} rotateY={wall.rotateY} translateZ={Z_W}>
-            <div
+            <motion.div
                 style={{
+                    opacity,
                     width: '100%', height: '100%',
                     position: 'relative',
                     display: 'flex', flexDirection: 'column',
@@ -280,7 +306,7 @@ const WallPanel: React.FC<{
                         </div>
                     </>
                 )}
-            </div>
+            </motion.div>
         </Face3D>
     );
 };
@@ -1440,7 +1466,7 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
                     <Embers />
 
                     {walls.map((wall, i) => (
-                        <WallPanel key={i} wall={wall} content={contentByKind(wall, i)} pinned={pinnedByKind(wall)} index={i} total={walls.length} />
+                        <WallPanel key={i} wall={wall} content={contentByKind(wall, i)} pinned={pinnedByKind(wall)} index={i} total={walls.length} containerRotateY={springY} />
                     ))}
                 </motion.div>
             </motion.div>
