@@ -46,12 +46,56 @@ export function safeJsonParse<T>(value: string | undefined | null): T | null {
     }
 }
 
-export async function fetchMarket(marketId: string): Promise<GammaMarketLite | null> {
+// Nothing in this file had a timeout before 2026-09-22. Cloudflare does not cap a
+// subrequest on the Worker's behalf, so a hung Gamma connection held a settle or lock
+// window open until the platform killed the whole invocation - one slow market could
+// cost every market behind it in the run. 10s is far longer than a healthy Gamma
+// response and far shorter than any window this runs in.
+const GAMMA_TIMEOUT_MS = 10_000;
+
+/**
+ * One market, keeping "Gamma did not answer" and "Gamma says there is no such market"
+ * APART. Use this from anything that writes an irreversible conclusion.
+ *
+ * The distinction is not academic. `resolveMarket(null)` reads as `not_closed_yet`
+ * (below), and in functions/api/index-settle.ts that status on a position past
+ * STALE_VOID_HOURS writes it off as `void` - permanently, with no way back. So under the
+ * old contract a Gamma 429 or 503 on an old position destroyed it, and the drain loop
+ * fires up to 240 sequential Gamma calls per slot, which is exactly when a rate-limit
+ * burst arrives. Confirmed against the code 2026-09-22; the comment in index-settle
+ * claiming voids never follow a failed fetch was only true of transport-level throws.
+ *
+ * A 404 still returns null, because that IS an answer: Gamma is telling us the market is
+ * gone. Everything else - 429, 5xx, timeout, DNS, TLS - throws.
+ */
+export async function fetchMarketStrict(marketId: string): Promise<GammaMarketLite | null> {
     const res = await fetch(`${GAMMA_BASE_URL}/markets/${encodeURIComponent(marketId)}`, {
         headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(GAMMA_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Gamma /markets/${marketId} failed: ${res.status}`);
     return (await res.json()) as GammaMarketLite;
+}
+
+/**
+ * One market, where ANY failure reads as "not available right now".
+ *
+ * This is the right contract for a screen: a Discord select, the article market panel,
+ * the PvP pick list. They show "couldn't load that market" and the reader tries again -
+ * nothing is written, so conflating an outage with an absence costs nothing. It is the
+ * WRONG contract for a batch job that settles or voids; those use fetchMarketStrict.
+ *
+ * Note this now also swallows transport-level throws, which it previously propagated.
+ * That is deliberate and it only affects those same screens: every caller that acts on
+ * the difference has been moved to the strict variant.
+ */
+export async function fetchMarket(marketId: string): Promise<GammaMarketLite | null> {
+    try {
+        return await fetchMarketStrict(marketId);
+    } catch {
+        return null;
+    }
 }
 
 // How many ids ride in one /markets URL. No cap was found (70 ids in one request came
@@ -94,6 +138,7 @@ export async function fetchClosedMarkets(marketIds: string[]): Promise<Map<strin
         const params = chunk.map((id) => `id=${encodeURIComponent(id)}`).join('&');
         const res = await fetch(`${GAMMA_BASE_URL}/markets?${params}&closed=true&limit=${chunk.length + 1}`, {
             headers: { Accept: 'application/json' },
+            signal: AbortSignal.timeout(GAMMA_TIMEOUT_MS),
         });
         if (!res.ok) throw new Error(`Gamma /markets batch failed: ${res.status}`);
         const body = (await res.json()) as unknown;

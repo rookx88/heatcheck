@@ -36,9 +36,9 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import Anthropic from '@anthropic-ai/sdk';
 import { getSql, jsonResponse, type Env, numEnv } from '../../lib/pages-functions/db';
-import { fetchClosedMarkets, fetchMarket, outcomeOrderMismatch, resolveMarket } from '../../lib/pages-functions/gamma';
+import { fetchClosedMarkets, fetchMarketStrict, outcomeOrderMismatch, resolveMarket } from '../../lib/pages-functions/gamma';
 import {
-    fetchMarket as fetchKalshiMarket,
+    fetchMarketStrict as fetchKalshiMarket,
     resolveMarket as resolveKalshiMarket,
 } from '../../lib/pages-functions/kalshi';
 import { extractJson, parseModelJson } from '../../tank-generate';
@@ -144,7 +144,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const now = Date.now();
 
     const results: Array<{ slug: string; status: string; detail?: string }> = [];
-    const writes: Array<{ id: string; resolution: string | null }> = [];
+    // countsAsAttempt defaults to true; it is false only when we never got an answer out
+    // of the provider. resolution_attempts is what eventually RETIRES a Tank, so letting
+    // an outage burn it means a long Gamma incident quietly abandons live Tanks that
+    // would have resolved fine (2026-09-22 dependency audit).
+    const writes: Array<{ id: string; resolution: string | null; countsAsAttempt?: boolean }> = [];
     // Two Tanks can share a market (the canonical-cluster case), so cache per run exactly
     // as settle.ts's resolveOnce does.
     const resolutionCache = new Map<string, any>();
@@ -183,9 +187,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             const cacheKey = `${tank.provider}:${tank.market_id}`;
             let resolution = resolutionCache.get(cacheKey);
             if (!resolution) {
-                resolution = tank.provider === 'kalshi'
-                    ? resolveKalshiMarket(await fetchKalshiMarket(tank.market_id))
-                    : resolveMarket(await fetchMarket(tank.market_id));
+                // Strict, and caught on its own: a provider we could not REACH says
+                // nothing about the Tank, and this loop retires Tanks. Handled here
+                // rather than in the outer catch so it can record a pass that does NOT
+                // count as an attempt - see the write flush below.
+                try {
+                    resolution = tank.provider === 'kalshi'
+                        ? resolveKalshiMarket(await fetchKalshiMarket(tank.market_id))
+                        : resolveMarket(await fetchMarketStrict(tank.market_id));
+                } catch (err: any) {
+                    console.error(`[tank-resolution] ${tank.slug} provider unreachable:`, err);
+                    writes.push({ id: tank.id, resolution: null, countsAsAttempt: false });
+                    results.push({ slug: tank.slug, status: 'provider_unreachable', detail: err?.message });
+                    continue;
+                }
                 resolutionCache.set(cacheKey, resolution);
             }
 
@@ -265,14 +280,20 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
     }
 
-    // One batched write. `resolution: null` rows still bump the attempt counter and stamp
-    // resolution_checked_at - that counter is what eventually retires a dead market, so
-    // an unresolved pass must still record that it happened.
+    // One batched write. A `resolution: null` row still bumps the attempt counter and
+    // stamps resolution_checked_at - that counter is what eventually retires a dead
+    // market, so an unresolved pass must record that it happened.
+    //
+    // The exception is a pass where the PROVIDER was unreachable (countsAsAttempt:
+    // false). We still stamp resolution_checked_at, because the sweep did look; we do not
+    // charge an attempt, because an attempt means "we asked and got an answer we could
+    // not use". Counting outages toward retirement lets a long Gamma incident abandon
+    // Tanks that would have resolved perfectly well.
     if (writes.length > 0) {
         await sql.transaction(writes.map((w) => sql`
             UPDATE tank_pages
             SET resolution = COALESCE(${w.resolution}::jsonb, resolution),
-                resolution_attempts = resolution_attempts + 1,
+                resolution_attempts = resolution_attempts + ${w.countsAsAttempt === false ? 0 : 1},
                 resolution_checked_at = NOW()
             WHERE id = ${w.id} AND resolution IS NULL
         `));

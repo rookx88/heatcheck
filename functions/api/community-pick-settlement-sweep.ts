@@ -17,7 +17,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
-import { fetchClosedMarkets, fetchMarket, resolveMarket, outcomeOrderMismatch, type GammaMarketLite } from '../../lib/pages-functions/gamma';
+import { fetchClosedMarkets, fetchMarketStrict, resolveMarket, outcomeOrderMismatch, type GammaMarketLite } from '../../lib/pages-functions/gamma';
 import { postDiscordChannelMessage } from '../../lib/pages-functions/discord-api';
 import { buildCommunitySettlementRecapMessage, buildGiveawayResultMessage, buildMultiWinnerGiveawayMessage, buildNoEligiblePoolMessage } from '../../lib/pages-functions/discord-community-card';
 import { awardCommunityPointsBatch } from '../../lib/pages-functions/community-points';
@@ -88,7 +88,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     for (const row of openPicks) {
         try {
             const batched = closedMarkets.get(row.source_market_id);
-            const resolution = resolveMarket(batched ?? (await fetchMarket(row.source_market_id)));
+            const resolution = resolveMarket(batched ?? (await fetchMarketStrict(row.source_market_id)));
             if (resolution.status !== 'resolved') {
                 pendingNotClosed++;
                 continue;

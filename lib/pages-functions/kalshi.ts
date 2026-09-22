@@ -22,13 +22,35 @@ export interface KalshiMarketLite {
     last_price_dollars?: string;
 }
 
-export async function fetchMarket(ticker: string): Promise<KalshiMarketLite | null> {
+// Same reasoning as gamma.ts's GAMMA_TIMEOUT_MS: no subrequest here was bounded before
+// 2026-09-22, so one hung connection could hold a whole settle window open.
+const KALSHI_TIMEOUT_MS = 10_000;
+
+/**
+ * One market, keeping "Kalshi did not answer" apart from "no such market" - the strict
+ * half of the pair, for callers that write an irreversible conclusion. See
+ * gamma.ts's fetchMarketStrict for the full reasoning; resolveMarket below folds null
+ * into `not_closed_yet` exactly as Gamma's does, and index-settle turns that status on
+ * an old position into a permanent void.
+ */
+export async function fetchMarketStrict(ticker: string): Promise<KalshiMarketLite | null> {
     const res = await fetch(`${KALSHI_BASE_URL}/markets/${encodeURIComponent(ticker)}`, {
         headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(KALSHI_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`Kalshi /markets/${ticker} failed: ${res.status}`);
     const body = (await res.json()) as { market?: KalshiMarketLite };
     return body.market ?? null;
+}
+
+/** One market, where any failure reads as "not available right now" - for screens. */
+export async function fetchMarket(ticker: string): Promise<KalshiMarketLite | null> {
+    try {
+        return await fetchMarketStrict(ticker);
+    } catch {
+        return null;
+    }
 }
 
 // Three-way, not two ('not_closed_yet' | 'resolved'): Kalshi markets can settle to
@@ -76,6 +98,7 @@ export async function fetchKalshiTradesPage(ticker: string, cursor?: string): Pr
     if (cursor) params.set('cursor', cursor);
     const res = await fetch(`${KALSHI_BASE_URL}/markets/trades?${params.toString()}`, {
         headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(KALSHI_TIMEOUT_MS),
     });
     if (!res.ok) {
         throw new Error(`Kalshi trades ${res.status} for ticker "${ticker}"`);

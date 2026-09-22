@@ -58,8 +58,8 @@ import { drawGiveawayWinner } from '../../lib/pages-functions/discord-draw';
 import { brandEmbed } from '../../lib/pages-functions/discord-brand';
 import { buildGiveawayResultMessage, buildNoEligiblePoolMessage, buildDrawButtonRow } from '../../lib/pages-functions/discord-community-card';
 import type { PropOdds } from '../../tank-types';
-import { fetchClosedMarkets, fetchMarket, outcomeOrderMismatch, resolveMarket, type MarketResolution } from '../../lib/pages-functions/gamma';
-import { fetchMarket as fetchKalshiMarket, resolveMarket as resolveKalshiMarket, type KalshiMarketResolution } from '../../lib/pages-functions/kalshi';
+import { fetchClosedMarkets, fetchMarketStrict, outcomeOrderMismatch, resolveMarket, type MarketResolution } from '../../lib/pages-functions/gamma';
+import { fetchMarketStrict as fetchKalshiMarket, resolveMarket as resolveKalshiMarket, type KalshiMarketResolution } from '../../lib/pages-functions/kalshi';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
 const MAX_ANNOUNCEMENTS_PER_RUN = 20;
@@ -163,7 +163,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         if (cached) return cached;
         const resolution = provider === 'kalshi'
             ? resolveKalshiMarket(await fetchKalshiMarket(marketId))
-            : resolveMarket(await fetchMarket(marketId));
+            : resolveMarket(await fetchMarketStrict(marketId));
         resolutionCache.set(cacheKey, resolution);
         return resolution;
     }

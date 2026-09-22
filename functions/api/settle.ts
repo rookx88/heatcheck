@@ -23,13 +23,13 @@ import { buildManagePrefsUrl, buildUnsubscribeUrl } from '../../lib/pages-functi
 import { resolveLoginOrigin } from '../../lib/pages-functions/session';
 import {
     fetchClosedMarkets,
-    fetchMarket,
+    fetchMarketStrict,
     outcomeOrderMismatch,
     resolveMarket,
     type MarketResolution,
 } from '../../lib/pages-functions/gamma';
 import {
-    fetchMarket as fetchKalshiMarket,
+    fetchMarketStrict as fetchKalshiMarket,
     resolveMarket as resolveKalshiMarket,
     type KalshiMarketResolution,
 } from '../../lib/pages-functions/kalshi';
@@ -102,9 +102,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         const cacheKey = `${provider}:${marketId}`;
         const cached = resolutionCache.get(cacheKey);
         if (cached) return cached;
+        // Strict on purpose: an unreachable provider must surface as a thrown error the
+        // per-pick catch reports as 'error' (which ops-classify counts), not as a
+        // not_closed_yet that looks like a perfectly ordinary "the game isn't over".
         const resolution = provider === 'kalshi'
             ? resolveKalshiMarket(await fetchKalshiMarket(marketId))
-            : resolveMarket(await fetchMarket(marketId));
+            : resolveMarket(await fetchMarketStrict(marketId));
         resolutionCache.set(cacheKey, resolution);
         return resolution;
     }

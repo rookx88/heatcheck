@@ -27,7 +27,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
 import type { GammaMarketLite } from '../../lib/pages-functions/gamma';
-import { fetchClosedMarkets, fetchMarket, resolveMarket, outcomeOrderMismatch } from '../../lib/pages-functions/gamma';
+import { fetchClosedMarkets, fetchMarketStrict, resolveMarket, outcomeOrderMismatch } from '../../lib/pages-functions/gamma';
 import { postDiscordChannelMessage, fetchGuildMemberName } from '../../lib/pages-functions/discord-api';
 import { buildPvpResultMessage, type PvpResultPick } from '../../lib/pages-functions/pvp-card';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
@@ -115,7 +115,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const marketCache = new Map<string, GammaMarketLite | null>();
     const fetchCached = async (marketId: string): Promise<GammaMarketLite | null> => {
         if (marketCache.has(marketId)) return marketCache.get(marketId) ?? null;
-        const market = await fetchMarket(marketId);
+        const market = await fetchMarketStrict(marketId);
         marketCache.set(marketId, market);
         return market;
     };

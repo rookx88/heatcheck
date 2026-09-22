@@ -11,7 +11,8 @@
 // /api/settle resolves a genuine closed market instead of a stub.
 
 import { pool, api, check, section, type Suite } from '../harness';
-import { fetchClosedMarkets } from '../../../lib/pages-functions/gamma';
+import { fetchClosedMarkets, fetchMarket, fetchMarketStrict, resolveMarket } from '../../../lib/pages-functions/gamma';
+import { fetchMarketStrict as fetchKalshiStrict } from '../../../lib/pages-functions/kalshi';
 import {
     insertTank, insertUserWithPick, findMarkets, findKalshiMarkets, ledgerTotals,
     cleanupUsersByEmailPrefix, cleanupTanksBySlugPrefix,
@@ -299,6 +300,56 @@ async function run() {
         stub([]);
         const none = await fetchClosedMarkets([]);
         check('no ids -> no request at all', calls.length === 0 && none.size === 0);
+
+        // --- The single-market pair. The whole point is that "Gamma did not answer" and
+        // "Gamma says no such market" are DIFFERENT, because index-settle turns the
+        // second one, on a position past STALE_VOID_HOURS, into a permanent void. Before
+        // 2026-09-22 a 429 or a 503 produced the same null a 404 does, so an outage
+        // during the drain loop's ~240 sequential calls destroyed real positions. ---
+        section('A market read tells an outage apart from an absence');
+
+        stub({ id: '1', closed: true }, 200);
+        check('strict: 200 returns the market', (await fetchMarketStrict('1'))?.id === '1');
+
+        stub({ message: 'not found' }, 404);
+        const gone = await fetchMarketStrict('1');
+        check('strict: 404 returns null - that IS an answer, the market is gone', gone === null);
+        check('  and resolveMarket(null) still reads as not_closed_yet (unchanged)',
+            resolveMarket(gone).status === 'not_closed_yet');
+
+        for (const status of [429, 500, 502, 503]) {
+            stub({ message: 'nope' }, status);
+            const thrown = await throws(() => fetchMarketStrict('1'));
+            check(`strict: ${status} THROWS rather than reading as "not closed yet"`,
+                thrown !== null && thrown.includes(String(status)), thrown ?? 'did not throw');
+        }
+
+        // The regression guard for the whole finding, at the level the pure tier can
+        // reach: index-settle only voids inside `if (res.status !== 'resolved')`, and a
+        // throw never reaches that line - it lands in the per-market catch, which counts
+        // an error and writes nothing.
+        stub({ message: 'rate limited' }, 429);
+        let reachedResolve = false;
+        const voidGuard = await throws(async () => {
+            const m = await fetchMarketStrict('1');
+            reachedResolve = true;
+            return resolveMarket(m);
+        });
+        check('a rate-limited read never produces a resolution object at all (so it cannot void)',
+            voidGuard !== null && reachedResolve === false);
+
+        stub({ market: { status: 'finalized', result: 'yes' } }, 200);
+        check('kalshi strict: 200 returns the market', (await fetchKalshiStrict('K1'))?.result === 'yes');
+        stub({ message: 'nope' }, 503);
+        check('kalshi strict: 503 throws', (await throws(() => fetchKalshiStrict('K1'))) !== null);
+
+        // The lenient half still exists for screens, and still swallows everything.
+        stub({ message: 'nope' }, 503);
+        check('lenient fetchMarket still returns null on 503 (screens want that)',
+            (await fetchMarket('1')) === null);
+        globalThis.fetch = (async () => { throw new TypeError('network down'); }) as typeof fetch;
+        check('lenient fetchMarket swallows a transport throw too', (await fetchMarket('1')) === null);
+        check('strict propagates a transport throw', (await throws(() => fetchMarketStrict('1'))) !== null);
     } finally {
         globalThis.fetch = realFetch;
     }

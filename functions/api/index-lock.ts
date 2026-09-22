@@ -36,6 +36,11 @@ import { resolvePositionTeams } from '../../lib/pages-functions/team-identity';
 import { teamAt, toSlateMarketRow } from '../../lib/pages-functions/slate-rows';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
+// How old polymarket_props may be before a lock run reports itself as failed. The sync
+// cycles every 15 minutes and a full 13-league pass takes ~20, so anything past an hour
+// means the writer is not running - not that it is merely behind.
+const STALE_PROPS_MINUTES = 60;
+
 // Matches the gap between worker-curate's sweep slots (10:00 / 18:00 / 02:00 UTC), with
 // an hour of overlap so a game can't fall between two runs.
 const LOCK_LOOKAHEAD_HOURS = 9;
@@ -60,7 +65,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // market types on every game, forever. They gate on liquidity instead. Both floors
     // live in index-slate.ts's SELECTION_POLICY so this predicate and the selector can
     // never disagree about what qualifies.
-    const rows = await sql`
+    // The slate read and a freshness probe of the SAME table, batched into one round trip.
+    //
+    // This endpoint makes no outbound calls at all - every price it locks comes from
+    // polymarket_props, whose only writer is the 15-minute scheduler inside backend.ts,
+    // on a machine that has to be awake. That is the real dependency, and until
+    // 2026-09-22 nothing measured it here. Two failures followed from that, both observed
+    // in production: windows that locked NOTHING (permanent - `event_start_time > NOW()`
+    // below means a game can never re-enter a lock run, and no script in this repo can
+    // create a price after kickoff), and, worse, windows that locked at prices frozen
+    // days earlier and recorded them as the pre-game price. The health check reported
+    // both as healthy, because a lock that does nothing looks exactly like a quiet night.
+    const [rows, freshness] = await sql.transaction([
+        sql`
         SELECT event_id, league, market_id, condition_id, market_type, question,
                market_line::float8 AS market_line,
                outcomes, outcome_prices,
@@ -80,7 +97,30 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                      AND COALESCE(liquidity, 0) >= ${MIN_SELECTION_LIQUIDITY})
           )
         ORDER BY event_id
-    `;
+    `,
+        sql`SELECT MAX(synced_at) AS synced_at FROM polymarket_props`,
+    ]);
+
+    // Neon hands back a Date, not a string - Date.parse on it truncates to seconds
+    // (see the note in lib/pages-functions/ledger.ts about idempotency keys).
+    const syncedRaw = (freshness as unknown as Array<{ synced_at: string | Date | null }>)[0]?.synced_at ?? null;
+    const propsSyncedAt = syncedRaw ? new Date(syncedRaw) : null;
+    const propsAgeMinutes = propsSyncedAt ? Math.round((Date.now() - propsSyncedAt.getTime()) / 60_000) : null;
+
+    // `failures` is the field lib/ops-classify.ts's countBodyErrors actually reads, which
+    // is how this reaches the hourly health check and your inbox. Deliberately keyed on
+    // CACHE STALENESS rather than on "zero positions created": a 9-hour window with no
+    // qualifying games is a legitimately quiet night and must stay silent, while a stale
+    // cache is both unambiguous and the actual root cause of every bad lock we have seen.
+    const failures: string[] = [];
+    if (propsAgeMinutes === null) {
+        failures.push('polymarket_props is empty - the prop sync has never run against this database, so this window locked nothing and those games are gone for good.');
+    } else if (propsAgeMinutes > STALE_PROPS_MINUTES) {
+        failures.push(
+            `polymarket_props last synced ${propsAgeMinutes} minutes ago (limit ${STALE_PROPS_MINUTES}). `
+            + 'Entry prices in this window are that old, or the window is empty. Check the admin backend is running.',
+        );
+    }
 
     // Group by game, then let the (pure, tested) selector decide each index's position.
     const byEvent = new Map<string, SlateMarketRow[]>();
@@ -195,6 +235,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     return jsonResponse({
         lookaheadHours: LOCK_LOOKAHEAD_HOURS,
+        // Read these two together with gamesConsidered: a lock is only as good as the
+        // cache it read, and this is the difference between "quiet night" and "we lost
+        // every game in this window".
+        propsSyncedAt: propsSyncedAt ? propsSyncedAt.toISOString() : null,
+        propsAgeMinutes,
+        failures,
         gamesConsidered: byEvent.size,
         gamesWithNoQualifyingMarket: gamesWithNoPick,
         positionsPlanned: specs.length,

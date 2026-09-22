@@ -28,7 +28,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
-import { fetchClosedMarkets, fetchMarket, resolveMarket } from '../../lib/pages-functions/gamma';
+import { fetchClosedMarkets, fetchMarketStrict, resolveMarket } from '../../lib/pages-functions/gamma';
 import { getTickerConfig } from '../../lib/pages-functions/tickers';
 import { closeDelta, contributionFor } from '../../lib/pages-functions/index-slate';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
@@ -153,16 +153,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     for (const p of pending) {
         try {
             if (!resolutions.has(p.market_id)) {
-                resolutions.set(p.market_id, resolveMarket(await fetchMarket(p.market_id)));
+                resolutions.set(p.market_id, resolveMarket(await fetchMarketStrict(p.market_id)));
             }
             const res = resolutions.get(p.market_id)!;
             if (res.status !== 'resolved') {
                 // Gamma gave a definite non-answer. If the game is also long past
                 // STALE_VOID_HOURS, stop asking: write the position off as void so it
                 // leaves the queue it would otherwise block (see STALE_VOID_HOURS above).
-                // Deliberately NOT done in the catch below - a thrown fetch is a transient
-                // network fault, and voiding on one would discard a game that is merely
-                // unreachable this minute.
+                //
+                // Deliberately NOT done in the catch below, because a failure to REACH
+                // Gamma is not an answer about the market and voiding on one would
+                // destroy a game that is merely unreachable this minute.
+                //
+                // That is only true because this asks via fetchMarketStrict. Until
+                // 2026-09-22 it used fetchMarket, which folded a 429 or a 503 into null,
+                // which resolveMarket reads as not_closed_yet - so an outage arriving
+                // during the drain loop's ~240 sequential calls silently and permanently
+                // voided every stale position it touched. The comment here used to claim
+                // the protection this line now actually provides.
                 if (p.stale) {
                     settled.push({ id: p.id, result: 'void', winningIndex: null, contrib: null });
                     voidedStale[res.status] = (voidedStale[res.status] ?? 0) + 1;
