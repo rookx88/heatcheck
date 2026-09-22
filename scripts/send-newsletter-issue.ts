@@ -196,7 +196,27 @@ async function main() {
             }
         }
 
-        await pool.query('UPDATE newsletter_issues SET sent_at = NOW() WHERE id = $1', [issue.id]);
+        // Only claim the issue was sent if at least one message actually went out.
+        //
+        // sent_at is also the re-send guard at the top of this script, so stamping it
+        // unconditionally meant a total Resend outage - every single send failing - marked
+        // the issue delivered and then REFUSED to let you retry it. Recovering needed
+        // hand-editing the database, and because there is no per-recipient send record, a
+        // retry after that would mail everyone who had already received it. Both failure
+        // modes at once, from one line.
+        //
+        // A PARTIAL failure still stamps it. That is deliberate: with no per-recipient
+        // ledger, re-running is all-or-nothing, so a retry would re-mail the people who
+        // did get it. The failed count is reported loudly instead and those few are better
+        // handled by hand than by spamming the rest of the list.
+        if (succeeded > 0) {
+            await pool.query('UPDATE newsletter_issues SET sent_at = NOW() WHERE id = $1', [issue.id]);
+        } else {
+            console.error(
+                `\nNOT marking issue ${weekKey} as sent: 0 of ${subscribers.length} sends succeeded.\n`
+                + 'Nothing was delivered, so the issue stays re-runnable. Fix the cause and run this again.',
+            );
+        }
 
         // System-triggered send, not a browser event - events.visitor_id has no natural
         // anonymous identity to attach here, so this uses a fresh synthetic id purely as
@@ -207,10 +227,11 @@ async function main() {
         );
 
         // In-app trace of the send: one informational notification per opted-in,
-        // onboarded subscriber, so a missed email isn't a silently-gone exclusive.
+        // onboarded subscriber, so a missed email isn't a silently-gone exclusive. Skipped
+        // when nothing was delivered - the copy points at an email that does not exist.
         // Idempotent per (week, user) - re-running against an already-sent issue is
         // blocked earlier anyway, but the key makes this safe regardless.
-        const notifResult = await pool.query(
+        const notifResult = succeeded === 0 ? { rowCount: 0 } : await pool.query(
             `INSERT INTO notifications (user_id, type, message, ref_type, ref_id, idempotency_key)
              SELECT w.id, 'informational',
                     'This week''s exclusive Tank is live — check your email for your one-tap pick.',

@@ -12,6 +12,7 @@
 
 import { pool, api, check, section, type Suite } from '../harness';
 import { createUser, mintSessionCookie, mintLoginToken, mintVerificationCode, cleanupUsersByEmailPrefix } from '../fixtures';
+import { ResendError, sendResendEmail } from '../../../lib/pages-functions/resend';
 
 const EMAIL_PREFIX = 'acceptance-auth-';
 
@@ -125,6 +126,59 @@ async function run() {
         headers: { Origin: 'https://evil.example' },
     });
     check('POST /api/login/consume with a hostile Origin -> 403', csrfConsumeRes.status === 403, JSON.stringify(csrfConsumeRes.json));
+
+    // --- The Resend transport, fetch stubbed. Pure tier: no network, no DB, no mail. ---
+    //
+    // Authentication here is passwordless and magic-link only, which makes Resend the one
+    // dependency whose failure blocks the entire product rather than degrading a feature.
+    // Everything below is about not letting somebody else's outage become OUR lockout.
+    section('Resend transport - an outage must not cost the user their way in');
+    const realFetch = globalThis.fetch;
+    let sent = 0;
+    const stubResend = (status: number, headers: Record<string, string> = {}) => {
+        sent = 0;
+        globalThis.fetch = (async () => {
+            sent++;
+            return new Response(JSON.stringify({ message: 'stub' }), { status, headers });
+        }) as typeof fetch;
+    };
+    const caught = async (fn: () => Promise<unknown>): Promise<any> => {
+        try { await fn(); return null; } catch (err) { return err; }
+    };
+    try {
+        stubResend(200);
+        check('a 200 send resolves and makes exactly one request',
+            (await caught(() => sendResendEmail('k', 'test', { to: 'a@b.c' }))) === null && sent === 1);
+
+        stubResend(429);
+        const rate = await caught(() => sendResendEmail('k', 'test', { to: 'a@b.c' }));
+        check('429 is retried exactly once (the one status that means "not accepted")', sent === 2, `requests: ${sent}`);
+        check('  and it surfaces as retriable', rate instanceof ResendError && rate.retriable === true);
+        check('  and NOT as possibly-delivered, so a caller can safely refund a budget',
+            rate instanceof ResendError && rate.possiblyDelivered === false);
+
+        stubResend(500);
+        const server = await caught(() => sendResendEmail('k', 'test', { to: 'a@b.c' }));
+        check('5xx is NOT retried - the message may already have gone out', sent === 1, `requests: ${sent}`);
+        check('  and is marked possiblyDelivered, so callers do not invite a duplicate',
+            server instanceof ResendError && server.possiblyDelivered === true);
+
+        stubResend(422);
+        const bad = await caught(() => sendResendEmail('k', 'test', { to: 'nope' }));
+        check('a rejected payload is not retriable - trying again changes nothing',
+            bad instanceof ResendError && bad.retriable === false && sent === 1);
+
+        const missing = await caught(() => sendResendEmail(undefined, 'test', { to: 'a@b.c' }));
+        check('a missing API key is a distinct, non-retriable failure (not "Resend is down")',
+            missing instanceof ResendError && missing.status === null && missing.retriable === false);
+
+        globalThis.fetch = (async () => { throw Object.assign(new Error('timed out'), { name: 'TimeoutError' }); }) as typeof fetch;
+        const slow = await caught(() => sendResendEmail('k', 'test', { to: 'a@b.c' }));
+        check('a timeout is retriable AND possibly-delivered (the genuinely ambiguous case)',
+            slow instanceof ResendError && slow.retriable === true && slow.possiblyDelivered === true);
+    } finally {
+        globalThis.fetch = realFetch;
+    }
 
     await cleanup();
 }

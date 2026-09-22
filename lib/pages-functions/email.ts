@@ -4,6 +4,7 @@
 // will actually deliver - see .env.example for setup notes.
 
 import type { Env } from './db';
+import { sendResendEmail } from './resend';
 import { listUnsubscribeHeaders } from './unsubscribe-links';
 
 // Table layout + inline styles throughout (no <style> block, no flexbox/grid) since
@@ -55,25 +56,12 @@ function verificationEmailHtml(code: string): string {
 }
 
 export async function sendVerificationEmail(env: Env, email: string, code: string): Promise<void> {
-    if (!env.RESEND_API_KEY) throw new Error('RESEND_API_KEY is not configured for this Pages Function.');
-
-    const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${env.RESEND_API_KEY}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            from: 'Heatchecks <hello@heatchecks.io>',
-            to: email,
-            subject: 'Confirm your Heatchecks call',
-            html: verificationEmailHtml(code),
-        }),
+    await sendResendEmail(env.RESEND_API_KEY, 'verification code', {
+        from: 'Heatchecks <hello@heatchecks.io>',
+        to: email,
+        subject: 'Confirm your Heatchecks call',
+        html: verificationEmailHtml(code),
     });
-
-    if (!res.ok) {
-        throw new Error(`Resend API error: ${res.status} ${await res.text()}`);
-    }
 }
 
 // Settlement result notification - the "tap the tank, it bursts" payoff moment. Fired
@@ -193,26 +181,13 @@ function settlementEmailHtml(params: SettlementEmailParams): string {
 // List-Unsubscribe headers let Gmail/Apple/Yahoo show their native "Unsubscribe" next to
 // the sender, which posts to the same one-click endpoint the footer link GETs.
 export async function sendSettlementEmail(env: Env, email: string, params: SettlementEmailParams): Promise<void> {
-    if (!env.RESEND_API_KEY) throw new Error('RESEND_API_KEY is not configured for this Pages Function.');
-
-    const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${env.RESEND_API_KEY}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            from: 'Heatchecks <hello@heatchecks.io>',
-            to: email,
-            subject: params.result === 'correct' ? 'You called it - Ember earned' : 'Your Tank call settled',
-            html: settlementEmailHtml(params),
-            headers: listUnsubscribeHeaders(params.unsubscribeUrl),
-        }),
+    await sendResendEmail(env.RESEND_API_KEY, 'settlement result', {
+        from: 'Heatchecks <hello@heatchecks.io>',
+        to: email,
+        subject: params.result === 'correct' ? 'You called it - Ember earned' : 'Your Tank call settled',
+        html: settlementEmailHtml(params),
+        headers: listUnsubscribeHeaders(params.unsubscribeUrl),
     });
-
-    if (!res.ok) {
-        throw new Error(`Resend API error: ${res.status} ${await res.text()}`);
-    }
 }
 
 // Magic-link login email - fired from functions/api/login.ts. Unlike the two senders
@@ -267,25 +242,12 @@ function loginLinkEmailHtml(loginUrl: string): string {
 }
 
 export async function sendLoginLinkEmail(env: Env, email: string, loginUrl: string): Promise<void> {
-    if (!env.RESEND_API_KEY) throw new Error('RESEND_API_KEY is not configured for this Pages Function.');
-
-    const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-            Authorization: `Bearer ${env.RESEND_API_KEY}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            from: 'Heatchecks <hello@heatchecks.io>',
-            to: email,
-            subject: 'Your Heatchecks login link',
-            html: loginLinkEmailHtml(loginUrl),
-        }),
+    await sendResendEmail(env.RESEND_API_KEY, 'login link', {
+        from: 'Heatchecks <hello@heatchecks.io>',
+        to: email,
+        subject: 'Your Heatchecks login link',
+        html: loginLinkEmailHtml(loginUrl),
     });
-
-    if (!res.ok) {
-        throw new Error(`Resend API error: ${res.status} ${await res.text()}`);
-    }
 }
 
 export function generateVerificationCode(): string {

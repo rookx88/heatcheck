@@ -10,6 +10,7 @@
 
 import type { NeonQueryFunction } from '@neondatabase/serverless';
 import type { Env } from './db';
+import { sendResendEmail } from './resend';
 
 type Sql = NeonQueryFunction<false, false>;
 
@@ -18,14 +19,11 @@ const FROM = 'Heatchecks Ops <hello@heatchecks.io>';
 
 // Plain text on purpose: these are read on a phone to decide whether to open a laptop.
 export async function sendAlertEmail(env: Env, subject: string, text: string): Promise<void> {
-    if (!env.RESEND_API_KEY) throw new Error('RESEND_API_KEY is not configured.');
     if (!env.ALERT_EMAIL) throw new Error('ALERT_EMAIL is not configured.');
-    const res = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: FROM, to: env.ALERT_EMAIL, subject, text }),
-    });
-    if (!res.ok) throw new Error(`Resend API error: ${res.status} ${await res.text()}`);
+    // Worth stating plainly: the channel that tells you Resend is down IS Resend. That is
+    // why the Healthchecks.io dead-man's switches exist alongside this - they are watched
+    // from outside this account and do not share a failure mode with it.
+    await sendResendEmail(env.RESEND_API_KEY, 'ops alert', { from: FROM, to: env.ALERT_EMAIL, subject, text });
 }
 
 export interface AlertOutcome { key: string; emailed: boolean; error?: string }

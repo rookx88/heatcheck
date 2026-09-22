@@ -16,6 +16,7 @@
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, EMAIL_RE, type Env } from '../../lib/pages-functions/db';
 import { sendVerificationEmail, generateVerificationCode } from '../../lib/pages-functions/email';
+import { ResendError } from '../../lib/pages-functions/resend';
 import { requireSameOrigin } from '../../lib/pages-functions/session';
 import { throttle, clientIp } from '../../lib/pages-functions/throttle';
 
@@ -96,6 +97,22 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         await sendVerificationEmail(context.env, email, code);
     } catch (err) {
         console.error('[POST /api/resend-verification] Verification email failed to send:', err);
+        // Same reasoning as functions/api/login.ts: a code we could not deliver must not
+        // spend one of the DAILY_CODE_CAP this account gets, or an outage burns the
+        // day's budget and leaves someone unverified with no way to fix it. The 60s
+        // cooldown stays; only the daily count is refunded, and only when we know the
+        // message did not go out.
+        if (!(err instanceof ResendError && err.possiblyDelivered)) {
+            try {
+                await sql`
+                    UPDATE waitlist
+                    SET verification_codes_sent_today = GREATEST(verification_codes_sent_today - 1, 0)
+                    WHERE id = ${row.id} AND verification_codes_sent_on = CURRENT_DATE
+                `;
+            } catch (releaseErr) {
+                console.error('[POST /api/resend-verification] Could not release the code budget:', releaseErr);
+            }
+        }
         return jsonResponse({ message: 'Could not send the email right now. Try again shortly.' }, { status: 500 });
     }
 

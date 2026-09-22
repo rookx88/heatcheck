@@ -169,6 +169,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // fresh (getSession joins waitlist on every request), so a verified session
     // skips the extra read entirely.
     let verified = session?.verified ?? result.verified;
+    // Reported to the client rather than swallowed. The pick itself has committed and
+    // must not be undone by an email problem - but silently returning the ordinary 200
+    // left someone unverified, waiting on a code that was never sent, with nothing on
+    // screen suggesting anything had gone wrong. The UI can offer "resend" off this.
+    let verificationEmail: 'sent' | 'failed' | 'not_needed' = 'not_needed';
     try {
         if (!verified) {
             const code = generateVerificationCode();
@@ -180,8 +185,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 WHERE id = ${waitlistId}
             `;
             await sendVerificationEmail(context.env, email, code);
+            verificationEmail = 'sent';
         }
     } catch (emailErr) {
+        verificationEmail = 'failed';
         console.error('[POST /api/picks] Verification email failed to send:', emailErr);
     }
 
@@ -197,6 +204,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         {
             pick: result.pick,
             verified,
+            verificationEmail,
             picksToday: result.picksToday,
             remaining: result.dailyCap - result.picksToday,
         },
