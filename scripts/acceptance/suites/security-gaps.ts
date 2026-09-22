@@ -435,6 +435,24 @@ async function run(): Promise<void> {
         check('Discord: a correctly signed request an hour old is refused (replay)', !(await verifyDiscordRequest(body, await signAt(stale), stale, pubHex)));
         check('Discord: a malformed timestamp is refused', !(await verifyDiscordRequest(body, await signAt('abc'), 'abc', pubHex)));
 
+        // Fails CLOSED on every malformed input, not just a stale timestamp. The only
+        // expression in verifyDiscordRequest that can return true is crypto.subtle.verify's
+        // own boolean; everything below has to reach `false`, including the cases that
+        // throw inside it (2026-09-22 dependency audit).
+        const sig = await signAt(fresh);
+        check('Discord: a missing signature header is refused', !(await verifyDiscordRequest(body, '', fresh, pubHex)));
+        check('Discord: a missing timestamp header is refused', !(await verifyDiscordRequest(body, sig, '', pubHex)));
+        check('Discord: odd-length hex is refused', !(await verifyDiscordRequest(body, sig.slice(0, -1), fresh, pubHex)));
+        check('Discord: non-hex characters are refused', !(await verifyDiscordRequest(body, 'zz'.repeat(32), fresh, pubHex)));
+        check('Discord: a far-FUTURE timestamp is refused (skew is bidirectional)',
+            !(await verifyDiscordRequest(body, await signAt(String(now + 3600)), String(now + 3600), pubHex)));
+        check('Discord: a valid signature over a DIFFERENT body is refused',
+            !(await verifyDiscordRequest('{"type":2}', sig, fresh, pubHex)));
+        check('Discord: an unset DISCORD_PUBLIC_KEY is refused, and does NOT throw',
+            !(await verifyDiscordRequest(body, sig, fresh, undefined as unknown as string)));
+        check('Discord: a garbage public key is refused, and does NOT throw',
+            !(await verifyDiscordRequest(body, sig, fresh, 'ff'.repeat(8))));
+
         check('secretMatches: equal -> true', await secretMatches('s3cret-value', 's3cret-value'));
         check('secretMatches: different, same length -> false', !(await secretMatches('s3cret-valuf', 's3cret-value')));
         check('secretMatches: prefix -> false', !(await secretMatches('s3cret', 's3cret-value')));

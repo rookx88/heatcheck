@@ -83,6 +83,7 @@ export async function exchangeDiscordCode(env: Env, code: string, redirectUri: s
             code,
             redirect_uri: redirectUri,
         }),
+        signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
     });
     if (!tokenRes.ok) {
         throw new Error(`Discord token exchange failed: ${tokenRes.status} ${await tokenRes.text()}`);
@@ -91,6 +92,7 @@ export async function exchangeDiscordCode(env: Env, code: string, redirectUri: s
 
     const userRes = await fetch('https://discord.com/api/users/@me', {
         headers: { Authorization: `Bearer ${tokenBody.access_token}` },
+        signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
     });
     if (!userRes.ok) {
         throw new Error(`Discord user fetch failed: ${userRes.status} ${await userRes.text()}`);
@@ -115,6 +117,7 @@ export async function sendDiscordDirectMessage(env: Env, discordUserId: string, 
         method: 'POST',
         headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient_id: discordUserId }),
+        signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
     });
     if (!dmRes.ok) {
         throw new Error(`Discord DM channel open failed: ${dmRes.status} ${await dmRes.text()}`);
@@ -125,6 +128,7 @@ export async function sendDiscordDirectMessage(env: Env, discordUserId: string, 
         method: 'POST',
         headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
+        signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
     });
     if (!msgRes.ok) {
         throw new Error(`Discord DM send failed: ${msgRes.status} ${await msgRes.text()}`);
@@ -132,6 +136,19 @@ export async function sendDiscordDirectMessage(env: Env, discordUserId: string, 
 }
 
 const MAX_RATE_LIMIT_RETRIES = 3;
+
+// No Discord call in this file was bounded before 2026-09-22. Cloudflare does not cap a
+// subrequest for you, so a hung connection held the whole invocation open - worst case
+// fetchGuildMembers below, which walks up to ten sequential pages inside a deferred
+// interaction. 10s is far longer than a healthy Discord response.
+const DISCORD_TIMEOUT_MS = 10_000;
+
+// A 429's retry_after was previously slept verbatim. Discord's global rate limit (and a
+// Cloudflare ban page in front of it) can return values in the tens of seconds, and an
+// interaction token is only valid for 15 minutes - so an unbounded sleep could outlive
+// the token and PATCH into a 404. Past this we stop waiting and hand the 429 back to the
+// caller, which can still degrade to something the user sees.
+const MAX_RETRY_AFTER_MS = 10_000;
 
 /** A non-2xx from Discord, carrying the status so callers can tell "this guild is gone"
  *  (404/403) from "this post failed" (everything else). */
@@ -212,6 +229,7 @@ export async function postDiscordChannelMessage(
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify(body),
+            signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
         });
         if (res.ok) {
             const message = (await res.json()) as { id: string };
@@ -288,9 +306,9 @@ export async function patchInteractionOriginal(
             const form = new FormData();
             form.append('payload_json', JSON.stringify(payload));
             form.append('files[0]', new Blob([body.file.data as BlobPart], { type: body.file.contentType ?? 'image/png' }), body.file.name);
-            res = await fetch(url, { method: 'PATCH', body: form });
+            res = await fetch(url, { method: 'PATCH', body: form, signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS) });
         } else {
-            res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            res = await fetch(url, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload), signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS) });
         }
         if (res.status !== 429 || attempt >= MAX_RATE_LIMIT_RETRIES) return res;
         const text = await res.text();
@@ -302,7 +320,9 @@ export async function patchInteractionOriginal(
             // Fall back to the header value already read above.
         }
         if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds < 0) retryAfterSeconds = 1;
-        await sleep(retryAfterSeconds * 1000 + 100);
+        const waitMs = Math.min(retryAfterSeconds * 1000 + 100, MAX_RETRY_AFTER_MS);
+        if (waitMs >= MAX_RETRY_AFTER_MS) return res; // waiting longer than the token lives
+        await sleep(waitMs);
     }
 }
 
@@ -320,6 +340,7 @@ export async function clearMessageComponents(env: Env, channelId: string, messag
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({ components: [] }),
+            signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
         });
     } catch (err) {
         console.error('[discord-api] clearMessageComponents failed:', err);
@@ -336,6 +357,7 @@ export async function deleteChannelMessage(env: Env, channelId: string, messageI
         await fetch(`https://discord.com/api/v10/channels/${channelId}/messages/${messageId}`, {
             method: 'DELETE',
             headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
+            signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
         });
     } catch (err) {
         console.error('[discord-api] deleteChannelMessage failed:', err);
@@ -358,6 +380,7 @@ export async function fetchGuildIconUrl(env: Env, guildId: string): Promise<stri
     try {
         const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}`, {
             headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
+            signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
         });
         if (!res.ok) return null;
         const guild = (await res.json()) as { icon?: string | null };
@@ -410,7 +433,7 @@ export async function fetchGuildMembers(env: Env, guildId: string): Promise<Disc
         const url = new URL(`https://discord.com/api/v10/guilds/${guildId}/members`);
         url.searchParams.set('limit', '1000');
         if (after) url.searchParams.set('after', after);
-        const res = await fetch(url.toString(), { headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` } });
+        const res = await fetch(url.toString(), { headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` }, signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS) });
         if (!res.ok) {
             throw new Error(`Discord guild members fetch failed: ${res.status} ${await res.text()}`);
         }
@@ -444,6 +467,7 @@ export async function fetchGuildMemberBrief(env: Env, guildId: string, discordUs
     try {
         const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}/members/${discordUserId}`, {
             headers: { Authorization: `Bot ${env.DISCORD_BOT_TOKEN}` },
+            signal: AbortSignal.timeout(DISCORD_TIMEOUT_MS),
         });
         if (!res.ok) return fallback;
         const member = (await res.json()) as {
@@ -465,4 +489,40 @@ export async function fetchGuildMemberBrief(env: Env, guildId: string, discordUs
 
 export async function fetchGuildMemberName(env: Env, guildId: string, discordUserId: string): Promise<string> {
     return (await fetchGuildMemberBrief(env, guildId, discordUserId)).name;
+}
+
+/**
+ * patchInteractionOriginal, but the person always ends up seeing SOMETHING.
+ *
+ * The raw function returns the Response and never throws on a non-2xx, which is correct
+ * for the callers that walk a fallback ladder (leaderboard-image.ts, me-card.ts). But two
+ * call sites - discord-commands.ts's deferredEphemeral and pvp.ts's deferScreen - did
+ * `.then(patchInteractionOriginal).catch(console.error)`, and `.catch` only fires on a
+ * thrown error. A 429 that survived its retries, a 404 on an expired token, a 500: all of
+ * those are RESOLVED promises carrying a non-ok Response, so they were dropped silently
+ * and the user sat watching "thinking…" until they gave up (2026-09-22 dependency audit).
+ *
+ * This tries the real body, and on any failure tries once more with `fallback` - normally
+ * a plain sentence. If even that fails there is genuinely nothing left to do but log it.
+ */
+export async function patchInteractionOrExplain(
+    applicationId: string,
+    interactionToken: string,
+    body: InteractionPatchBody,
+    fallback: InteractionPatchBody,
+    label: string,
+): Promise<void> {
+    try {
+        const res = await patchInteractionOriginal(applicationId, interactionToken, body);
+        if (res.ok) return;
+        console.error(`[discord-api] ${label}: PATCH returned ${res.status} ${(await res.text().catch(() => '')).slice(0, 200)}`);
+    } catch (err) {
+        console.error(`[discord-api] ${label}: PATCH threw:`, err);
+    }
+    try {
+        const retry = await patchInteractionOriginal(applicationId, interactionToken, fallback);
+        if (!retry.ok) console.error(`[discord-api] ${label}: fallback PATCH returned ${retry.status}`);
+    } catch (err) {
+        console.error(`[discord-api] ${label}: fallback PATCH threw:`, err);
+    }
 }

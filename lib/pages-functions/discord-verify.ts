@@ -38,11 +38,15 @@ export async function verifyDiscordRequest(
     if (!signatureHex || !timestamp) return false;
     if (!/^\d{1,12}$/.test(timestamp)) return false;
     if (Math.abs(nowMs / 1000 - Number(timestamp)) > DISCORD_MAX_SKEW_SECONDS) return false;
-    const signatureBytes = hexToBytes(signatureHex);
-    const publicKeyBytes = hexToBytes(publicKeyHex);
-    if (!signatureBytes || !publicKeyBytes) return false;
-
+    // publicKeyHex is read inside the try on purpose. It comes from an env var, and when
+    // DISCORD_PUBLIC_KEY is unset hexToBytes(undefined) throws a TypeError - which used to
+    // escape this function entirely and surface as an opaque 500 rather than a signature
+    // rejection. Still fail-closed either way, but a 500 is the one shape that tells you
+    // nothing and makes Discord disable the endpoint (2026-09-22 dependency audit).
     try {
+        const signatureBytes = hexToBytes(signatureHex);
+        const publicKeyBytes = hexToBytes(publicKeyHex);
+        if (!signatureBytes || !publicKeyBytes) return false;
         const key = await crypto.subtle.importKey('raw', publicKeyBytes, { name: 'Ed25519' }, false, ['verify']);
         const message = new TextEncoder().encode(timestamp + rawBody);
         return await crypto.subtle.verify('Ed25519', key, signatureBytes, message);

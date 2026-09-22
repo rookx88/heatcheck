@@ -24,7 +24,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, clearMessageComponents, getGuildLabels, buildDiscordAvatarUrl, fetchGuildIconUrl, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL, patchInteractionOriginal } from './discord-api';
+import { hasManageGuildPermission, fetchGuildMembers, postDiscordChannelMessage, clearMessageComponents, getGuildLabels, buildDiscordAvatarUrl, fetchGuildIconUrl, DEFAULT_COMMUNITY_POINTS_LABEL, DEFAULT_LEADERBOARD_LABEL, patchInteractionOriginal, patchInteractionOrExplain } from './discord-api';
 import type { LeaderboardMessage } from './discord-leaderboard-card';
 import { computeSkillRatings } from './skill-rating';
 import { brandEmbed } from './discord-brand';
@@ -161,11 +161,19 @@ export function deferredEphemeral(context: RequestContext, interaction: any, wor
             })
             // Default (non-sparse) fill: content/embeds/components are all sent, so the
             // follow-up replaces whatever the deferred placeholder showed.
-            .then((data) => patchInteractionOriginal(applicationId, token, {
-                content: data.content, embeds: data.embeds, components: data.components,
-                file: data.file ? { name: data.file.name, data: new Uint8Array(data.file.data) } : undefined,
-            }))
-            .catch((err) => console.error('[discord-commands] Deferred PATCH failed:', err))
+            // patchInteractionOrExplain, not the raw PATCH: a non-ok Response is a
+            // RESOLVED promise, so the old .catch() dropped a rate-limited or expired
+            // follow-up silently and left the person on "thinking…" for good.
+            .then((data) => patchInteractionOrExplain(
+                applicationId,
+                token,
+                {
+                    content: data.content, embeds: data.embeds, components: data.components,
+                    file: data.file ? { name: data.file.name, data: new Uint8Array(data.file.data) } : undefined,
+                },
+                { content: 'That took too long to send back — try the command again.', embeds: [], components: [] },
+                'deferredEphemeral',
+            ))
     );
 
     return new Response(

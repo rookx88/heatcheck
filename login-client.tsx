@@ -20,17 +20,29 @@ function readDiscordNoEmailFlag(): boolean {
     return new URLSearchParams(window.location.search).get('discord') === 'no_email';
 }
 
+// GET /api/discord/callback also redirects here with ?discord=error when the token
+// exchange or the account create failed - a Discord outage rather than a policy refusal.
+// Nothing read that flag, so the person landed on a bare login page with no idea why
+// Discord had just dumped them there. The magic-link form below always works, but only
+// if they understand it is now their way in (2026-09-22 dependency audit).
+function readDiscordErrorFlag(): string | null {
+    return new URLSearchParams(window.location.search).get('discord') === 'error'
+        ? "Signing in with Discord didn't work just then. Use your email below - it signs you into the same account."
+        : null;
+}
+
 // The page keeps only its own chrome (glass card, eyebrow, heading); the actual
 // magic-link + Discord form is the shared AuthForm - the same component the
 // homepage register modal renders.
 function RequestLinkForm({ initialError }: { initialError: string | null }) {
     const [discordNoEmail] = useState(readDiscordNoEmailFlag);
+    const [discordError] = useState(readDiscordErrorFlag);
 
     return (
         <div className="hc-login">
             <p className="hc-login-eyebrow">Heatchecks Login</p>
             <h1>Get back in your tank</h1>
-            <AuthForm discordNoEmail={discordNoEmail} initialError={initialError} />
+            <AuthForm discordNoEmail={discordNoEmail} initialError={initialError ?? discordError} />
         </div>
     );
 }

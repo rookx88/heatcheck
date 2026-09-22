@@ -23,7 +23,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, type Env } from './db';
-import { postDiscordChannelMessage, deleteChannelMessage, fetchGuildMemberBrief, buildAvatarUrlForRender, patchInteractionOriginal } from './discord-api';
+import { postDiscordChannelMessage, deleteChannelMessage, fetchGuildMemberBrief, buildAvatarUrlForRender, patchInteractionOriginal, patchInteractionOrExplain } from './discord-api';
 import { brandEmbed } from './discord-brand';
 import { buildPvpChallengeMessage } from './pvp-card';
 import { computePvpRecords, formatPvpRecord, type PvpRecord } from './pvp-record';
@@ -137,15 +137,24 @@ function deferredUpdate(context: RequestContext, interaction: any, work: Promise
             // leave the message carrying both the stale and the new image. With no file,
             // `attachments` is omitted entirely, which is what makes the dropdown "hold"
             // re-renders free.
-            .then((data) => patchInteractionOriginal(applicationId, token, {
-                sparse: true,
-                content: data.content,
-                embeds: data.embeds,
-                components: data.components ?? [],
-                file: data.file ? { name: data.file.name, data: new Uint8Array(data.file.data) } : undefined,
-                replaceAttachments: true,
-            }))
-            .catch((err) => console.error('[pvp] Deferred PATCH failed:', err))
+            // See discord-commands.ts's deferredEphemeral: a non-ok Response resolves,
+            // so the old .catch() could not see a rate-limited follow-up. The fallback is
+            // sparse and content-only so a failed re-render leaves the battle card itself
+            // intact rather than blanking it.
+            .then((data) => patchInteractionOrExplain(
+                applicationId,
+                token,
+                {
+                    sparse: true,
+                    content: data.content,
+                    embeds: data.embeds,
+                    components: data.components ?? [],
+                    file: data.file ? { name: data.file.name, data: new Uint8Array(data.file.data) } : undefined,
+                    replaceAttachments: true,
+                },
+                { sparse: true, content: 'That took too long to send back — open the battle again.' },
+                'pvp deferScreen',
+            ))
     );
 
     return json({ type: RESPONSE_DEFERRED_UPDATE_MESSAGE });
