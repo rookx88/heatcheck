@@ -52,6 +52,32 @@ function formatBoardKickoff(iso: string): string {
 
 type SportFilter = 'All' | Sport;
 
+// The carousel cube's scale inside the modal. The cube is a fixed-pixel 3D scene that
+// paints (and places its turn arrows) outside its container by design, while the modal
+// panel is a scroll box capped at 560px and inset from both screen edges - so on a
+// phone the full-size artifact ran past the panel's sides and the panel clipped the two
+// turn arrows in half. Shrinking the whole scene keeps the cube and its arrows inside
+// the panel rather than letting either spill. (Fishtank clamps the arrows to that same
+// scroll box as a backstop; this is what stops them being pushed onto the cube itself.)
+const MODAL_SCALE = 0.8;
+const MODAL_SCALE_NARROW = 0.62;
+// Below this, the panel is narrower than the full-size cube's arrow span needs.
+const MODAL_WIDE_QUERY = '(min-width: 480px)';
+
+function useModalTankScale(): number {
+  const [wide, setWide] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(MODAL_WIDE_QUERY).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(MODAL_WIDE_QUERY);
+    const onChange = () => setWide(mq.matches);
+    onChange(); // the first paint may predate a rotation/resize
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return wide ? MODAL_SCALE : MODAL_SCALE_NARROW;
+}
+
 interface TankScreenProps {
   tanks: TankEntry[];
   linesBoard?: LinesBoardEntry[];
@@ -65,6 +91,7 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, linesBoard = [] }
   const [sportFilter, setSportFilter] = useState<SportFilter>('All');
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const hotspotRef = useRef<SVGGElement>(null);
+  const modalTankScale = useModalTankScale();
 
   // Only sports with at least one live tank get a chip; a chip can therefore never
   // select an empty list.
@@ -234,7 +261,14 @@ export const TankScreen: React.FC<TankScreenProps> = ({ tanks, linesBoard = [] }
                     {current.kind === 'lines' && <span className="tank-modal-lines-pill">Lines</span>}
                     {current.league} &middot; {current.matchup}
                   </div>
-                  <Fishtank key={current.slug} payload={current.payload} slug={current.slug} scale={0.8} />
+                  {/* The cube's drag stage is a fixed 420px box however small the
+                      painted cube is (see Fishtank's `scale`), so the shrunken phone
+                      artifact leaves dead room above and below it - reclaimed with
+                      margins on this wrapper, never a transform (that would make it the
+                      containing block for the fixed PetWidget and its overlays). */}
+                  <div className="tank-modal-stage">
+                    <Fishtank key={current.slug} payload={current.payload} slug={current.slug} scale={modalTankScale} />
+                  </div>
                   {visibleTanks.length > 1 && (
                     <div className="tank-modal-nav">
                       <button className="tank-modal-arrow" onClick={prev} aria-label="Previous tank">

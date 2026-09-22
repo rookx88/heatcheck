@@ -358,6 +358,13 @@
   line-height: 1.6;
 }
 
+/* Holds the 3D artifact. Its own box is the cube's 420px drag stage, which stays that
+   tall whatever `scale` the cube is painted at - see .tank-modal-stage's narrow-screen
+   rule at the bottom of this file. */
+.tank-modal-stage {
+  position: relative;
+}
+
 .tank-modal-nav {
   display: flex;
   align-items: center;
@@ -497,6 +504,27 @@
     padding: 1rem;
   }
   .tank-lines-board__list a { flex-direction: column; gap: 0.1rem; }
+}
+
+/* Phone: the cube is painted at MODAL_SCALE_NARROW (TankScreen.tsx) so that it and its
+   turn arrows fit inside this panel, but the stage box it sits in is a fixed 420px
+   regardless - which would leave a band of dead space above and below it. Pull the box
+   back in; the cube paints in the middle, so only empty room is reclaimed.
+
+   The rows either side then sit UNDER that stage, which hit-tests across its whole box
+   and is positioned - so a static sibling would lose the tap to the grab surface
+   whatever the DOM order (the homepage's .hc-tank-nav carries the same fix). Lifting
+   them onto their own layer is what keeps the pager and the story button tappable. */
+@media (max-width: 479px) {
+  .tank-modal-stage {
+    margin: -3rem 0;
+  }
+  .tank-modal-matchup,
+  .tank-modal-nav,
+  .tank-modal-view-story {
+    position: relative;
+    z-index: 1;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

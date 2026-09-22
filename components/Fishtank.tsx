@@ -190,9 +190,17 @@ const WallPanel: React.FC<{
                     border: isCall ? '1.5px solid rgba(251,146,60,0.85)' : '1px solid rgba(0,0,0,0.6)',
                     borderRadius: 12,
                     overflow: 'hidden',
+                    // No outward BLACK drop shadow (deliberately). The four walls form a
+                    // closed box, so each one's shadow is painted in its own plane and
+                    // spills past the shared corner edge straight across the face of the
+                    // wall next to it - a hard ~25px dark band down the front wall's left
+                    // edge, invisible over the dark panels but a black stripe through the
+                    // gold StoryLink bar that sits flush to that edge. The cube keeps its
+                    // depth from the grounding ellipse under the base and the Call wall's
+                    // own glow, both of which read as light rather than a cast shadow.
                     boxShadow: isCall
-                        ? '0 0 24px 4px rgba(251,146,60,0.45), 0 0 8px rgba(255,138,61,0.6), 0 10px 25px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08)'
-                        : '0 10px 25px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.08)',
+                        ? '0 0 24px 4px rgba(251,146,60,0.45), 0 0 8px rgba(255,138,61,0.6), inset 0 1px 0 rgba(255,255,255,0.08)'
+                        : 'inset 0 1px 0 rgba(255,255,255,0.08)',
                     backfaceVisibility: 'hidden',
                     WebkitBackfaceVisibility: 'hidden',
                 }}
@@ -1182,6 +1190,30 @@ const ARROW_EDGE_GAP = ARROW_SIZE / 2 + 8;
 // Just past the painted cube's widest pose at this scale.
 const arrowReach = (scale: number) => Math.round(200 * scale + 18);
 
+// Horizontal bounds the arrows must stay inside: the nearest ancestor that actually
+// CLIPS, intersected with the viewport. The viewport alone isn't enough - Tank HQ's
+// modal (.tank-modal-panel, overflow-y:auto, so overflow-x clips too) is a scroll box
+// narrower than the phone it sits on, and arrows placed at the full reach were sliced
+// in half by its edges. Only a clipping ancestor counts: the cube's own wrapper is
+// whatever width the mount gives it (0px where a flex box centers it), which is why
+// the container is deliberately NOT the bound - see the arrowOffsets effect below.
+function clipBounds(el: HTMLElement): { left: number; right: number } {
+    const viewportW = document.documentElement.clientWidth;
+    for (let node = el.parentElement; node && node !== document.body; node = node.parentElement) {
+        const cs = getComputedStyle(node);
+        if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+        const rect = node.getBoundingClientRect();
+        // A scroll box clips at its padding box, so the border sits outside the usable room.
+        const borderLeft = parseFloat(cs.borderLeftWidth) || 0;
+        const borderRight = parseFloat(cs.borderRightWidth) || 0;
+        return {
+            left: Math.max(0, rect.left + borderLeft),
+            right: Math.min(viewportW, rect.right - borderRight),
+        };
+    }
+    return { left: 0, right: viewportW };
+}
+
 const TurnArrow: React.FC<{ direction: 1 | -1; offset: number; onTurn: (direction: 1 | -1) => void }> = ({ direction, offset, onTurn }) => {
     const Icon = direction === 1 ? ChevronRight : ChevronLeft;
     return (
@@ -1287,16 +1319,18 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
     };
 
     // How far each arrow sits from the cube's center: the painted cube's reach, pulled
-    // in wherever that would leave the viewport (the homepage showcase sits left of
-    // center on a phone, so its two arrows get different offsets). Measured from the
-    // wrapper's center rather than its edges - see TurnArrow. Re-measured on resize
-    // and whenever the wrapper's box changes (a column reflow, the modal opening).
+    // in wherever that would leave the surface the cube is painted on (the homepage
+    // showcase sits left of center on a phone, so its two arrows get different
+    // offsets). Measured from the wrapper's center rather than its edges - see
+    // TurnArrow. Re-measured on resize and whenever the wrapper's box changes (a column
+    // reflow, the modal opening).
     //
-    // The VIEWPORT is deliberately the bound, not the artifact's container: the cube
-    // is a fixed-pixel 3D scene that paints outside its container by design (that is
-    // what `scale` exists for), so on a narrow surface - the homepage showcase, whose
-    // container stops short of the sport-button column - clamping to the container
-    // walks the arrows in on top of the wall text they are meant to sit beside.
+    // The bound is the viewport or the nearest CLIPPING ancestor (clipBounds), never
+    // the artifact's own container: the cube is a fixed-pixel 3D scene that paints
+    // outside its container by design (that is what `scale` exists for), so on a narrow
+    // surface - the homepage showcase, whose container stops short of the sport-button
+    // column - clamping to the container walks the arrows in on top of the wall text
+    // they are meant to sit beside.
     const wrapperRef = useRef<HTMLDivElement>(null);
     const [arrowOffsets, setArrowOffsets] = useState<[number, number]>(() => [arrowReach(scale), arrowReach(scale)]);
     useEffect(() => {
@@ -1305,11 +1339,11 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
         const measure = () => {
             const rect = el.getBoundingClientRect();
             const centerX = rect.left + rect.width / 2;
-            const viewportW = document.documentElement.clientWidth;
+            const bounds = clipBounds(el);
             const reach = arrowReach(scale);
             const next: [number, number] = [
-                Math.max(ARROW_EDGE_GAP, Math.min(reach, centerX - ARROW_EDGE_GAP)),
-                Math.max(ARROW_EDGE_GAP, Math.min(reach, viewportW - centerX - ARROW_EDGE_GAP)),
+                Math.max(ARROW_EDGE_GAP, Math.min(reach, centerX - bounds.left - ARROW_EDGE_GAP)),
+                Math.max(ARROW_EDGE_GAP, Math.min(reach, bounds.right - centerX - ARROW_EDGE_GAP)),
             ];
             setArrowOffsets((prev) => (prev[0] === next[0] && prev[1] === next[1] ? prev : next));
         };
