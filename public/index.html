@@ -477,16 +477,33 @@
            box whether or not the cube paints there. A static sibling loses to a
            positioned one whatever the DOM order, so the tap went to the grab surface.
 
-           The z-index is 1550 rather than 1 because of the phone half: this row also
-           lands inside the captain's FIXED bottom-right corner (PetWidget.css, resting
+           The phone half needs a second layer on top of that. This row also lands
+           inside the captain's FIXED bottom-right corner (PetWidget.css, resting
            z-index 1500), and his sprite was taking the taps and opening his own panel.
            Layering over him beats moving the row, because BOTH bottom corners are
            occupied - the encounter guest holds the bottom-left (EncounterStage.css) -
-           and the gap between them is narrower than this row. 1550 clears the resting
-           captain while staying under the encounter scrim (1600) and stage (1650), so
-           a live encounter still blocks the page the way it should. */
-        .hc-tank-nav { position: relative; z-index: 1550; margin: 0.25rem 0 0; text-align: center; }
+           and the gap between them is narrower than this row.
+
+           But only the CONTROLS need to clear him. Raising the whole row to 1550 (as
+           it was until 2026-09-22) dragged the matchup caption up with the arrows, and
+           on a phone that full-width line of text painted straight across the captain's
+           body - the pet looked like it had a sentence written through it. So the two
+           children are layered separately, and the wrapper deliberately keeps
+           z-index:auto: any value here would make it a stacking context and trap the
+           arrows' 1550 inside it, putting them back under the pet.
+             - .tank-modal-nav  1550: above the resting captain (1500), still under the
+               encounter scrim (1600) and stage (1650), so a live encounter blocks the
+               page the way it should. It is a short centred row, so it clears his
+               corner without crossing him.
+             - .hc-tank-nav-matchup  10: above the cube's own turn arrows (Fishtank.tsx
+               zIndex 5) and its drag stage, but BELOW the captain - he now paints over
+               the caption instead of the caption cutting across him. Nothing in the
+               caption is clickable, so losing the tap there costs nothing, and the
+               reader can scroll the line clear or Hide him from his own menu. */
+        .hc-tank-nav { position: relative; margin: 0.25rem 0 0; text-align: center; }
+        .hc-tank-nav .tank-modal-nav { position: relative; z-index: 1550; }
         .hc-tank-nav-matchup {
+            position: relative; z-index: 10;
             margin: 0.35rem 0 0;
             font-family: 'Nunito', sans-serif; font-size: 0.78rem;
             color: rgba(255, 255, 255, 0.62);
