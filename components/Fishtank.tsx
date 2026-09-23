@@ -1293,6 +1293,11 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
     const springX = useSpring(rotateX, { stiffness: 150, damping: 25 });
     const springY = useSpring(rotateY, { stiffness: 150, damping: 25 });
 
+    // Keeps the interior glow facing the reader at every angle - see its comment below.
+    const glowTransform = useTransform(
+        [springX, springY],
+        ([tiltX, turnY]: number[]) => `translate(-50%,-50%) rotateY(${-turnY}deg) rotateX(${-tiltX}deg) translateZ(-40px)`,
+    );
     const cards = displayCards(payload, promoWall);
     const contentByKind = (wall: Wall, index: number): React.ReactNode => {
         if (wall.kind === 'hook') return <p style={{ margin: 0, fontWeight: 600, fontSize: '1rem', color: '#f1f5f9' }}>{payload.hook}</p>;
@@ -1419,9 +1424,19 @@ export const Fishtank: React.FC<{ payload: DeckPayload; slug: string; linkCall?:
                         transformStyle: 'preserve-3d',
                     }}
                 >
-                    <div style={{
+                    {/* The tank's interior glow. It is LIGHT, not a surface, so it is
+                        billboarded - counter-rotated by the cube's own rotation so it
+                        always faces the reader. Left as a fixed plane it behaved like a
+                        pane of glass: turn the cube toward square-on (rotateY near +-90)
+                        and this 300px disc went edge-on, compressing its whole blurred
+                        width into a narrow bright vertical band straight down the card -
+                        washing across the gold StoryLink bar as a line ruled through
+                        "See every line". Undoing the container's rotation in the reverse
+                        order (rotateY then rotateX) cancels it exactly, so the glow keeps
+                        its full spread at every angle. */}
+                    <motion.div style={{
                         position: 'absolute', top: '50%', left: '50%',
-                        transform: 'translate(-50%,-50%) translateZ(-40px)',
+                        transform: glowTransform,
                         width: 300, height: 300,
                         background: 'radial-gradient(circle, rgba(6,182,212,0.35), transparent 70%)',
                         filter: 'blur(60px)',
