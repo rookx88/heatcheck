@@ -133,6 +133,7 @@ async function main(): Promise<void> {
                     sel_liquidity      = p.sel_liquidity,
                     sel_runner_up_line = p.sel_runner_up_line,
                     sel_median_agreed  = p.sel_median_agreed,
+                    props_synced_at    = p.props_synced_at,
                     contrib = CASE c.result
                                   WHEN 'win'  THEN round(1 - p.entry_prob, 3)
                                   WHEN 'loss' THEN round(-p.entry_prob, 3)

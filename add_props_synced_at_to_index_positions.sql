@@ -1,0 +1,55 @@
+-- ===================================================================================
+-- index_positions.props_synced_at - how fresh the cached price actually was
+-- ===================================================================================
+-- functions/api/index-lock.ts makes NO outbound calls. Every entry_prob it freezes onto
+-- a position is read from polymarket_props, whose only writer is the 15-minute scheduler
+-- inside backend.ts, running wherever the admin backend runs. So "the price at lock time"
+-- is really "the price as of the last successful sync", and nothing on the row said how
+-- long ago that was.
+--
+-- That gap is not hypothetical. The sync stopped on 2026-09-18 at 06:41 UTC and was not
+-- noticed for 78 hours. Lock runs on the 19th and 20th did not fail - they locked real
+-- games at prices frozen on the 18th and recorded them as the pre-game price. Those
+-- numbers flow through contributionFor() into contrib, into the daily closes, and into
+-- the append-only ticker_events history that the public TANKDAQ charts and team pages
+-- render. They are permanent, and until now they were indistinguishable from good ones.
+--
+-- WHY A COLUMN RATHER THAN A JOIN. Three reasons, in order of importance:
+--   1. polymarket_props is UPSERTED IN PLACE. A row's synced_at is overwritten on every
+--      cycle, so the freshness a position was priced against stops existing minutes
+--      later. There is no historical table to join back to - if it is not captured at
+--      write time it is not recoverable at all.
+--   2. index-lock now reports propsAgeMinutes per run, but that is MAX(synced_at) across
+--      the whole table - a liveness check on the writer, not the age of the specific
+--      market a position priced from. A run can look healthy while one league is stale.
+--   3. ops_job_runs, which holds those run reports, is pruned at 90 days
+--      (functions/api/ops/health-check.ts). index_positions are kept forever. Without
+--      this column the provenance of a position outlives the evidence for it.
+--
+-- NULLABLE, NO DEFAULT, and deliberately so - the same reasoning
+-- add_team_identity_to_index_positions.sql gives for subject_src. Every row locked before
+-- this column existed genuinely has no value, NOT NULL would fail the migration, and a
+-- DEFAULT NOW() would stamp thousands of historical rows with a claim that they were
+-- priced against a fresh cache. That would be worse than the silence it replaces.
+--
+-- NOT BACKFILLABLE, unlike every other provenance column on this table. subject_src had
+-- scripts/backfill-team-identity.ts because club identity can be re-derived from the row
+-- itself. Freshness cannot: the source row has been overwritten many times since. Rows
+-- locked before today stay NULL permanently, and that is the honest answer.
+--
+-- No index. Every other index on this table backs a read path; this is an audit column
+-- queried by hand. Staleness is `locked_at - props_synced_at` at query time.
+--
+-- Execute: psql "$DATABASE_URL" -f add_props_synced_at_to_index_positions.sql
+-- ===================================================================================
+
+ALTER TABLE index_positions ADD COLUMN IF NOT EXISTS props_synced_at TIMESTAMP WITH TIME ZONE;
+
+-- Which positions were locked against a stale cache, and by how much:
+--
+--   SELECT locked_at::date,
+--          count(*) AS positions,
+--          max(locked_at - props_synced_at) AS worst_staleness
+--   FROM index_positions
+--   WHERE props_synced_at IS NOT NULL
+--   GROUP BY 1 ORDER BY 1 DESC;

@@ -132,7 +132,7 @@ async function main(): Promise<void> {
                          sel_volume, sel_liquidity, sel_runner_up_line, sel_median_agreed,
                          result, winning_index, settled_at, contrib,
                          away_team_id, home_team_id, subject_team_id, subject_src,
-                         away_abbr, home_abbr
+                         away_abbr, home_abbr, props_synced_at
                      )
                      SELECT $2, provider, market_id, condition_id, league, event_id,
                             away, home, kickoff, market_type, market_line,
@@ -140,7 +140,7 @@ async function main(): Promise<void> {
                             sel_volume, sel_liquidity, sel_runner_up_line, sel_median_agreed,
                             result, winning_index, settled_at, contrib,
                             away_team_id, home_team_id, subject_team_id, subject_src,
-                            away_abbr, home_abbr
+                            away_abbr, home_abbr, props_synced_at
                      FROM index_positions
                      WHERE ticker_key = $1 AND league = ANY($3::text[])
                      ON CONFLICT (ticker_key, event_id) DO NOTHING

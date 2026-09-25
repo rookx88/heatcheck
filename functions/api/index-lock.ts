@@ -82,7 +82,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                market_line::float8 AS market_line,
                outcomes, outcome_prices,
                volume::float8 AS volume, liquidity::float8 AS liquidity,
-               event_start_time, event_teams
+               event_start_time, event_teams, synced_at
         FROM polymarket_props
         WHERE closed IS DISTINCT FROM TRUE
           AND market_type IN ('totals', 'moneyline', 'spreads', 'both_teams_to_score')
@@ -127,10 +127,25 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // Abbreviations are a property of the GAME, not of a market, so they are kept beside
     // the grouped rows rather than widening SlateMarketRow (which index-slate owns).
     const abbrByEvent = new Map<string, { away: string | null; home: string | null }>();
+    // How fresh the cached row THIS position's price comes from actually was, kept beside
+    // the grouped rows for the same reason the abbreviations are - widening SlateMarketRow
+    // would reach into index-slate.ts, which owns a pure, separately-tested type.
+    //
+    // Note this is a different question from the global probe above. That one asks "is the
+    // writer alive at all"; this one asks "how old was the row we actually priced from".
+    // A run can pass the first while a specific market has not been synced for days, which
+    // is exactly what happened during the 09-18 outage. Neon hands timestamps back as Date
+    // objects, and String(date) produces something Postgres rejects on the way back in, so
+    // this round-trips through ISO the way toSlateMarketRow does for kickoff.
+    const syncedByMarket = new Map<string, string | null>();
     for (const r of rows) {
         const row = toSlateMarketRow(r);
         if (!abbrByEvent.has(row.event_id)) {
             abbrByEvent.set(row.event_id, { away: teamAt(r.event_teams, 'away').abbr, home: teamAt(r.event_teams, 'home').abbr });
+        }
+        if (!syncedByMarket.has(row.market_id)) {
+            const raw = (r as { synced_at?: string | Date | null }).synced_at ?? null;
+            syncedByMarket.set(row.market_id, raw ? new Date(raw).toISOString() : null);
         }
         const list = byEvent.get(row.event_id);
         if (list) list.push(row); else byEvent.set(row.event_id, [row]);
@@ -180,7 +195,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 side_index, side_label, entry_prob,
                 sel_volume, sel_liquidity, sel_runner_up_line, sel_median_agreed,
                 away_team_id, home_team_id, subject_team_id, subject_src,
-                away_abbr, home_abbr
+                away_abbr, home_abbr, props_synced_at
             )
             SELECT * FROM unnest(
                 ${specs.map((s) => s.tickerKey)}::text[],
@@ -206,7 +221,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
                 ${teams.map((t) => t.subjectTeamId)}::text[],
                 ${teams.map((t) => t.subjectSource)}::text[],
                 ${specs.map((s) => abbrByEvent.get(s.row.event_id)?.away ?? null)}::text[],
-                ${specs.map((s) => abbrByEvent.get(s.row.event_id)?.home ?? null)}::text[]
+                ${specs.map((s) => abbrByEvent.get(s.row.event_id)?.home ?? null)}::text[],
+                ${specs.map((s) => syncedByMarket.get(s.row.market_id) ?? null)}::timestamptz[]
             )
             ON CONFLICT (ticker_key, event_id) DO NOTHING
             RETURNING id

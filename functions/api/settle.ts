@@ -36,6 +36,15 @@ import {
 import { computeSettleDelta, getTickerConfig, settleTag } from '../../lib/pages-functions/tickers';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
 
+// The per-run ceiling on the pending scan (see the query below for the full reasoning).
+// Picks, not markets - but prewarmPolymarket collapses the Polymarket side into one
+// batched request, so the binding constraint is distinct unresolved markets, the same
+// one index-settle.ts sizes its MAX_MARKETS = 30 against. 50 picks can never carry more
+// than 50 markets, which leaves headroom under the ~50-subrequest ceiling that Neon's
+// HTTP driver also draws on. Ordered oldest-kickoff-first, so raising this is safe and
+// lowering it only defers work rather than dropping it.
+const MAX_PICKS_PER_RUN = 50;
+
 // Settlement resolution is providerless downstream of this dispatch: both resolvers'
 // 'resolved' status carries the same { winningIndex } shape, so settleCall/settleTag
 // and the win/loss comparison below don't need to know which provider produced it.
@@ -140,6 +149,29 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // settlement correct even if that invariant is ever bypassed by a future code path.
     // email + call_question are only for the settlement notification below, not
     // resolution itself.
+    //
+    // BOUNDED, ordered oldest-kickoff-first. Until 2026-09-23 this had no LIMIT and no
+    // ORDER BY, on the reasoning that pick volume is small. That holds today - 59 picks
+    // all time - but it is the assumption an accumulating pile of never-resolving picks
+    // quietly invalidates, and the failure it produces is the compounding one
+    // index-settle.ts already documents: past roughly 45 distinct unresolved markets the
+    // run exceeds the Pages subrequest ceiling MID-LOOP, and with no ordering the same
+    // head of the queue is retried every run while the tail never settles at all.
+    //
+    // There is deliberately NO give-up path here, and it is worth writing down why so the
+    // next person does not have to re-derive it. Two reasons:
+    //   1. picks.result cannot express it. The live constraint is
+    //      `CHECK (result IS NULL OR result IN ('correct','incorrect'))` - no 'void',
+    //      unlike index_positions, which has had the three-value vocabulary from birth
+    //      AND every reader written against it. Adding one here means a migration plus a
+    //      third value flowing into a dozen consumers that currently treat "not correct"
+    //      as a loss: the Discord accuracy leaderboard, skill rating, levels, the account
+    //      W-L strip, My Portfolio (whose lamp CSS has no third class).
+    //   2. Any such rule must key on KICKOFF, never on pick age. The three picks pending
+    //      right now are on a Tank resolving 2026-12-31 - they are not stuck, they are
+    //      not due. An age-based rule would write off legitimate long-horizon calls.
+    // A pick on a market that never resolves therefore stays pending, which costs its
+    // owner the guaranteed participation payout but is honest about not knowing.
     const rows = await sql`
         SELECT p.id, p.waitlist_id, p.outcome_index, p.implied_prob_at_lock::float8 AS implied_prob_at_lock,
                p.side, t.provider,
@@ -152,6 +184,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         JOIN tank_pages t ON t.id = p.tank_page_id
         JOIN waitlist w ON w.id = p.waitlist_id
         WHERE p.result IS NULL AND t.provider IN ('polymarket', 'kalshi')
+        ORDER BY COALESCE(
+                     CASE WHEN t.game_snapshot->'game'->>'kickoff' ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}'
+                          THEN (t.game_snapshot->'game'->>'kickoff')::timestamptz END,
+                     p.created_at
+                 ) ASC,
+                 p.id
+        LIMIT ${MAX_PICKS_PER_RUN}
     `;
     const unresolved = rows as unknown as UnresolvedPick[];
 
