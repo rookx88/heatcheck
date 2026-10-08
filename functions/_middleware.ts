@@ -119,8 +119,32 @@ const headersAndOps: PagesFunction<Env> = async (context) => {
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 };
 
+// Which site an error came from. Production and the auth-sessions preview share ONE
+// Sentry project and ONE DSN (2026-10-08), so without this a preview crash and a
+// heatchecks.io crash are indistinguishable in the issue list - and an alert rule can't
+// be scoped to "real users only". Read from the request's host rather than an env var:
+// Pages gives preview and production separate secret sets that only bind at deploy
+// (see pages_secrets_bind_at_deploy), so a per-env variable is one more thing to forget
+// at the cutover, whereas the hostname is always true. The bare project host
+// heatcheck.pages.dev is Cloudflare's own alias for the PRODUCTION deployment (same code,
+// same users who find it), so it counts as production; every other *.pages.dev host - the
+// auth-sessions branch alias and every per-deploy hash URL - is a preview.
+function sentryEnvironment(url: string): string {
+    let host = '';
+    try {
+        host = new URL(url).hostname;
+    } catch {
+        return 'unknown';
+    }
+    if (host === 'heatchecks.io' || host === 'www.heatchecks.io' || host === 'heatcheck.pages.dev') return 'production';
+    if (host.endsWith('.pages.dev')) return 'preview';
+    if (host === 'localhost' || host === '127.0.0.1') return 'development';
+    return 'unknown';
+}
+
 const sentry = Sentry.sentryPagesPlugin<Env>((context) => ({
     dsn: context.env.SENTRY_DSN,
+    environment: sentryEnvironment(context.request.url),
     // Errors only - no performance tracing, which the free tier would burn through.
     tracesSampleRate: 0,
     // The handlers catch their own errors and console.error them; report those too.
