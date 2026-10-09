@@ -64,7 +64,15 @@ const FULL_CHAIN_CRON = '0 10 * * *';
 // Weekly NFL league auto-slate (Tuesday, after Monday Night Football concludes and
 // the week's lines settle) - see the event.cron branch in scheduled() below. Neither
 // the full chain nor the regular sweeps; its own third case.
-const LEAGUE_SLATE_CRON = '0 12 * * 2';
+//
+// Spelled 'TUE', not a number (2026-10-09). It was '0 12 * * 2' for six weeks and fired
+// every MONDAY: Cloudflare numbers day-of-week 1-7 starting at Sunday, so 2 is Monday,
+// not the 0=Sunday convention the expression was written for - i.e. it ran before Monday
+// Night Football had even kicked off, which is exactly what it was timed to wait for.
+// The name means the same thing under either convention. Must stay byte-identical to the
+// trigger in wrangler.toml: event.cron is matched as a string, and a slot no branch
+// recognises falls through to the paid full chain.
+const LEAGUE_SLATE_CRON = '0 12 * * TUE';
 
 // Weekly leaderboard auto-post for guilds that opted in via the setup wizard. No
 // cron slot of its own - Workers Free caps the ACCOUNT at 5 triggers and they're all

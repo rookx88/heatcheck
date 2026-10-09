@@ -16,10 +16,15 @@ compatibility_date = "2026-08-12"
 # but never add one that isn't handled in the event.cron branch below, or it'll silently
 # run the full (paid) chain instead of just the sweeps.
 #
-# "0 12 * * 2" (Tuesday, 2026-08-26) is a fourth, distinct slot: the weekly NFL season-
+# "0 12 * * TUE" (2026-08-26) is a fourth, distinct slot: the weekly NFL season-
 # league auto-slate (/api/league-slate-sweep via runLeagueSlateSweep in src/index.ts),
 # timed after Monday Night Football concludes and the week's lines settle. Not a sweep,
 # not the full chain - its own third branch in event.cron below.
+#
+# Written "TUE" since 2026-10-09. As "0 12 * * 2" it fired every MONDAY for six weeks:
+# Cloudflare numbers day-of-week 1-7 from SUNDAY, so 2 = Monday. Use day NAMES in any
+# weekly expression here - they can't be misread. LEAGUE_SLATE_CRON in src/index.ts must
+# match this string exactly.
 #
 # NOTE - no fifth slot for the weekly leaderboard auto-post: this account is on
 # Workers Free, capped at 5 cron triggers ACCOUNT-WIDE (these 4 + worker-settle's 1
@@ -28,7 +33,7 @@ compatibility_date = "2026-08-12"
 # in src/index.ts - Monday 02:00 UTC = Sunday ~9-10pm US evening, exactly the
 # "after Sunday slates wrap" window it wanted anyway.
 [triggers]
-crons = ["0 10 * * *", "0 18 * * *", "0 2 * * *", "0 12 * * 2"]
+crons = ["0 10 * * *", "0 18 * * *", "0 2 * * *", "0 12 * * TUE"]
 
 [vars]
 # Staging posture (2026-08-21): curation runs against the auth-sessions branch alias,
