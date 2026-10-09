@@ -9,7 +9,10 @@
 
     <meta property="og:title" content="Heatchecks | A Sports World Worth Playing — Join the Beta Waitlist">
     <meta property="og:description" content="Heatchecks is becoming a Neopets-style sports world: explore themed sports islands, follow real matchups, and grow your own Mud Puppy pet. Join the free beta waitlist today.">
-    <meta property="og:image" content="https://heatchecks.io/assets/images/heatchecks-logo.png">
+    <meta property="og:image" content="https://heatchecks.io/assets/images/og-share-world-map.jpg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="The HeatChecks world map">
     <meta property="og:url" content="https://heatchecks.io/">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="HeatChecks">
@@ -17,9 +20,12 @@
     <link rel="icon" type="image/png" href="/assets/images/heatchecks-logo.png">
 
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@heatchecksio">
+    <meta name="twitter:creator" content="@heatchecksio">
     <meta name="twitter:title" content="Heatchecks | A Sports World Worth Playing — Join the Beta Waitlist">
     <meta name="twitter:description" content="Heatchecks is becoming a Neopets-style sports world: explore themed sports islands, follow real matchups, and grow your own Mud Puppy pet. Join the free beta waitlist today.">
-    <meta name="twitter:image" content="https://heatchecks.io/assets/images/heatchecks-logo.png">
+    <meta name="twitter:image" content="https://heatchecks.io/assets/images/og-share-world-map.jpg">
+    <meta name="twitter:image:alt" content="The HeatChecks world map">
 
     <script type="application/ld+json">
 [
@@ -241,6 +247,35 @@
         }
         .hc-back-link:hover { color: #ffffff; }
 
+        /* "Waitlist closed" modal - see waitlistClosedModal() */
+        .hc-modal {
+            width: min(360px, calc(100vw - 32px));
+            max-width: none;
+            margin: auto;
+            padding: 1.75rem 1.5rem 1.5rem;
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 18px;
+            background: linear-gradient(180deg, var(--hc-navy-light) 0%, var(--hc-navy) 100%);
+            color: #ffffff;
+            text-align: center;
+            box-shadow: 0 18px 48px rgba(0,0,0,0.55);
+        }
+        .hc-modal::backdrop { background: rgba(6,12,34,0.72); }
+        .hc-modal h2 {
+            font-family: 'Baloo 2', sans-serif;
+            font-weight: 800;
+            font-size: 1.45rem;
+            line-height: 1.15;
+            margin: 0 0 0.6rem;
+        }
+        .hc-modal p {
+            font-size: 0.98rem;
+            line-height: 1.55;
+            color: rgba(255,255,255,0.82);
+            margin: 0 0 1.4rem;
+        }
+        .hc-modal .hc-cta-button { border: 0; cursor: pointer; }
+
         @media (max-width: 420px) {
             .hc-page { padding: 0.5rem 1rem 0.85rem; }
             .hc-hero { margin-left: -1rem; margin-right: -1rem; }
@@ -267,7 +302,7 @@
             <div class="hc-hero-inner">
                 <picture>
                     <source srcset="/assets/images/world-map.webp" type="image/webp">
-                    <img class="hc-world-map" src="/assets/images/world-map.png" alt="Illustrated map of the Heatchecks sports world, with themed islands for soccer, football, basketball, baseball, hockey, and golf surrounding a central aquarium" width="1600" height="1600" loading="eager">
+                    <img class="hc-world-map" src="/assets/images/world-map.png" alt="Illustrated planet of the Heatchecks sports world, with themed islands for soccer, football, baseball, basketball, hockey, and golf surrounding the central Tank dome" width="1120" height="1116" loading="eager">
                 </picture>
                 <div class="hc-puppy-stage" aria-hidden="false" aria-label="Your Mud Puppy pet, shown cycling through its forms">
                     <picture class="hc-puppy-frame is-active" data-frame="0">
@@ -293,9 +328,32 @@
         <p class="hc-subcopy">Explore the world, read the stories, make the calls, play the games — and everything you do earns Embers to grow your Mud Puppy in a competitive sports world. Free to play!</p>
 
         <div class="hc-cta-row">
-            <a class="hc-cta-button" href="/claim-your-spot/">Claim your spot.</a>
+            <a class="hc-cta-button" href="/claim-your-spot/" data-waitlist-closed>Claim your spot.</a>
         </div>
     </main>
+    
+        <dialog class="hc-modal" id="hc-waitlist-closed" aria-labelledby="hc-waitlist-closed-title">
+            <h2 id="hc-waitlist-closed-title">The waitlist is now closed</h2>
+            <p>You'll be able to join the fun shortly once the beta launches.</p>
+            <form method="dialog">
+                <button class="hc-cta-button" type="submit">Got it</button>
+            </form>
+        </dialog>
+        <script>
+        (function () {
+            var dialog = document.getElementById('hc-waitlist-closed');
+            if (!dialog || typeof dialog.showModal !== 'function') return;
+            document.querySelectorAll('[data-waitlist-closed]').forEach(function (cta) {
+                cta.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    dialog.showModal();
+                });
+            });
+            dialog.addEventListener('click', function (event) {
+                if (event.target === dialog) dialog.close();
+            });
+        })();
+        </script>
     <script>
     (function () {
         var frames = document.querySelectorAll('.hc-puppy-frame');

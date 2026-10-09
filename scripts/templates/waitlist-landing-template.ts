@@ -290,6 +290,35 @@ function sharedStyles(): string {
         }
         .hc-back-link:hover { color: #ffffff; }
 
+        /* "Waitlist closed" modal - see waitlistClosedModal() */
+        .hc-modal {
+            width: min(360px, calc(100vw - 32px));
+            max-width: none;
+            margin: auto;
+            padding: 1.75rem 1.5rem 1.5rem;
+            border: 1px solid rgba(255,255,255,0.14);
+            border-radius: 18px;
+            background: linear-gradient(180deg, var(--hc-navy-light) 0%, var(--hc-navy) 100%);
+            color: #ffffff;
+            text-align: center;
+            box-shadow: 0 18px 48px rgba(0,0,0,0.55);
+        }
+        .hc-modal::backdrop { background: rgba(6,12,34,0.72); }
+        .hc-modal h2 {
+            font-family: 'Baloo 2', sans-serif;
+            font-weight: 800;
+            font-size: 1.45rem;
+            line-height: 1.15;
+            margin: 0 0 0.6rem;
+        }
+        .hc-modal p {
+            font-size: 0.98rem;
+            line-height: 1.55;
+            color: rgba(255,255,255,0.82);
+            margin: 0 0 1.4rem;
+        }
+        .hc-modal .hc-cta-button { border: 0; cursor: pointer; }
+
         @media (max-width: 420px) {
             .hc-page { padding: 0.5rem 1rem 0.85rem; }
             .hc-hero { margin-left: -1rem; margin-right: -1rem; }
@@ -310,6 +339,45 @@ export function topbar(learnMoreHref: string): string {
                 <span>Learn more</span>
             </a>
         </div>`;
+}
+
+/**
+ * The waitlist closed on 2026-10-09, ahead of the beta launch. Rather than
+ * delete the "Claim your spot." buttons (which would leave the landing page
+ * with no call to action at all), every CTA marked data-waitlist-closed now
+ * opens this dialog instead of navigating. The href is left pointing at
+ * /claim-your-spot/ deliberately: if the script fails to run, the button
+ * still lands somewhere sensible rather than doing nothing.
+ *
+ * Native <dialog> + showModal() gives us Esc-to-close, focus trapping and the
+ * ::backdrop for free, with no dependency. A click whose target is the dialog
+ * element itself is a click on the backdrop (the content fills the box), so
+ * that closes it too.
+ */
+export function waitlistClosedModal(): string {
+    return `
+        <dialog class="hc-modal" id="hc-waitlist-closed" aria-labelledby="hc-waitlist-closed-title">
+            <h2 id="hc-waitlist-closed-title">The waitlist is now closed</h2>
+            <p>You'll be able to join the fun shortly once the beta launches.</p>
+            <form method="dialog">
+                <button class="hc-cta-button" type="submit">Got it</button>
+            </form>
+        </dialog>
+        <script>
+        (function () {
+            var dialog = document.getElementById('hc-waitlist-closed');
+            if (!dialog || typeof dialog.showModal !== 'function') return;
+            document.querySelectorAll('[data-waitlist-closed]').forEach(function (cta) {
+                cta.addEventListener('click', function (event) {
+                    event.preventDefault();
+                    dialog.showModal();
+                });
+            });
+            dialog.addEventListener('click', function (event) {
+                if (event.target === dialog) dialog.close();
+            });
+        })();
+        </script>`;
 }
 
 export function footer(): string {
@@ -383,9 +451,10 @@ export function generateLandingPageHtml(baseUrl: string): string {
         <p class="hc-subcopy">Explore the world, read the stories, make the calls, play the games — and everything you do earns Embers to grow your Mud Puppy in a competitive sports world. Free to play!</p>
 
         <div class="hc-cta-row">
-            <a class="hc-cta-button" href="/claim-your-spot/">Claim your spot.</a>
+            <a class="hc-cta-button" href="/claim-your-spot/" data-waitlist-closed>Claim your spot.</a>
         </div>
     </main>
+    ${waitlistClosedModal()}
     <script>
     (function () {
         var frames = document.querySelectorAll('.hc-puppy-frame');
@@ -420,13 +489,14 @@ export function generateBetaInfoPageHtml(baseUrl: string): string {
             <h1>Something new is coming.</h1>
             <p class="hc-lede">We're rebuilding Heatchecks into a free-to-play sports world, complete with a pet to grow, islands to explore, and games built around the sports you already follow. Full details on the beta are on their way — check back soon.</p>
             <div class="hc-cta-row" style="justify-content: flex-start; margin-top: 0;">
-                <a class="hc-cta-button" href="/claim-your-spot/">Claim your spot.</a>
+                <a class="hc-cta-button" href="/claim-your-spot/" data-waitlist-closed>Claim your spot.</a>
             </div>
             <a class="hc-back-link" href="/">&larr; Back to Heatchecks</a>
         </div>
 
         ${footer()}
     </main>
+    ${waitlistClosedModal()}
 </body>
 </html>`;
 }
