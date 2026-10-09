@@ -28,7 +28,7 @@
 
 import type { PagesFunction } from '@cloudflare/workers-types';
 import { getSql, jsonResponse, type Env } from '../../lib/pages-functions/db';
-import { fetchClosedMarkets, fetchMarketStrict, resolveMarket } from '../../lib/pages-functions/gamma';
+import { fetchClosedMarkets, fetchMarketStrict, parseGameStartTime, resolveMarket, type GammaMarketLite } from '../../lib/pages-functions/gamma';
 import { getTickerConfig } from '../../lib/pages-functions/tickers';
 import { closeDelta, contributionFor } from '../../lib/pages-functions/index-slate';
 import { secretMatches } from '../../lib/pages-functions/secret-compare';
@@ -42,23 +42,31 @@ import { secretMatches } from '../../lib/pages-functions/secret-compare';
 //
 // Budget: 6 fixed Neon calls (config, pending, bulk settle, open positions, close
 // upsert, close backfill) + one Gamma call per market, against the ~50 subrequest
-// ceiling that Neon's HTTP driver also draws on. 30 leaves real headroom.
+// ceiling that Neon's HTTP driver also draws on. 30 leaves real headroom. A 7th - the
+// bulk kickoff move for rescheduled games (2026-10-09) - runs only when one is found.
 const MAX_MARKETS = 30;
 // Give the market time to actually resolve before asking about it.
 const SETTLE_GRACE_HOURS = 3;
 
 // After this long, a market that STILL won't resolve is written off as 'void' instead of
-// being asked about forever.
+// being asked about forever - UNLESS its game has been rescheduled (see RESCHEDULE_MIN_MS
+// below), which is checked first.
 //
-// Polymarket does not always close a market it has stopped trading. Measured 2026-09-13:
-// market 3809076 ("Will D.C. United SC win on 2026-09-05?") was still closed=false,
-// active=true, priced ["0.45","0.55"] EIGHT DAYS after kickoff, holding four positions
-// ($CHALK/$DOGS/$LOCKS/$MOONSHOT). resolveMarket returns 'not_closed_yet' for it on every
-// run, forever.
+// The original diagnosis here (2026-09-13) was wrong, and the correction matters. It read:
+// "Polymarket does not always close a market it has stopped trading", citing market
+// 3809076 ("Will D.C. United SC win on 2026-09-05?") still open and trading eight days
+// after kickoff. That market was not stuck. The game had been POSTPONED to 2026-10-21;
+// Polymarket kept the same market, moved gameStartTime to the new date and left the
+// question text frozen at the old one. It was trading because the game hadn't been played.
+// Measured 2026-10-09: of the 36 positions this rule ever voided, 28 were rescheduled games
+// (D.C. United v Cincinnati, Levante v Athletic, NY Red Bulls v St. Louis - reopened by
+// scripts/reopen-rescheduled-voids.ts), and only 8 were the real thing: two MLB games
+// Polymarket resolved 50/50 as cancelled.
 //
-// That is not merely one stuck game. The pending query below orders by kickoff ASC and
-// takes the oldest MAX_MARKETS, so a market that can never resolve sits at the HEAD of
-// the queue permanently, spending one of the 30 slots on every single pass. Stuck markets
+// Queue starvation is still a real reason to stop asking about a market that genuinely
+// won't resolve. The pending query below orders by kickoff ASC and takes the oldest
+// MAX_MARKETS, so a market that can never resolve sits at the HEAD of the queue
+// permanently, spending one of the 30 slots on every single pass. Stuck markets
 // accumulate there and progressively starve the queue of real work - the failure is
 // silent and compounding.
 //
@@ -68,12 +76,31 @@ const SETTLE_GRACE_HOURS = 3;
 // is exactly what create_index_positions_table.sql promises for 'void'.
 const STALE_VOID_HOURS = 72;
 
+// A game whose LIVE start (Gamma's gameStartTime) is this much later than the kickoff the
+// position froze at lock time has been rescheduled, not abandoned (2026-10-09). Its
+// positions get their kickoff moved to the real date instead of being voided, which does
+// three things at once: they leave the head of the queue (a moved game no longer burns one
+// of the MAX_MARKETS slots on every pass until it's played), the 72h stale clock restarts
+// from when the game actually happens, and team pages date the game correctly.
+//
+// The locked price is untouched, and that is sound: it was frozen BEFORE the original
+// kickoff, so it is even further from the result than a normal lock - it cannot have seen
+// the outcome. An hour of slack keeps a few minutes of kickoff drift in an on-time game
+// from being mistaken for a reschedule.
+//
+// Deliberately only for 'not_closed_yet'. A CLOSED market that won't resolve - prices
+// ["0.5","0.5"] - is Polymarket calling the game cancelled, and that one is still voided.
+const RESCHEDULE_MIN_MS = 60 * 60 * 1000;
+
 interface PendingRow {
     id: string;
     ticker_key: string;
     market_id: string;
     side_index: number;
     entry_prob: number;
+    // The kickoff frozen at lock time - compared against Gamma's live start to spot a
+    // rescheduled game. A Date from Neon, so read it with new Date(x).getTime().
+    kickoff: Date | string;
     // Only used to decide whether an unresolvable market is old enough to write off.
     stale: boolean;
 }
@@ -116,7 +143,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             ORDER BY MIN(kickoff)
             LIMIT ${MAX_MARKETS}
         )
-        SELECT d.id, d.ticker_key, d.market_id, d.side_index, d.entry_prob, d.stale
+        SELECT d.id, d.ticker_key, d.market_id, d.side_index, d.entry_prob, d.kickoff, d.stale
         FROM due d
         JOIN markets m ON m.market_id = d.market_id
         ORDER BY d.kickoff
@@ -126,12 +153,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // One fetch per distinct market: $OVERS and $UNDERS share a market, as do
     // $CHALK/$DOGS, so this typically halves the call count.
     const resolutions = new Map<string, Awaited<ReturnType<typeof resolveMarket>>>();
+    // The market behind each resolution, kept for its gameStartTime - the reschedule check
+    // below needs the live start date, which resolveMarket's verdict doesn't carry.
+    const marketsById = new Map<string, GammaMarketLite | null>();
     const settled: Array<{ id: string; result: 'win' | 'loss' | 'void'; winningIndex: number | null; contrib: number | null }> = [];
     const skipped: Record<string, number> = {};
     // Written off rather than settled - reported separately so this stays visible instead
     // of looking like a quiet run. A number that climbs here is a real signal (Polymarket
     // leaving markets open, or our market ids drifting), not routine noise.
     const voidedStale: Record<string, number> = {};
+    // Games found to have moved: market id -> live start (epoch ms). Their positions get
+    // the new kickoff instead of a void - see RESCHEDULE_MIN_MS.
+    const rescheduled = new Map<string, number>();
 
     // One request for the whole run's closed markets, instead of one per market. Only
     // the markets Gamma RETURNS are seeded: an id missing from a closed-only batch means
@@ -145,7 +178,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // fall through to the per-market path, which is exactly what this ran before.
     try {
         const closed = await fetchClosedMarkets([...new Set(pending.map((p) => p.market_id))]);
-        for (const [marketId, market] of closed) resolutions.set(marketId, resolveMarket(market));
+        for (const [marketId, market] of closed) {
+            marketsById.set(marketId, market);
+            resolutions.set(marketId, resolveMarket(market));
+        }
     } catch (err) {
         console.error('[index-settle] batched market fetch failed, falling back to one call per market:', err);
     }
@@ -153,10 +189,25 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     for (const p of pending) {
         try {
             if (!resolutions.has(p.market_id)) {
-                resolutions.set(p.market_id, resolveMarket(await fetchMarketStrict(p.market_id)));
+                const market = await fetchMarketStrict(p.market_id);
+                marketsById.set(p.market_id, market);
+                resolutions.set(p.market_id, resolveMarket(market));
             }
             const res = resolutions.get(p.market_id)!;
             if (res.status !== 'resolved') {
+                // Before anything else: has this game simply been moved? An open market
+                // whose live start is later than the kickoff we froze is a postponed
+                // fixture still waiting to be played - give it the real date and wait,
+                // whether or not it's stale yet. Checking before the stale branch is the
+                // point: a moved game used to sit unresolvable at the head of the queue
+                // for 72h and then get voided (see STALE_VOID_HOURS).
+                if (res.status === 'not_closed_yet') {
+                    const liveStart = parseGameStartTime(marketsById.get(p.market_id)?.gameStartTime);
+                    if (liveStart !== null && liveStart - new Date(p.kickoff).getTime() > RESCHEDULE_MIN_MS) {
+                        rescheduled.set(p.market_id, liveStart);
+                        continue;
+                    }
+                }
                 // Gamma gave a definite non-answer. If the game is also long past
                 // STALE_VOID_HOURS, stop asking: write the position off as void so it
                 // leaves the queue it would otherwise block (see STALE_VOID_HOURS above).
@@ -191,6 +242,24 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             skipped['error'] = (skipped['error'] ?? 0) + 1;
         }
     }
+
+    // Move rescheduled games to their real kickoff - one query for the whole run. Every
+    // still-open position on the market moves, not just the ones in this batch, so the
+    // indexes holding a game can never disagree about when it is. Runs before the
+    // settled.length check below on purpose: a pass that only found moved games still
+    // has to record them, or the same markets come back to the head of the queue next run.
+    if (rescheduled.size > 0) {
+        await sql`
+            UPDATE index_positions AS ip
+            SET kickoff = t.kickoff
+            FROM unnest(
+                ${[...rescheduled.keys()]}::text[],
+                ${[...rescheduled.values()].map((ms) => new Date(ms).toISOString())}::timestamptz[]
+            ) AS t(market_id, kickoff)
+            WHERE ip.market_id = t.market_id AND ip.settled_at IS NULL
+        `;
+    }
+    const rescheduledReport = [...rescheduled].map(([marketId, ms]) => ({ marketId, kickoff: new Date(ms).toISOString() }));
 
     // Bulk write the results - one query, not one per position.
     if (settled.length > 0) {
@@ -230,6 +299,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
             settled: 0,
             voided: 0,
             voidedStale,
+            rescheduled: rescheduledReport,
             skipped,
             hasMore,
             deferred: hasMore ? 'more may remain; next run continues' : 'none',
@@ -369,6 +439,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         settled: settled.length - voidedCount,
         voided: voidedCount,
         voidedStale,
+        rescheduled: rescheduledReport,
         skipped,
         hasMore,
         deferred: hasMore ? 'more may remain; next run continues' : 'none',

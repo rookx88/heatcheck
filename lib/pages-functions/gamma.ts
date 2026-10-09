@@ -35,6 +35,28 @@ export interface GammaMarketLite {
     volumeNum?: number | null;
     oneDayPriceChange?: number | null;
     createdAt?: string;
+    // When the game ACTUALLY starts - the only field Polymarket rewrites when a fixture is
+    // postponed. The question text and slug stay frozen at the original date ("Will D.C.
+    // United SC win on 2026-09-05?" with gameStartTime 2026-10-21, verified 2026-10-09), so
+    // this is the one source of truth for "has this game happened yet". Read it through
+    // parseGameStartTime(): it is not ISO 8601.
+    gameStartTime?: string | null;
+}
+
+/**
+ * Gamma's gameStartTime as epoch ms, or null when absent or unreadable.
+ *
+ * The field is written "2026-10-21 23:00:00+00" - a space instead of the 'T' and a bare
+ * two-digit offset. That is not ISO 8601, and `new Date()` on a non-ISO string is
+ * implementation-defined, so it is normalised to "2026-10-21T23:00:00+00:00" first rather
+ * than trusting whichever runtime parses it. Null on anything that still won't parse:
+ * every caller treats "no start time" as "don't know", never as a date.
+ */
+export function parseGameStartTime(value: string | null | undefined): number | null {
+    if (!value) return null;
+    const iso = value.trim().replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00');
+    const ms = new Date(iso).getTime();
+    return Number.isFinite(ms) ? ms : null;
 }
 
 export function safeJsonParse<T>(value: string | undefined | null): T | null {
